@@ -288,7 +288,9 @@ role it would tie the core to a model stack and the removal test would be lost.
   its step's trace through `ports/traces.py`, masked by the composition root's `KnownSecrets`;
   the reporting component's `StepTraces` reads the trace beside the run level, shares it by role
   and keeps the tenant's retention, which `taktusctl trace retention` sets, and the scheduler
-  erases what it ended in `composition/traces.py` (ADR-0135). The governance component's
+  erases what it ended in `composition/traces.py` (ADR-0135). The stage view of a run for a
+  participant (UC-6.15) is `domain/service/stages.py`, computed from the run level's facts on
+  each request, served at `GET /levels/runs/{run}/stages`, and stores nothing. The governance component's
   `Stages` keeps a tenant's introduction in stages; `composition/stages.py` answers its ports —
   the level a process runs at now, its takeover instructions, the identities and the
   owner-facing channel — and registration's `StageCeilings`, and the scheduler looks at every

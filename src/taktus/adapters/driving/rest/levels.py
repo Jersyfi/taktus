@@ -3,6 +3,9 @@
 - `GET /levels/runs/{run_id}` — the run level of UC-6.10: the run and each of its steps, every
   fact with its glyph with motion and without, and its text equivalent. Read with an account
   key; a run the reader may not see is answered exactly as one that does not exist.
+- `GET /levels/runs/{run_id}/stages` — the stage view of UC-6.15: the run as stages, each done,
+  current or ahead, with the role a waiting stage waits for and no step graph. Computed from
+  the run level's records.
 - `GET /levels/overview` — the overview: the areas the reader may look into, their processes,
   how many runs of each work and wait right now, the steps running now (ADR-0067).
 - `GET /levels/processes/{process_id}` — the process level: one version's steps as a graph, each
@@ -96,6 +99,35 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         if level is None:
             return problem(404, f"no run {run_id!r} you may see")
         return JSONResponse(level.document())
+
+    @routes.get(
+        "/levels/runs/{run_id}/stages",
+        summary="The stages of a run, for a participant",
+        description="The run as stages in words: each is done, current or ahead, and a stage "
+        "that waits names the role it waits for, never a person; the owner where the wait "
+        "names none. No step, method or exactness class; `link` is the run level. Follow "
+        "`GET /changes?run=…` and read this again when a change arrives (UC-6.15).",
+        responses={
+            200: {"description": "The stages."},
+            401: {"description": "No account key, or one that proves no identity.", **PROBLEM},
+            404: {
+                "description": "No such run, or one you may not see: the two are answered alike.",
+                **PROBLEM,
+            },
+            422: {"description": "A parameter does not validate.", **PROBLEM},
+        },
+    )
+    async def run_stages(
+        run_id: str, authorization: str | None = Header(default=None)
+    ) -> JSONResponse:
+        who = await authenticated(services, authorization)
+        if who is None:
+            return problem(401, "an account key is needed: Authorization: Bearer <key>")
+        reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+        view = await services.levels.stages(reader, run_id)
+        if view is None:
+            return problem(404, f"no run {run_id!r} you may see")
+        return JSONResponse(view.document())
 
     @routes.get(
         "/levels/overview",
