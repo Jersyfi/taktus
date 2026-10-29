@@ -9,6 +9,7 @@ from taktus.components.run.application.query.provenance import (
     ProvenanceQuery,
 )
 from taktus.components.run.application.query.recordings import RecordedResponses
+from taktus.components.run.application.query.samples import SampleRate, SampleRates
 
 __all__ = [
     "BlockedTime",
@@ -18,6 +19,8 @@ __all__ = [
     "ProvenanceOfRun",
     "ProvenanceQuery",
     "RecordedResponses",
+    "SampleRate",
+    "SampleRates",
     "StepCases",
     "StepMeasures",
 ]

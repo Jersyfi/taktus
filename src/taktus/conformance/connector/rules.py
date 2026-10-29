@@ -1,12 +1,13 @@
 """The rules of the connector contract: what a declaration, a result, an error and an intake
 result must satisfy beyond their schema.
 
-These are the executable reading of the checks C-01 to C-09 of contracts/connector/v1/README.md
-§8, as far as they can be judged on documents alone: the schema says what a result looks like,
-these rules say what it must say given what was declared and what was asked. They take the
-documents the suite collected and return every violation found, each naming its check. The live
-suite (`suite.py`) applies them to what a running connector answered; `tests/conformance` applies
-them to known-good and known-bad documents. Nothing here does I/O.
+These are the executable reading of the checks C-01 to C-09 and C-11 of
+contracts/connector/v1/README.md §8, as far as they can be judged on documents alone: the schema
+says what a result looks like, these rules say what it must say given what was declared and
+what was asked. They take the documents the suite collected and return every violation found,
+each naming its check. The live suite (`suite.py`) applies them to what a running connector
+answered; `tests/conformance` applies them to known-good and known-bad documents. Nothing here
+does I/O.
 """
 
 from __future__ import annotations
@@ -52,6 +53,8 @@ CHECKS: dict[str, str] = {
     "C-08": "an unsigned or wrongly signed intake payload is refused, never processed",
     "C-09": "every result reports consumption in a declared kind",
     "C-10": "the adapter passes the removal test: removing it breaks no process",
+    "C-11": "a scoped capability answers a call's subject and refuses another subject's data "
+    "with out_of_scope",
 }
 
 SECTIONS: dict[str, str] = {
@@ -65,6 +68,7 @@ SECTIONS: dict[str, str] = {
     "C-08": "§7 Intake",
     "C-09": "§5 A call",
     "C-10": "§8 Conformance",
+    "C-11": "§3 Capabilities and §5 A call",
 }
 
 REQUIREMENTS: dict[str, str] = {
@@ -98,6 +102,9 @@ REQUIREMENTS: dict[str, str] = {
     "C-09": "every Result carries consumption with at least one quantity, and a quantity of a "
     "kind the capabilities declare",
     "C-10": "removing the adapter changes quality or cost but breaks no process",
+    "C-11": "where the capabilities name a scoped capability, a call of one of its operations "
+    "whose context carries a scope is answered for the scope's subject, and a call for another "
+    "subject ends with isError true and an Error with cause out_of_scope and effect none",
 }
 
 CATALOGUE = Catalogue.build(

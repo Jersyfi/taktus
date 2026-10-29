@@ -1,0 +1,21 @@
+{
+  "credentials": {
+    "actions": "MODEL_COSTS_TOKEN"
+  },
+  "read": {
+    "operation": "models.costs.daily",
+    "input": {
+      "days": 3,
+      "end": "2026-10-01"
+    }
+  },
+  "writes": [],
+  "invalid": {
+    "operation": "models.costs.daily",
+    "input": {
+      "days": 3,
+      "end": "2019-06-01"
+    },
+    "expected_cause": "invalid"
+  }
+}

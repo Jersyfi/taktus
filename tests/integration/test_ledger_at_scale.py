@@ -211,7 +211,7 @@ async def plan(wired: Wired, tenant: str, where: str) -> str:
 async def test_half_a_million_entries_cost_a_run_start_and_a_ledger_read_what_they_return(
     instances: Callable[..., Instance], chosen: str
 ) -> None:
-    async with instances("ledger", TAKTUS_ROLES="api", TAKTUS_TENANTS=chosen) as one:
+    async with instances("ledger", TAKTUS_ROLES="api") as one:
         assert one.wired is not None
         wired = one.wired
         took = await seed(wired, chosen)
@@ -300,7 +300,7 @@ async def test_the_remaining_whole_ledger_reads_cost_what_they_return(
     registration (ADR-0105 §9, issue #522), each over 500 000 entries, one per minute: the Takt
     rate reads the thirty days it rates from a projection, per day and run (7 200 finished steps of
     83 333), and the entries of its two partial days."""
-    async with instances("ledger", TAKTUS_ROLES="api", TAKTUS_TENANTS=chosen) as one:
+    async with instances("ledger", TAKTUS_ROLES="api") as one:
         assert one.wired is not None
         wired = one.wired
         await seed(wired, chosen)
@@ -376,7 +376,7 @@ async def test_the_correction_figures_and_the_alert_sweep_cost_what_they_return(
     reports to the owner (ADR-0105 §10, issue #550), each over 500 000 entries, of which 2 000
     are decisions: the figures read a projection, the sweep the entries of the kinds it reports,
     both through a ledger that would refuse a read of the whole of it."""
-    async with instances("ledger", TAKTUS_ROLES="api", TAKTUS_TENANTS=chosen) as one:
+    async with instances("ledger", TAKTUS_ROLES="api") as one:
         assert one.wired is not None
         wired = one.wired
         await seed(wired, chosen, corrections=True)

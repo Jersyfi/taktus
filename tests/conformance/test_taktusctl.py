@@ -96,7 +96,7 @@ def test_taktusctl_conformance_run_for_a_connector(
         check=False,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
-    assert "9 passed, 0 failed, 0 inconclusive, 1 pending" in completed.stdout
+    assert "10 passed, 0 failed, 0 inconclusive, 1 pending" in completed.stdout
     assert "verified: no" in completed.stdout
     report = json.loads(report_path.read_text())
     assert report["contract"] == "connector/v1"

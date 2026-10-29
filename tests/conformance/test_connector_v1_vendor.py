@@ -215,7 +215,7 @@ async def test_a_credential_the_vendor_does_not_accept_is_unauthenticated(
 
 
 def test_every_runtime_check_has_a_fault_for_the_notes_manifest() -> None:
-    assert {check for _, check in NOTES_FAULTS} == set(CHECKS) - {"C-07", "C-08", "C-10"}, (
+    assert {check for _, check in NOTES_FAULTS} == set(CHECKS) - {"C-07", "C-08", "C-10", "C-11"}, (
         "a vendor's server has no intake, and C-10 has no runtime fault"
     )
 

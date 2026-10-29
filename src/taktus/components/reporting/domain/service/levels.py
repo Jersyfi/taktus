@@ -46,6 +46,7 @@ from taktus.components.reporting.domain.model.levels import (
     RunCount,
     RunFacts,
     RunningStep,
+    Statement,
     StepFacts,
     TakeoverFacts,
     VersionRef,
@@ -155,6 +156,8 @@ class RunLevel(Value):
     steps: tuple[StepElement, ...]
     summary: str = Field(min_length=1)
     """One sentence: how far the run is, and what it does now."""
+    exactness: Statement | None = None
+    """The exactness statement of the version the run executes, as generated (UC-6.9)."""
 
 
 def figures(quantities: ConsumptionQuantities | None) -> tuple[Figure, ...]:
@@ -278,6 +281,7 @@ def run_level(facts: RunFacts) -> RunLevel:
         ),
         steps=steps,
         summary=_run_summary(facts.state, steps),
+        exactness=facts.exactness,
     )
 
 
@@ -305,6 +309,11 @@ class ProcessStepElement(Value):
     rejected: tuple[Method, ...] = ()
     fallback: Method | None = None
     depends_on: tuple[str, ...] = ()
+    role: str | None = None
+    """For a human step: the role that performs it (ADR-0146)."""
+    expertise: tuple[str, ...] = ()
+    fallback_role: str | None = None
+    """For a fallback to a person: the role that takes the step over."""
     running_in: tuple[str, ...] = ()
     """The runs this step is running in right now; empty at rest."""
     drawn: Drawn
@@ -341,6 +350,8 @@ class ProcessLevel(Value):
     runs: tuple[RunAtVersionElement, ...]
     summary: str = Field(min_length=1)
     """One sentence: how its steps work, and how many run now."""
+    exactness: Statement | None = None
+    """The exactness statement of the version, as generated (UC-6.9)."""
 
 
 AT_REST = "planned"
@@ -372,8 +383,13 @@ def _process_step(step: ProcessStepFacts, runs: tuple[RunAtVersion, ...]) -> Pro
     text = [drawn.moving.text, f"Why this method: {step.reason}."]
     if step.rejected:
         text.append(f"Considered and not chosen: {', '.join(str(m) for m in step.rejected)}.")
+    if step.role is not None:
+        text.append(f"Performed by the role {step.role}.")
     if step.fallback is not None:
-        text.append(f"Falls back to {step.fallback}.")
+        to = "" if step.fallback_role is None else f", the role {step.fallback_role}"
+        text.append(f"Falls back to {step.fallback}{to}.")
+    if step.expertise:
+        text.append(f"Needs: {'; '.join(step.expertise)}.")
     if step.depends_on:
         text.append(f"After {', '.join(step.depends_on)}.")
     text.append(f"Running in {', '.join(running_in)}." if running_in else "At rest.")
@@ -385,6 +401,9 @@ def _process_step(step: ProcessStepFacts, runs: tuple[RunAtVersion, ...]) -> Pro
         rejected=step.rejected,
         fallback=step.fallback,
         depends_on=step.depends_on,
+        role=step.role,
+        expertise=step.expertise,
+        fallback_role=step.fallback_role,
         running_in=running_in,
         drawn=drawn,
         text=" ".join(text),
@@ -428,6 +447,7 @@ def process_level(facts: ProcessFacts) -> ProcessLevel:
         steps=tuple(_process_step(step, runs) for step in facts.steps),
         runs=tuple(_run_at_version(run) for run in runs),
         summary=_process_summary(facts.steps, runs),
+        exactness=facts.exactness,
     )
 
 
@@ -467,6 +487,8 @@ class ProcessSummaryElement(Value):
     cells: tuple[CellElement, ...] = ()
     """The steps of its active version, so that the overview draws every process as one body."""
     text: str = Field(min_length=1)
+    exactness: Statement | None = None
+    """The exactness statement of its active version, as generated (UC-6.9)."""
 
 
 class AreaElement(Value):
@@ -525,6 +547,7 @@ def _summary(
         running=running,
         cells=_cells(process, runs),
         text=f"Process {process.name} ({process.id}{version}){level}: {busy}{steps}.",
+        exactness=process.exactness,
     )
 
 

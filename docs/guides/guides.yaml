@@ -50,6 +50,9 @@ guides:
             section: The parameters
           - file: CREDENTIALS.md
             section: When a credential expires anyway
+          - file: deploy/docker/README.md
+            section: Connectors
+            heading: Adding a connector on one machine
       - id: operating
         title: Operating
         parts:
@@ -91,6 +94,10 @@ guides:
         title: When Taktus asks you to decide
         parts:
           - file: docs/guides/use/deciding.md
+      - id: spending
+        title: Seeing where the work spends
+        parts:
+          - file: docs/guides/use/spending.md
       - id: people
         title: What Taktus never does with people
         parts:

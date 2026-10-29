@@ -1,0 +1,8 @@
+{
+  "id": "copy-amount",
+  "method": "rule",
+  "reason": "the amount is copied from the matched invoice",
+  "rejected": [],
+  "exactness": "sourced",
+  "role": "bookkeeper"
+}

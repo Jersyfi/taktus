@@ -32,6 +32,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 COMPOSE_YAML = ROOT / "deploy" / "docker" / "compose.yml"
+CONNECTORS_YAML = ROOT / "deploy" / "docker" / "compose.connectors.yml"
+"""The operator's further connectors, written from connectors.json (connectors.py)."""
 RECORD = ROOT / "deploy" / "docker" / "first-process.json"
 TEN_MINUTES = 600
 POLL_SECONDS = 5
@@ -59,6 +61,8 @@ def port_of(given: str | None) -> str:
 class Install:
     def __init__(self, project: str | None, port: str) -> None:
         self.compose = ["docker", "compose", "-f", str(COMPOSE_YAML)]
+        if CONNECTORS_YAML.is_file():
+            self.compose += ["-f", str(CONNECTORS_YAML)]
         if project:
             self.compose += ["-p", project]
         self.environment = {**os.environ, "TAKTUS_HTTP_PORT": port}
@@ -108,6 +112,11 @@ def main() -> int:
     )
     options = parser.parse_args()
     port = port_of(options.port)
+    connectors = [sys.executable, str(ROOT / "deploy" / "docker" / "connectors.py")]
+    stage(
+        "configuring the connectors",
+        subprocess.run(connectors, capture_output=True, text=True, check=False),  # noqa: S603
+    )
     install = Install(options.project, port)
     address = f"http://localhost:{port}/app/"
     marks: dict[str, datetime] = {"started": now()}

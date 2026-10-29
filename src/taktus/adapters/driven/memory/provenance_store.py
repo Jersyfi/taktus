@@ -49,6 +49,20 @@ class MemoryProvenanceStore:
                     queue.append(producer)
         return sorted(found.values(), key=lambda r: r.ledger_seq, reverse=True)
 
+    async def derived(self, tenant: Tenant, run_id: str, step_id: str) -> Sequence[Provenance]:
+        self._persistence.current(tenant)
+        records = self._all(tenant)
+        # Breadth first from the step run through what read it; each record once.
+        found: dict[str, Provenance] = {}
+        queue = deque([(run_id, step_id)])
+        while queue:
+            key = queue.popleft()
+            for record in records:
+                if record.id not in found and key in record.reads_from():
+                    found[record.id] = record
+                    queue.append((record.run_id, record.step_id))
+        return sorted(found.values(), key=lambda r: r.ledger_seq)
+
     def _all(self, tenant: Tenant) -> list[Provenance]:
         transaction = self._persistence.current(tenant)
         return [*self._persistence.provenance(tenant), *transaction.recorded]

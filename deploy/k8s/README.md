@@ -90,6 +90,7 @@ operator's. The parts that carry a decision:
 | `administration.platform`, `.administers` | the platform this instance runs on and, per credential parameter, the platforms it administers or `none` — `TAKTUS_PLATFORM`, `TAKTUS_ADMINISTERS` (ADR-0052). A process naming a credential that administers this platform, or one declared about nothing, is refused; with no platform nothing is checked |
 | `connectors.repository.*` | the repository channel's connector as a deployment of its own, from the control plane's image, acting as Taktus's own app (ADR-0033): the repository it serves, the app's identifier, the Secrets holding the app's key and the webhook secret — mounted as files — and `findings`, which makes it the connector product findings go through. Enabled, it sets `TAKTUS_CONNECTORS` (`channel.repo`) and, with `findings`, `TAKTUS_FINDINGS_CONNECTOR`; it is reached from the roles alone and reaches the name service and the service's API outside the cluster (#66) |
 | `connectors.chat.*` | the chat channel's connector as a deployment of its own, from the control plane's image, as Taktus's own app in the owner's chat workspace (NEED-0018): the Secret holding its bot token and signing secret, mounted as files. Enabled, it adds `channel.chat` to `TAKTUS_CONNECTORS`; it is reached from the roles alone and reaches the name service and the chat service's API outside the cluster (#239) |
+| `connectors.others` | every further connector, one deployment each: the cost, payment and error connectors (ADR-0150), the mail, metrics and check connectors (ADR-0111), or one of an image of its own. Each entry names the connector (`name`, the deployment's suffix), its `capability` — its label in `TAKTUS_CONNECTORS`, where the chart adds `<capability>=http://<release>-connector-<name>:<port>/mcp` — either a `module` run from the control plane's image or an `image` by version, its `port`, `args`, and each credential it reads as `{name, secret, key}`: the parameter of `CREDENTIALS.md`, mounted from that key as a file whose path is in `TAKTUS_CREDENTIAL_<NAME>_FILE`. Optional: `healthPath` (`/health`; empty for none), `egressPorts` (`[443]`) and `resources`. Each is reached from the roles alone, mounts no token, and reaches the name service and addresses outside `execution.egress.exceptCidrs` on its ports. A name, a capability or a credential named twice, a module and an image at once, or a missing port fails the render |
 | `ingress.*` | off unless `host` is given; `tls.secretName` names an existing certificate Secret, and then nothing is requested; only without it does `tls.issuer` ask the platform's certificate manager, by an annotation on the ingress. The stream of changes, `/changes`, is a long-lived `text/event-stream` response (ADR-0055): an ingress controller that buffers responses holds every change back until its buffer fills, and one that closes idle connections sooner than 15 seconds ends streams between heartbeats. Taktus sends `X-Accel-Buffering: no`; a controller that ignores it is told through `ingress.annotations`. Taktus cannot detect either |
 | `backup.*` | the database's scheduled backup (section 11, ADR-0087): off unless `enabled`; the backup image, released with the instance; the `schedule`, daily by default; `retentionDays`, 30 by default (DEC-0058); `recipient`, an `age` public key, empty for no encryption; the store's `endpoint`, `region`, `bucket`, `prefix`, and the Secret holding its credential with the key of its identifier and of its secret, mounted as files. It reaches the name service, the database and the store on `egressPorts` outside the excluded ranges; the database admits it |
 | `networkPolicy.*` | the name service, the API server's addresses, the ingress controller's namespace, and further egress rules for the hosts the control plane needs (section 5) |
@@ -152,7 +153,7 @@ restarted.
 **Tenants are created after the install, not configured** (ADR-0104). The migration creates
 `default`. Every other tenant is created with `taktusctl tenant create NAME`, run in a pod of
 the control plane, which prints the identifier Taktus generated. Every role serves the new
-tenant at its next round, without a restart. The chart sets no `TAKTUS_TENANTS` and mounts no
+tenant at its next round, without a restart. The chart mounts no
 administration key, so the administration of tenants on the HTTP surface stays off on a
 cluster.
 
@@ -652,3 +653,38 @@ steps against a fresh database.
 The restore of an encrypted backup without its private key is impossible, by design. Keep the
 key where a failure of the instance does not reach it.
 
+
+## 12. Rolling back an upgrade
+
+Nothing here needs Taktus (ADR-0013 C, ADR-0093 §3). It needs `helm` and `kubectl` against the
+cluster, and the release's name and namespace.
+
+**What a schema allows.** Every migration expands — it adds — unless its docstring says it
+contracts (ADR-0093 §1). The database names the oldest version of Taktus it still serves: the
+function `taktus_oldest_code()` returns that version's schema revision. A version whose own
+newest revision is that one, or later, runs against the database as it is, and its `/ready`
+says `ready`. An older version answers 503 and names both revisions.
+
+1. **Read where the database stands.** `kubectl exec <a control plane pod> -- ls
+   migrations/versions` lists the running version's revisions; the highest number is its
+   newest. In the database: `SELECT version_num FROM alembic_version;` and
+   `SELECT taktus_oldest_code();`.
+2. **Find the version to go back to**: `helm history <release>`. Its newest schema revision is
+   in the image, `migrations/versions/`, or in the release notes.
+3. **When the database serves that version** — its revision is `taktus_oldest_code()` or
+   later — roll back the images alone: `helm rollback <release> <revision>`. `helm rollback`
+   restores the chart's objects and images; it does not run a migration backwards, and the
+   pre-upgrade migration Job does not run on a rollback. Wait for `/ready` on every role.
+4. **When it does not** — a contracting migration ran — the schema must come back first. A
+   downgrade runs the release's own migrations backwards, with the *newer* image, which holds
+   them: `kubectl run taktus-downgrade --rm -it --image=<newer image> --env=... -- alembic -c
+   migrations/alembic.ini downgrade <revision>`, with the database URL the roles use. A
+   downgrade that drops a table or a column drops its data: it counts as a delete, and is run
+   only on a person's word (CLAUDE.md §9). Where data must stay, restore the backup taken
+   before the upgrade instead (section 11), and then roll back as in step 3.
+5. **Check**: `/ready` answers `ready` on every role, and `taktusctl ledger verify --tenant
+   <tenant>` passes for every tenant.
+
+The promise covers one release step: the previous release beside the next. A rollback across
+more than one release may need a downgrade even where every migration expanded, because the
+older version may predate the function and the range (#330).

@@ -10,6 +10,7 @@ from taktus.shared.v1.command import Command, Intent, ReplyTo
 from taktus.shared.v1.consumption import (
     PRICE_KINDS,
     QUANTITIES,
+    Compression,
     Consumption,
     ConsumptionQuantities,
     CurrencyAmounts,
@@ -75,6 +76,7 @@ __all__ = [
     "CheckKind",
     "Command",
     "Commissioned",
+    "Compression",
     "Consumption",
     "ConsumptionQuantities",
     "CurrencyAmounts",

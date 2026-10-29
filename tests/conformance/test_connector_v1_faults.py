@@ -25,7 +25,9 @@ FAULTS = connector_faults()
 
 def test_every_runtime_check_has_a_fault() -> None:
     broken = {check for _, check in FAULTS}
-    assert broken == set(CHECKS) - {"C-10"}, "C-10 is the only check without a runtime fault"
+    assert broken == set(CHECKS) - {"C-10", "C-11"}, (
+        "C-10 has no runtime fault, and C-11 needs a scoped capability, which it does not serve"
+    )
 
 
 @pytest.mark.parametrize(("fault", "check"), FAULTS, ids=[f for f, _ in FAULTS])

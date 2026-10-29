@@ -17,4 +17,10 @@ row. Every example and blueprint bundle's statement renders with all four parts,
 every result-producing step. A changed check changes the statement. A statement without what its
 checks do not cover, or one that says "guaranteed", is refused. Every sentence about a check is
 its row's, filled in with that check's parameters and nothing else: varying one parameter
-changes exactly its place in every sentence. Running the checks is #223.
+changes exactly its place in every sentence.
+
+`test_checks.py` holds the second part (#223, ADR-0152): every check of the catalogue has a
+fixture that passes and one that fails, and a wrong value slips through each exactly where the
+statement names the step's residual risk. Through the engine: a failed check fails its step and
+escalates the run, an approval holds a value above its threshold for its role, a sample goes to
+its role after the fact, and what a check read is in the step's provenance.

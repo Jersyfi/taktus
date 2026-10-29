@@ -51,8 +51,10 @@
 				{/if}
 			{/each}
 		</nav>
+		<a class="requests" href="#/register" aria-current={page.route.id === '/register' ? 'page' : undefined}>What acts</a>
 		<a class="requests" href="#/gallery" aria-current={page.route.id === '/gallery' ? 'page' : undefined}>Gallery</a>
 		<a class="requests" href="#/me" aria-current={page.route.id === '/me' ? 'page' : undefined}>Yours</a>
+		<a class="requests" href="#/trials" aria-current={page.route.id?.startsWith('/trials') ? 'page' : undefined}>Trials</a>
 		<a class="requests" href="#/requests" aria-current={page.route.id?.startsWith('/requests') ? 'page' : undefined}>Requests</a>
 		<button
 			class="calm"

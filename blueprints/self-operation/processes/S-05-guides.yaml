@@ -26,7 +26,7 @@
 # `taktusctl guides publish` does the same by hand (README.md beside this directory).
 
 id: s05-guides
-version: "2"
+version: "3"
 name: S-05 Guides
 autonomy:
   level: 3
@@ -93,6 +93,7 @@ steps:
     fallback:
       when: the connector serving repository.files is unavailable
       to: human
+      role: owner
     work:
       rule: connector
       operation: repository.files.read
@@ -130,6 +131,7 @@ steps:
     fallback:
       when: the connector serving repository.files is unavailable
       to: human
+      role: owner
     depends_on: [sources]
     work:
       rule: connector
@@ -179,6 +181,7 @@ steps:
     fallback:
       when: the connector serving knowledge.pages is unavailable
       to: human
+      role: owner
     depends_on: [render]
     work:
       rule: connector
@@ -223,6 +226,7 @@ steps:
     fallback:
       when: the connector serving knowledge.pages is unavailable
       to: human
+      role: owner
     depends_on: [measure]
     work:
       rule: connector

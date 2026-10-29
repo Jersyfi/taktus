@@ -309,6 +309,7 @@ def run(id: str = "run_1", tenant: str = "t") -> Run:
         steps=version.ordered(),
         work=version.work,
         deadlines=(deadline_rule(),),
+        bindings={"drafting": "model.candidate"},
         state=RunState.RUNNING,
         created_at=AT,
         updated_at=AT + timedelta(seconds=5),

@@ -752,7 +752,48 @@
                 "text": "step close: rule, reproducible; exact; planned."
               }
             ],
-            "text": "Process Example (example@1) at autonomy level 2: 1 run working, 1 waiting; running now: score in run_example, draft in run_example, review in run_example."
+            "text": "Process Example (example@1) at autonomy level 2: 1 run working, 1 waiting; running now: score in run_example, draft in run_example, review in run_example.",
+            "exactness": {
+              "process_version": "six-times-seven@2",
+              "name": "Six times seven, checked",
+              "parts": [
+                {
+                  "title": "Which checks apply",
+                  "lines": [
+                    "`prepare-commands` (exact): recomputation — over the inputs the provenance record names.",
+                    "`compute` (tolerant): no check declared.",
+                    "`verify-answer` (exact): plausibility bounds — the answer matches the pattern `^42$`.",
+                    "`overreach` (tolerant): no check declared."
+                  ]
+                },
+                {
+                  "title": "What they cover",
+                  "lines": [
+                    "`prepare-commands` (exact): The list of commands is what the step's rule gives again over the inputs its provenance record names: a result that does not follow from its recorded inputs is found.",
+                    "`verify-answer` (exact): The answer counts only where it matches the pattern `^42$`."
+                  ]
+                },
+                {
+                  "title": "What they do not cover",
+                  "lines": [
+                    "`prepare-commands` (exact): The list of commands computed from inputs that were themselves wrong passes, and so does a rule that computes the wrong thing the same way every time.",
+                    "`compute` (tolerant): the step declares no check, so no wrong result of it is found by one.",
+                    "`verify-answer` (exact): A wrong value of the answer that matches the pattern `^42$` passes.",
+                    "`overreach` (tolerant): the step declares no check, so no wrong result of it is found by one."
+                  ]
+                },
+                {
+                  "title": "The residual risk",
+                  "lines": [
+                    "`prepare-commands` (exact): a wrong result slips through only where every check misses it at once — wrong inputs, or a rule that computes the wrong thing.",
+                    "`compute` (tolerant): every wrong result slips through; no check applies to it.",
+                    "`verify-answer` (exact): a wrong result slips through only where every check misses it at once — a wrong value that matches the pattern `^42$`.",
+                    "`overreach` (tolerant): every wrong result slips through; no check applies to it.",
+                    "The measured rate — how many results a person corrected after the checks passed, per hundred — is not yet measured: the value ledger does not count it yet."
+                  ]
+                }
+              ]
+            }
           },
           {
             "id": "quiet",
@@ -1235,7 +1276,48 @@
         "text": "step close: rule, reproducible; exact; planned."
       }
     ],
-    "summary": "1 of 10 steps completed. Now: score (statistics), draft (language model), review (person), pipeline (wait). It waits for a person."
+    "summary": "1 of 10 steps completed. Now: score (statistics), draft (language model), review (person), pipeline (wait). It waits for a person.",
+    "exactness": {
+      "process_version": "six-times-seven@2",
+      "name": "Six times seven, checked",
+      "parts": [
+        {
+          "title": "Which checks apply",
+          "lines": [
+            "`prepare-commands` (exact): recomputation — over the inputs the provenance record names.",
+            "`compute` (tolerant): no check declared.",
+            "`verify-answer` (exact): plausibility bounds — the answer matches the pattern `^42$`.",
+            "`overreach` (tolerant): no check declared."
+          ]
+        },
+        {
+          "title": "What they cover",
+          "lines": [
+            "`prepare-commands` (exact): The list of commands is what the step's rule gives again over the inputs its provenance record names: a result that does not follow from its recorded inputs is found.",
+            "`verify-answer` (exact): The answer counts only where it matches the pattern `^42$`."
+          ]
+        },
+        {
+          "title": "What they do not cover",
+          "lines": [
+            "`prepare-commands` (exact): The list of commands computed from inputs that were themselves wrong passes, and so does a rule that computes the wrong thing the same way every time.",
+            "`compute` (tolerant): the step declares no check, so no wrong result of it is found by one.",
+            "`verify-answer` (exact): A wrong value of the answer that matches the pattern `^42$` passes.",
+            "`overreach` (tolerant): the step declares no check, so no wrong result of it is found by one."
+          ]
+        },
+        {
+          "title": "The residual risk",
+          "lines": [
+            "`prepare-commands` (exact): a wrong result slips through only where every check misses it at once — wrong inputs, or a rule that computes the wrong thing.",
+            "`compute` (tolerant): every wrong result slips through; no check applies to it.",
+            "`verify-answer` (exact): a wrong result slips through only where every check misses it at once — a wrong value that matches the pattern `^42$`.",
+            "`overreach` (tolerant): every wrong result slips through; no check applies to it.",
+            "The measured rate — how many results a person corrected after the checks passed, per hundred — is not yet measured: the value ledger does not count it yet."
+          ]
+        }
+      ]
+    }
   },
   "process_level": {
     "process": {
@@ -1264,6 +1346,7 @@
         "reason": "the rule suits load",
         "rejected": [],
         "depends_on": [],
+        "expertise": [],
         "running_in": [],
         "drawn": {
           "moving": {
@@ -1300,6 +1383,7 @@
         "depends_on": [
           "load"
         ],
+        "expertise": [],
         "running_in": [
           "run_example"
         ],
@@ -1338,6 +1422,7 @@
         "depends_on": [
           "load"
         ],
+        "expertise": [],
         "running_in": [],
         "drawn": {
           "moving": {
@@ -1374,6 +1459,7 @@
         "depends_on": [
           "load"
         ],
+        "expertise": [],
         "running_in": [],
         "drawn": {
           "moving": {
@@ -1410,6 +1496,7 @@
         "depends_on": [
           "score"
         ],
+        "expertise": [],
         "running_in": [
           "run_example"
         ],
@@ -1448,6 +1535,7 @@
         "depends_on": [
           "draft"
         ],
+        "expertise": [],
         "running_in": [],
         "drawn": {
           "moving": {
@@ -1483,6 +1571,10 @@
         "depends_on": [
           "draft"
         ],
+        "role": "reviewer",
+        "expertise": [
+          "the release's scope"
+        ],
         "running_in": [
           "run_example"
         ],
@@ -1510,7 +1602,7 @@
             "text": "step review: person, a person; no result of its own; running."
           }
         },
-        "text": "step review: person, a person; no result of its own; running. Why this method: the human suits review. After draft. Running in run_example."
+        "text": "step review: person, a person; no result of its own; running. Why this method: the human suits review. Performed by the role reviewer. Needs: the release's scope. After draft. Running in run_example."
       },
       {
         "id": "pipeline",
@@ -1520,6 +1612,7 @@
         "depends_on": [
           "review"
         ],
+        "expertise": [],
         "running_in": [],
         "drawn": {
           "moving": {
@@ -1556,6 +1649,7 @@
         "depends_on": [
           "pipeline"
         ],
+        "expertise": [],
         "running_in": [],
         "drawn": {
           "moving": {
@@ -1592,6 +1686,7 @@
         "depends_on": [
           "check"
         ],
+        "expertise": [],
         "running_in": [],
         "drawn": {
           "moving": {
@@ -1658,7 +1753,48 @@
         "text": "run run_example: running. Running score, draft, review."
       }
     ],
-    "summary": "10 steps: 6 reproducible, 2 variable, 1 with a person, 1 waiting. 3 steps running now."
+    "summary": "10 steps: 6 reproducible, 2 variable, 1 with a person, 1 waiting. 3 steps running now.",
+    "exactness": {
+      "process_version": "six-times-seven@2",
+      "name": "Six times seven, checked",
+      "parts": [
+        {
+          "title": "Which checks apply",
+          "lines": [
+            "`prepare-commands` (exact): recomputation — over the inputs the provenance record names.",
+            "`compute` (tolerant): no check declared.",
+            "`verify-answer` (exact): plausibility bounds — the answer matches the pattern `^42$`.",
+            "`overreach` (tolerant): no check declared."
+          ]
+        },
+        {
+          "title": "What they cover",
+          "lines": [
+            "`prepare-commands` (exact): The list of commands is what the step's rule gives again over the inputs its provenance record names: a result that does not follow from its recorded inputs is found.",
+            "`verify-answer` (exact): The answer counts only where it matches the pattern `^42$`."
+          ]
+        },
+        {
+          "title": "What they do not cover",
+          "lines": [
+            "`prepare-commands` (exact): The list of commands computed from inputs that were themselves wrong passes, and so does a rule that computes the wrong thing the same way every time.",
+            "`compute` (tolerant): the step declares no check, so no wrong result of it is found by one.",
+            "`verify-answer` (exact): A wrong value of the answer that matches the pattern `^42$` passes.",
+            "`overreach` (tolerant): the step declares no check, so no wrong result of it is found by one."
+          ]
+        },
+        {
+          "title": "The residual risk",
+          "lines": [
+            "`prepare-commands` (exact): a wrong result slips through only where every check misses it at once — wrong inputs, or a rule that computes the wrong thing.",
+            "`compute` (tolerant): every wrong result slips through; no check applies to it.",
+            "`verify-answer` (exact): a wrong result slips through only where every check misses it at once — a wrong value that matches the pattern `^42$`.",
+            "`overreach` (tolerant): every wrong result slips through; no check applies to it.",
+            "The measured rate — how many results a person corrected after the checks passed, per hundred — is not yet measured: the value ledger does not count it yet."
+          ]
+        }
+      ]
+    }
   },
   "origin": {
     "result": {
@@ -2602,6 +2738,983 @@
       "state": "open",
       "deliveries": [],
       "history": []
+    }
+  },
+  "acting": {
+    "register": {
+      "tenant": "default",
+      "permitted": "eu",
+      "rows": [
+        {
+          "adapter": "connector.tickets",
+          "family": "connector",
+          "serves": [
+            "tickets"
+          ],
+          "maturity": "verified",
+          "missing": [],
+          "removal": {
+            "verdict": "broke",
+            "tested_at": "2026-10-07T09:00:00Z"
+          },
+          "level": 3,
+          "exactness": "sourced",
+          "residency": "undeclared",
+          "processes": [
+            "billing",
+            "support"
+          ],
+          "uses": [
+            {
+              "process_id": "billing",
+              "version": "1",
+              "step_id": "fetch",
+              "served": "tickets.read",
+              "level": 2,
+              "exactness": "sourced",
+              "without": "breaks",
+              "reason": "no other adapter serves tickets.read and the step names no fallback"
+            },
+            {
+              "process_id": "support",
+              "version": "1",
+              "step_id": "read",
+              "served": "tickets.read",
+              "level": 3,
+              "exactness": "sourced",
+              "without": "degrades",
+              "instead": "connector.mirror",
+              "reason": "another adapter, or a person of the role, takes the step"
+            }
+          ],
+          "used": {
+            "days": 28,
+            "steps": 412,
+            "runs": 206,
+            "tokens": 0,
+            "compute_seconds": 0.0,
+            "money": {}
+          },
+          "stopped": false,
+          "attention": [
+            "without it 1 process would break: billing",
+            "the removal test of 2026-10-07 found it breaks"
+          ],
+          "text": "connector.tickets, a connector; serves tickets; acts in 2 processes up to level 3, producing sourced results at most; maturity verified; last removal test broke on 2026-10-07. Needs attention: without it 1 process would break: billing; the removal test of 2026-10-07 found it breaks."
+        },
+        {
+          "adapter": "model.writer",
+          "family": "model",
+          "serves": [
+            "summary"
+          ],
+          "maturity": "verified",
+          "missing": [],
+          "removal": {
+            "verdict": "changed",
+            "tested_at": "2026-10-07T09:00:00Z"
+          },
+          "level": 2,
+          "exactness": "free",
+          "location": "elsewhere",
+          "residency": "outside",
+          "processes": [
+            "support"
+          ],
+          "uses": [
+            {
+              "process_id": "support",
+              "version": "1",
+              "step_id": "draft",
+              "served": "purpose summary",
+              "level": 2,
+              "exactness": "free",
+              "without": "degrades",
+              "role": "support-lead",
+              "reason": "another adapter, or a person of the role, takes the step"
+            }
+          ],
+          "used": {
+            "days": 28,
+            "steps": 198,
+            "runs": 198,
+            "tokens": 241000,
+            "compute_seconds": 0.0,
+            "money": {
+              "eur": 3.12
+            }
+          },
+          "stopped": false,
+          "attention": [
+            "it processes at elsewhere, outside the tenant's residency rule"
+          ],
+          "text": "model.writer, a model; serves summary; acts in 1 process up to level 2, producing free results at most; maturity verified; last removal test changed on 2026-10-07. Needs attention: it processes at elsewhere, outside the tenant's residency rule."
+        },
+        {
+          "adapter": "worker.coder",
+          "family": "worker",
+          "serves": [
+            "vcs.write"
+          ],
+          "maturity": "verified",
+          "missing": [],
+          "removal": {
+            "verdict": "changed",
+            "tested_at": "2026-10-07T09:00:00Z"
+          },
+          "residency": "undeclared",
+          "processes": [],
+          "uses": [],
+          "used": {
+            "days": 28,
+            "steps": 0,
+            "runs": 0,
+            "tokens": 0,
+            "compute_seconds": 0.0,
+            "money": {}
+          },
+          "stopped": false,
+          "attention": [],
+          "text": "worker.coder, a worker; serves vcs.write; no process uses it; maturity verified; last removal test changed on 2026-10-07."
+        }
+      ],
+      "summary": "3 adapters can act for this tenant; 2 need attention."
+    },
+    "inventory": {
+      "tenant": "default",
+      "generated_at": "2026-10-10T09:00:00+00:00",
+      "legally_reviewed": false,
+      "notice": "Generated from the configuration Taktus runs with. Not legally reviewed: it is a draft for the deployer's own inventory, never a statement of compliance.",
+      "systems": [
+        {
+          "identifier": "connector.tickets",
+          "kind": "connector",
+          "purpose": {
+            "serves": [
+              "tickets"
+            ],
+            "processes": [
+              "billing",
+              "support"
+            ]
+          },
+          "human_oversight": {
+            "highest_autonomy_level": 3,
+            "roles_taking_over": [],
+            "stop": "a person stops it at any time; every run halts at its next step boundary (ADR-0138)"
+          },
+          "results": {
+            "strongest_exactness": "sourced"
+          },
+          "processing_location": "undeclared",
+          "within_residency_rule": "undeclared",
+          "evidence": {
+            "maturity": "verified",
+            "missing": [],
+            "removal_test": {
+              "verdict": "broke",
+              "tested_at": "2026-10-07T09:00:00Z"
+            }
+          }
+        },
+        {
+          "identifier": "model.writer",
+          "kind": "model",
+          "purpose": {
+            "serves": [
+              "summary"
+            ],
+            "processes": [
+              "support"
+            ]
+          },
+          "human_oversight": {
+            "highest_autonomy_level": 2,
+            "roles_taking_over": [
+              "support-lead"
+            ],
+            "stop": "a person stops it at any time; every run halts at its next step boundary (ADR-0138)"
+          },
+          "results": {
+            "strongest_exactness": "free"
+          },
+          "processing_location": "elsewhere",
+          "within_residency_rule": "outside",
+          "evidence": {
+            "maturity": "verified",
+            "missing": [],
+            "removal_test": {
+              "verdict": "changed",
+              "tested_at": "2026-10-07T09:00:00Z"
+            }
+          }
+        },
+        {
+          "identifier": "worker.coder",
+          "kind": "worker",
+          "purpose": {
+            "serves": [
+              "vcs.write"
+            ],
+            "processes": []
+          },
+          "human_oversight": {
+            "highest_autonomy_level": null,
+            "roles_taking_over": [],
+            "stop": "a person stops it at any time; every run halts at its next step boundary (ADR-0138)"
+          },
+          "results": {
+            "strongest_exactness": null
+          },
+          "processing_location": "undeclared",
+          "within_residency_rule": "undeclared",
+          "evidence": {
+            "maturity": "verified",
+            "missing": [],
+            "removal_test": {
+              "verdict": "changed",
+              "tested_at": "2026-10-07T09:00:00Z"
+            }
+          }
+        }
+      ]
+    },
+    "remove": {
+      "adapter": "connector.tickets",
+      "configured": true,
+      "breaks": [
+        {
+          "process_id": "billing",
+          "version": "1",
+          "step_id": "fetch",
+          "served": "tickets.read",
+          "level": 2,
+          "exactness": "sourced",
+          "without": "breaks",
+          "reason": "no other adapter serves tickets.read and the step names no fallback"
+        }
+      ],
+      "degrades": [
+        {
+          "process_id": "support",
+          "version": "1",
+          "step_id": "read",
+          "served": "tickets.read",
+          "level": 3,
+          "exactness": "sourced",
+          "without": "degrades",
+          "instead": "connector.mirror",
+          "reason": "another adapter, or a person of the role, takes the step"
+        }
+      ],
+      "removal": {
+        "verdict": "broke",
+        "tested_at": "2026-10-07T09:00:00Z"
+      },
+      "summary": "Without connector.tickets: 1 process would break (billing); 1 process would only degrade (support)."
+    },
+    "wrong_result": {
+      "run_id": "run_bill",
+      "step_id": "compute",
+      "process_version": "billing@1",
+      "exactness": "sourced",
+      "left_itself": [],
+      "reached": [
+        {
+          "run_id": "run_bill",
+          "step_id": "invoice",
+          "process_version": "billing@1",
+          "exactness": "sourced",
+          "recorded_at": "2026-10-10T09:00:00Z",
+          "left": []
+        },
+        {
+          "run_id": "run_remind",
+          "step_id": "letter",
+          "process_version": "reminders@2",
+          "exactness": "sourced",
+          "recorded_at": "2026-10-10T09:00:00Z",
+          "left": [
+            "egress.delivery"
+          ]
+        }
+      ],
+      "affected": 3,
+      "built_on": {
+        "billing@1": 1,
+        "reminders@2": 1
+      },
+      "left": 1,
+      "since_when": "Since when is UC-4.11's error window, which this view does not compute: it starts from this one result.",
+      "summary": "The result of compute in run_bill reached 2 step runs in 2 process versions; 1 of them, the result included, left the system."
+    },
+    "residency": {
+      "permitted": "eu",
+      "rows": [
+        {
+          "adapter": "connector.tickets",
+          "family": "connector",
+          "residency": "undeclared",
+          "processes": [
+            "billing",
+            "support"
+          ]
+        },
+        {
+          "adapter": "model.writer",
+          "family": "model",
+          "location": "elsewhere",
+          "residency": "outside",
+          "processes": [
+            "support"
+          ]
+        },
+        {
+          "adapter": "worker.coder",
+          "family": "worker",
+          "residency": "undeclared",
+          "processes": []
+        }
+      ],
+      "summary": "The tenant's rule permits processing eu. Outside it: model.writer; 2 adapters declare no location."
+    },
+    "variants": {
+      "process_id": "invoices",
+      "version": "1",
+      "designed": [
+        "classify",
+        "approve",
+        "book"
+      ],
+      "runs": 12,
+      "in_flight": 0,
+      "on_designed_path": 0.5833333333333334,
+      "variants": [
+        {
+          "path": [],
+          "end": "finished",
+          "runs": 7,
+          "share": 0.5833333333333334,
+          "examples": [
+            "run_05",
+            "run_06",
+            "run_07",
+            "run_08",
+            "run_09"
+          ],
+          "designed": true,
+          "text": "The designed path: 7 of 12 runs (58 %)."
+        },
+        {
+          "path": [
+            "fell_back@classify"
+          ],
+          "end": "finished",
+          "runs": 3,
+          "share": 0.25,
+          "examples": [
+            "run_00",
+            "run_01",
+            "run_02"
+          ],
+          "designed": false,
+          "text": "Fell back to a person at classify: 3 of 12 runs (25 %)."
+        },
+        {
+          "path": [
+            "retried@book"
+          ],
+          "end": "finished",
+          "runs": 2,
+          "share": 0.16666666666666666,
+          "examples": [
+            "run_03",
+            "run_04"
+          ],
+          "designed": false,
+          "text": "Retried book: 2 of 12 runs (17 %)."
+        }
+      ],
+      "waiting": [
+        {
+          "step_id": "approve",
+          "seconds": 43200.0,
+          "by_cause": {
+            "wait.human": 43200.0
+          },
+          "share": 0.96
+        },
+        {
+          "step_id": "classify",
+          "seconds": 1800.0,
+          "by_cause": {
+            "limit.provider": 1800.0
+          },
+          "share": 0.04
+        }
+      ],
+      "roles": [
+        {
+          "role": "accounts-approver",
+          "seconds": 43200.0,
+          "text": "Waits on the role accounts-approver: 12.0 h."
+        }
+      ],
+      "proposals": [
+        {
+          "kind": "method",
+          "step_id": "classify",
+          "evidence": "3 of 12 runs fell back to a person at classify",
+          "text": "classify fell back to a person in 25 % of runs: propose a method that is sure more often (ADR-0084), and decide it in a change in dialogue."
+        },
+        {
+          "kind": "rule",
+          "step_id": "approve",
+          "evidence": "waits on a person at approve are 96 % of the process's waiting",
+          "text": "Waits on a person at approve make up 96 % of the waiting: consider a threshold below which a rule decides, in a change in dialogue."
+        }
+      ],
+      "summary": "12 runs ended in 3 variants; 58 % took the designed path."
+    }
+  },
+  "spend": {
+    "run": {
+      "run_id": "run_replies_1",
+      "process_version": "replies@3",
+      "currency": "usd",
+      "table": "2026-10",
+      "steps": [
+        {
+          "step_id": "read",
+          "method": "rule",
+          "finished": 1,
+          "meter": {
+            "tokens": {},
+            "tokens_unattributed": 0,
+            "compute_seconds": {
+              "cpu.small": 1.5
+            },
+            "quota_units": 0.0,
+            "storage_bytes": 0,
+            "steps": {
+              "rule": 1
+            },
+            "currency_reported": {},
+            "turns": 0
+          },
+          "amount": 0.0,
+          "unpriced": [],
+          "takte": 1.0,
+          "outcome": "succeeded",
+          "result": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "step_id": "draft",
+          "method": "llm",
+          "finished": 1,
+          "meter": {
+            "tokens": {
+              "draft-model-20261001": {
+                "input": 1200,
+                "output": 310,
+                "cache_read": 8000,
+                "cache_write": 400
+              }
+            },
+            "tokens_unattributed": 0,
+            "compute_seconds": {},
+            "quota_units": 0.0,
+            "storage_bytes": 0,
+            "steps": {
+              "llm": 1
+            },
+            "currency_reported": {},
+            "turns": 3,
+            "compression": {
+              "before": 12000,
+              "after": 9600
+            }
+          },
+          "amount": 0.0184,
+          "unpriced": [],
+          "takte": 12.4,
+          "outcome": "succeeded",
+          "result": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        {
+          "step_id": "check",
+          "method": "llm",
+          "finished": 1,
+          "meter": {
+            "tokens": {
+              "draft-model-20261001": {
+                "input": 420,
+                "output": 12
+              }
+            },
+            "tokens_unattributed": 0,
+            "compute_seconds": {},
+            "quota_units": 0.0,
+            "storage_bytes": 0,
+            "steps": {
+              "llm": 1
+            },
+            "currency_reported": {},
+            "turns": 1
+          },
+          "amount": 0.0021,
+          "unpriced": [],
+          "takte": 1.6,
+          "outcome": "succeeded",
+          "result": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      ],
+      "amount": 0.0205,
+      "unpriced": [],
+      "takte": 15.0,
+      "calibration": "uncalibrated"
+    },
+    "comparison": {
+      "left": {
+        "run_id": "run_replies_1",
+        "process_version": "replies@3",
+        "currency": "usd",
+        "table": "2026-10",
+        "steps": [
+          {
+            "step_id": "read",
+            "method": "rule",
+            "finished": 1,
+            "meter": {
+              "tokens": {},
+              "tokens_unattributed": 0,
+              "compute_seconds": {
+                "cpu.small": 1.5
+              },
+              "quota_units": 0.0,
+              "storage_bytes": 0,
+              "steps": {
+                "rule": 1
+              },
+              "currency_reported": {},
+              "turns": 0
+            },
+            "amount": 0.0,
+            "unpriced": [],
+            "takte": 1.0,
+            "outcome": "succeeded",
+            "result": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "step_id": "draft",
+            "method": "llm",
+            "finished": 1,
+            "meter": {
+              "tokens": {
+                "draft-model-20261001": {
+                  "input": 1200,
+                  "output": 310,
+                  "cache_read": 8000,
+                  "cache_write": 400
+                }
+              },
+              "tokens_unattributed": 0,
+              "compute_seconds": {},
+              "quota_units": 0.0,
+              "storage_bytes": 0,
+              "steps": {
+                "llm": 1
+              },
+              "currency_reported": {},
+              "turns": 3,
+              "compression": {
+                "before": 12000,
+                "after": 9600
+              }
+            },
+            "amount": 0.0184,
+            "unpriced": [],
+            "takte": 12.4,
+            "outcome": "succeeded",
+            "result": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          {
+            "step_id": "check",
+            "method": "llm",
+            "finished": 1,
+            "meter": {
+              "tokens": {
+                "draft-model-20261001": {
+                  "input": 420,
+                  "output": 12
+                }
+              },
+              "tokens_unattributed": 0,
+              "compute_seconds": {},
+              "quota_units": 0.0,
+              "storage_bytes": 0,
+              "steps": {
+                "llm": 1
+              },
+              "currency_reported": {},
+              "turns": 1
+            },
+            "amount": 0.0021,
+            "unpriced": [],
+            "takte": 1.6,
+            "outcome": "succeeded",
+            "result": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        ],
+        "amount": 0.0205,
+        "unpriced": [],
+        "takte": 15.0,
+        "calibration": "uncalibrated"
+      },
+      "right": {
+        "run_id": "run_replies_2",
+        "process_version": "replies@3",
+        "currency": "usd",
+        "table": "2026-10",
+        "steps": [
+          {
+            "step_id": "read",
+            "method": "rule",
+            "finished": 1,
+            "meter": {
+              "tokens": {},
+              "tokens_unattributed": 0,
+              "compute_seconds": {
+                "cpu.small": 1.5
+              },
+              "quota_units": 0.0,
+              "storage_bytes": 0,
+              "steps": {
+                "rule": 1
+              },
+              "currency_reported": {},
+              "turns": 0
+            },
+            "amount": 0.0,
+            "unpriced": [],
+            "takte": 1.0,
+            "outcome": "succeeded",
+            "result": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "step_id": "draft",
+            "method": "llm",
+            "finished": 1,
+            "meter": {
+              "tokens": {
+                "draft-model-20261001": {
+                  "input": 1180,
+                  "output": 280
+                }
+              },
+              "tokens_unattributed": 0,
+              "compute_seconds": {},
+              "quota_units": 0.0,
+              "storage_bytes": 0,
+              "steps": {
+                "llm": 1
+              },
+              "currency_reported": {},
+              "turns": 2
+            },
+            "amount": 0.0071,
+            "unpriced": [],
+            "takte": 5.2,
+            "outcome": "succeeded",
+            "result": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          {
+            "step_id": "check",
+            "method": "llm",
+            "finished": 1,
+            "meter": {
+              "tokens": {
+                "draft-model-20261001": {
+                  "input": 420,
+                  "output": 12
+                }
+              },
+              "tokens_unattributed": 0,
+              "compute_seconds": {},
+              "quota_units": 0.0,
+              "storage_bytes": 0,
+              "steps": {
+                "llm": 1
+              },
+              "currency_reported": {},
+              "turns": 1
+            },
+            "amount": 0.0021,
+            "unpriced": [],
+            "takte": 1.6,
+            "outcome": "succeeded",
+            "result": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        ],
+        "amount": 0.0092,
+        "unpriced": [],
+        "takte": 7.8,
+        "calibration": "uncalibrated"
+      },
+      "steps": [
+        {
+          "step_id": "read",
+          "amount": 0.0,
+          "tokens_in": 0,
+          "tokens_out": 0,
+          "turns": 0,
+          "same_result": true
+        },
+        {
+          "step_id": "draft",
+          "amount": -0.0113,
+          "tokens_in": -8420,
+          "tokens_out": -30,
+          "turns": -1,
+          "same_result": false
+        },
+        {
+          "step_id": "check",
+          "amount": 0.0,
+          "tokens_in": 0,
+          "tokens_out": 0,
+          "turns": 0,
+          "same_result": true
+        }
+      ],
+      "amount": -0.0113,
+      "comparable": []
+    },
+    "process": {
+      "process_id": "replies",
+      "since": "2026-09-28T09:00:00Z",
+      "until": "2026-10-28T09:00:00Z",
+      "runs": 14,
+      "steps": [
+        {
+          "step_id": "read",
+          "method": "rule",
+          "finished": 14,
+          "meter": {
+            "tokens": {},
+            "tokens_unattributed": 0,
+            "compute_seconds": {
+              "cpu.small": 1.5
+            },
+            "quota_units": 0.0,
+            "storage_bytes": 0,
+            "steps": {
+              "rule": 1
+            },
+            "currency_reported": {},
+            "turns": 0
+          },
+          "amount": 0.0,
+          "unpriced": [],
+          "takte": 1.0,
+          "outcome": "succeeded",
+          "result": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "step_id": "draft",
+          "method": "llm",
+          "finished": 14,
+          "meter": {
+            "tokens": {
+              "draft-model-20261001": {
+                "input": 1200,
+                "output": 310,
+                "cache_read": 8000,
+                "cache_write": 400
+              }
+            },
+            "tokens_unattributed": 0,
+            "compute_seconds": {},
+            "quota_units": 0.0,
+            "storage_bytes": 0,
+            "steps": {
+              "llm": 1
+            },
+            "currency_reported": {},
+            "turns": 3,
+            "compression": {
+              "before": 12000,
+              "after": 9600
+            }
+          },
+          "amount": 0.0184,
+          "unpriced": [],
+          "takte": 12.4,
+          "outcome": "succeeded",
+          "result": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        {
+          "step_id": "check",
+          "method": "llm",
+          "finished": 14,
+          "meter": {
+            "tokens": {
+              "draft-model-20261001": {
+                "input": 420,
+                "output": 12
+              }
+            },
+            "tokens_unattributed": 0,
+            "compute_seconds": {},
+            "quota_units": 0.0,
+            "storage_bytes": 0,
+            "steps": {
+              "llm": 1
+            },
+            "currency_reported": {},
+            "turns": 1
+          },
+          "amount": 0.0021,
+          "unpriced": [],
+          "takte": 1.6,
+          "outcome": "succeeded",
+          "result": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      ],
+      "amounts": {
+        "usd": 0.287
+      },
+      "unpriced": []
+    },
+    "trial": {
+      "trial": {
+        "id": "trl_1",
+        "purpose": "drafting",
+        "candidates": [
+          "model.fast",
+          "model.careful"
+        ],
+        "occasion": "introduced",
+        "started_at": "2026-10-28T09:00:00Z",
+        "cases": [
+          {
+            "key": "replies/late",
+            "process_version": "replies@3",
+            "case": "late"
+          }
+        ],
+        "runs": {
+          "model.fast": {
+            "replies/late": "trl_1-0-0"
+          },
+          "model.careful": {
+            "replies/late": "trl_1-1-0"
+          }
+        },
+        "left_out": {}
+      },
+      "report": {
+        "purpose": "drafting",
+        "candidates": [
+          {
+            "model": "model.fast",
+            "cases": [
+              {
+                "case": "replies/late",
+                "run_id": "trl_1-0-0",
+                "state": "finished",
+                "passed": true,
+                "amount": 0.0071,
+                "tokens_in": 1180,
+                "tokens_out": 280,
+                "wall_seconds": 4.2,
+                "results": {
+                  "draft": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+                }
+              }
+            ],
+            "passed": 1,
+            "amount": 0.0071,
+            "currency": "usd",
+            "tokens_in": 1180,
+            "tokens_out": 280,
+            "wall_seconds": 4.2,
+            "unpriced": []
+          },
+          {
+            "model": "model.careful",
+            "cases": [
+              {
+                "case": "replies/late",
+                "run_id": "trl_1-1-0",
+                "state": "finished",
+                "passed": true,
+                "amount": 0.0184,
+                "tokens_in": 9600,
+                "tokens_out": 310,
+                "wall_seconds": 9.8,
+                "results": {
+                  "draft": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                }
+              }
+            ],
+            "passed": 1,
+            "amount": 0.0184,
+            "currency": "usd",
+            "tokens_in": 9600,
+            "tokens_out": 310,
+            "wall_seconds": 9.8,
+            "unpriced": []
+          }
+        ],
+        "differing": [
+          "replies/late"
+        ]
+      },
+      "settled": true
+    },
+    "trials": {
+      "trials": [
+        {
+          "id": "trl_1",
+          "purpose": "drafting",
+          "candidates": [
+            "model.fast",
+            "model.careful"
+          ],
+          "occasion": "introduced",
+          "started_at": "2026-10-28T09:00:00Z",
+          "cases": [
+            {
+              "key": "replies/late",
+              "process_version": "replies@3",
+              "case": "late"
+            }
+          ],
+          "runs": {
+            "model.fast": {
+              "replies/late": "trl_1-0-0"
+            },
+            "model.careful": {
+              "replies/late": "trl_1-1-0"
+            }
+          },
+          "left_out": {}
+        }
+      ],
+      "offers": [
+        {
+          "purpose": "triage",
+          "occasion": "changed",
+          "model": "model.fast",
+          "candidates": [
+            "model.fast",
+            "model.careful"
+          ],
+          "reason": "model.fast answered as fast-20261001 and answers as fast-20261101 since then",
+          "since": "2026-10-26T09:00:00Z"
+        }
+      ]
     }
   }
 }

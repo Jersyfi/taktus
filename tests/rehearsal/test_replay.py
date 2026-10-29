@@ -60,6 +60,23 @@ def test_every_recording_is_of_a_bundle_and_every_bundle_has_one() -> None:
         assert recorded["process"] == bundle(process)["id"] == process
 
 
+def test_the_readme_says_where_each_recording_was_taken() -> None:
+    """The table of `recordings/README.md` names each process with where its recording was
+    taken, as the recording says it: a recording replaced from the instance cannot leave the
+    table saying `local`, nor the other way round. #393 is complete when every row says
+    `instance`."""
+    table: dict[str, str] = {}
+    for line in (RECORDINGS / "README.md").read_text(encoding="utf-8").splitlines():
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) == 3 and cells[1] in ("`local`", "local", "instance", "`instance`"):
+            table[cells[0].strip("`")] = cells[1].strip("`")
+    recorded = {
+        process: json.loads((RECORDINGS / process / "recording.json").read_text())["taken"]
+        for process in BUNDLES
+    }
+    assert table == recorded
+
+
 async def test_a_bundle_that_sends_something_else_turns_the_replay_red(postgres_url: str) -> None:
     """A deliberate break of a bundle: P-02 reads the comments with one more field. The step
     sends another input than the recorded step sent, and fails, naming the part that differs.

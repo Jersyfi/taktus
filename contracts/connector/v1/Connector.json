@@ -1022,6 +1022,32 @@
           "description": "A call the target must refuse, with the cause the error must carry.",
           "$ref": "#/$defs/ScenarioCall"
         },
+        "scoped": {
+          "description": "For a connector that declares a scoped capability (ADR-0130, check C-11): one operation of it, a subject, and two inputs. own asks for the subject's own data and must be answered; other asks for another subject's data and must be refused with cause out_of_scope and no effect. The suite calls both with a context whose scope names the subject.",
+          "type": "object",
+          "properties": {
+            "operation": {
+              "$ref": "#/$defs/OperationName"
+            },
+            "subject": {
+              "type": "string",
+              "minLength": 1
+            },
+            "own": {
+              "type": "object"
+            },
+            "other": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "operation",
+            "subject",
+            "own",
+            "other"
+          ],
+          "additionalProperties": false
+        },
         "intake": {
           "type": "object",
           "properties": {

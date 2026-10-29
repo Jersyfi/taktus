@@ -66,6 +66,12 @@ def git(root: Path, *args: str) -> None:
     )
 
 
+@pytest.fixture(autouse=True)
+def _no_ci_branch(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The branch a test's repository is on decides concept mode, not the CI's own (DEC-0222)."""
+    monkeypatch.delenv("GITHUB_HEAD_REF", raising=False)
+
+
 @pytest.fixture
 def repo(tmp_path: Path) -> Path:
     root = tmp_path

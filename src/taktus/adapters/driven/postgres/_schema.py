@@ -623,6 +623,7 @@ run = Table(
     Column("rehearsal", Boolean, nullable=False),  # ADR-0030
     Column("actions", JSONB, nullable=False, server_default=text("'{}'::jsonb")),  # ADR-0039
     Column("deadlines", JSONB),  # the copy of its version's deadlines (ADR-0133)
+    Column("bindings", JSONB),  # purposes bound to one model for this run alone (ADR-0149)
     Column("state", Text, nullable=False),
     Column("cause", Text),
     Column("reason", Text),

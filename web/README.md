@@ -35,6 +35,12 @@ origin.
   instance's findings with their classification and their review, read back before it acts; and
   the tenants, for the holder of the administration key. The start page has one line per kind,
   saying how many are open or waiting, each leading to its page.
+- **What acts, what depends on it, and how a process really runs** (ADR-0147) — every
+  adapter that acts for the tenant, those that need attention first, with a stop the person
+  confirms once and the AI inventory as a file marked not legally reviewed; what breaks and
+  what degrades if one goes, where a wrong result went, and where data goes; and a process's
+  variants against its designed path, its waiting by cause and the proposals a person decides.
+  A human step shows the role that performs it (ADR-0146).
 - **A report to the owner** — the page every link a channel carries to a report opens: what is
   needed, the steps, what stands still, by when, and how to answer. The reader answers there as
   in the channel; the reading comes back, and nothing is filed before the reader confirms it.
@@ -43,6 +49,16 @@ origin.
 - **What keeps the operation running** — the incidents, the alerts, the backup and the signals
   with the newest daily report, each a page of its own, and a line for each on the start page
   saying how many are open or red (ADR-0121). Each page is read once on opening.
+
+- **Where a process spends** (#449, ADR-0148) — a run step by step: money at its own price
+  table and tokens split by price kind, each charted on one axis from zero, with turns, what a
+  compression saved and Takte; another run of the same task beside it, on one shared axis, with
+  whether each step produced the same result; a process over 7, 30 or 90 days. The run and the
+  process pages link there. What could not be priced is said, never drawn as nothing.
+- **Model trials** (#448, ADR-0149) — the trials offered now, each startable with the
+  candidates it names, a trial started by hand, and each trial's report: per candidate the
+  cases passed, money, tokens and wall time charted, and each case's results side by side. The
+  report is read again while its runs have not settled. Starting a trial binds no model.
 
 ## How it is built
 
@@ -78,6 +94,9 @@ origin.
 | `src/lib/OriginView.svelte` | the origin of a result, and its text equivalent |
 | `src/lib/ProcessView.svelte` | the process level, its autonomy statement, its runs and versions, and its text equivalent |
 | `src/lib/links.ts` | where each level lives in the web app |
+| `src/lib/spend.ts`, `StepBars.svelte` | the spend per step and the model trials: their shapes, links, sentences and the bars of their charts — one measure per axis from zero, a legend for two series and for the price kinds |
+| `src/lib/SpendView.svelte`, `ComparisonView.svelte`, `ProcessSpendView.svelte` | a run's spend, two runs side by side, a process over a window |
+| `src/lib/TrialsView.svelte`, `TrialView.svelte` | the trials and the offers, and one trial's report |
 | `src/lib/motion.svelte.ts` | whether motion is allowed |
 | `src/lib/session.ts`, `SignInForm.svelte` | signing in with the key, once, and signing out |
 | `src/lib/generated/fixtures.json` | written by `make generate`, never by hand: what the tests draw |
@@ -88,6 +107,10 @@ origin.
 | `src/lib/NeedsView.svelte`, `#/needs` | the needs among `GET /owner/reports`: what is needed, the steps, what stands still, by when, the state and the answer filed; each need leads to its report's page, where it is answered (ADR-0120) |
 | `src/lib/AutonomyView.svelte`, `#/autonomy` | `GET /autonomy`: each process's level in force, the stated one and why, the incident that lowered it, and each unit's rates over 7 and 28 days against the tenant's limit |
 | `src/lib/FindingsView.svelte`, `#/findings` | `GET /findings`: each lack with its classification and the text it would leave in; at the level `review`, send, not now or local for us, read back and confirmed |
+| `src/lib/acting.ts`, `Reading.svelte` | the shapes `GET /register`, `/register/inventory`, `/dependencies/…` and `/processes/{id}/variants` answer, the stop sent as the reader, the words the pages say, and one read drawn when it answers (ADR-0147) |
+| `src/lib/RegisterView.svelte`, `#/register` | every adapter as a card: a ladder of the levels it acts at, its exactness, its removal verdict, where it processes, what it used, why it needs attention, and its stop, asked and confirmed once |
+| `src/lib/DependenciesView.svelte`, `#/dependencies`, `#/dependencies/remove/<adapter>`, `#/dependencies/wrong/<run>/<step>` | what breaks and what only degrades without an adapter, where a wrong result went with what left the system, and where data goes against the residency rule |
+| `src/lib/VariantsView.svelte`, `#/variants/<process>` | a process's variants as bars of their share with their deviations marked, the waiting by step and cause, a role's waiting where two hold it, and the proposals |
 | `src/lib/TenantsView.svelte`, `#/tenants` | the tenants under the administration key: listed, created and renamed, each said back first |
 | `src/lib/reports.ts`, `ReportPage.svelte`, `#/reports/<id>` | a report to the owner: its view as `GET /owner/reports/{id}` sends it, the answers it offers, an answer sent to `POST …/answer` and the reading confirmed at `…/confirm` (ADR-0120) |
 | `src/lib/OpenReports.svelte` | the overview's list of the reports that wait for an answer, newest first, read from `GET /owner/reports` |

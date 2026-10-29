@@ -127,7 +127,9 @@ class World:
         )
         self.accounts = BlockedTime(self.ledger, self.objects, self.persistence, self.runs)
 
-    async def start(self, definition: tuple[Step, dict[str, Any]]) -> Run:
+    async def start(
+        self, definition: tuple[Step, dict[str, Any]], bindings: Mapping[str, str] | None = None
+    ) -> Run:
         step, work = definition
         plan = Plan(
             id="pln_1",
@@ -147,6 +149,7 @@ class World:
                 process_version="routing@1",
                 actor=PERSON,
                 tenant=TENANT,
+                bindings=dict(bindings or {}),
             )
         )
 
@@ -389,3 +392,39 @@ def test_a_route_stays_within_the_bound_it_adds_to_a_record() -> None:
     without = record.model_copy(update={"route": None})
     added = provenance.size_bytes(record) - provenance.size_bytes(without)
     assert added <= provenance.ROUTE_BYTES + provenance.BYTES_PER_SKIP * len(route.skipped)
+
+
+async def test_a_run_that_binds_its_purpose_routes_it_to_that_model_alone() -> None:
+    """ADR-0149 §1: a model trial's case run binds the purpose to its candidate for that run.
+    The candidate answers though the configuration puts it second, and though it serves another
+    purpose; a run that binds nothing routes as configured, and the run keeps its bindings."""
+    first = FakeModel(answer="no", name="first-model@1")
+    candidate = FakeModel(answer="yes", name="candidate-model@2")
+    w = World([("first", first, "eu"), ("candidate", candidate, "eu")])
+    bound = await w.start(llm(), bindings={"reasoning": "model.candidate"})
+    assert bound.state is RunState.FINISHED
+    assert bound.bindings == {"reasoning": "model.candidate"}
+    assert (await w.record(bound)).adapter == "model.candidate"
+    plain = await w.start(llm())
+    assert (await w.record(plain)).adapter == "model.first"
+    assert (len(first.prompts), len(candidate.prompts)) == (1, 1)
+
+
+async def test_a_bound_model_that_does_not_fit_fails_the_step_and_moves_nowhere() -> None:
+    """A bound candidate is routed as any chain is: outside the tenant's residency rule it fails
+    the step with `no model`, and no other member answers in its place."""
+    first = FakeModel(answer="no", name="first-model@1")
+    candidate = FakeModel(answer="yes", name="candidate-model@2")
+    w = World([("first", first, "eu"), ("candidate", candidate, "elsewhere")], rule=Rule("eu"))
+    run = await w.start(llm(), bindings={"reasoning": "model.candidate"})
+    assert run.state is RunState.ESCALATED and run.cause is Cause.FAILURE
+    assert "model.candidate" in (run.step_run("draft").reason or "")
+    assert (len(first.prompts), len(candidate.prompts)) == (0, 0)
+
+
+async def test_a_purpose_bound_to_a_model_nobody_configured_has_no_model() -> None:
+    first = FakeModel(answer="no", name="first-model@1")
+    w = World([("first", first, "eu")])
+    run = await w.start(llm(), bindings={"reasoning": "model.absent"})
+    assert run.state is RunState.ESCALATED and run.cause is Cause.FAILURE
+    assert first.prompts == []

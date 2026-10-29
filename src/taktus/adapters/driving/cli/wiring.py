@@ -13,7 +13,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from taktus.components.accounting.application.service import CostOfRunHandler, TaktRateHandler
+from taktus.components.accounting.application.service import (
+    CostOfRunHandler,
+    SpendHandler,
+    TaktRateHandler,
+)
 from taktus.components.catalog.application.service import RunConformanceHandler
 from taktus.components.command.application.service import CommissionPlanHandler
 from taktus.components.governance.application.service import (
@@ -22,6 +26,7 @@ from taktus.components.governance.application.service import (
     Corrections,
     ExpectedRuns,
     ReportCapacityHandler,
+    ResultDefects,
     Stages,
     TenantMessages,
     TenantResidency,
@@ -120,6 +125,8 @@ class Services:
     `taktusd` runs; false in memory, where nothing else executes."""
     cost: CostOfRunHandler | None = None
     """What a run cost, recomputed from the ledger at its price table (`taktusctl cost`)."""
+    spend: SpendHandler | None = None
+    """Where a run or a process spent, per step, and two runs side by side (#449)."""
     takt_rate: TaktRateHandler | None = None
     """A tenant's Takt consumption and rate over the window of the table in force
     (`taktusctl cost` without a run)."""
@@ -172,6 +179,9 @@ class Services:
     corrections: Corrections | None = None
     """The decisions on proposals counted per process and action class, and the tenant's
     correction limits (`taktusctl corrections`, ADR-0110)."""
+    defects: ResultDefects | None = None
+    """A result reported wrong, bounded, decided on by rule and planned for (`taktusctl
+    defect`, ADR-0153)."""
     residency: TenantResidency | None = None
     """The tenant's residency rule, shown and set (`taktusctl residency`, ADR-0116)."""
     sources: TenantSources | None = None
