@@ -9,7 +9,7 @@
 	import Glyph from './Glyph.svelte';
 	import Graph from './Graph.svelte';
 	import { chosen } from './motion.svelte';
-	import { originLink, processLink, requestsLink } from './links';
+	import { originLink, processLink, requestsLink, stagesLink } from './links';
 	import { spendLink } from './spend';
 	import type { Snippet } from 'svelte';
 	import type { Figure, RunLevel } from './types';
@@ -55,6 +55,7 @@
 				Process <a href={processLink(level.run.process_version)}>{level.run.process_version}</a
 				>{#if level.run.rehearsal}&#32;· a rehearsal{/if}
 				· <a href={spendLink(level.run.id)}>where it spent</a>
+				· <a href={stagesLink(level.run.id)}>its stages</a>
 			</p>
 		</div>
 	</header>
