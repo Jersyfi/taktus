@@ -48,7 +48,16 @@ asked as any run is, and is not asked an adapter's maturity (ADR-0108). A level 
 version is registered: with a person's approval and the quality history — runs in a row without
 a failure or a result defect — that the replaced version names under `history`. A refusal is the
 ledger entry `autonomy.refused`; Taktus may propose a raise (`autonomy.proposed`) and never
-applies one. Level 4 and levels per risk class are not built yet.
+applies one. Levels per risk class are not built yet.
+
+**How level 4 is enforced** (ADR-0160). Before a step starts, level 4 asks what level 3 asks.
+After a step failed, a failure an adapter classified as repeatable is healed by Taktus: the step
+is admitted again at once, against the budget, and `step.healed` records it with the failure it
+answered. A step is healed at most twice per run, never for an operation that cannot recognise a
+repeat, and never when an action of it is set lower. Past that, and for a failure of no known
+kind, the run escalates, and its reason says why it was not healed. Below level 4 nothing
+heals: the person on the loop resumes. Every anchor halts a level-4 run as it halts a level-1
+run.
 
 **How a level falls, and what a raise rests on** (ADR-0110, UC-7.5). A person answers a step
 proposed at level 1 or 2 in one of three ways: released as proposed, corrected with the work the

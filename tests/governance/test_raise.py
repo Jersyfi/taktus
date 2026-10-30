@@ -51,7 +51,9 @@ def bundle(
     history: int | None = 3,
     actions: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    autonomy: dict[str, Any] = {"level": level, "reason": "r", "toward_next": "t"}
+    autonomy: dict[str, Any] = {"level": level, "reason": "r"}
+    if level < 4:
+        autonomy["toward_next"] = "t"  # absent at level 4, where there is no next level
     if history is not None:
         autonomy["history"] = history
     if actions is not None:
@@ -256,6 +258,30 @@ async def test_a_new_process_sets_its_level_without_a_raise() -> None:
     w = World()
     await w.registered(bundle(3))
     assert autonomy_entries(await w.entries()) == []
+
+
+async def test_a_raise_to_level_four_needs_a_persons_approval_and_the_history() -> None:
+    """Level 4 rises as every level does (UC-7.1 §2, ADR-0160 §4): refused without the
+    approval, refused on a short history, admitted with both and recorded with the person."""
+    w = World()
+    await w.registered(bundle(3, history=2))
+    await w.ran("finished", "finished")
+    with pytest.raises(RaiseRefused, match="approval by a person"):
+        await w.registered(bundle(4, version="2"))
+    await w.ran("escalated")
+    with pytest.raises(RaiseRefused, match="needs 2 runs in a row"):
+        await w.registered(bundle(4, version="2"), approved_by=PERSON)
+    await w.ran("finished", "finished")
+    proposal = await w.propose.execute(ProposeRaise(tenant=TENANT, process_id="p"))
+    assert proposal.evidenced and (await w.active()).autonomy.level == 3, "proposed, not applied"
+    version = await w.registered(bundle(4, version="2"), approved_by=PERSON)
+    assert version.autonomy.level == 4 and version.autonomy.toward_next is None
+    assert autonomy_entries(await w.entries()) == [
+        ("autonomy.refused", "no_approval", None),
+        ("autonomy.refused", "history_short", PERSON),
+        ("autonomy.proposed", "evidenced", None),
+        ("autonomy.raised", "raised", PERSON),
+    ]
 
 
 # --- Taktus proposes; nothing applies a raise without the approval --------------------------

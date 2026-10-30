@@ -350,7 +350,7 @@ def test_a_capability_pattern_matches_segment_by_segment(
 # --- an anchored act halts the run at the step boundary, at every level --------------------------
 
 
-@pytest.mark.parametrize("level", [1, 2, 3])
+@pytest.mark.parametrize("level", [1, 2, 3, 4])
 async def test_no_autonomy_level_overrides_an_anchor(level: AutonomyLevel) -> None:
     w = await World(call("write", WRITE), level=level).setup()
     run = await w.start()
@@ -363,6 +363,51 @@ async def test_no_autonomy_level_overrides_an_anchor(level: AutonomyLevel) -> No
     kinds = await w.kinds(run)
     assert "step.anchored:write:legal" in kinds
     assert not any(k.startswith("step.awaiting") for k in kinds), "the anchor asked first"
+
+
+def correcting(id: str) -> tuple[Step, dict[str, Any]]:
+    """A step that corrects a result that has left the system: it uses the correction act."""
+    step, work = rule(id)
+    return step.model_copy(update={"requires": ("correction.execute",)}), work
+
+
+@pytest.mark.parametrize("kind", ["legal", "strategic", "correction"])
+async def test_a_level_four_run_halts_at_each_anchor_with_a_decision_request(kind: str) -> None:
+    """UC-7.1 §2, UC-15.5, UC-4.12: unattended in execution, anchored in direction and in
+    outward correction. Each anchor halts a level-4 run at the step's boundary with a request
+    of its class, and the rest of the run goes on."""
+    configured = {
+        "legal": CONFIGURED,
+        "strategic": {
+            "anchors": [
+                LEGAL_WRITE,
+                CORRECTION,
+                anchor("anc-direction", "strategic", actions=[READ]),
+            ]
+        },
+        "correction": CONFIGURED,
+    }[kind]
+    act = {
+        "legal": call("act", WRITE),
+        "strategic": call("act", READ),
+        "correction": correcting("act"),
+    }[kind]
+    w = await World(rule("prep"), act, rule("report"), level=4, configuration=configured).setup()
+    run = await w.start()
+    assert run.state is RunState.WAITING_HUMAN and run.cause is Cause.PERSON
+    assert states(run) == {
+        "prep": StepState.SUCCEEDED,
+        "act": StepState.WAITING_HUMAN,
+        "report": StepState.SUCCEEDED,
+    }
+    assert w.connector.calls == [], "nothing of the anchored step started"
+    (request_id,) = requests_of(run, "act")
+    request = await w.request(request_id)
+    assert request.status is DecisionStatus.OPEN
+    assert str(request.request.class_) == kind
+    kinds = await w.kinds(run)
+    assert f"step.anchored:act:{kind}" in kinds
+    assert not any(k.startswith(("step.admitted:act", "step.started:act")) for k in kinds)
 
 
 async def test_the_halt_is_at_the_boundary_and_the_rest_of_the_run_continues() -> None:
