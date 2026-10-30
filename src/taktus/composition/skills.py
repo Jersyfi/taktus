@@ -28,8 +28,8 @@ from pathlib import Path
 from typing import Any
 
 import structlog
-import yaml
 
+from taktus.adapters.driving.cli.bundle_command import skills_below
 from taktus.components.catalog.application.service import AgentCatalog, SkillCatalog
 from taktus.components.catalog.domain.model import (
     InvalidSkill,
@@ -38,7 +38,6 @@ from taktus.components.catalog.domain.model import (
     Round,
     RoundState,
     SkillError,
-    SkillFile,
     SkillOrigin,
     SkillStage,
     SkillVersion,
@@ -66,43 +65,6 @@ log = structlog.get_logger("taktus.skills")
 CORRECTIONS = ("step.corrected", "proposal.decided")
 ROUND_EVERY_SECONDS = 86400
 """At level 4 the next round of a version starts once a day (ADR-0162 §4)."""
-
-
-# --- reading skills from a bundle ----------------------------------------------------------------
-
-
-def skill_on_disk(directory: Path) -> SkillFile:
-    """The skill a directory holds: its `SKILL.md` and every other file below it, parsed by
-    the catalogue's rule. InvalidSkill where it does not hold to the open format."""
-    path = directory / rules.FILE
-    if not path.is_file():
-        raise InvalidSkill((f"{directory} holds no {rules.FILE}",))
-    files = {
-        str(p.relative_to(directory)): p.read_bytes()
-        for p in sorted(directory.rglob("*"))
-        if p.is_file()
-    }
-    front_text, body = rules.split(files[rules.FILE].decode("utf-8"))
-    try:
-        front = yaml.safe_load(front_text)
-    except yaml.YAMLError as error:
-        raise InvalidSkill((f"{rules.FILE}: the front matter is not YAML: {error}",)) from error
-    return rules.parse(directory.name, front, body, files)
-
-
-def skills_below(root: Path) -> list[tuple[Path, SkillFile | InvalidSkill]]:
-    """Every skill directory under a `skills/` directory below `root`, parsed or with why
-    not."""
-    found: list[tuple[Path, SkillFile | InvalidSkill]] = []
-    for marker in sorted(root.rglob(rules.FILE)):
-        directory = marker.parent
-        if directory.parent.name != "skills":
-            continue
-        try:
-            found.append((directory, skill_on_disk(directory)))
-        except InvalidSkill as error:
-            found.append((directory, error))
-    return found
 
 
 # --- the run's port ------------------------------------------------------------------------------
@@ -163,6 +125,10 @@ class SkillLifecycle:
         self._ledger = ledger
         self._work = work
         self._clock = clock
+
+    @property
+    def catalog(self) -> SkillCatalog:
+        return self._catalog
 
     # --- what uses a skill -----------------------------------------------------------------
 
