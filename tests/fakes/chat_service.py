@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A fake of the chat service the chat connector talks to.
 
-The connector under `src/taktus/adapters/driven/connectors/slack/` speaks the web interface of
+The connector under `connectors/taktus_connectors/slack/` speaks the web interface of
 that service. This fake answers the four methods the connector uses — `chat.postMessage`,
 `conversations.replies`, `conversations.history`, `users.list` — in the same shapes, with the
 same error codes for the same faults, and keeps everything in memory. It exists so that the

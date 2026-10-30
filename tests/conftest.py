@@ -18,7 +18,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 import images
 import pytest
@@ -130,3 +130,9 @@ def hog_image(engine_socket: str) -> str:
 def backup_image(engine_socket: str) -> str:
     """The database backup's image, from deploy/backup/Dockerfile (ADR-0087)."""
     return built(images.BACKUP)
+
+
+@pytest.fixture
+def connector_image(engine_socket: str) -> Callable[[str], str]:
+    """A connector's own image by its name, its stage of connectors/Dockerfile (ADR-0158)."""
+    return lambda name: built(images.connector(name))

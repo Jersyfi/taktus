@@ -33,17 +33,17 @@ from typing import Any
 
 import httpx
 import pytest
-
-from taktus.adapters.driven.connectors.slack.declaration import (
+from taktus_connectors.slack.declaration import (
     ACTIONS_CREDENTIAL,
     INTAKE_CREDENTIAL,
 )
-from taktus.adapters.driven.connectors.slack.server import (
+from taktus_connectors.slack.server import (
     DEFAULT_TARGET,
     Config,
     Connector,
     secret_named,
 )
+
 from taktus.conformance import ConnectorSuiteOptions, Status, run_connector_suite
 
 type Json = dict[str, Any]
@@ -51,7 +51,7 @@ type Json = dict[str, Any]
 CONVERSATION = os.environ.get("TAKTUS_LIVE_CHAT_CONVERSATION", "")
 TARGET = os.environ.get("TAKTUS_LIVE_CHAT_TARGET") or DEFAULT_TARGET
 """The service's web interface; another only to rehearse this test against the fake."""
-CONNECTOR = Path(__file__).resolve().parents[3] / "src/taktus/adapters/driven/connectors/slack"
+CONNECTOR = Path(__file__).resolve().parents[3] / "connectors/taktus_connectors/slack"
 
 pytestmark = pytest.mark.skipif(
     not (CONVERSATION and secret_named(ACTIONS_CREDENTIAL)),
@@ -100,7 +100,7 @@ def connector(tmp_path: Path) -> Iterator[tuple[str, Path, str]]:
             [
                 sys.executable,
                 "-m",
-                "taktus.adapters.driven.connectors.slack",
+                "taktus_connectors.slack",
                 "--port",
                 str(port),
                 "--target",

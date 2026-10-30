@@ -45,7 +45,7 @@ connectors = load()
 PAYMENTS: dict[str, Any] = {
     "name": "payments",
     "capability": "payments.subscriptions",
-    "module": "taktus.adapters.driven.connectors.stripe",
+    "connector": "stripe",
     "port": 9111,
     "credentials": [{"name": "PAYMENTS_TOKEN", "file": "payments_token"}],
 }
@@ -63,11 +63,13 @@ def test_each_connector_is_a_service_its_credentials_files_and_the_roles_told_wh
     written = connectors.compose([PAYMENTS, ERRORS])
     services = written["services"]
     payments = services["connector-payments"]
-    assert payments["image"] == "taktus:local"
+    assert payments["image"] == "taktus-connector-stripe:local"
+    assert payments["build"] == {
+        "context": "../..",
+        "dockerfile": "connectors/Dockerfile",
+        "target": "stripe",
+    }
     assert payments["command"] == [
-        "python",
-        "-m",
-        "taktus.adapters.driven.connectors.stripe",
         "--host",
         EVERY_INTERFACE,
         "--port",
@@ -104,9 +106,11 @@ def test_each_connector_is_a_service_its_credentials_files_and_the_roles_told_wh
             [PAYMENTS, {**ERRORS, "capability": "payments.subscriptions"}],
             "another connector's label",
         ),
-        ([{**ERRORS, "module": "taktus.adapters.driven.connectors.sentry"}], "not both"),
-        ([{"name": "a", "capability": "a.b", "port": 1}], "module or image"),
-        ([{"name": "a", "capability": "a.b", "module": "m"}], "port is required"),
+        ([{**ERRORS, "connector": "sentry"}], "not both"),
+        ([{"name": "a", "capability": "a.b", "port": 1}], "connector, module or image"),
+        ([{"name": "a", "capability": "a.b", "connector": "stripe"}], "port is required"),
+        ([{**PAYMENTS, "connector": "nosuch"}], "is no connector this release ships"),
+        ([{**ERRORS, "image": None, "module": "my.module"}], "is no shipped connector's"),
         ([{**ERRORS, "image": "errors-connector:latest"}], "is not a version"),
         ([{**ERRORS, "image": "errors-connector"}], "names no tag"),
         ([{**PAYMENTS, "credentials": [{"name": "payments", "file": "x"}]}], "not a parameter"),
@@ -119,6 +123,15 @@ def test_a_connector_that_cannot_be_deployed_is_refused(
 ) -> None:
     with pytest.raises(connectors.Refused, match=message):
         connectors.compose(entries)
+
+
+def test_a_module_an_earlier_release_ran_from_the_control_plane_names_its_image() -> None:
+    """The upgrade path (ADR-0158): an operator's list written for a release that ran the
+    connector's module from the control plane's image builds the connector's own image now."""
+    old = {**PAYMENTS, "connector": None, "module": "taktus.adapters.driven.connectors.stripe"}
+    payments = connectors.compose([old])["services"]["connector-payments"]
+    assert payments["image"] == "taktus-connector-stripe:local"
+    assert payments["build"]["target"] == "stripe"
 
 
 def test_without_a_list_nothing_is_written_and_only_its_own_stale_file_goes(tmp_path: Path) -> None:
@@ -193,7 +206,8 @@ def test_the_example_list_is_one_compose_accepts(tmp_path: Path) -> None:
     config = json.loads(completed.stdout)
     services = config["services"]
     payments = services["connector-payments"]
-    assert payments["image"] == "taktus:local"
+    assert payments["image"] == "taktus-connector-stripe:local"
+    assert payments["build"]["target"] == "stripe"
     assert [s["source"] for s in payments["secrets"]] == ["connector_payments_payments_token"]
     assert payments["environment"]["TAKTUS_CREDENTIAL_PAYMENTS_TOKEN_FILE"] == MOUNTED
     assert "ports" not in payments

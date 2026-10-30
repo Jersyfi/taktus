@@ -18,8 +18,8 @@ from pathlib import Path
 
 import pytest
 from fakes.owner_channel import owner_channel
+from taktus_connectors.bookstack.server import Config, build_server
 
-from taktus.adapters.driven.connectors.bookstack.server import Config, build_server
 from taktus.adapters.driven.connectors.mcp import McpActionConnector
 from taktus.components.run.domain.model import RunState, StepState
 from taktus.composition.guides import served_directory

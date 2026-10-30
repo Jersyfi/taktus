@@ -10,8 +10,8 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from taktus_connectors.github.server import Config, build_server
 
-from taktus.adapters.driven.connectors.github.server import Config, build_server
 from taktus.adapters.driven.connectors.mcp import McpActionConnector
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.ports.connector import (

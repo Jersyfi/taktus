@@ -4,6 +4,7 @@
 [importlinter]
 root_packages =
     taktus
+    taktus_connectors
 include_external_packages = True
 
 [importlinter:contract:layers]
@@ -96,3 +97,21 @@ forbidden_modules =
     taktus.shared
     httpx
     pydantic
+
+# The connectors are separate deployables with images of their own (ADR-0158): neither side
+# imports the other; the control plane reaches a connector over MCP only.
+[importlinter:contract:connectors-stand-alone]
+name = The connectors import nothing from the control plane
+type = forbidden
+source_modules =
+    taktus_connectors
+forbidden_modules =
+    taktus
+
+[importlinter:contract:control-plane-imports-no-connector]
+name = The control plane imports no connector of its own image
+type = forbidden
+source_modules =
+    taktus
+forbidden_modules =
+    taktus_connectors

@@ -3,8 +3,9 @@
 # containers come up in one command; a process runs end to end against the reference worker;
 # the application container is killed mid-run (SIGKILL, no shutdown); it is restarted; the run
 # resumes at its last step boundary and finishes with every artifact exactly once. On the way
-# it checks that the control plane image carries no worker code (DEC-0011): the reference
-# worker runs from its own image, layered in by compose.reference-worker.yml.
+# it checks that the control plane image carries no worker code (DEC-0011) and no connector
+# (ADR-0158): the reference worker runs from its own image, layered in by
+# compose.reference-worker.yml, and each connector from its own.
 #
 # Needs docker with the compose plugin and curl. Leaves the containers and volumes as it found
 # them running; `make down` stops them. Exit code 0 when every step held.
@@ -21,7 +22,7 @@ compose up --build --detach --wait
 curl -fsS "${api}/health" >/dev/null && echo "health answers"
 curl -fsS "${api}/ready" | tee /dev/stderr | grep -q '"status": *"ready"' && echo "ready answers"
 
-say "1b. the control plane image contains no worker code (DEC-0011)"
+say "1b. the control plane image contains no worker code (DEC-0011) and no connector (ADR-0158)"
 docker run --rm --entrypoint sh taktus:local -c '
 set -e
 test ! -e /app/workers || { echo "found /app/workers in the control plane image"; exit 1; }
@@ -31,7 +32,11 @@ found="$(find / -xdev \( -path /proc -o -path /sys \) -prune -o \( -path "*/work
 # plane (src/taktus/ports/worker.py) does not, and belongs there.
 found="$(grep -rl "separate deployable, as every worker is" /app 2>/dev/null || true)"
 [ -z "$found" ] || { echo "worker code in the control plane image: $found"; exit 1; }
-echo "no worker code in the image"'
+echo "no worker code in the image"
+# Nor any connector of its own image (ADR-0158): the control plane reaches each over MCP.
+test ! -e /app/connectors || { echo "found /app/connectors in the control plane image"; exit 1; }
+if python -c "import taktus_connectors" 2>/dev/null; then echo "a connector is importable in the control plane image"; exit 1; fi
+echo "no connector code in the image"'
 
 say "1c. a reader of the read API: an identity and its account key, read from the header only (#186)"
 # The same identity submits and confirms the run in steps 2 and 5: nothing executes without one.
