@@ -389,6 +389,19 @@ role it would tie the core to a model stack and the removal test would be lost.
   daemon's intake, finds the waiting `human` step of the tenant by the intake's channel and
   thread, hands the message to `RunEngine.answer_participant`, and says the engine's reply in
   the thread through `ConnectorReplies`. A message it does not match goes on to `OwnerAnswers`.
+- **What a person may ask for** (ADR-0159 §1 to §3) is `AgentSurface.catalogue`
+  (`composition/agent_surface.py`), drawn by the reporting component's pure
+  `domain/service/catalogue.py` and served at `GET /catalogue` (`adapters/driving/rest/catalogue.py`).
+  Every start of a process — the command line, the MCP surface, `POST /catalogue/{process}/start`
+  and the chat — builds its command with the command component's `domain/service/start.py`.
+  `composition/catalogue_in_channel.py` reads the list and a confirmed start in the owner's
+  conversation, handed to `OwnerAnswers` by `catalogue_with`.
+- **The organisation as value streams** (ADR-0159 §4 to §6): the process component keeps a
+  stream's revisions (`domain/model/stream.py`, `application/service/streams.py`, the table
+  `value_stream`); `composition/streams.py` gathers the active versions, the finished runs, their
+  blocks and `IdentityDirectory.role_units`, and the reporting component's pure
+  `domain/service/streams.py` draws the map and the swimlanes, stored nowhere. The HTTP surface
+  is `adapters/driving/rest/streams.py`, through the port `StreamActs`.
 - **A first process from the gallery** (ADR-0136) is read and proposed by
   `composition/gallery.py`: `Gallery` reads the directory `TAKTUS_GALLERY_DIRECTORY` names
   (`composition/settings.py`) on every request, offers a bundle that `parse_bundle` accepts at

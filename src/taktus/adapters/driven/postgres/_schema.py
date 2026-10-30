@@ -353,6 +353,19 @@ stage_plan = Table(
 )
 """One row per tenant that declared its stages (ADR-0137). A stage's state is the ledger's."""
 
+value_stream = Table(
+    "value_stream",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),  # <stream>@<revision>
+    Column("stream", Text, nullable=False),
+    Column("revision", Integer, nullable=False),
+    _at("declared_at"),
+    Column("definition", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per revision of a value stream (ADR-0159 §4); a revision is never overwritten."""
+
 deadline = Table(
     "deadline",
     metadata,

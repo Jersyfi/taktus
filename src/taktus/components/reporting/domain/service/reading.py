@@ -11,7 +11,10 @@ standing alone. This module reads the rest, against the words of the owner's phr
   or `show_process_words` followed by one identifier (ADR-0069); a request for the overview is
   one of its `show_overview_words` standing alone;
 - a change in dialogue (ADR-0091 §6) and the take-over of a running step (ADR-0128 §7) begin
-  with their words and name what they act on; each is read back before it takes effect.
+  with their words and name what they act on; each is read back before it takes effect;
+- a request for what the person may ask for is one of its `catalogue_words` standing alone, and
+  a start one of its `start_words` followed by one process (ADR-0159 §3); a start is read back
+  before it takes effect.
 
 The whole message, not a word in it: a message that negates the word, or says more than it, is
 not the word. Case and the punctuation around the word do not count. Anything else is not read,
@@ -185,4 +188,27 @@ def takeover_act(text: str, book: Phrasebook) -> TakeoverAct | None:
         return TakeoverAct(kind="show", takeover=tokens[-1])
     if len(tokens) >= 3 and " ".join(tokens[:-2]).casefold() in book.takeover_words:
         return TakeoverAct(kind="take_over", run=tokens[-2], step=tokens[-1])
+    return None
+
+
+class CatalogueAsked(Value):
+    """A request for the catalogue, or for a start of one of its processes (ADR-0159 §3)."""
+
+    kind: Literal["list", "start"]
+    process: str | None = Field(default=None, pattern=r"^\S+$")
+
+
+def catalogue_request(text: str, book: Phrasebook) -> CatalogueAsked | None:
+    """One of `catalogue_words` standing alone, or one of `start_words` and one process. None
+    for anything else, and for a phrasebook that reads no such request."""
+    if book.catalogue_words is None or book.start_words is None:
+        return None
+    if normalised(text) in book.catalogue_words:
+        return CatalogueAsked(kind="list")
+    tokens = text.strip(_AROUND).split()
+    if len(tokens) < 2:
+        return None
+    said, name = " ".join(tokens[:-1]).casefold(), tokens[-1]
+    if said in book.start_words:
+        return CatalogueAsked(kind="start", process=name)
     return None

@@ -35,6 +35,7 @@ from taktus.components.process.domain.model import (
     Process,
     ProcessVersion,
     TriggerState,
+    ValueStream,
 )
 from taktus.components.reporting.domain.model import Corridor, OwnerChannel, Report
 from taktus.components.run.domain.model import (
@@ -80,6 +81,7 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (CaseAnswer, samples.case_answer),
     (Deadline, samples.deadline),
     (StagePlan, samples.stage_plan),
+    (ValueStream, samples.value_stream),
     (WorkingTime, samples.working_time),
     (AdapterStop, samples.adapter_stop),
     (Evaluation, samples.evaluation),

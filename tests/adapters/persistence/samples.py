@@ -60,8 +60,10 @@ from taktus.components.process.domain.model import (
     Process,
     ProcessVersion,
     Slo,
+    StreamKind,
     Trigger,
     TriggerState,
+    ValueStream,
 )
 from taktus.components.reporting.domain.model import Corridor, OwnerChannel, Report, Subject
 from taktus.components.run.domain.model import (
@@ -760,6 +762,22 @@ def correction_limits(tenant: str = "t") -> CorrectionLimits:
         lower_window=timedelta(days=14),
         lower_minimum=3,
         configured_at=AT,
+    )
+
+
+def value_stream(tenant: str = "t") -> ValueStream:
+    return ValueStream(
+        id="order-to-cash@2",
+        tenant=tenant,
+        stream="order-to-cash",
+        revision=2,
+        name="Order to cash",
+        kind=StreamKind.CORE,
+        trigger="A customer wants to buy",
+        outcome="the customer has what they paid for",
+        role="sales",
+        processes=("order", "invoice"),
+        declared_at=AT,
     )
 
 

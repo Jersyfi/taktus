@@ -28,11 +28,13 @@ from taktus.components.governance.application.service import Corrections
 from taktus.components.governance.domain.model import Incident
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.process.application.service.proposals import Proposals
+from taktus.components.process.application.service.streams import DeclareStream
 from taktus.components.process.domain.model import (
     CorrectedCase,
     Evaluation,
     ProcessVersion,
     Proposal,
+    ValueStream,
 )
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.application.service import (
@@ -57,6 +59,8 @@ from taktus.components.reporting.domain.model.acting import (
     ResidencyView,
     WrongResultView,
 )
+from taktus.components.reporting.domain.service.catalogue import Catalogue
+from taktus.components.reporting.domain.service.streams import StreamLanes, StreamMap
 from taktus.components.reporting.domain.service.variants import VariantsView
 from taktus.components.run.application.service import HandBack, TakeOver
 from taktus.components.run.domain.model import Run
@@ -211,17 +215,31 @@ class StartRefused(Exception):
 
 
 class AgentActs(Protocol):
-    """What the MCP surface needs beyond the HTTP surface's services (ADR-0131): the processes a
-    reader may start, a process started as the person, and every call recorded. The composition
-    root's, because starting a process crosses the process, command and run components."""
+    """What the MCP surface needs beyond the HTTP surface's services (ADR-0131), and the
+    catalogue of UC-1.13 (ADR-0159): the processes a reader may start, a process started as the
+    person on any channel, and every call of the MCP surface recorded. The composition root's,
+    because starting a process crosses the process, command and run components."""
 
     async def processes(self, who: Resolution) -> Sequence[Mapping[str, Any]]:
         """Every process with an active version that `who` may see, with the inputs it takes."""
         ...
 
-    async def start(self, who: Resolution, process_id: str, inputs: Mapping[str, Any]) -> Run:
+    async def catalogue(self, who: Resolution, *, agent_may_start: bool) -> Catalogue:
+        """The same processes in plain words, with how to start each on each channel."""
+        ...
+
+    async def start(
+        self,
+        who: Resolution,
+        process_id: str,
+        inputs: Mapping[str, Any],
+        *,
+        channel: str = "channel.agent",
+        address: str = "ledger",
+    ) -> Run:
         """The process's active version started with the inputs, acting as `who`, through the
-        one path every channel takes. `StartRefused` when it cannot be."""
+        one path every channel takes, by the one start command on `channel`. `StartRefused`
+        when it cannot be."""
         ...
 
     async def called(
@@ -283,6 +301,23 @@ class ActingViews(Protocol):
     ) -> WrongResultView | None: ...
 
     async def variants(self, tenant: Tenant, process_id: str) -> VariantsView | None: ...
+
+
+class StreamActs(Protocol):
+    """The organisation seen as value streams (ADR-0159): the composition root's, because the
+    view gathers the process, run and identity components' records."""
+
+    async def declare(self, command: DeclareStream) -> ValueStream:
+        """The process component's declaration. `InvalidProcess` where it is refused."""
+        ...
+
+    async def map(self, tenant: Tenant, visible: frozenset[str], days: int) -> StreamMap: ...
+
+    async def lanes(
+        self, tenant: Tenant, stream: str, visible: frozenset[str], days: int
+    ) -> StreamLanes | None:
+        """None where the tenant declared no such stream."""
+        ...
 
 
 class RestServices(Protocol):
@@ -445,6 +480,11 @@ class RestServices(Protocol):
     @property
     def acting(self) -> ActingViews:
         """The register, the dependencies and the variants of a process (ADR-0147)."""
+        ...
+
+    @property
+    def streams(self) -> StreamActs:
+        """The organisation as value streams, and their declaration (ADR-0159)."""
         ...
 
     @property

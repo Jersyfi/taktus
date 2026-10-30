@@ -100,5 +100,18 @@
   "spend_compared": "{step}: {left} | {right} | {result}",
   "not_priced": "not priced",
   "same_result": "same result",
-  "other_result": "different result"
+  "other_result": "different result",
+  "catalogue_words": [
+    "what can i ask for",
+    "catalogue"
+  ],
+  "start_words": [
+    "start"
+  ],
+  "catalogue_heading": "What you may ask Taktus for:",
+  "catalogue_line": "{name}: write \"{start}\"",
+  "catalogue_needs": "{name}: needs {inputs}; start it in the web app",
+  "start_read": "I read this as: start {process} ({name}) on your behalf.",
+  "started": "{process} started as run {run}.",
+  "start_not_done": "That cannot be started from here; the list in the web app says why."
 }

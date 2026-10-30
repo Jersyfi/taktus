@@ -10,10 +10,11 @@ Three things are generated today, each never edited by hand:
   and a run level drawn by `reporting` from example facts that use every method kind, every
   exactness class and every motion, the process level of the same steps, an overview, the
   origin of a result, what the routes of what keeps the operation running answer, and the
-  spend per step and a model trial as their routes answer (ADR-0063, ADR-0064, ADR-0067,
-  ADR-0068, ADR-0121, ADR-0148, ADR-0149). The web app's tests hold what it
-  draws to these glyphs; `tests/components/reporting/test_run_level.py` fails when the file
-  differs from what this script writes. The web app itself reads the vocabulary and every
+  spend per step and a model trial as their routes answer, and the catalogue and the value
+  streams (ADR-0063, ADR-0064, ADR-0067, ADR-0068, ADR-0121, ADR-0148, ADR-0149, ADR-0159).
+  The web app's tests hold what it draws to these glyphs;
+  `tests/components/reporting/test_run_level.py` fails when the file differs from what this
+  script writes. The web app itself reads the vocabulary and every
   level from the surface.
 - `src/taktus/composition/shipped.json`, the list of what the release ships: every connector's
   capabilities and operations from its own declaration, and every worker's `CAPABILITIES`
@@ -270,8 +271,99 @@ def web_fixtures() -> str:
         "operation": operation_fixtures(),
         "acting": acting_fixtures(at),
         "spend": spend_fixtures(),
+        "views": views_fixtures(),
     }
     return json.dumps(document, indent=2, ensure_ascii=False) + "\n"
+
+
+def views_fixtures() -> dict[str, Any]:
+    """What the catalogue and the value streams draw, written by the reporting component's own
+    functions (ADR-0159): a catalogue with an entry a reply can start and one that needs an
+    input, the map of three streams, and one stream as role swimlanes."""
+    from taktus.components.reporting.domain.service import streams as v
+    from taktus.components.reporting.domain.service.catalogue import (
+        CatalogueFacts,
+        CatalogueInput,
+        catalogue,
+    )
+
+    listed = catalogue(
+        [
+            CatalogueFacts(
+                process="daily",
+                name="Daily report",
+                description="The figures of yesterday.",
+                version="daily@3",
+                level=3,
+            ),
+            CatalogueFacts(
+                process="offer",
+                name="An offer",
+                version="offer@1",
+                level=2,
+                inputs=(CatalogueInput(name="client", description="who asks", required=True),),
+                roles=("sales",),
+            ),
+        ],
+        agent_may_start=False,
+        chat_word="start",
+    )
+    order = v.ProcessFacts(
+        process="order",
+        name="Order",
+        version="order@2",
+        level=3,
+        steps=(
+            v.StepFacts(id="read", method="llm", exactness="tolerant", fallback_role="sales"),
+            v.StepFacts(id="price", method="rule", exactness="exact"),
+            v.StepFacts(id="accept", method="human", role="sales"),
+        ),
+        runs=(v.RunFacts(lead_seconds=3600, blocked={"wait.human": 1800}),),
+        waits={"sales": 1800},
+    )
+    invoice = v.ProcessFacts(
+        process="invoice",
+        name="Invoice",
+        version="invoice@1",
+        level=2,
+        steps=(
+            v.StepFacts(id="book", method="rule", exactness="exact"),
+            v.StepFacts(id="release", method="human", role="accounting"),
+        ),
+        waits={"accounting": 3600},
+    )
+    budget = v.ProcessFacts(process="budget", name="Budget", version="budget@1", level=1)
+    loose = v.ProcessFacts(process="loose", name="Loose")
+    roles = {
+        "sales": v.RoleFacts(holders=3, units=("acme/sales",)),
+        "accounting": v.RoleFacts(holders=1, units=("acme/finance",)),
+    }
+    cash = v.StreamFacts(
+        stream="order-to-cash",
+        revision=1,
+        name="Order to cash",
+        kind="core",
+        trigger="A customer wants to buy",
+        outcome="the customer has what they paid for",
+        role="sales-lead",
+        processes=("order", "invoice"),
+    )
+    plan = v.StreamFacts(
+        stream="planning",
+        revision=1,
+        name="Planning",
+        kind="management",
+        trigger="A year begins",
+        outcome="the budget is set",
+        role="executive",
+        processes=("budget",),
+    )
+    processes = [order, invoice, budget, loose]
+    return {
+        "catalogue": listed.document(),
+        "streams": v.stream_map([cash, plan], processes, roles, 30).document(),
+        "lanes": v.stream_lanes(cash, processes, roles).document(),
+    }
 
 
 def takeover_fixtures(at: Any, step: Any) -> dict[str, Any]:

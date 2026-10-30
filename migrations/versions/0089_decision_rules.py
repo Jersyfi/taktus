@@ -1,7 +1,7 @@
 """Recurring decisions become rules on proposal (ADR-0161, UC-7.10, #648).
 
 Revision: 0089
-Revises: 0086
+Revises: 0088
 
 What this adds: `decision_rule`, one row per rule from precedent a tenant was proposed: the kind
 of request it answers, the option, its precedents, and whether it is proposed, adopted, declined
@@ -19,7 +19,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision = "0089"
-down_revision = "0086"
+down_revision = "0088"
 branch_labels = None
 depends_on = None
 

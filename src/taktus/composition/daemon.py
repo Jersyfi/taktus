@@ -102,6 +102,7 @@ from taktus.components.process.application.service.reactions import ReactionsHan
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
+from taktus.components.process.application.service.streams import ValueStreams
 from taktus.components.process.application.service.triggers import TriggersHandler
 from taktus.components.process.domain.model import (
     CorrectedCase,
@@ -110,6 +111,7 @@ from taktus.components.process.domain.model import (
     ProcessVersion,
     Proposal,
     TriggerState,
+    ValueStream,
 )
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.application.service import (
@@ -144,6 +146,7 @@ from taktus.composition.acting import ActingReads
 from taktus.composition.agent_surface import AgentSurface
 from taktus.composition.alerts import alerts, alerts_tick, say_who_hears
 from taktus.composition.capacity import capacity_report, capacity_tick, rules_of
+from taktus.composition.catalogue_in_channel import CatalogueInChannel
 from taktus.composition.change_in_channel import ChangeInChannel
 from taktus.composition.conformance import InstanceSuites, worker_suites
 from taktus.composition.deadlines import Deadlines
@@ -192,6 +195,7 @@ from taktus.composition.signals import CommandInterventions, signal_wiring, sign
 from taktus.composition.spend_in_channel import SpendInChannel
 from taktus.composition.stages import stage_wiring, stages_tick
 from taktus.composition.stops import StopsConfirmed
+from taktus.composition.streams import StreamReads
 from taktus.composition.takeover_in_channel import TakeoverInChannel
 from taktus.composition.traces import traces_tick
 from taktus.composition.trials import Trials
@@ -298,6 +302,8 @@ class Wired:
     acting: ActingReads
     """The register, the dependencies and the variants of a process (ADR-0147)."""
     agent: AgentSurface
+    streams: StreamReads
+    """The organisation as value streams, and their declaration (ADR-0159)."""
     traces: StepTraces
     """The trace inside a worker's step, read and shared by role, and erased by the scheduler
     when its retention ends (ADR-0135)."""
@@ -807,6 +813,32 @@ async def wire(
                     clock=clock,
                 )
             )
+            # The processes a person may start, and a start as the person, from any channel
+            # (ADR-0131, ADR-0159).
+            agent = AgentSurface(
+                processes=PostgresRepository(persistence, Process),
+                versions=PostgresRepository(persistence, ProcessVersion),
+                commission=commission,
+                engine=engine,
+                ledger=ledger,
+                work=persistence,
+                clock=clock,
+                ids=ids,
+                channels=PostgresRepository(persistence, OwnerChannel),
+            )
+            # What a person may ask for, and a start of it, there too (ADR-0159 §3).
+            owner.answers.catalogue_with(
+                CatalogueInChannel(
+                    channels=PostgresRepository(persistence, OwnerChannel),
+                    pending=PostgresRepository(persistence, PendingAct),
+                    work=persistence,
+                    surface=agent,
+                    identities=identities,
+                    deliveries=owner.deliveries,
+                    secrets=owner.secrets,
+                    clock=clock,
+                )
+            )
             # A running step taken over and handed back there too (ADR-0128 §7).
             owner.answers.take_over_with(
                 TakeoverInChannel(
@@ -930,15 +962,22 @@ async def wire(
                     work=persistence,
                     clock=clock,
                 ),
-                agent=AgentSurface(
+                agent=agent,
+                streams=StreamReads(
+                    streams=ValueStreams(
+                        PostgresRepository(persistence, ValueStream),
+                        PostgresRepository(persistence, Process),
+                        persistence,
+                        ledger,
+                        clock,
+                    ),
                     processes=PostgresRepository(persistence, Process),
                     versions=PostgresRepository(persistence, ProcessVersion),
-                    commission=commission,
-                    engine=engine,
-                    ledger=ledger,
+                    runs=runs,
+                    blocked=BlockedTime(ledger, objects, persistence, runs),
+                    identities=identities,
                     work=persistence,
                     clock=clock,
-                    ids=ids,
                 ),
                 moves=moves,
                 complete_intake=complete_intake,
