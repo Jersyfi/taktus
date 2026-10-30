@@ -100,5 +100,18 @@
   "spend_compared": "{step}: {left} | {right} | {result}",
   "not_priced": "nicht bepreist",
   "same_result": "gleiches Ergebnis",
-  "other_result": "anderes Ergebnis"
+  "other_result": "anderes Ergebnis",
+  "catalogue_words": [
+    "was kann ich anfragen",
+    "katalog"
+  ],
+  "start_words": [
+    "starte"
+  ],
+  "catalogue_heading": "Was du bei Taktus anfragen kannst:",
+  "catalogue_line": "{name}: schreibe „{start}“",
+  "catalogue_needs": "{name}: braucht {inputs}; starte es in der Web-App",
+  "start_read": "Ich verstehe das so: {process} ({name}) in deinem Namen starten.",
+  "started": "{process} läuft als Lauf {run}.",
+  "start_not_done": "Das lässt sich von hier nicht starten; die Liste in der Web-App sagt, warum."
 }

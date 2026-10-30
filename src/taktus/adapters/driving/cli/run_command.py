@@ -31,6 +31,7 @@ import yaml
 
 from taktus.adapters.driving.cli.wiring import NotOperable, Services, Wiring
 from taktus.components.command.application.service import CommissionPlan
+from taktus.components.command.domain.service.start import start_command
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersion,
 )
@@ -44,7 +45,7 @@ from taktus.components.run.domain.service.provenance import ChainVerification
 from taktus.ports.identity import Resolution
 from taktus.ports.ledger import Verification
 from taktus.ports.worker import Limits, WorkerError
-from taktus.shared.v1 import Command, ConsumptionQuantities, Intent, LedgerEntry, ReplyTo
+from taktus.shared.v1 import Command, ConsumptionQuantities, LedgerEntry, ReplyTo
 
 DEFAULT_WORKER = "http://127.0.0.1:9000"
 DEFAULT_STATE_DIR = "~/.cache/taktus/taktusctl"
@@ -408,15 +409,15 @@ def _command(
     placed: Resolution,
     inputs: dict[str, Any],
 ) -> Command:
-    """The invocation as a command on the `channel.cli` capability; the inputs are its
-    context, the way an issue or a thread is a channel's."""
-    return Command(
+    """The invocation as a command on the `channel.cli` capability: the one command every
+    channel's start of a process issues (UC-1.13)."""
+    return start_command(
         id=services.ids.new("cmd"),
         channel="channel.cli",
         identity=placed.identity,
         org_path=placed.org_path,
-        intent=Intent(raw=f"run {version.ref}", recognised="process.run"),
-        context={"inputs": inputs} if inputs else None,
+        process_version=version.ref,
+        inputs=inputs,
         reply_to=ReplyTo(channel="channel.cli", address="stdout"),
         received_at=services.clock.now(),
     )
