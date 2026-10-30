@@ -1434,6 +1434,34 @@ class StagePlanMapper:
         return [dict(row.plan) for row in rows]
 
 
+class ValueStreamMapper:
+    """One row per revision of a value stream (ADR-0159 §4): the definition as a document, and
+    beside it the stream and its revision. A row is never overwritten by another revision."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.value_stream, tenant, id)
+        return None if row is None else dict(row.definition)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.value_stream,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "stream": document["stream"],
+                "revision": document["revision"],
+                "declared_at": _at(document["declared_at"]),
+                "definition": document,
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.value_stream, tenant, s.value_stream.c.id)
+        return [dict(row.definition) for row in rows]
+
+
 class DeadlineMapper:
     """One row per deadline (ADR-0133): the deadline as a document, and beside it the columns the
     scheduler reads the open ones by. A row is never deleted: its state moves on."""
@@ -1698,6 +1726,7 @@ MAPPERS: dict[str, Mapper] = {
     "watch_configuration": WatchConfigurationMapper(),
     "corridor": CorridorMapper(),
     "stage_plan": StagePlanMapper(),
+    "value_stream": ValueStreamMapper(),
     "deadline": DeadlineMapper(),
     "adapter_stop": AdapterStopMapper(),
     "working_time": WorkingTimeMapper(),

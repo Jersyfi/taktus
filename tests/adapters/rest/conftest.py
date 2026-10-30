@@ -45,7 +45,8 @@ from taktus.components.governance.domain.model import Incident
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.proposals import Proposals
-from taktus.components.process.domain.model import Process, ProcessVersion, Proposal
+from taktus.components.process.application.service.streams import ValueStreams
+from taktus.components.process.domain.model import Process, ProcessVersion, Proposal, ValueStream
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.application.service import (
     Alerted,
@@ -57,6 +58,7 @@ from taktus.components.reporting.application.service import (
     StepTraces,
 )
 from taktus.components.reporting.domain.model import BackupState, Corridor, Judged
+from taktus.components.run.application.query.blocked_time import BlockedTime
 from taktus.components.run.application.service import HandBack, RunEngine, TakeOver
 from taktus.components.run.domain.model import Run, RunError, UnknownTakeover
 from taktus.composition.agent_surface import AgentSurface
@@ -64,6 +66,7 @@ from taktus.composition.decisions import DecisionWiring, decision_wiring
 from taktus.composition.levels import RepositoryLevelRecords
 from taktus.composition.live import LiveHub, LiveOptions, Records, state_of
 from taktus.composition.owner_channel import KnownSecrets, OwnerChannelWiring, owner_channel_wiring
+from taktus.composition.streams import StreamReads
 from taktus.ports.configuration import Secret
 from taktus.ports.connector import (
     ConnectorError,
@@ -268,6 +271,26 @@ class Services:
                 ids=self.ids,
             )
         return self.built_agent
+
+    @property
+    def streams(self) -> StreamReads:
+        """The organisation as value streams, over this world's stores (ADR-0159)."""
+        return StreamReads(
+            streams=ValueStreams(
+                MemoryRepository(self.persistence, ValueStream),
+                MemoryRepository(self.persistence, Process),
+                self.persistence,
+                self.ledger,
+                self.clock,
+            ),
+            processes=MemoryRepository(self.persistence, Process),
+            versions=MemoryRepository(self.persistence, ProcessVersion),
+            runs=self.runs,
+            blocked=BlockedTime(self.ledger, self.objects, self.persistence, self.runs),
+            identities=self.identities,
+            work=self.persistence,
+            clock=self.clock,
+        )
 
     @property
     def work(self) -> UnitOfWork:

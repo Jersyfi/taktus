@@ -508,6 +508,18 @@ class IdentityDirectory(IdentityResolver):
                 held[role] = held.get(role, 0) + 1
         return dict(sorted(held.items()))
 
+    async def role_units(self, tenant: Tenant) -> dict[str, tuple[str, ...]]:
+        """Per role the tenant's identities hold, the units of the structure its holders sit
+        in, each as its `org_path` joined by `/`: where a role is, never who holds it
+        (ADR-0159 §6)."""
+        async with self._work.transaction(tenant):
+            identities = await self._identities.list(tenant)
+        units: dict[str, set[str]] = {}
+        for identity in identities:
+            for role in identity.roles:
+                units.setdefault(role, set()).add("/".join(identity.org_path))
+        return {role: tuple(sorted(found)) for role, found in sorted(units.items())}
+
     async def roles(self, tenant: Tenant) -> frozenset[str]:
         """Every role an identity of the tenant holds: registration's port (ADR-0146)."""
         return frozenset(await self.role_holders(tenant))
