@@ -365,7 +365,7 @@ class SkillCatalog:
                         outcome="below_floor",
                     ),
                 )
-            raise SkillError("below_floor", str(error)) from error
+            raise SkillError("below_floor", _first(error)) from error
         async with self._work.transaction(tenant):
             await self._policies.put(tenant, policy)
             await self._ledger.record(
@@ -421,3 +421,13 @@ class SkillCatalog:
                 content_digest=version.file.digest,
             ),
         )
+
+
+def _first(error: ValueError) -> str:
+    """The first reason of a refused policy, without the validator's frame."""
+    errors = getattr(error, "errors", None)
+    if callable(errors):
+        found = errors()
+        if found:
+            return str(found[0]["msg"]).removeprefix("Value error, ")
+    return str(error)
