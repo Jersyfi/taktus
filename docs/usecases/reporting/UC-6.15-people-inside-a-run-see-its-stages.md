@@ -4,9 +4,9 @@ title: People inside a run see its stages
 component: reporting
 epic: E6
 serves: [P7, P14]
-state: specified
+state: built
 version: 0.5.0
-tests: []
+tests: [tests/components/reporting/test_stage_view.py::test_each_stage_is_done_current_or_ahead, tests/components/reporting/test_stage_view.py::test_a_stage_changes_with_the_run_and_nothing_else, tests/components/reporting/test_stage_view.py::test_a_waiting_stage_names_its_role_and_the_owner_where_none_is_named, tests/components/reporting/test_stage_view.py::test_a_finished_run_shows_every_stage_done, tests/components/reporting/test_stage_view.py::test_a_stopped_run_shows_the_stage_it_stopped_at, tests/components/reporting/test_stage_view.py::test_a_halted_run_without_a_step_under_way_stops_at_the_next_stage, tests/components/reporting/test_stage_view.py::test_the_view_shows_nothing_of_the_step_graph, tests/components/reporting/test_stage_view.py::test_every_run_state_has_words, tests/adapters/rest/test_levels.py::test_the_stage_view_answers_a_run_as_stages_and_an_unseen_run_as_absent]
 adrs: {ADR-0015: 3a42705e5561, ADR-0029: 37c061ef032a, ADR-0055: 182c84e9cdbd}
 supersedes: null
 ---
@@ -68,3 +68,11 @@ component, which owns views and no figure (ADR-0029). A human step that names a 
 owner accepted it as F9 of the product outlook (DEC-0190); the source is
 `docs/research/2026-10-12-market-review.md` §2.2.5. Issue #335 carries it. The version is `0.5.0`,
 the milestone DEC-0190 places it in.
+
+## 5. What is proven so far
+
+Built. `reporting/domain/service/stages.py` computes the stages on each request from the run
+level's facts and stores nothing; `GET /levels/runs/{run_id}/stages` answers a run the reader may
+not see as one that does not exist. The web app's page `#/stages/<run>` draws them with a text
+equivalent for every stage, follows the stream of changes as the run level does (ADR-0055), and
+links to the run level. Its tests are under `web/src/` (`make gate-web`).
