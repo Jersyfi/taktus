@@ -197,10 +197,19 @@ jobs:
       # named tests are run and must be green; an ADR that moved under a use case fails until it
       # is checked again; a pull request may not change a requirement and its implementation
       # together (CLAUDE.md §9). Compared with the same base as the documentation gate.
+      # On `main` the gate is told which branch a commit was merged from, so that a pull request
+      # built in concept mode keeps on `main` the exception it had on its branch (DEC-0222, #652).
       - name: use cases
         env:
           BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || (github.ref == 'refs/heads/main' && github.event.before || 'origin/main') }}
-        run: make gate-usecases BASE="$BASE"
+          GH_TOKEN: ${{ github.token }}
+          MERGED: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && format('repos/{0}/commits/{1}/pulls', github.repository, github.sha) || '' }}
+        run: |
+          if [ -n "$MERGED" ]; then
+            TAKTUS_MERGED_FROM="$(gh api "$MERGED" --jq '.[0].head.ref // ""')"
+            export TAKTUS_MERGED_FROM
+          fi
+          make gate-usecases BASE="$BASE"
 
   # The conformance suite of every contract. Each test starts its own worker or connector
   # process, so the tests spread over the runner's cores (`pytest-xdist`).
