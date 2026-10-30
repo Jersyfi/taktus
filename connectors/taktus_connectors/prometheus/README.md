@@ -8,7 +8,7 @@ else it is the capability `metrics.series` (ADR-0111).
 It is proof and example, not a requirement: the control plane runs with it removed.
 
 ```
-uv run python -m taktus.adapters.driven.connectors.prometheus --port 9104 --target http://metrics:9090
+uv run python -m taktus_connectors.prometheus --port 9104 --target http://metrics:9090
 ```
 
 serves MCP over streamable HTTP at `/mcp` and readiness at `GET /health`. `--target` is the
@@ -54,7 +54,7 @@ store that answers this API is read here. There is no OpenTelemetry receiver: AD
 
 ```
 uv run taktusctl conformance run --contract connector/v1 \
-    --endpoint http://127.0.0.1:9104/mcp --scenario src/taktus/adapters/driven/connectors/prometheus/scenario.json
+    --endpoint http://127.0.0.1:9104/mcp --scenario connectors/taktus_connectors/prometheus/scenario.json
 ```
 
 [`scenario.json`](scenario.json) is written for the fake store; it names no write, because no

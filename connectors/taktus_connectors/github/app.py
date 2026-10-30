@@ -32,7 +32,7 @@ from pathlib import Path
 
 import jwt
 
-from taktus.adapters.driven.connectors.github.api import Api, TargetError
+from taktus_connectors.github.api import Api, TargetError
 
 APP_ID_VARIABLE = "TAKTUS_REPOSITORY_APP_ID"
 """The app's identifier, configuration key `repository.app_id`. Not a secret; it names the app

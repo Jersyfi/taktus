@@ -32,10 +32,10 @@ from mcp_types import CallToolResult, TextContent
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from taktus.adapters.driven.connectors.github import declaration, intake, operations
-from taktus.adapters.driven.connectors.github.api import Api, TargetError, unreadable
-from taktus.adapters.driven.connectors.github.app import AppConfig, AppTokens
-from taktus.adapters.driven.connectors.github.faults import validate
+from taktus_connectors.github import declaration, intake, operations
+from taktus_connectors.github.api import Api, TargetError, unreadable
+from taktus_connectors.github.app import AppConfig, AppTokens
+from taktus_connectors.github.faults import validate
 
 type Json = dict[str, Any]
 

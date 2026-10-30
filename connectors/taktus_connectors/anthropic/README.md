@@ -10,7 +10,7 @@ capability, [`openai`](../openai/README.md), answers in the same shape, so a pro
 It is product support for any tenant, not a requirement: the control plane runs with it removed.
 
 ```
-uv run python -m taktus.adapters.driven.connectors.anthropic --port 9112
+uv run python -m taktus_connectors.anthropic --port 9112
 ```
 
 serves MCP over streamable HTTP at `/mcp` and readiness at `GET /health`. `--target` is the
@@ -59,7 +59,7 @@ reads with it. `CREDENTIALS.md` describes it.
 
 ```
 uv run taktusctl conformance run --contract connector/v1 \
-    --endpoint http://127.0.0.1:9112/mcp --scenario src/taktus/adapters/driven/connectors/anthropic/scenario.json
+    --endpoint http://127.0.0.1:9112/mcp --scenario connectors/taktus_connectors/anthropic/scenario.json
 ```
 
 [`scenario.json`](scenario.json) reads three days from the fake under

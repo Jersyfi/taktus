@@ -6,7 +6,7 @@ or by workspace, as the provider's billing reports it, in the shape the other `m
 connector answers. This directory, its README and configuration are the only places that name
 the product. Everywhere else it is the capability (CLAUDE.md §6, ADR-0150).
 
-Run it: `python -m taktus.adapters.driven.connectors.anthropic`. The modules: `declaration` is
+Run it: `python -m taktus_connectors.anthropic`. The modules: `declaration` is
 what it declares, `operations` how the costs are asked and read, and `server` how the shared MCP
 server of `connectors/serving.py` serves it.
 """

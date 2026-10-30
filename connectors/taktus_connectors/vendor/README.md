@@ -8,7 +8,7 @@ It is proof and example, not a requirement: the control plane runs with it remov
 vendor's server. It reaches one where the operator or the vendor runs it.
 
 ```
-uv run python -m taktus.adapters.driven.connectors.vendor --port 9106 \
+uv run python -m taktus_connectors.vendor --port 9106 \
     --upstream https://mcp.vendor.example/mcp --manifest manifest.json
 ```
 

@@ -24,6 +24,7 @@ from typing import Any
 
 import pytest
 import yaml
+from images import connector_names
 
 from taktus.adapters.driven.execution.kubernetes.api import PERMITTED
 
@@ -361,8 +362,8 @@ def test_the_database_is_its_own_with_a_twenty_gibibyte_volume_that_is_watched(
 def test_the_chat_connector_is_reached_by_the_roles_alone_and_reads_its_secrets_as_files(
     rendered: list[dict[str, Any]],
 ) -> None:
-    """Issue #239: the chat channel's connector is deployed with the instance, from the
-    control plane's image, with its bot token and signing secret as mounted files; it is
+    """Issue #239: the chat channel's connector is deployed with the instance, from its own
+    image (ADR-0158), with its bot token and signing secret as mounted files; it is
     reached from the roles alone and mounts no token. Disabled, nothing of it is rendered."""
     [connector] = [
         d
@@ -372,7 +373,9 @@ def test_the_chat_connector_is_reached_by_the_roles_alone_and_reads_its_secrets_
     spec = connector["spec"]["template"]["spec"]
     assert spec["automountServiceAccountToken"] is False
     [container] = spec["containers"]
-    assert container["command"][:3] == ["python", "-m", "taktus.adapters.driven.connectors.slack"]
+    assert container["image"] == "taktus-connector-slack:0.1.0"
+    assert "command" not in container, "the image's entry point is the connector's module"
+    assert container["args"][:2] == ["--host", "0.0.0.0"]  # noqa: S104 — inside its pod
     variables = {v["name"]: v["value"] for v in container["env"]}
     assert variables == {
         "TAKTUS_CREDENTIAL_CHAT_TOKEN_FILE": "/run/secrets/taktus/chat/bot-token",
@@ -634,9 +637,10 @@ def test_a_worker_the_instance_could_not_read_is_refused(
 def test_the_repository_connector_is_reached_by_the_roles_alone_and_acts_as_the_app(
     rendered: list[dict[str, Any]],
 ) -> None:
-    """Issue #66: the repository channel's connector is deployed with the instance, from the
-    control plane's image, as Taktus's own app (ADR-0033); the roles name it as `channel.repo`
-    and as the findings connector; it is reached from the roles alone and mounts no token."""
+    """Issue #66: the repository channel's connector is deployed with the instance, from its own
+    image beside the control plane's (ADR-0158), as Taktus's own app (ADR-0033); the roles
+    name it as `channel.repo` and as the findings connector; it is reached from the roles alone
+    and mounts no token."""
     [connector] = [
         d
         for d in of_kind(rendered, "Deployment")
@@ -650,10 +654,12 @@ def test_the_repository_connector_is_reached_by_the_roles_alone_and_acts_as_the_
         for d in of_kind(rendered, "Deployment")
         if d["metadata"]["labels"]["app.kubernetes.io/component"] == "control-plane"
     ]
-    assert {container["image"]} == {
-        d["spec"]["template"]["spec"]["containers"][0]["image"] for d in roles
+    assert {d["spec"]["template"]["spec"]["containers"][0]["image"] for d in roles} == {
+        "taktus:0.1.0"
     }
-    assert container["command"][:3] == ["python", "-m", "taktus.adapters.driven.connectors.github"]
+    assert container["image"] == "taktus-connector-github:0.1.0"
+    assert "command" not in container
+    assert container["args"][-2:] == ["--repository", "example-owner/example-repository"]
     variables = {v["name"]: v["value"] for v in container["env"]}
     assert set(variables) == {
         "TAKTUS_REPOSITORY_APP_ID",
@@ -682,7 +688,7 @@ def test_the_repository_connector_is_reached_by_the_roles_alone_and_acts_as_the_
 OTHERS = (
     "connectors.others[0].name=payments",
     "connectors.others[0].capability=payments.subscriptions",
-    "connectors.others[0].module=taktus.adapters.driven.connectors.stripe",
+    "connectors.others[0].connector=stripe",
     "connectors.others[0].port=9111",
     "connectors.others[0].credentials[0].name=PAYMENTS_TOKEN",
     "connectors.others[0].credentials[0].secret=taktus-payments",
@@ -707,8 +713,8 @@ def _component(documents: list[dict[str, Any]], kind: str, component: str) -> di
 
 def test_any_further_connector_deploys_from_values_reached_by_the_roles_alone() -> None:
     """The beta runs connectors beyond the two channels (ADR-0150, docs/roadmap.md): each entry
-    of `connectors.others` is a deployment of its own — the module from the control plane's
-    image, or an image of its own — named in TAKTUS_CONNECTORS by its capability, reached from
+    of `connectors.others` is a deployment of its own — a shipped connector from its own image
+    (ADR-0158), or an image of its own — named in TAKTUS_CONNECTORS by its capability, reached from
     the roles alone, its credentials mounted files and no token."""
     documents = render(*OTHERS)
     payments = _component(documents, "Deployment", "connector-payments")
@@ -721,11 +727,10 @@ def test_any_further_connector_deploys_from_values_reached_by_the_roles_alone() 
         for d in of_kind(documents, "Deployment")
         if d["metadata"]["labels"]["app.kubernetes.io/component"] == "control-plane"
     }
-    assert {container["image"]} == roles
-    assert container["command"] == [
-        "python",
-        "-m",
-        "taktus.adapters.driven.connectors.stripe",
+    assert container["image"] == "taktus-connector-stripe:0.1.0"
+    assert container["image"] not in roles
+    assert "command" not in container
+    assert container["args"] == [
         "--host",
         "0.0.0.0",  # noqa: S104 — inside the connector's pod
         "--port",
@@ -787,17 +792,25 @@ def test_any_further_connector_deploys_from_values_reached_by_the_roles_alone() 
             "another connector's label",
         ),
         (
-            (*OTHERS, "connectors.others[1].module=taktus.adapters.driven.connectors.sentry"),
+            (*OTHERS, "connectors.others[1].connector=sentry"),
             "not both",
         ),
-        (("connectors.others[0].name=a", "connectors.others[0].capability=a.b"), "module or image"),
+        (
+            ("connectors.others[0].name=a", "connectors.others[0].capability=a.b"),
+            "connector, module or image",
+        ),
         (
             (
                 "connectors.others[0].name=a",
                 "connectors.others[0].capability=a.b",
-                "connectors.others[0].module=m",
+                "connectors.others[0].connector=stripe",
             ),
             "port is required",
+        ),
+        ((*OTHERS, "connectors.others[0].connector=nosuch"), "is no connector this release"),
+        (
+            (*OTHERS, "connectors.others[0].connector=", "connectors.others[0].module=my.module"),
+            "is no shipped connector's",
         ),
         ((*OTHERS, "connectors.others[1].image=errors-connector:latest"), "is not a version"),
         ((*OTHERS, "connectors.others[0].credentials[0].name=payments"), "not a parameter name"),
@@ -807,6 +820,39 @@ def test_a_further_connector_that_cannot_be_deployed_is_refused(
     sets: tuple[str, ...], message: str
 ) -> None:
     assert message in render_fails(*sets)
+
+
+def test_a_module_an_earlier_release_ran_from_the_control_plane_runs_from_its_own_image() -> None:
+    """The upgrade path (ADR-0158): values written for a release that ran a connector's module
+    from the control plane's image keep working; the module now names the connector's image."""
+    old = tuple(
+        "connectors.others[0].module=taktus.adapters.driven.connectors.stripe"
+        if item == "connectors.others[0].connector=stripe"
+        else item
+        for item in OTHERS
+    )
+    payments = _component(render(*old), "Deployment", "connector-payments")
+    [container] = payments["spec"]["template"]["spec"]["containers"]
+    assert container["image"] == "taktus-connector-stripe:0.1.0"
+    assert container["args"][:2] == ["--host", "0.0.0.0"]  # noqa: S104 — inside its pod
+
+
+def test_the_connector_images_follow_the_prefix_and_the_release() -> None:
+    documents = render("connectors.imagePrefix=registry.invalid/team/conn", "image.tag=0.2.0")
+    images = {
+        d["metadata"]["labels"]["app.kubernetes.io/component"]: d["spec"]["template"]["spec"][
+            "containers"
+        ][0]["image"]
+        for d in of_kind(documents, "Deployment")
+    }
+    assert images["connector-repository"] == "registry.invalid/team/conn-github:0.2.0"
+    assert images["connector-chat"] == "registry.invalid/team/conn-slack:0.2.0"
+
+
+def test_the_chart_knows_every_connector_the_release_ships() -> None:
+    helpers = (CHART / "templates" / "_helpers.tpl").read_text(encoding="utf-8")
+    block = helpers.split('define "taktus.shippedConnectors" -}}', 1)[1].split("{{-", 1)[0]
+    assert block.split() == list(connector_names())
 
 
 def test_the_platform_and_each_credentials_declaration_are_configuration() -> None:

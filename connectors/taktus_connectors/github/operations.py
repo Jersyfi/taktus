@@ -37,7 +37,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote
 
-from taktus.adapters.driven.connectors.github.api import Api, TargetError, digest_of
+from taktus_connectors.github.api import Api, TargetError, digest_of
 
 type Json = dict[str, Any]
 

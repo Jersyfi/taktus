@@ -1,7 +1,8 @@
 name: images
 
 # The release images: on a version tag, the control plane image, one image per worker that
-# ships with the project (workers/*/Dockerfile; DEC-0011) and the backup's (ADR-0087), pushed
+# ships with the project (workers/*/Dockerfile; DEC-0011), one image per connector that ships
+# with it (a stage of connectors/Dockerfile each; ADR-0158) and the backup's (ADR-0087), pushed
 # to the registry the repository variable IMAGE_REGISTRY names, tagged with the version. Without
 # the variable nothing is built and nothing is pushed; the run says so.
 #
@@ -74,6 +75,44 @@ jobs:
           # The database's scheduled backup (ADR-0087): the database's image and three tools.
           - name: taktus-backup
             dockerfile: deploy/backup/Dockerfile
+          # Every connector, an image of its own (ADR-0158): its stage of connectors/Dockerfile,
+          # named taktus-connector-<its directory under connectors/>, as the chart pulls it.
+          - name: taktus-connector-anthropic
+            dockerfile: connectors/Dockerfile
+            target: anthropic
+          - name: taktus-connector-aws
+            dockerfile: connectors/Dockerfile
+            target: aws
+          - name: taktus-connector-bookstack
+            dockerfile: connectors/Dockerfile
+            target: bookstack
+          - name: taktus-connector-github
+            dockerfile: connectors/Dockerfile
+            target: github
+          - name: taktus-connector-httpcheck
+            dockerfile: connectors/Dockerfile
+            target: httpcheck
+          - name: taktus-connector-mail
+            dockerfile: connectors/Dockerfile
+            target: mail
+          - name: taktus-connector-openai
+            dockerfile: connectors/Dockerfile
+            target: openai
+          - name: taktus-connector-prometheus
+            dockerfile: connectors/Dockerfile
+            target: prometheus
+          - name: taktus-connector-sentry
+            dockerfile: connectors/Dockerfile
+            target: sentry
+          - name: taktus-connector-slack
+            dockerfile: connectors/Dockerfile
+            target: slack
+          - name: taktus-connector-stripe
+            dockerfile: connectors/Dockerfile
+            target: stripe
+          - name: taktus-connector-vendor
+            dockerfile: connectors/Dockerfile
+            target: vendor
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
@@ -91,6 +130,7 @@ jobs:
         with:
           context: .
           file: ${{ matrix.dockerfile }}
+          target: ${{ matrix.target }}
           platforms: ${{ vars.IMAGE_PLATFORMS || 'linux/amd64' }}
           push: true
           tags: ${{ vars.IMAGE_REGISTRY }}/${{ matrix.name }}:${{ needs.registry.outputs.version }}

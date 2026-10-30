@@ -31,11 +31,11 @@ import yaml
 from fakes import FakeIdentifiers, FakeWorker, cloud_billing_service, cost_report_service
 from fakes.maturity import VERIFIED
 from fakes.owner_channel import OWNER, TENANT, owner_channel, people
+from taktus_connectors.anthropic.operations import Config as ReportConfig
+from taktus_connectors.anthropic.server import build_server as report_server
+from taktus_connectors.aws.operations import Config
+from taktus_connectors.aws.server import build_server
 
-from taktus.adapters.driven.connectors.anthropic.operations import Config as ReportConfig
-from taktus.adapters.driven.connectors.anthropic.server import build_server as report_server
-from taktus.adapters.driven.connectors.aws.operations import Config
-from taktus.adapters.driven.connectors.aws.server import build_server
 from taktus.adapters.driven.connectors.mcp import McpActionConnector
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.adapters.driven.memory import (

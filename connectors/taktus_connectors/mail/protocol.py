@@ -32,7 +32,7 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 
-from taktus.adapters.driven.connectors.serving import TargetError, unavailable
+from taktus_connectors.serving import TargetError, unavailable
 
 SECURITY = ("tls", "starttls", "none")
 LOCAL_HOSTS = frozenset({"localhost"})

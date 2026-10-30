@@ -12,22 +12,72 @@ read, so that the declaration names exactly the file the operator wrote.
 from __future__ import annotations
 
 import hashlib
+from enum import StrEnum
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import Field, ValidationError, model_validator
-
-from taktus.ports.connector import (
-    CREDENTIAL_NAME_PATTERN,
-    OPERATION_PATTERN,
-    Demand,
-    Effect,
-    Idempotency,
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    ValidationError,
+    model_validator,
 )
-from taktus.shared.v1 import Capability, Value
 
+# What the contract says of a capability, an operation, an effect and a demand, bound here and
+# not imported: a connector imports nothing from the control plane (ADR-0158). The contract's
+# schema is the one source; `tests/adapters/connectors/test_vendor_connector.py` holds this
+# binding to its examples, valid and invalid.
+CAPABILITY_PATTERN = r"^[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*)+$"
+OPERATION_PATTERN = r"^[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*){2,}$"
+CREDENTIAL_NAME_PATTERN = r"^[A-Z][A-Z0-9_]*$"
 POINTER_PATTERN = r"^(/([^/~]|~[01])*)+$"
 RECORD_KIND_PATTERN = r"^[a-z][a-z0-9_.-]*$"
+
+
+type Capability = Annotated[str, StringConstraints(pattern=CAPABILITY_PATTERN)]
+type CurrencyAmounts = Annotated[
+    dict[Annotated[str, StringConstraints(pattern=r"^[a-z]{3}$")], Annotated[float, Field(ge=0)]],
+    Field(min_length=1),
+]
+
+
+class Value(BaseModel):
+    """Frozen and closed, as the contract's `additionalProperties: false` makes it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", populate_by_name=True)
+
+    def document(self) -> dict[str, Any]:
+        """The instance as the JSON document the schema describes, absent fields left out."""
+        result: dict[str, Any] = self.model_dump(mode="json", by_alias=True, exclude_none=True)
+        return result
+
+
+class Effect(StrEnum):
+    READ = "read"
+    WRITE = "write"
+    DELIVERY = "delivery"
+
+
+class Idempotency(StrEnum):
+    NATIVE = "native"
+    MARKED = "marked"
+    NONE = "none"
+
+
+class Demand(Value):
+    """The most one call of an operation consumes."""
+
+    quota_units: float | None = Field(default=None, ge=0)
+    compute_seconds: float | None = Field(default=None, ge=0)
+    currency: CurrencyAmounts | None = None
+
+    @model_validator(mode="after")
+    def _at_least_one(self) -> Demand:
+        if self.quota_units is None and self.compute_seconds is None and self.currency is None:
+            raise ValueError("a demand names at least one quantity")
+        return self
 
 
 class ManifestError(ValueError):

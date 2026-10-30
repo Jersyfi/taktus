@@ -11,7 +11,7 @@ It is a knowledge system, not a requirement: with it removed the guides go to th
 instance serves where one is configured (`TAKTUS_KNOWLEDGE_DIRECTORY`), and nowhere otherwise.
 
 ```
-uv run python -m taktus.adapters.driven.connectors.bookstack --port 9102 --target <base address>
+uv run python -m taktus_connectors.bookstack --port 9102 --target <base address>
 ```
 
 serves MCP over streamable HTTP at `http://127.0.0.1:9102/mcp` and readiness at `GET /health`.
@@ -139,7 +139,7 @@ the suite against every fault and expects exactly that check to fail
 ```
 uv run taktusctl conformance run --contract connector/v1 \
     --endpoint http://127.0.0.1:9102/mcp \
-    --scenario src/taktus/adapters/driven/connectors/bookstack/scenario.json
+    --scenario connectors/taktus_connectors/bookstack/scenario.json
 ```
 
 [`scenario.json`](scenario.json) is written for the fake: its shelf `Scratch`, book

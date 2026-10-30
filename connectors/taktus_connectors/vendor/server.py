@@ -14,10 +14,10 @@ from pathlib import Path
 
 from mcp.server.mcpserver import MCPServer
 
-from taktus.adapters.driven.connectors import serving
-from taktus.adapters.driven.connectors.vendor import manifest as manifests
-from taktus.adapters.driven.connectors.vendor.upstream import Exchange, Upstream, VendorTool
-from taktus.adapters.driven.connectors.vendor.wrapping import (
+from taktus_connectors import serving
+from taktus_connectors.vendor import manifest as manifests
+from taktus_connectors.vendor.upstream import Exchange, Upstream, VendorTool
+from taktus_connectors.vendor.wrapping import (
     DEFAULT_CREDENTIAL,
     Plan,
     PlanError,

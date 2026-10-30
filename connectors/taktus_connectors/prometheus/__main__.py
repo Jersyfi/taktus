@@ -1,6 +1,6 @@
 """Run the metrics connector as a process.
 
-    uv run python -m taktus.adapters.driven.connectors.prometheus --port 9104 \
+    uv run python -m taktus_connectors.prometheus --port 9104 \
         --target http://metrics:9090
 
 It serves MCP over streamable HTTP at `/mcp` and readiness at `GET /health`. `--target` is the
@@ -14,9 +14,9 @@ from __future__ import annotations
 
 import sys
 
-from taktus.adapters.driven.connectors import serving
-from taktus.adapters.driven.connectors.prometheus.operations import Config
-from taktus.adapters.driven.connectors.prometheus.server import served
+from taktus_connectors import serving
+from taktus_connectors.prometheus.operations import Config
+from taktus_connectors.prometheus.server import served
 
 
 def main(argv: list[str] | None = None) -> int:

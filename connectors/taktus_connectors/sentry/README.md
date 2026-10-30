@@ -8,7 +8,7 @@ over a period, or read one at a time. Everywhere else it is the capability `erro
 It is proof and example, not a requirement: the control plane runs with it removed.
 
 ```
-uv run python -m taktus.adapters.driven.connectors.sentry --port 9110 --organization acme
+uv run python -m taktus_connectors.sentry --port 9110 --organization acme
 ```
 
 serves MCP over streamable HTTP at `/mcp` and readiness at `GET /health`. `--target` is the
@@ -72,7 +72,7 @@ that references none is refused. The token goes to the configured address and no
 
 ```
 uv run taktusctl conformance run --contract connector/v1 \
-    --endpoint http://127.0.0.1:9110/mcp --scenario src/taktus/adapters/driven/connectors/sentry/scenario.json
+    --endpoint http://127.0.0.1:9110/mcp --scenario connectors/taktus_connectors/sentry/scenario.json
 ```
 
 [`scenario.json`](scenario.json) lists the issues of the fake under

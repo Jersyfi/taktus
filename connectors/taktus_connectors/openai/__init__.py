@@ -5,7 +5,7 @@ item or by project, as the provider's billing reports it. This directory, its RE
 configuration are the only places that name the product. Everywhere else it is the capability
 (CLAUDE.md §6, ADR-0150).
 
-Run it: `python -m taktus.adapters.driven.connectors.openai`. The modules: `declaration` is what
+Run it: `python -m taktus_connectors.openai`. The modules: `declaration` is what
 it declares, `operations` how the costs are asked and read, and `server` how the shared MCP
 server of `connectors/serving.py` serves it.
 """

@@ -10,9 +10,9 @@ It is proof and example, not a requirement: the control plane runs with it remov
 ## Two processes
 
 ```
-uv run python -m taktus.adapters.driven.connectors.mail --port 9103 \
+uv run python -m taktus_connectors.mail --port 9103 \
     --imap mail.example:993 --smtp mail.example:587 --user support@example.org
-uv run python -m taktus.adapters.driven.connectors.mail relay \
+uv run python -m taktus_connectors.mail relay \
     --imap mail.example:993 --smtp mail.example:587 --user support@example.org \
     --intake https://taktus.example/intake/channel.mail
 ```
@@ -113,7 +113,7 @@ gate-conformance` runs the suite against every fault and expects exactly that ch
 
 ```
 uv run taktusctl conformance run --contract connector/v1 \
-    --endpoint http://127.0.0.1:9103/mcp --scenario src/taktus/adapters/driven/connectors/mail/scenario.json
+    --endpoint http://127.0.0.1:9103/mcp --scenario connectors/taktus_connectors/mail/scenario.json
 ```
 
 [`scenario.json`](scenario.json) is written for the fake mail server

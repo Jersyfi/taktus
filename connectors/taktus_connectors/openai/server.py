@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from mcp.server.mcpserver import MCPServer
 
-from taktus.adapters.driven.connectors import serving
-from taktus.adapters.driven.connectors.openai import declaration, operations
-from taktus.adapters.driven.connectors.openai.operations import Config
+from taktus_connectors import serving
+from taktus_connectors.openai import declaration, operations
+from taktus_connectors.openai.operations import Config
 
 FAULTS = dict(serving.COMMON_FAULTS)
 

@@ -1,6 +1,6 @@
 """Run the error tracking connector as a process.
 
-    uv run python -m taktus.adapters.driven.connectors.sentry --port 9110 --organization acme
+    uv run python -m taktus_connectors.sentry --port 9110 --organization acme
 
 It serves MCP over streamable HTTP at `/mcp` and readiness at `GET /health`. `--target` is the
 API's address (default the provider's own); point it at the fake under
@@ -14,9 +14,9 @@ from __future__ import annotations
 
 import sys
 
-from taktus.adapters.driven.connectors import serving
-from taktus.adapters.driven.connectors.sentry.operations import TARGET, Config
-from taktus.adapters.driven.connectors.sentry.server import served
+from taktus_connectors import serving
+from taktus_connectors.sentry.operations import TARGET, Config
+from taktus_connectors.sentry.server import served
 
 
 def main(argv: list[str] | None = None) -> int:

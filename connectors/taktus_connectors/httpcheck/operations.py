@@ -26,7 +26,7 @@ from typing import Any
 
 import httpx
 
-from taktus.adapters.driven.connectors.serving import Call, Outcome, invalid
+from taktus_connectors.serving import Call, Outcome, invalid
 
 type Json = dict[str, Any]
 

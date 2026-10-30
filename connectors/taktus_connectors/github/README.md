@@ -10,7 +10,7 @@ Everywhere else — processes, blueprints, documents — it is `repository.issue
 It is proof and example, not a requirement: the control plane runs with it removed.
 
 ```
-uv run python -m taktus.adapters.driven.connectors.github --port 9100 --repository owner/name
+uv run python -m taktus_connectors.github --port 9100 --repository owner/name
 ```
 
 (The package lives in the project environment and not on the machine's path, hence `uv run`.)
@@ -161,7 +161,7 @@ runs the suite against every fault and expects exactly that check to fail.
 
 ```
 uv run taktusctl conformance run --contract connector/v1 \
-    --endpoint http://127.0.0.1:9100/mcp --scenario src/taktus/adapters/driven/connectors/github/scenario.json
+    --endpoint http://127.0.0.1:9100/mcp --scenario connectors/taktus_connectors/github/scenario.json
 ```
 
 [`scenario.json`](scenario.json) runs against the fake and against the real service alike: the

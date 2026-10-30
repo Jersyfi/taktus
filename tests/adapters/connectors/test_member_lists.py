@@ -16,11 +16,10 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-
-from taktus.adapters.driven.connectors.github.server import Config as RepositoryConfig
-from taktus.adapters.driven.connectors.github.server import Connector as RepositoryConnector
-from taktus.adapters.driven.connectors.slack.server import Config as ChatConfig
-from taktus.adapters.driven.connectors.slack.server import Connector as ChatConnector
+from taktus_connectors.github.server import Config as RepositoryConfig
+from taktus_connectors.github.server import Connector as RepositoryConnector
+from taktus_connectors.slack.server import Config as ChatConfig
+from taktus_connectors.slack.server import Connector as ChatConnector
 
 from .conftest import CHAT_WRITE, WRITE_CREDENTIAL, ChatService, Service
 

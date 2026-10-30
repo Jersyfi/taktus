@@ -1,8 +1,8 @@
 """Run the mail connector, or its relay, as a process.
 
-    uv run python -m taktus.adapters.driven.connectors.mail --port 9103 \
+    uv run python -m taktus_connectors.mail --port 9103 \
         --imap mail.example:993 --smtp mail.example:587 --user support@example.org
-    uv run python -m taktus.adapters.driven.connectors.mail relay \
+    uv run python -m taktus_connectors.mail relay \
         --imap mail.example:993 --smtp mail.example:587 --user support@example.org \
         --intake https://taktus.example/intake/channel.mail
 
@@ -19,10 +19,10 @@ import argparse
 import asyncio
 import sys
 
-from taktus.adapters.driven.connectors import serving
-from taktus.adapters.driven.connectors.mail.protocol import SECURITY, Config
-from taktus.adapters.driven.connectors.mail.relay import relay
-from taktus.adapters.driven.connectors.mail.server import served
+from taktus_connectors import serving
+from taktus_connectors.mail.protocol import SECURITY, Config
+from taktus_connectors.mail.relay import relay
+from taktus_connectors.mail.server import served
 
 
 def _server(value: str, default_port: int) -> tuple[str, int]:

@@ -94,9 +94,24 @@ class CatalogueEntry:
     """The digest of the manifest it serves the vendor's server under; None without one."""
 
 
+@dataclass(frozen=True)
+class ShippedConnector:
+    """One connector the release ships, as `taktusctl conformance list` prints it by capability:
+    its name, what it serves, and the image it is shipped as — None for one that runs inside
+    the control plane (ADR-0158)."""
+
+    name: str
+    capabilities: tuple[str, ...]
+    image: str | None
+
+
 class Catalogue(Protocol):
     async def entries(self, tenant: Tenant) -> list[CatalogueEntry]:
         """Every adapter the instance is configured with, with its maturity."""
+        ...
+
+    def shipped(self) -> list[ShippedConnector]:
+        """Every connector the release ships, configured here or not."""
         ...
 
 

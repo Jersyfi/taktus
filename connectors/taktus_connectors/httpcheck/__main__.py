@@ -1,6 +1,6 @@
 """Run the check connector as a process.
 
-    uv run python -m taktus.adapters.driven.connectors.httpcheck --port 9105 \
+    uv run python -m taktus_connectors.httpcheck --port 9105 \
         --target https://service.example
 
 It serves MCP over streamable HTTP at `/mcp` and readiness at `GET /health`. `--target` is the
@@ -13,9 +13,9 @@ from __future__ import annotations
 
 import sys
 
-from taktus.adapters.driven.connectors import serving
-from taktus.adapters.driven.connectors.httpcheck.operations import Config
-from taktus.adapters.driven.connectors.httpcheck.server import served
+from taktus_connectors import serving
+from taktus_connectors.httpcheck.operations import Config
+from taktus_connectors.httpcheck.server import served
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -5,7 +5,7 @@ a query over a period, or read one at a time. This directory, its README and con
 the only places that name the product. Everywhere else it is the capability (CLAUDE.md §6,
 ADR-0150).
 
-Run it: `python -m taktus.adapters.driven.connectors.sentry --organization <slug>`. The
+Run it: `python -m taktus_connectors.sentry --organization <slug>`. The
 modules: `declaration` is what it declares, `operations` how the issues are asked and read, and
 `server` how the shared MCP server of `connectors/serving.py` serves it.
 """

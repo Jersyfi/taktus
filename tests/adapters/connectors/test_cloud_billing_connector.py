@@ -19,10 +19,10 @@ import httpx
 import pytest
 from fakes import cloud_billing_service
 from fakes.ports import free_port
+from taktus_connectors.aws.operations import Config
+from taktus_connectors.aws.server import build_server
+from taktus_connectors.aws.signing import Key
 
-from taktus.adapters.driven.connectors.aws.operations import Config
-from taktus.adapters.driven.connectors.aws.server import build_server
-from taktus.adapters.driven.connectors.aws.signing import Key
 from taktus.adapters.driven.connectors.mcp import McpActionConnector
 from taktus.ports.connector import CallContext, CallFailed, idempotency_key
 from taktus.ports.worker import CredentialReference

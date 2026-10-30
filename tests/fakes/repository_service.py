@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A fake of the repository hosting service the reference connector talks to.
 
-The connector under `src/taktus/adapters/driven/connectors/github/` speaks the REST dialect of
+The connector under `connectors/taktus_connectors/github/` speaks the REST dialect of
 that service. This fake answers the subset the connector uses — issues, pull requests, comments,
 labels, pipeline runs, the contents of a file at a ref, and the object interface for branches:
 references, commits, blobs, trees — in the same shapes, with the same status codes for the same

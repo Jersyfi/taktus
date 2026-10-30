@@ -8,7 +8,7 @@ capabilities `payments.subscriptions` and `payments.customers` (ADR-0150).
 It is proof and example, not a requirement: the control plane runs with it removed.
 
 ```
-uv run python -m taktus.adapters.driven.connectors.stripe --port 9111
+uv run python -m taktus_connectors.stripe --port 9111
 ```
 
 serves MCP over streamable HTTP at `/mcp` and readiness at `GET /health`. `--target` is the
@@ -85,7 +85,7 @@ that references none is refused. The key goes to the configured API and nowhere 
 
 ```
 uv run taktusctl conformance run --contract connector/v1 \
-    --endpoint http://127.0.0.1:9111/mcp --scenario src/taktus/adapters/driven/connectors/stripe/scenario.json
+    --endpoint http://127.0.0.1:9111/mcp --scenario connectors/taktus_connectors/stripe/scenario.json
 ```
 
 [`scenario.json`](scenario.json) lists the active subscriptions of the fake, and reads one it

@@ -18,9 +18,9 @@ from typing import Any
 import pytest
 from fakes import FakeClock
 from fakes.identity import directory
+from taktus_connectors.github.declaration import INTAKE_CREDENTIAL
+from taktus_connectors.github.server import Config, build_server
 
-from taktus.adapters.driven.connectors.github.declaration import INTAKE_CREDENTIAL
-from taktus.adapters.driven.connectors.github.server import Config, build_server
 from taktus.adapters.driven.connectors.mcp import McpActionConnector, McpIntakeConnector
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.adapters.driven.memory import MemoryRepository

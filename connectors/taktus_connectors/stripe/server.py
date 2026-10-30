@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from mcp.server.mcpserver import MCPServer
 
-from taktus.adapters.driven.connectors import serving
-from taktus.adapters.driven.connectors.stripe import declaration, operations
-from taktus.adapters.driven.connectors.stripe.operations import Config
+from taktus_connectors import serving
+from taktus_connectors.stripe import declaration, operations
+from taktus_connectors.stripe.operations import Config
 
 FAULTS = {**serving.COMMON_FAULTS, **serving.SCOPE_FAULTS}
 

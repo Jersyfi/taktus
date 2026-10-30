@@ -21,8 +21,8 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
-from taktus.adapters.driven.connectors.github.declaration import CHANNEL, INTAKE_CREDENTIAL
-from taktus.adapters.driven.connectors.github.operations import mark_of
+from taktus_connectors.github.declaration import CHANNEL, INTAKE_CREDENTIAL
+from taktus_connectors.github.operations import mark_of
 
 type Json = dict[str, Any]
 

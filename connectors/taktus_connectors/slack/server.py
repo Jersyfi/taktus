@@ -33,9 +33,9 @@ from mcp_types import CallToolResult, TextContent
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from taktus.adapters.driven.connectors.slack import declaration, intake, operations
-from taktus.adapters.driven.connectors.slack.api import Api, TargetError
-from taktus.adapters.driven.connectors.slack.faults import validate
+from taktus_connectors.slack import declaration, intake, operations
+from taktus_connectors.slack.api import Api, TargetError
+from taktus_connectors.slack.faults import validate
 
 type Json = dict[str, Any]
 

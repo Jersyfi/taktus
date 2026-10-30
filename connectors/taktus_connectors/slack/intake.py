@@ -31,8 +31,8 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
-from taktus.adapters.driven.connectors.slack.declaration import CHANNEL, INTAKE_CREDENTIAL
-from taktus.adapters.driven.connectors.slack.operations import mark_of
+from taktus_connectors.slack.declaration import CHANNEL, INTAKE_CREDENTIAL
+from taktus_connectors.slack.operations import mark_of
 
 type Json = dict[str, Any]
 

@@ -32,9 +32,9 @@ from mcp_types import CallToolResult, TextContent
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from taktus.adapters.driven.connectors.bookstack import declaration, operations
-from taktus.adapters.driven.connectors.bookstack.api import Api, TargetError
-from taktus.adapters.driven.connectors.bookstack.faults import validate
+from taktus_connectors.bookstack import declaration, operations
+from taktus_connectors.bookstack.api import Api, TargetError
+from taktus_connectors.bookstack.faults import validate
 
 type Json = dict[str, Any]
 

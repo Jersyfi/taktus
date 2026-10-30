@@ -24,9 +24,9 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from taktus.adapters.driven.connectors.serving import Call, Outcome, TargetError, invalid
-from taktus.adapters.driven.connectors.vendor.manifest import Manifest, ManifestRecord
-from taktus.adapters.driven.connectors.vendor.upstream import (
+from taktus_connectors.serving import Call, Outcome, TargetError, invalid
+from taktus_connectors.vendor.manifest import Manifest, ManifestRecord
+from taktus_connectors.vendor.upstream import (
     Exchange,
     Upstream,
     VendorTool,

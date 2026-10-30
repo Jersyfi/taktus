@@ -1,6 +1,6 @@
 """Run the vendor connector as a process.
 
-    uv run python -m taktus.adapters.driven.connectors.vendor --port 9106 \
+    uv run python -m taktus_connectors.vendor --port 9106 \
         --upstream https://mcp.vendor.example/mcp --manifest manifest.json
 
 It serves MCP over streamable HTTP at `/mcp` and readiness at `GET /health`. `--upstream` is
@@ -17,11 +17,11 @@ import asyncio
 import sys
 from pathlib import Path
 
-from taktus.adapters.driven.connectors import serving
-from taktus.adapters.driven.connectors.vendor.manifest import ManifestError
-from taktus.adapters.driven.connectors.vendor.server import NAME, faults, prepare, served
-from taktus.adapters.driven.connectors.vendor.upstream import Upstream
-from taktus.adapters.driven.connectors.vendor.wrapping import PlanError, Wrapper
+from taktus_connectors import serving
+from taktus_connectors.vendor.manifest import ManifestError
+from taktus_connectors.vendor.server import NAME, faults, prepare, served
+from taktus_connectors.vendor.upstream import Upstream
+from taktus_connectors.vendor.wrapping import PlanError, Wrapper
 
 EXIT_REFUSED = 2
 

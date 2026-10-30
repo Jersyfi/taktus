@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A fake model provider's costs API: the organisation costs of the OpenAI API, in memory.
 
-The model costs connector under `src/taktus/adapters/driven/connectors/openai/` asks
+The model costs connector under `connectors/taktus_connectors/openai/` asks
 `GET /v1/organization/costs`. This fake answers it in the API's shapes, with the API's
 statuses, over costs it holds in memory. It exists so that the connector can be exercised in
 CI without a network, an account or a secret.

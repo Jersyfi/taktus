@@ -36,13 +36,13 @@ from dataclasses import dataclass, field
 
 import httpx
 
-from taktus.adapters.driven.connectors.mail.declaration import (
+from taktus_connectors.mail.declaration import (
     ACTIONS_CREDENTIAL,
     INTAKE_CREDENTIAL,
 )
-from taktus.adapters.driven.connectors.mail.intake import signed
-from taktus.adapters.driven.connectors.mail.protocol import Config, imap
-from taktus.adapters.driven.connectors.serving import TargetError, now, secret_named
+from taktus_connectors.mail.intake import signed
+from taktus_connectors.mail.protocol import Config, imap
+from taktus_connectors.serving import TargetError, now, secret_named
 
 RELAYED = "$TaktusRelayed"
 BATCH = 50

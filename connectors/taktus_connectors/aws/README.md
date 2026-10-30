@@ -8,7 +8,7 @@ issue #447).
 It is product support for any tenant, not a requirement: the control plane runs with it removed.
 
 ```
-uv run python -m taktus.adapters.driven.connectors.aws --port 9108
+uv run python -m taktus_connectors.aws --port 9108
 ```
 
 serves MCP over streamable HTTP at `/mcp` and readiness at `GET /health`. `--target` is the
@@ -61,7 +61,7 @@ goes on the wire. The contract has no connector without the requesting identity'
 
 ```
 uv run taktusctl conformance run --contract connector/v1 \
-    --endpoint http://127.0.0.1:9108/mcp --scenario src/taktus/adapters/driven/connectors/aws/scenario.json
+    --endpoint http://127.0.0.1:9108/mcp --scenario connectors/taktus_connectors/aws/scenario.json
 ```
 
 [`scenario.json`](scenario.json) reads three days from the fake under

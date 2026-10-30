@@ -25,8 +25,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
-from taktus.adapters.driven.connectors.slack.api import Api, TargetError, digest_of
-from taktus.adapters.driven.connectors.slack.declaration import MAX_PAGES
+from taktus_connectors.slack.api import Api, TargetError, digest_of
+from taktus_connectors.slack.declaration import MAX_PAGES
 
 type Json = dict[str, Any]
 

@@ -5,7 +5,7 @@ system — against the wiki the guides are read in (UC-13.6, NEED-0021). Everywh
 repository it is named by that capability; the product it talks to appears only here, in
 README.md and in configuration.
 
-Run it: `python -m taktus.adapters.driven.connectors.bookstack --target <base address>`. The
+Run it: `python -m taktus_connectors.bookstack --target <base address>`. The
 modules: `declaration` is what it declares, `api` how it talks to the wiki, `operations` what
 each operation does — how a place maps onto the wiki's structure, how a repeat is recognised and
 how a page Taktus wrote keeps its digest — `faults` what it can be made to do wrong, and

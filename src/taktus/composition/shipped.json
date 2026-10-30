@@ -4,6 +4,7 @@
       "capabilities": [
         "models.costs"
       ],
+      "image": "taktus-connector-anthropic",
       "name": "anthropic",
       "operations": [
         "models.costs.daily"
@@ -13,6 +14,7 @@
       "capabilities": [
         "billing.costs"
       ],
+      "image": "taktus-connector-aws",
       "name": "aws",
       "operations": [
         "billing.costs.daily"
@@ -22,6 +24,7 @@
       "capabilities": [
         "knowledge.pages"
       ],
+      "image": "taktus-connector-bookstack",
       "name": "bookstack",
       "operations": [
         "knowledge.pages.list",
@@ -33,6 +36,7 @@
       "capabilities": [
         "knowledge.pages"
       ],
+      "image": null,
       "name": "directory",
       "operations": [
         "knowledge.pages.list",
@@ -53,6 +57,7 @@
         "repository.pullrequests",
         "repository.refs"
       ],
+      "image": "taktus-connector-github",
       "name": "github",
       "operations": [
         "channel.repo.reply",
@@ -83,6 +88,7 @@
       "capabilities": [
         "check.http"
       ],
+      "image": "taktus-connector-httpcheck",
       "name": "httpcheck",
       "operations": [
         "check.http.run"
@@ -98,6 +104,7 @@
         "orchestrator.maturity",
         "orchestrator.removal"
       ],
+      "image": null,
       "name": "loopback",
       "operations": [
         "orchestrator.changes.propose",
@@ -121,6 +128,7 @@
         "channel.mail",
         "mail.messages"
       ],
+      "image": "taktus-connector-mail",
       "name": "mail",
       "operations": [
         "channel.mail.reply",
@@ -132,6 +140,7 @@
       "capabilities": [
         "models.costs"
       ],
+      "image": "taktus-connector-openai",
       "name": "openai",
       "operations": [
         "models.costs.daily"
@@ -141,6 +150,7 @@
       "capabilities": [
         "metrics.series"
       ],
+      "image": "taktus-connector-prometheus",
       "name": "prometheus",
       "operations": [
         "metrics.series.query",
@@ -151,6 +161,7 @@
       "capabilities": [
         "errors.issues"
       ],
+      "image": "taktus-connector-sentry",
       "name": "sentry",
       "operations": [
         "errors.issues.list",
@@ -163,6 +174,7 @@
         "chat.members",
         "chat.threads"
       ],
+      "image": "taktus-connector-slack",
       "name": "slack",
       "operations": [
         "channel.chat.reply",
@@ -176,6 +188,7 @@
         "payments.customers",
         "payments.subscriptions"
       ],
+      "image": "taktus-connector-stripe",
       "name": "stripe",
       "operations": [
         "payments.customers.subscriptions",
@@ -193,6 +206,7 @@
         "shell.sandboxed",
         "web.fetch"
       ],
+      "image": null,
       "name": "claudecode",
       "operations": []
     },
@@ -203,6 +217,7 @@
         "code.test",
         "shell.sandboxed"
       ],
+      "image": null,
       "name": "codex",
       "operations": []
     },
@@ -214,6 +229,7 @@
         "ml.predict",
         "ml.train"
       ],
+      "image": null,
       "name": "mlbench",
       "operations": []
     },
@@ -223,6 +239,7 @@
         "shell.script",
         "workspace.isolated"
       ],
+      "image": null,
       "name": "script",
       "operations": []
     }

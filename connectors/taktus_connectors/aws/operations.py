@@ -33,8 +33,8 @@ from typing import Any
 
 import httpx
 
-from taktus.adapters.driven.connectors.aws.signing import Key, signed_headers
-from taktus.adapters.driven.connectors.serving import (
+from taktus_connectors.aws.signing import Key, signed_headers
+from taktus_connectors.serving import (
     Call,
     Outcome,
     TargetError,

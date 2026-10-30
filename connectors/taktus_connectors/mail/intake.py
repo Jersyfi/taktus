@@ -36,8 +36,8 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
-from taktus.adapters.driven.connectors.mail.declaration import CHANNEL, INTAKE_CREDENTIAL
-from taktus.adapters.driven.connectors.mail.operations import (
+from taktus_connectors.mail.declaration import CHANNEL, INTAKE_CREDENTIAL
+from taktus_connectors.mail.operations import (
     addresses_in,
     digest_of,
     is_own,

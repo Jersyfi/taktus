@@ -1,6 +1,6 @@
 """Run the chat connector as a process.
 
-    uv run python -m taktus.adapters.driven.connectors.slack --port 9101
+    uv run python -m taktus_connectors.slack --port 9101
 
 It serves MCP over streamable HTTP at `/mcp` and readiness at `GET /health`. `--target` is the
 base URL of the service's web interface; point it at the fake under `tests/fakes/chat_service.py`
@@ -14,8 +14,8 @@ from __future__ import annotations
 import argparse
 import sys
 
-from taktus.adapters.driven.connectors.slack.faults import FAULTS, check_of
-from taktus.adapters.driven.connectors.slack.server import (
+from taktus_connectors.slack.faults import FAULTS, check_of
+from taktus_connectors.slack.server import (
     DEFAULT_TARGET,
     Config,
     build_server,

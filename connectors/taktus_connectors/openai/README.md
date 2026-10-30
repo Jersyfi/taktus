@@ -8,7 +8,7 @@ day, by line item or by project. Everywhere else it is the capability `models.co
 It is product support for any tenant, not a requirement: the control plane runs with it removed.
 
 ```
-uv run python -m taktus.adapters.driven.connectors.openai --port 9109
+uv run python -m taktus_connectors.openai --port 9109
 ```
 
 serves MCP over streamable HTTP at `/mcp` and readiness at `GET /health`. `--target` is the
@@ -63,7 +63,7 @@ that references none is refused. The key goes to the configured address and nowh
 
 ```
 uv run taktusctl conformance run --contract connector/v1 \
-    --endpoint http://127.0.0.1:9109/mcp --scenario src/taktus/adapters/driven/connectors/openai/scenario.json
+    --endpoint http://127.0.0.1:9109/mcp --scenario connectors/taktus_connectors/openai/scenario.json
 ```
 
 [`scenario.json`](scenario.json) reads three days from the fake under

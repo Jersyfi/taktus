@@ -52,8 +52,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
-from taktus.adapters.driven.connectors.bookstack.api import Api, TargetError
-from taktus.adapters.driven.connectors.bookstack.declaration import (
+from taktus_connectors.bookstack.api import Api, TargetError
+from taktus_connectors.bookstack.declaration import (
     LIST,
     MAX_BOOKS,
     MAX_LISTINGS,

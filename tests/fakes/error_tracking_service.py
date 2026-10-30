@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A fake error tracking API: the issue list and the issue of the Sentry API, in memory.
 
-The error tracking connector under `src/taktus/adapters/driven/connectors/sentry/` asks
+The error tracking connector under `connectors/taktus_connectors/sentry/` asks
 `GET /api/0/organizations/<org>/issues/` and `GET /api/0/organizations/<org>/issues/<id>/`.
 This fake answers both in the API's shapes and statuses, over issues it holds in memory. It
 exists so that the connector can be exercised in CI without a network, an account or a secret.

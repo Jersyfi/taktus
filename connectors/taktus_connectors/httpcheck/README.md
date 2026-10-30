@@ -8,7 +8,7 @@ expectation, reported with its outcome and its duration. Everywhere it is the ca
 It is proof and example, not a requirement: the control plane runs with it removed.
 
 ```
-uv run python -m taktus.adapters.driven.connectors.httpcheck --port 9105 --target https://service.example
+uv run python -m taktus_connectors.httpcheck --port 9105 --target https://service.example
 ```
 
 serves MCP over streamable HTTP at `/mcp` and readiness at `GET /health`. `--target` is the
@@ -49,7 +49,7 @@ that references none is refused. The token goes to the configured service and no
 
 ```
 uv run taktusctl conformance run --contract connector/v1 \
-    --endpoint http://127.0.0.1:9105/mcp --scenario src/taktus/adapters/driven/connectors/httpcheck/scenario.json
+    --endpoint http://127.0.0.1:9105/mcp --scenario connectors/taktus_connectors/httpcheck/scenario.json
 ```
 
 [`scenario.json`](scenario.json) checks `/health` of the fake under

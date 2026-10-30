@@ -5,15 +5,21 @@ The list is data the release carries, `shipped.json` beside this module, inside 
 The instance reads it with `load`, and the rule that tells a product's lack from a project's
 classifies every lack against it (`reporting/domain/service/findings.py`).
 
-`build` makes the list from the repository: every connector's own declaration under
-`adapters/driven/connectors`, and every worker's `CAPABILITIES` under `workers/`, read from its
-source without importing it. `make generate` writes it, and
-`tests/composition/test_shipped.py` fails when the file is not what `build` makes, so the list
-cannot drift from what ships.
+`build` makes the list from the repository: every connector's own declaration — the connectors
+under `connectors/`, each shipped as an image of its own, and the two that run inside the
+control plane under `adapters/driven/connectors` (ADR-0158) — and every worker's `CAPABILITIES`
+under `workers/`, read from its source without importing it. A connector of its own image is
+listed with that image's name; one that runs inside the control plane with none.
+`make generate` writes it, and `tests/composition/test_shipped.py` fails when the file is not
+what `build` makes, so the list cannot drift from what ships.
 
 Two adapters are left out. The vendor connector serves whatever a vendor's server offers under
 a manifest its operator writes, so it ships no capability of its own (ADR-0117). The MCP client
 is the connector port's adapter, not a connector.
+
+`build` runs where the repository is — `make generate` and its test. The control plane image
+carries no connector, so the connectors' package is named here as text and imported only then;
+nothing the instance runs imports it (`tests/architecture`).
 """
 
 from __future__ import annotations
@@ -28,9 +34,15 @@ from typing import Any
 from taktus.components.reporting.domain.model import Shipped, ShippedAdapter
 
 LIST = Path(__file__).with_name("shipped.json")
-CONNECTORS = "taktus.adapters.driven.connectors"
+CONNECTORS = "taktus_connectors"
+"""The connectors of images of their own (ADR-0158), as text: see the module's last paragraph."""
+IN_PROCESS = "taktus.adapters.driven.connectors"
+"""The connectors that run inside the control plane: the instance itself and its own files."""
 LEFT_OUT = frozenset({"mcp", "vendor"})
 """Packages under the connectors that are no connector the release ships with capabilities."""
+IMAGE = "taktus-connector-{name}"
+"""The name of a connector's image, as `.github/workflows/images.yml` pushes it and the chart
+and `deploy/docker/connectors.py` pull it: the connector's directory under `connectors/`."""
 
 
 def load(path: Path = LIST) -> Shipped:
@@ -38,34 +50,36 @@ def load(path: Path = LIST) -> Shipped:
     return Shipped.model_validate_json(path.read_text(encoding="utf-8"))
 
 
-def _declared(name: str) -> dict[str, Any] | None:
+def _declared(package: str, name: str) -> dict[str, Any] | None:
     try:
-        module = importlib.import_module(f"{CONNECTORS}.{name}.declaration")
+        module = importlib.import_module(f"{package}.{name}.declaration")
         declared: dict[str, Any] = module.capabilities()
         return declared
     except ModuleNotFoundError:
-        package = importlib.import_module(f"{CONNECTORS}.{name}")
-        declaration = getattr(package, "DECLARATION", None)
+        found = importlib.import_module(f"{package}.{name}")
+        declaration = getattr(found, "DECLARATION", None)
         return None if declaration is None else declaration.model_dump(mode="json")
 
 
 def connectors() -> tuple[ShippedAdapter, ...]:
-    package = importlib.import_module(CONNECTORS)
     found: list[ShippedAdapter] = []
-    for info in sorted(pkgutil.iter_modules(package.__path__), key=lambda i: i.name):
-        if not info.ispkg or info.name in LEFT_OUT:
-            continue
-        declared = _declared(info.name)
-        if declared is None:
-            continue
-        found.append(
-            ShippedAdapter(
-                name=info.name,
-                capabilities=tuple(sorted(declared["capabilities"])),
-                operations=tuple(sorted(o["name"] for o in declared["operations"])),
+    for package, imaged in ((CONNECTORS, True), (IN_PROCESS, False)):
+        members = importlib.import_module(package)
+        for info in pkgutil.iter_modules(members.__path__):
+            if not info.ispkg or info.name in LEFT_OUT:
+                continue
+            declared = _declared(package, info.name)
+            if declared is None:
+                continue
+            found.append(
+                ShippedAdapter(
+                    name=info.name,
+                    capabilities=tuple(sorted(declared["capabilities"])),
+                    operations=tuple(sorted(o["name"] for o in declared["operations"])),
+                    image=IMAGE.format(name=info.name) if imaged else None,
+                )
             )
-        )
-    return tuple(found)
+    return tuple(sorted(found, key=lambda adapter: adapter.name))
 
 
 def _constants(tree: ast.Module) -> dict[str, Any]:

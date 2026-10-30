@@ -32,8 +32,8 @@ from email.parser import BytesParser
 from email.utils import format_datetime, getaddresses, parsedate_to_datetime
 from typing import Any
 
-from taktus.adapters.driven.connectors.mail.protocol import Config, imap, submit
-from taktus.adapters.driven.connectors.serving import Call, Outcome, TargetError, invalid
+from taktus_connectors.mail.protocol import Config, imap, submit
+from taktus_connectors.serving import Call, Outcome, TargetError, invalid
 
 type Json = dict[str, Any]
 

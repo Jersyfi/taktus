@@ -10,7 +10,7 @@ tenant it is configuration, and another connector serves the same capability (UC
 It is proof and example, not a requirement: the control plane runs with it removed.
 
 ```
-uv run python -m taktus.adapters.driven.connectors.slack --port 9101
+uv run python -m taktus_connectors.slack --port 9101
 ```
 
 serves MCP over streamable HTTP at `http://127.0.0.1:9101/mcp` and readiness at `GET /health`.
@@ -124,7 +124,7 @@ expects exactly that check to fail (`tests/conformance/test_connector_v1_chat.py
 
 ```
 uv run taktusctl conformance run --contract connector/v1 \
-    --endpoint http://127.0.0.1:9101/mcp --scenario src/taktus/adapters/driven/connectors/slack/scenario.json
+    --endpoint http://127.0.0.1:9101/mcp --scenario connectors/taktus_connectors/slack/scenario.json
 ```
 
 [`scenario.json`](scenario.json) is written for the fake service: its conversation and thread

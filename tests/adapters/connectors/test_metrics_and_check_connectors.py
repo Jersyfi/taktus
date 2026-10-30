@@ -17,12 +17,12 @@ import httpx
 import pytest
 from fakes import metrics_service
 from fakes.ports import free_port
+from taktus_connectors.httpcheck.operations import Config as CheckConfig
+from taktus_connectors.httpcheck.server import build_server as check_server
+from taktus_connectors.prometheus.operations import Config as MetricsConfig
+from taktus_connectors.prometheus.server import build_server as metrics_server
 
-from taktus.adapters.driven.connectors.httpcheck.operations import Config as CheckConfig
-from taktus.adapters.driven.connectors.httpcheck.server import build_server as check_server
 from taktus.adapters.driven.connectors.mcp import McpActionConnector
-from taktus.adapters.driven.connectors.prometheus.operations import Config as MetricsConfig
-from taktus.adapters.driven.connectors.prometheus.server import build_server as metrics_server
 from taktus.ports.connector import CallContext, CallFailed, idempotency_key
 from taktus.ports.worker import CredentialReference
 

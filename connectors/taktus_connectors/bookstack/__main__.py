@@ -1,6 +1,6 @@
 """Run the wiki connector as a process.
 
-    uv run python -m taktus.adapters.driven.connectors.bookstack --target <base address>
+    uv run python -m taktus_connectors.bookstack --target <base address>
 
 It serves MCP over streamable HTTP at `/mcp` and readiness at `GET /health`. `--target` is the
 wiki's base address, without `/api`; point it at the fake under `tests/fakes/wiki_service.py` to
@@ -14,8 +14,8 @@ from __future__ import annotations
 import argparse
 import sys
 
-from taktus.adapters.driven.connectors.bookstack.faults import FAULTS, check_of
-from taktus.adapters.driven.connectors.bookstack.server import Config, build_server, log
+from taktus_connectors.bookstack.faults import FAULTS, check_of
+from taktus_connectors.bookstack.server import Config, build_server, log
 
 
 def main(argv: list[str] | None = None) -> int:

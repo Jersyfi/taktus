@@ -18,15 +18,13 @@ from typing import Any
 
 import pytest
 from mcp import Client
+from taktus_connectors.slack import intake
+from taktus_connectors.slack.declaration import INTAKE_CREDENTIAL, INTAKE_EVENTS
+from taktus_connectors.slack.server import Config, build_server
 
-from taktus.adapters.driven.connectors.slack import intake
-from taktus.adapters.driven.connectors.slack.declaration import INTAKE_CREDENTIAL, INTAKE_EVENTS
-from taktus.adapters.driven.connectors.slack.server import Config, build_server
 from taktus.conformance.contracts import first_error
 
-PAYLOADS = (
-    Path(__file__).resolve().parents[3] / "src/taktus/adapters/driven/connectors/slack/payloads"
-)
+PAYLOADS = Path(__file__).resolve().parents[3] / "connectors/taktus_connectors/slack/payloads"
 SHARED = "any-shared-value-0123456789"  # not a secret: the test signs and verifies with it
 RECEIVED = "2026-09-16T08:15:02Z"
 MOMENT = 1789546502  # RECEIVED in seconds since the epoch

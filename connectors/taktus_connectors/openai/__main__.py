@@ -1,6 +1,6 @@
 """Run the model costs connector as a process.
 
-    uv run python -m taktus.adapters.driven.connectors.openai --port 9109
+    uv run python -m taktus_connectors.openai --port 9109
 
 It serves MCP over streamable HTTP at `/mcp` and readiness at `GET /health`. `--target` is the
 API's address (default the provider's own); point it at the fake under
@@ -13,9 +13,9 @@ from __future__ import annotations
 
 import sys
 
-from taktus.adapters.driven.connectors import serving
-from taktus.adapters.driven.connectors.openai.operations import TARGET, Config
-from taktus.adapters.driven.connectors.openai.server import served
+from taktus_connectors import serving
+from taktus_connectors.openai.operations import TARGET, Config
+from taktus_connectors.openai.server import served
 
 
 def main(argv: list[str] | None = None) -> int:
