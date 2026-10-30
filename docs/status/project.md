@@ -9,6 +9,8 @@ question is raised only where the vision gives no direction, and only after the 
 ADRs, the anchors and the register were checked. `make status` shows how often the owner took
 the recommended option and how often a notice was overridden.
 
+**`make check` holds the web app when a change touches it** (NTC-0250). P-03's second run on #335 passed `make check` with a type error and a racing test in `web/`, and its branch failed the lane `web`; `make check` now runs `make gate-web` for such a change.
+
 **`make check` holds what `make generate` writes** (NTC-0243). P-03's run on #335 passed
 `make check` with a stale `api/openapi.yaml`, and its branch failed CI on it; the three
 freshness tests now run in every `make check`, in under a second.
