@@ -735,3 +735,33 @@ def test_an_instance_with_no_setting_reaches_nothing_outside_itself() -> None:
     assert loaded.http_host == "127.0.0.1", "reached from this machine only"
     hosts = {w.execution.endpoint for w in loaded.workers if w.execution.endpoint}
     assert all(h.startswith(("http://127.0.0.1", "http://localhost")) for h in hosts), hosts
+
+
+def test_a_connected_worker_needs_its_own_connect_key(tmp_path: Path) -> None:
+    """ADR-0156 §3: a worker of kind `connected` is admitted only with its connect key, read
+    from a file; a named worker's key is its own, with no fallback to the instance's."""
+    with pytest.raises(ConfigurationError, match="TAKTUS_CONNECT_KEY_FILE: is not set"):
+        settings(TAKTUS_EXECUTION="connected")
+    key = tmp_path / "connect-key"
+    key.write_text("k-site\n", encoding="utf-8")
+    (one,) = settings(TAKTUS_EXECUTION="connected", TAKTUS_CONNECT_KEY_FILE=str(key)).workers
+    assert one.execution.kind is ExecutionKind.CONNECTED
+    assert one.identifier == "worker.connected"
+    with pytest.raises(ConfigurationError, match="TAKTUS_WORKER_SITE_CONNECT_KEY_FILE"):
+        settings(
+            TAKTUS_WORKERS="site",
+            TAKTUS_WORKER_SITE_EXECUTION="connected",
+            TAKTUS_CONNECT_KEY_FILE=str(key),  # the instance's key admits no named worker
+        )
+    named = settings(
+        TAKTUS_WORKERS="site",
+        TAKTUS_WORKER_SITE_EXECUTION="connected",
+        TAKTUS_WORKER_SITE_CONNECT_KEY_FILE=str(key),
+    )
+    (site,) = named.workers
+    assert site.identifier == "worker.site" and site.execution.kind is ExecutionKind.CONNECTED
+    own = WorkerConfiguration(
+        EnvironmentConfiguration({"TAKTUS_WORKER_SITE_CONNECT_KEY_FILE": str(key)}), "site"
+    ).secret("connect.key")
+    assert own is not None and own.reveal() == "k-site"
+    assert "k-site" not in json.dumps(dict(named.effective()))

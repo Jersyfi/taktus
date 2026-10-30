@@ -23,6 +23,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -43,6 +44,7 @@ from taktus.components.process.domain.model import (
     Scorer,
 )
 from taktus.components.process.domain.model.evaluation import (
+    GUIDED,
     OVERRIDABLE,
     CaseResult,
     CaseRun,
@@ -156,6 +158,15 @@ def _key(index: int, scorer: Scorer) -> str:
 
 def _derived(prefix: str, *parts: str) -> str:
     return prefix + hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()[:20]
+
+
+@dataclass(frozen=True)
+class Guide:
+    """The know-how one side of a guided evaluation runs under: skill versions bound for its
+    runs (None hands a skill over at no version), and the profile they serve."""
+
+    skills: Mapping[str, str | None] = field(default_factory=dict)
+    profile: str | None = None
 
 
 class Evaluations:
@@ -329,6 +340,64 @@ class Evaluations:
         runs = await self._run_side(tenant, evaluation, Side.ACTIVE, version, version.ref, left_out)
         return await self._started(tenant, evaluation.model_copy(update={"runs": tuple(runs)}))
 
+    async def start_guided(
+        self,
+        tenant: Tenant,
+        process_id: str,
+        *,
+        purpose: Purpose,
+        subject: str,
+        active: Guide,
+        proposed: Guide,
+        evaluation_id: str | None = None,
+    ) -> Evaluation | None:
+        """The active version on its cases twice: under the know-how in force (`active`) and
+        under the know-how held to it (`proposed`) — a skill version (ADR-0162 §3) or a core and
+        profile of a shared agent (ADR-0163 §4). None where the process has no active version
+        with cases, or nobody it acts for. A derived identifier starts one evaluation only."""
+        if purpose not in GUIDED:
+            raise ValueError(f"{purpose} is not a guided purpose")
+        async with self._work.transaction(tenant):
+            process = await self._processes.get(tenant, process_id)
+            version = (
+                None
+                if process is None or process.active_version is None
+                else await self._versions.get(tenant, f"{process_id}@{process.active_version}")
+            )
+            if evaluation_id is not None:
+                existing = await self._evaluations.get(tenant, evaluation_id)
+                if existing is not None:
+                    return existing
+        if process is None or version is None or version.evaluation is None:
+            return None
+        if process.activated_by is None:
+            return None
+        cases, left_out = await self.evaluation_set(tenant, version)
+        if not cases:
+            return None
+        evaluation = Evaluation(
+            id=evaluation_id or self._ids.new("evl"),
+            tenant=tenant,
+            process_id=process_id,
+            purpose=purpose,
+            version=version.ref,
+            candidate=version.ref,
+            subject=subject,
+            acting_for=process.activated_by,
+            cases=cases,
+            scorers=version.evaluation.scorers,
+            started_at=self._clock.now(),
+        )
+        runs = [
+            *await self._run_side(
+                tenant, evaluation, Side.ACTIVE, version, version.ref, left_out, active
+            ),
+            *await self._run_side(
+                tenant, evaluation, Side.PROPOSED, version, version.ref, left_out, proposed
+            ),
+        ]
+        return await self._started(tenant, evaluation.model_copy(update={"runs": tuple(runs)}))
+
     async def _started(self, tenant: Tenant, evaluation: Evaluation) -> Evaluation:
         async with self._work.transaction(tenant):
             await self._evaluations.put(tenant, evaluation)
@@ -354,6 +423,7 @@ class Evaluations:
         version: ProcessVersion,
         reference: str,
         left_out: Mapping[str, str],
+        guide: Guide | None = None,
     ) -> list[CaseRun]:
         runs = [
             CaseRun(case=case_id, side=side, left_out=why)
@@ -376,6 +446,7 @@ class Evaluations:
                 inputs=dict(case.inputs),
                 level=version.autonomy_level,
                 actions=dict(version.autonomy.action_levels),
+                guide=guide,
             )
             runs.append(CaseRun(case=case.id, side=side, run_id=run.id))
         return runs
@@ -404,6 +475,7 @@ class Evaluations:
         inputs: Mapping[str, Any],
         level: AutonomyLevel,
         actions: Mapping[str, AutonomyLevel],
+        guide: Guide | None = None,
     ) -> Run:
         """One rehearsal, through the one path every run takes. Its identifier is derived from
         the evaluation, so that a second start names the same run and creates none."""
@@ -443,6 +515,8 @@ class Evaluations:
                 rehearsal=True,
                 run_id=run_id,
                 actions=actions,
+                skills={} if guide is None else dict(guide.skills),
+                profile=None if guide is None else guide.profile,
             )
         )
 
@@ -724,7 +798,7 @@ class Evaluations:
         active = scoring.side(Side.ACTIVE, evaluation.version, results)
         previous: Evaluation | None = None
         sides: tuple[SideResult, ...]
-        if evaluation.purpose is Purpose.CHANGE:
+        if evaluation.purpose is Purpose.CHANGE or evaluation.purpose in GUIDED:
             proposed = scoring.side(
                 Side.PROPOSED, evaluation.candidate or evaluation.version, results
             )

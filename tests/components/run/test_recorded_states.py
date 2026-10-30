@@ -36,6 +36,9 @@ NO_STATE = frozenset(
         "run.triggered",  # which trigger started the run
         "step.assigned",  # the assignment handed to the worker; the step was running already
         "step.reserved",  # what admission reserved; the step was admitted already
+        "step.message_asked",  # a person sent a message to the step; it runs on (ADR-0156)
+        "step.message_handed",  # the runner handed it to the worker; the step runs on
+        "step.message_received",  # the worker received it at a boundary; the step runs on
         "step.retried",  # a retry; the step.admitted beside it changes the state (ADR-0147)
         "step.takeover_asked",  # a person asked to take the step over; it runs on (ADR-0128)
         "step.takeover_refused",  # the step ended before it stopped; nothing changed

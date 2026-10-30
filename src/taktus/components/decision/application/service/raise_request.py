@@ -10,6 +10,9 @@ It is addressed to a role and reached on the control plane's own surface, where 
 holding the role list, answer and confirm it (`CHANNEL`). Rendering it in a chat is the
 owner-facing channel's (#85).
 
+A request of a kind a person let a rule from precedent answer takes effect in the same
+transaction, with the rule's option, and names the rule (`rules.py`, ADR-0161).
+
 Raising is idempotent by the request's identifier: the run derives it from the run, the step,
 the anchor and the round, so a run that raises again after a crash meets the request it raised
 before and changes nothing.
@@ -20,13 +23,13 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
-from typing import Any
+from typing import Any, Protocol
 
 from pydantic import ValidationError
 
 from taktus.components.decision.application.service._ledger import RAISED, record
 from taktus.components.decision.application.service.errors import NotRaised
-from taktus.components.decision.domain.model import Request
+from taktus.components.decision.domain.model import DecisionRule, Request
 from taktus.ports.clock import Clock
 from taktus.ports.ledger import Ledger
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
@@ -53,14 +56,28 @@ class RaiseRequest:
     anchor: str | None = None
 
 
+class Answering(Protocol):
+    """The rules from precedent a request raised is answered by (`rules.py`, ADR-0161)."""
+
+    async def answering(self, tenant: Tenant, request: Request) -> DecisionRule | None: ...
+
+    async def answer(self, tenant: Tenant, request: Request, rule: DecisionRule) -> Request: ...
+
+
 class RaiseRequestHandler:
     def __init__(
-        self, requests: Repository[Request], work: UnitOfWork, ledger: Ledger, clock: Clock
+        self,
+        requests: Repository[Request],
+        work: UnitOfWork,
+        ledger: Ledger,
+        clock: Clock,
+        rules: Answering | None = None,
     ) -> None:
         self._requests = requests
         self._work = work
         self._ledger = ledger
         self._clock = clock
+        self._rules = rules
 
     async def execute(self, command: RaiseRequest) -> Request:
         if not command.decider.strip():
@@ -106,4 +123,9 @@ class RaiseRequestHandler:
                 str(shaped.class_),
                 document=shaped.document(),
             )
+            if self._rules is not None:
+                # A request of a kind a person let a rule answer takes effect at once (ADR-0161).
+                rule = await self._rules.answering(command.tenant, request)
+                if rule is not None:
+                    request = await self._rules.answer(command.tenant, request, rule)
         return request

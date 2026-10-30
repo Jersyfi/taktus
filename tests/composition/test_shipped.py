@@ -9,7 +9,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from taktus.adapters.driven.connectors.github import declaration as repository
+from taktus_connectors.github import declaration as repository
+
+from taktus.adapters.driving.cli.conformance_command import shipped_by_capability
+from taktus.adapters.driving.cli.wiring import ShippedConnector
 from taktus.composition import shipped
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -38,3 +41,19 @@ def test_every_shipped_worker_and_connector_is_on_the_list_with_what_it_offers()
 def test_the_list_is_carried_inside_the_package() -> None:
     assert shipped.LIST.parent == Path(shipped.__file__).parent
     assert "repository" in shipped.load().namespaces
+
+
+def test_every_shipped_connector_is_listed_with_its_image() -> None:
+    """A connector of its own image names it; the two that run inside the control plane name
+    none (ADR-0158). `taktusctl conformance list` prints them by capability."""
+    listed = {c.name: c.image for c in shipped.load().connectors}
+    imaged = {p.parent.name for p in (ROOT / "connectors/taktus_connectors").glob("*/__main__.py")}
+    assert {name for name, image in listed.items() if image} == imaged - {"vendor"}
+    assert all(listed[name] == f"taktus-connector-{name}" for name in imaged - {"vendor"})
+    assert listed["directory"] is None and listed["loopback"] is None
+    lines = shipped_by_capability(
+        [ShippedConnector(c.name, c.capabilities, c.image) for c in shipped.load().connectors]
+    )
+    pages = next(line for line in lines if line.startswith("knowledge.pages "))
+    assert "bookstack (image taktus-connector-bookstack)" in pages
+    assert "directory (inside the control plane)" in pages

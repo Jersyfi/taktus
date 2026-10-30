@@ -118,6 +118,8 @@ class InnerStep:
 class FakeWorker:
     capabilities_offered: tuple[str, ...] = ("shell.script",)
     version: str | None = "0.9.0"
+    data_location: str | None = None
+    """Where it declares it stores what it is sent (ADR-0157); None declares nothing."""
     script: tuple[InnerStep, ...] = (InnerStep("one", artifacts=(("out-1", b"42\n"),)),)
     estimate_seconds: float = 1.0
     resource_class: str = "cpu.small"
@@ -175,6 +177,7 @@ class FakeWorker:
         return Capabilities(
             contract="worker/v1",
             version=self.version,
+            data_location=self.data_location,  # type: ignore[arg-type]
             capabilities=self.capabilities_offered,
             consumption=ConsumptionDeclaration(kinds=("currency",), currencies=("usd",))
             if self.estimate_usd is not None

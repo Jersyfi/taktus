@@ -19,9 +19,9 @@ from typing import Any
 
 import pytest
 from fakes import FakeClock, FakeIdentifiers, FakeMaturities, FakeWorker
+from taktus_connectors.github.server import Config, build_server
 
 from taktus.adapters.driven.clock import SystemRandomness
-from taktus.adapters.driven.connectors.github.server import Config, build_server
 from taktus.adapters.driven.connectors.mcp import McpActionConnector
 from taktus.adapters.driven.memory import (
     MemoryLedgerStore,

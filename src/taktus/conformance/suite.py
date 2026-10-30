@@ -70,7 +70,6 @@ fix. Base fields, unknown types and transport faults belong to W-03.
 
 from __future__ import annotations
 
-import asyncio
 import base64
 import hashlib
 import json
@@ -87,7 +86,7 @@ from taktus.conformance import rules
 from taktus.conformance.client import Response, Stream, WorkerClient
 from taktus.conformance.contracts import first_error
 from taktus.conformance.findings import Findings
-from taktus.conformance.relay import RelayHost
+from taktus.conformance.relay import Binding, RelayHost
 from taktus.conformance.report import CheckResult, Report, RunSummary
 from taktus.conformance.rules import CATALOGUE, CHECKS
 
@@ -135,6 +134,9 @@ class SuiteOptions:
     """`host:port` where the suite serves the outbound binding for a worker that connects to
     it; `endpoint` is then only the label of the report (README §8)."""
     connect_timeout: float = CONNECT_SECONDS
+    binding: Binding | None = None
+    """A host of the binding other than the suite's own, which the suite runs over instead of
+    serving one: the control plane's, for a worker connected to the instance (ADR-0156 §5)."""
 
 
 @dataclass
@@ -201,7 +203,9 @@ class Run:
 
 
 async def run_suite(options: SuiteOptions) -> Report:
-    host = RelayHost(options.listen) if options.listen else None
+    host: Binding | None = options.binding
+    if host is None and options.listen:
+        host = RelayHost(options.listen)
     if host is not None:
         await host.start()
     try:
@@ -211,7 +215,7 @@ async def run_suite(options: SuiteOptions) -> Report:
             await host.close()
 
 
-async def _suite(options: SuiteOptions, host: RelayHost | None) -> Report:
+async def _suite(options: SuiteOptions, host: Binding | None) -> Report:
     endpoint = options.endpoint if host is None else f"{host.base} (outbound binding)"
     report = Report(endpoint=endpoint, contract=CATALOGUE.contract)
     findings = Findings(CHECKS)
@@ -264,7 +268,7 @@ async def _suite(options: SuiteOptions, host: RelayHost | None) -> Report:
     _w08(options, runs, findings)
     _w09(runs, findings)
     if host is not None:
-        _w21(host, findings)
+        _w21(await host.probe(), host.base, findings)
     for check in CHECKS:
         if check == "W-12":
             report.add(
@@ -1722,15 +1726,13 @@ async def _w18_before(
 # --- W-19 steering, W-20 handover, W-21 the outbound binding ------------------------------------
 
 
-async def _connected(host: RelayHost, options: SuiteOptions, report: Report) -> None:
+async def _connected(host: Binding, options: SuiteOptions, report: Report) -> None:
     """Wait for the worker to connect to the binding; a worker that never does is one that
     does not answer."""
-    try:
-        await asyncio.wait_for(host.connected.wait(), options.connect_timeout)
-    except TimeoutError as error:
+    if not await host.wait_connected(options.connect_timeout):
         raise httpx.ConnectError(
             f"no worker connected to {host.base} within {options.connect_timeout:.0f}s"
-        ) from error
+        )
     report.notes.append(
         f"the worker connected to {host.base}; every check ran over the outbound binding"
     )
@@ -2014,14 +2016,13 @@ def _handover_document(run: Run, where: str, findings: Findings) -> Json | None:
     return document
 
 
-def _w21(host: RelayHost, findings: Findings) -> None:
+def _w21(probe: Json, base: str, findings: Findings) -> None:
     """The binding itself: every request relayed was answered exactly once, with a status."""
-    probe = host.probe()
     if not probe["relayed"]:
         findings.inconclusive["W-21"] = "no request was relayed: no worker connected"
         return
     for violation in rules.relay_violations(probe):
-        findings.add(violation, f"over the outbound binding at {host.base}")
+        findings.add(violation, f"over the outbound binding at {base}")
     if not findings.violations["W-21"]:
         findings.ok(
             "W-21",

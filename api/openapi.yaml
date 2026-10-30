@@ -2830,6 +2830,184 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /runs/{run_id}/steps/{step_id}/messages:
+    post:
+      tags:
+      - steering
+      summary: Send a message to a running step
+      description: Hands a message to a running worker step whose worker declares steering. The runner
+        that holds the run gives it to the worker, which receives it at its next boundary; the steps after
+        that boundary have it as an input, and the step's provenance names it (ADR-0156).
+      operationId: send_runs__run_id__steps__step_id__messages_post
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run Id
+      - name: step_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Step Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageBody'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '202':
+          description: 'Asked: the message''s identifier.'
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such run or step that you may see.
+          content:
+            application/problem+json: {}
+        '409':
+          description: The step is not a running worker step, no runner holds the run, a person holds
+            it, or its worker declares no steering; the problem says which.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /workers/{name}/relay/next:
+    post:
+      tags:
+      - workers
+      summary: The next request for a connected worker
+      description: A worker that connects outbound fetches the next request of the worker contract here.
+        Answered `200` with a `RelayRequest` of contracts/worker/v1, or `204` when none arrived within
+        the wait (ADR-0156).
+      operationId: next_request_workers__name__relay_next_post
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The request.
+          content:
+            application/json:
+              schema: {}
+        '204':
+          description: None yet.
+        '401':
+          description: No connect key, or not the worker's.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No worker of this name connects to the instance.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /workers/{name}/relay/answers/{request_id}:
+    post:
+      tags:
+      - workers
+      summary: The answer of a connected worker to one request
+      description: The header `Relay-Status` carries the answer's status, `Content-Type` its type, and
+        the body is the answer's body, streamed while it lasts (ADR-0156).
+      operationId: answer_workers__name__relay_answers__request_id__post
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Request Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: relay-status
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Relay-Status
+      - name: content-type
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Content-Type
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '204':
+          description: Received.
+        '400':
+          description: Relay-Status carries no status code.
+          content:
+            application/problem+json: {}
+        '409':
+          description: Answered already.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No connect key, or not the worker's.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No worker of this name connects to the instance.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
   /register:
     get:
       tags:
@@ -3100,6 +3278,243 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /catalogue:
+    get:
+      tags:
+      - catalogue
+      summary: 'What you may ask Taktus for: the processes you may start'
+      description: 'Every process with an active version you may see, in plain words: what it is for,
+        the inputs it needs from you, the level it runs at, the roles a person acts in along it, the one
+        start command — `run <process>@<version>`, recognised as `process.run` — and how to start it in
+        the web app, the chat and your own agent. Each way issues that command (UC-1.13). A projection
+        of the registered versions: it keeps no request.'
+      operationId: listed_catalogue_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The catalogue.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /catalogue/{process_id}/start:
+    post:
+      tags:
+      - catalogue
+      summary: Start a process you may start, as yourself
+      description: 'The process''s active version starts with the inputs given, through the one path every
+        channel takes: the start command `run <process>@<version>` on `channel.web`, a commissioned plan,
+        a run on the queue. The run acts as you; its view tracks it. An input the version requires and
+        the body does not give refuses the start, naming each.'
+      operationId: start_catalogue__process_id__start_post
+      parameters:
+      - name: process_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Process Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/taktus__adapters__driving__rest__catalogue__StartBody'
+      responses:
+        '201':
+          description: The run, as it was created.
+          content:
+            application/json:
+              schema: {}
+        '404':
+          description: 'No such process, or one you may not see, or one without an active version: the
+            three are answered alike.'
+          content:
+            application/problem+json: {}
+        '409':
+          description: The start was refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /streams:
+    get:
+      tags:
+      - streams
+      summary: 'The organisation as value streams: management, core and support'
+      description: Every value stream of the tenant, in three tiers. Each shows the share of its steps
+        at each autonomy level and of each method kind, its flow efficiency and blocked share over the
+        runs of its processes that finished in the window, the cause that held up most, and the department
+        boundaries it crosses — handovers between persons' steps whose roles sit in no common unit of
+        the structure. `outside` lists the processes no stream names. Read from the records on each request;
+        stored nowhere.
+      operationId: listed_streams_get
+      parameters:
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 366
+          minimum: 1
+          description: The window of finished runs, in days.
+          default: 30
+          title: Days
+        description: The window of finished runs, in days.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The map.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /streams/{stream}:
+    get:
+      tags:
+      - streams
+      summary: One value stream as role swimlanes
+      description: A column per process in the order of the stream; a lane for Taktus's reproducible methods,
+        one for its variable methods, and one per role a person acts in, each with the units of the structure
+        its holders sit in (`org_path`, overlaid). Each step is a chip in its column and lane; a fallback
+        to a person names that role's lane. A role's waiting is shown only where at least two identities
+        hold it.
+      operationId: one_streams__stream__get
+      parameters:
+      - name: stream
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Stream
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 366
+          minimum: 1
+          description: The window of finished runs, in days.
+          default: 30
+          title: Days
+        description: The window of finished runs, in days.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The swimlanes.
+          content:
+            application/json:
+              schema: {}
+        '404':
+          description: No such stream.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+    put:
+      tags:
+      - streams
+      summary: Declare a value stream
+      description: The stream's kind, trigger, outcome, responsible role and processes. A declaration
+        that says what the current revision says keeps nothing new; any other is the next revision, and
+        the one before is kept. Every process it names exists in the tenant. Only a person who holds the
+        role `owner` declares one.
+      operationId: declare_streams__stream__put
+      parameters:
+      - name: stream
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Stream
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StreamBody'
+      responses:
+        '200':
+          description: The stream as it is now.
+          content:
+            application/json:
+              schema: {}
+        '403':
+          description: You do not hold the role `owner`.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
   /runs/{run_id}/spend:
     get:
       tags:
@@ -3261,7 +3676,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/StartBody'
+              $ref: '#/components/schemas/taktus__adapters__driving__rest__trials__StartBody'
       responses:
         '201':
           description: The trial, its runs submitted.
@@ -3432,6 +3847,20 @@ components:
       required:
       - channel
       title: LinkCodeRequest
+    MessageBody:
+      properties:
+        text:
+          type: string
+          maxLength: 8000
+          minLength: 1
+          title: Text
+          description: What the step's worker should take into account from its next boundary on. It is
+            an input of the steps after that boundary; it never widens what the step may do, nor what
+            it may consume.
+      type: object
+      required:
+      - text
+      title: MessageBody
     ProposeBody:
       properties:
         bundle:
@@ -3551,33 +3980,55 @@ components:
       - role
       title: Share
       description: A field the surface does not know — a person among them — is refused.
-    StartBody:
+    StreamBody:
       properties:
-        purpose:
+        name:
           type: string
-          pattern: ^[a-z][a-z0-9_-]*$
-          title: Purpose
-          description: The purpose the candidates are tried for.
-        candidates:
+          minLength: 1
+          title: Name
+          description: The stream's name, as people call it.
+        kind:
+          $ref: '#/components/schemas/StreamKind'
+          description: '`core` from the customer''s need to their outcome; `management` or `support` beside
+            the core streams.'
+        trigger:
+          type: string
+          minLength: 1
+          title: Trigger
+          description: The need it starts from.
+        outcome:
+          type: string
+          minLength: 1
+          title: Outcome
+          description: The outcome it ends in.
+        role:
+          type: string
+          pattern: ^[a-z][a-z0-9_.-]*$
+          title: Role
+          description: The one role responsible. Never a person.
+        processes:
           items:
             type: string
           type: array
-          maxItems: 8
           minItems: 1
-          title: Candidates
-          description: The models to try, each a model of this instance's configuration, as `model.<member>`.
-        occasion:
-          type: string
-          title: Occasion
-          description: 'Why the trial runs: one of introduced, proposed, changed, asked; `asked` unless
-            it answers an offer.'
-          default: asked
-      additionalProperties: false
+          title: Processes
+          description: Its processes, in the order they hand over to each other.
       type: object
       required:
-      - purpose
-      - candidates
-      title: StartBody
+      - name
+      - kind
+      - trigger
+      - outcome
+      - role
+      - processes
+      title: StreamBody
+    StreamKind:
+      type: string
+      enum:
+      - core
+      - management
+      - support
+      title: StreamKind
     Submitted:
       properties:
         key:
@@ -3638,6 +4089,15 @@ components:
       required:
       - confirmed
       title: ConfirmBody
+    taktus__adapters__driving__rest__catalogue__StartBody:
+      properties:
+        inputs:
+          additionalProperties: true
+          type: object
+          title: Inputs
+          description: The process's inputs by name, as its catalogue entry lists them.
+      type: object
+      title: StartBody
     taktus__adapters__driving__rest__evaluations__ConfirmBody:
       properties:
         target:
@@ -3646,3 +4106,30 @@ components:
             case was proposed with.
       type: object
       title: ConfirmBody
+    taktus__adapters__driving__rest__trials__StartBody:
+      properties:
+        purpose:
+          type: string
+          pattern: ^[a-z][a-z0-9_-]*$
+          title: Purpose
+          description: The purpose the candidates are tried for.
+        candidates:
+          items:
+            type: string
+          type: array
+          maxItems: 8
+          minItems: 1
+          title: Candidates
+          description: The models to try, each a model of this instance's configuration, as `model.<member>`.
+        occasion:
+          type: string
+          title: Occasion
+          description: 'Why the trial runs: one of introduced, proposed, changed, asked; `asked` unless
+            it answers an offer.'
+          default: asked
+      additionalProperties: false
+      type: object
+      required:
+      - purpose
+      - candidates
+      title: StartBody

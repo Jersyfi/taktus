@@ -18,10 +18,10 @@ import httpx
 import pytest
 from fakes import model_costs_service
 from fakes.ports import free_port
+from taktus_connectors.openai.operations import Config
+from taktus_connectors.openai.server import build_server
 
 from taktus.adapters.driven.connectors.mcp import McpActionConnector
-from taktus.adapters.driven.connectors.openai.operations import Config
-from taktus.adapters.driven.connectors.openai.server import build_server
 from taktus.ports.connector import CallContext, CallFailed, idempotency_key
 from taktus.ports.worker import CredentialReference
 

@@ -22,7 +22,7 @@ import json
 import secrets
 from collections.abc import AsyncIterator, Awaitable, Callable, MutableMapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 
 import httpx
 import uvicorn
@@ -35,6 +35,28 @@ type Send = Callable[[MutableMapping[str, Any]], Awaitable[None]]
 WAIT_SECONDS = 20.0
 """How long `/next` holds a poll without a request before it answers `204`; at most 30 (§8)."""
 RELAYED_HEADERS = ("Accept", "Content-Type", "Last-Event-ID")
+
+
+class Binding(Protocol):
+    """A host of the outbound binding the suite runs over: its own (`RelayHost`), or the
+    control plane's, where the instance runs the suite of a worker connected to it (ADR-0156
+    §5). `base` names it in the report."""
+
+    base: str
+
+    async def start(self) -> None: ...
+
+    async def close(self) -> None: ...
+
+    async def wait_connected(self, seconds: float) -> bool:
+        """Whether a worker connected within `seconds`."""
+        ...
+
+    def transport(self) -> httpx.AsyncBaseTransport: ...
+
+    async def probe(self) -> Json:
+        """What W-21 judges, in the shape `RelayProbe` of Worker.json."""
+        ...
 
 
 @dataclass
@@ -104,7 +126,14 @@ class RelayHost:
     def transport(self) -> RelayTransport:
         return RelayTransport(self)
 
-    def probe(self) -> Json:
+    async def wait_connected(self, seconds: float) -> bool:
+        try:
+            await asyncio.wait_for(self.connected.wait(), seconds)
+        except TimeoutError:
+            return False
+        return True
+
+    async def probe(self) -> Json:
         """What W-21 judges, in the shape `RelayProbe` of Worker.json."""
         return {"relayed": list(self.relayed), "answers": list(self.answers)}
 

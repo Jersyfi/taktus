@@ -16,6 +16,10 @@ under it. A claim that committed first changed the row, and the check finds noth
 A take-over (ADR-0128, `0064_takeover.py`) is asked by one update that succeeds only where no
 take-over is asked or held, and only on a job a runner holds. Passing the claim moves it to the
 take-over's claimant as a new attempt, held until a time `claim_jobs` honours.
+
+A person's message (ADR-0156, `0087_relay_and_steering.py`) is appended to the job's
+`messages` by one update that succeeds only on a job a runner holds; marking one handed rewrites
+the list under the row's lock.
 """
 
 from __future__ import annotations
@@ -31,7 +35,7 @@ from sqlalchemy.exc import IntegrityError
 from taktus.adapters.driven.postgres import _schema as s
 from taktus.adapters.driven.postgres.persistence import PostgresPersistence
 from taktus.ports.persistence import PersistenceError, Tenant
-from taktus.ports.queue import RUN_EXECUTE, Claim, Job, TakeoverAsked
+from taktus.ports.queue import RUN_EXECUTE, AskedMessage, Claim, Job, TakeoverAsked
 
 
 class PostgresQueue:
@@ -198,6 +202,59 @@ class PostgresQueue:
             )
         )
         return bool(result.rowcount)
+
+    async def ask_message(self, tenant: Tenant, run_id: str, message: AskedMessage) -> bool:
+        connection = self._persistence.connection(tenant)
+        row = (
+            await connection.execute(
+                select(s.job.c.id, s.job.c.messages)
+                .where(
+                    s.job.c.tenant == tenant,
+                    s.job.c.kind == RUN_EXECUTE,
+                    s.job.c.payload["run_id"].astext == run_id,
+                    s.job.c.claimed_by.is_not(None),
+                    s.job.c.held_until.is_(None),
+                )
+                .with_for_update()
+            )
+        ).first()
+        if row is None:
+            return False
+        held = list(row.messages or [])
+        if any(m.get("message_id") == message.message_id for m in held):
+            return True
+        await connection.execute(
+            update(s.job)
+            .where(s.job.c.tenant == tenant, s.job.c.id == row.id)
+            .values(messages=[*held, message.document()])
+        )
+        return True
+
+    async def messages_asked(self, tenant: Tenant, job_id: str) -> Sequence[AskedMessage]:
+        connection = self._persistence.connection(tenant)
+        held = await connection.scalar(
+            select(s.job.c.messages).where(s.job.c.tenant == tenant, s.job.c.id == job_id)
+        )
+        return tuple(AskedMessage.model_validate(m) for m in held or [])
+
+    async def message_handed(self, tenant: Tenant, job_id: str, message_id: str) -> None:
+        connection = self._persistence.connection(tenant)
+        held = await connection.scalar(
+            select(s.job.c.messages)
+            .where(s.job.c.tenant == tenant, s.job.c.id == job_id)
+            .with_for_update()
+        )
+        if not held:
+            return
+        await connection.execute(
+            update(s.job)
+            .where(s.job.c.tenant == tenant, s.job.c.id == job_id)
+            .values(
+                messages=[
+                    {**m, "handed": True} if m.get("message_id") == message_id else m for m in held
+                ]
+            )
+        )
 
 
 def _job(row: Row[Any]) -> Job:

@@ -250,6 +250,99 @@ def test_the_control_plane_image_carries_no_worker_code() -> None:
             )
 
 
+# --- connectors: separate deployables with images of their own (ADR-0158, issue #339) --------
+
+CONNECTORS = ROOT / "connectors"
+CONNECTOR_PACKAGE = "taktus_connectors"
+CONNECTOR_DOCKERFILE = CONNECTORS / "Dockerfile"
+PORT_SIDE = SRC / "adapters" / "driven" / "connectors"
+IN_PROCESS = frozenset({"directory", "loopback"})
+"""The two connectors that run inside the control plane, because what they reach is the
+instance itself and the files on its own volume; with them only the MCP client of the port."""
+
+
+def shipped_connectors() -> list[str]:
+    return sorted(p.parent.name for p in (CONNECTORS / CONNECTOR_PACKAGE).glob("*/__main__.py"))
+
+
+@pytest.mark.parametrize("path", sorted(CONNECTORS.rglob("*.py")), ids=lambda p: rel(p))
+def test_connectors_import_nothing_from_the_control_plane(path: Path) -> None:
+    """A connector is a separate deployable, as a worker is (DEC-0011): its image carries no
+    control plane, so nothing of it can import one."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    assert [n for n in imported_modules(tree) if n.split(".")[0] == "taktus"] == []
+
+
+@pytest.mark.parametrize("path", sorted(SRC.rglob("*.py")), ids=rel)
+def test_the_control_plane_imports_no_shipped_connector(path: Path) -> None:
+    """The control plane reaches a connector over MCP only; adding one changes no control plane
+    code. `composition/shipped.py` names the package as text to list it when the repository is
+    there (`make generate`), never as an import."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    found = [n for n in imported_modules(tree) if n.split(".")[0] == CONNECTOR_PACKAGE]
+    assert found == [], f"{rel(path)} imports {found}"
+
+
+def test_only_the_ports_side_of_the_connectors_stays_in_the_control_plane() -> None:
+    """Under the control plane's connectors: the MCP client, the pool, and the two connectors
+    that run in its process. Every other connector lives under connectors/ (ADR-0158)."""
+    present = {p.name for p in PORT_SIDE.iterdir() if p.name != "__pycache__"}
+    assert present == {"__init__.py", "pool.py", "mcp", *IN_PROCESS}, present
+
+
+def test_the_control_plane_image_carries_no_connector_code() -> None:
+    """The control plane image copies nothing from connectors/; a connector's image copies
+    only connectors/, the lock file it installs from and its project file (ADR-0158)."""
+    lines = CONTROL_PLANE_IMAGE.read_text(encoding="utf-8").splitlines()
+    for number, line in enumerate(lines, 1):
+        if not line.strip().upper().startswith(("COPY", "ADD")):
+            continue
+        words = line.split()
+        for source in (w for w in words[1:-1] if not w.startswith("--")):
+            assert source.split("/")[0] != "connectors", f"deploy/docker/Dockerfile:{number}"
+
+
+def _stages() -> dict[str, list[str]]:
+    stages: dict[str, list[str]] = {}
+    current = ""
+    for line in CONNECTOR_DOCKERFILE.read_text(encoding="utf-8").splitlines():
+        words = line.split()
+        if not words or words[0].startswith("#"):
+            continue
+        if words[0].upper() == "FROM":
+            current = words[-1]
+            stages[current] = []
+        elif current:
+            stages[current].append(line.strip())
+    return stages
+
+
+def test_every_connector_is_an_image_of_its_own_that_carries_only_itself() -> None:
+    """One stage per connector, built on the shared base: it copies its own directory and no
+    other connector's, and runs its own module. The base copies the serving library and no
+    connector, and nothing copies src/."""
+    stages = _stages()
+    assert set(stages) - {"build", "base"} == set(shipped_connectors())
+    for name in shipped_connectors():
+        copies = [line for line in stages[name] if line.upper().startswith("COPY")]
+        assert copies == [
+            f"COPY --chown=connector:connector connectors/{CONNECTOR_PACKAGE}/{name} "
+            f"/app/{CONNECTOR_PACKAGE}/{name}"
+        ], name
+        assert f'ENTRYPOINT ["python", "-m", "{CONNECTOR_PACKAGE}.{name}"]' in stages[name]
+    for stage in ("build", "base"):
+        for line in stages[stage]:
+            if line.upper().startswith("COPY") and "--from=" not in line:
+                sources = line.split()[1:-1]
+                assert all(s.split("/")[0] != "src" for s in sources), line
+                assert all(
+                    s.removeprefix(f"connectors/{CONNECTOR_PACKAGE}/")
+                    in ("__init__.py", "serving.py")
+                    for s in sources
+                    if s.startswith("connectors/")
+                ), line
+
+
 CLUSTER_ADAPTER = SRC / "adapters" / "driven" / "execution" / "kubernetes"
 CLUSTER_CLIENT = "taktus.adapters.driven.execution.kubernetes.api"
 CLUSTER_LIBRARIES = frozenset({"kubernetes", "kubernetes_asyncio", "lightkube", "kr8s", "pykube"})

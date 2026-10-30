@@ -11,9 +11,12 @@ artifacts, health — in one file that needs nothing but Python's standard libra
 
 It offers the contract's three optional extensions too (ADR-0139). A message to a running
 assignment is received at the next boundary, and the commands after it find the messages in
-`TAKTUS_STEERING`. A handover stops at the next boundary with a document from which this worker,
-on any instance, continues. And `--connect BASE` connects to a host of the outbound binding
-instead of listening: it opens no port, and answers every relayed request with the same handler.
+`TAKTUS_STEERING`; a message `use <capability>` makes the next step call that tool, held against
+the frame and refused outside it, as every call is. A handover stops at the next boundary with a
+document from which this worker, on any instance, continues. And `--connect BASE` connects to a
+host of the outbound binding instead of listening: it opens no port, answers every relayed
+request with the same handler, and presents the connect key the file `TAKTUS_CONNECT_KEY_FILE`
+holds, where it is set (ADR-0156).
 
 Two profiles (`--profile`):
 
@@ -271,6 +274,16 @@ def outside_frame(tool: str, frame: Json) -> bool:
     return tool not in frame.get("allowed_tools", [])
 
 
+USE = re.compile(r"^use ([a-z][a-z0-9]*(?:\.[a-z0-9-]+)+)\b")
+"""A steering message that asks the steps after it to use a tool: `use <capability> …`."""
+
+
+def asked_tools(messages: list[str], done: set[str]) -> list[str]:
+    """The tools the messages received so far ask for, each once."""
+    found = [m.group(1) for text in messages if (m := USE.match(text.strip()))]
+    return [tool for tool in dict.fromkeys(found) if tool not in done]
+
+
 def host_outside_frame(host: str, frame: Json) -> bool:
     """An absent or empty allowed_hosts allows no host at all: the affirmative list is the
     whole of what may be reached."""
@@ -347,6 +360,8 @@ class Assignment:
     received: list[Json] = field(default_factory=list)
     seen: set[str] = field(default_factory=set)
     """Every message id accepted, so that a message posted again is received once."""
+    tools_asked: set[str] = field(default_factory=set)
+    """The tools a message asked for that a step already called, or was refused."""
     seq: int = 0
     lock: threading.Lock = field(default_factory=threading.Lock)
     changed: threading.Condition = field(init=False)
@@ -744,6 +759,21 @@ class Worker:
                         "summary": step.summary,
                     },
                 )
+            for asked in asked_tools(steering, assignment.tools_asked):
+                # A message that asks for a tool is an input, not a permission: the call is held
+                # against the frame like any other, and refused outside it (ADR-0139 §3).
+                assignment.tools_asked.add(asked)
+                ask: Json = {
+                    "type": "tool.called",
+                    "step_id": step.step_id,
+                    "tool": asked,
+                    "arguments_digest": sha256(asked.encode()),
+                }
+                if outside_frame(asked, frame):
+                    ask["refused"] = True
+                    ask["reason"] = f"{asked} is outside the frame's allowed_tools"
+                with assignment.lock:
+                    self._emit(assignment, ask)
             refused = outside_frame(TOOL, frame) and self.fault != "W-07"
             refused_host: str | None = None
             if index == assignment.start_index:
@@ -1283,7 +1313,10 @@ class _AnswerPipe:
 class Relay:
     """The worker's side of the outbound binding (contracts/worker/v1 §8, ADR-0139): it asks
     the host at `base` for the next request, has the same handler answer it that answers at an
-    endpoint, and posts the answer back — a stream in chunks, while it lasts. It opens no port."""
+    endpoint, and posts the answer back — a stream in chunks, while it lasts. It opens no port.
+    Where `TAKTUS_CONNECT_KEY_FILE` names a file, every request to the host carries its content
+    as `Authorization: Bearer`: the connect key the control plane's host admits it with
+    (ADR-0156 §3). The key is read once and never written anywhere."""
 
     def __init__(self, base: str, fault: str | None) -> None:
         url = urlparse(base)
@@ -1294,6 +1327,10 @@ class Relay:
         self.port = url.port or (443 if self.secure else 80)
         self.prefix = url.path.rstrip("/")
         self.fault = fault
+        self.auth: dict[str, str] = {}
+        key_file = os.environ.get("TAKTUS_CONNECT_KEY_FILE")
+        if key_file:
+            self.auth = {"Authorization": "Bearer " + Path(key_file).read_text().strip()}
 
     def _connection(self, timeout: float | None) -> http.client.HTTPConnection:
         if self.secure:
@@ -1314,7 +1351,7 @@ class Relay:
                     "POST",
                     self.prefix + "/next",
                     body=b"{}",
-                    headers={"Content-Type": "application/json"},
+                    headers={"Content-Type": "application/json", **self.auth},
                 )
                 response = connection.getresponse()
                 data = response.read()
@@ -1354,7 +1391,7 @@ class Relay:
         try:
             answer = http.client.HTTPResponse(_AnswerPipe(reader))  # type: ignore[arg-type]
             answer.begin()
-            headers = {"Relay-Status": str(answer.status)}
+            headers = {"Relay-Status": str(answer.status), **self.auth}
             content_type = answer.getheader("Content-Type")
             if content_type:
                 headers["Content-Type"] = content_type

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from images import connector_names
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "images.yml"
@@ -50,10 +51,28 @@ def test_the_control_plane_the_backup_and_each_worker_get_an_image_tagged_with_a
     build = workflow()["jobs"]["build"]
     dockerfiles = {entry["dockerfile"] for entry in build["strategy"]["matrix"]["include"]}
     shipped = {str(p.relative_to(ROOT)) for p in (ROOT / "workers").glob("*/Dockerfile")}
-    assert dockerfiles == {"deploy/docker/Dockerfile", "deploy/backup/Dockerfile", *shipped}
+    assert dockerfiles == {
+        "deploy/docker/Dockerfile",
+        "deploy/backup/Dockerfile",
+        "connectors/Dockerfile",
+        *shipped,
+    }
     push = next(s for s in build["steps"] if s.get("uses", "").startswith("docker/build-push"))
     assert push["with"]["tags"].endswith(":${{ needs.registry.outputs.version }}")
     assert "latest" not in push["with"]["tags"]
+
+
+def test_each_connector_gets_an_image_of_its_own_named_as_the_chart_pulls_it() -> None:
+    """Every connector under connectors/ is released as its own image, its stage of
+    connectors/Dockerfile, named `taktus-connector-<name>` (ADR-0158, issue #339)."""
+    build = workflow()["jobs"]["build"]
+    imaged = [e for e in build["strategy"]["matrix"]["include"] if "target" in e]
+    assert {e["dockerfile"] for e in imaged} == {"connectors/Dockerfile"}
+    assert {e["target"]: e["name"] for e in imaged} == {
+        name: f"taktus-connector-{name}" for name in connector_names()
+    }
+    push = next(s for s in build["steps"] if s.get("uses", "").startswith("docker/build-push"))
+    assert push["with"]["target"] == "${{ matrix.target }}"
 
 
 # --- the coding worker's agent, pinned (#116) ---------------------------------------------------

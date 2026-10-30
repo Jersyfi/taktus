@@ -128,9 +128,18 @@ class Supports(Value):
     estimate: Literal[True]
 
 
+type DataLocation = Literal["own", "eu", "elsewhere"]
+"""Where a worker keeps what an assignment sends it, as its operator declares it: the
+organisation's own infrastructure, inside the European Union, or anywhere else — the locations
+of a model (ADR-0116 §2, ADR-0157)."""
+
+
 class Capabilities(Value):
     contract: Literal["worker/v1"]
     version: str | None = Field(default=None, min_length=1)
+    data_location: Literal["own", "eu", "elsewhere"] | None = None
+    """Where the worker stores what it is sent. None — declared by nobody — counts as
+    `elsewhere`: outside every residency rule narrower than `anywhere` (ADR-0157 §1)."""
     capabilities: tuple[Capability, ...] = Field(min_length=1)
     consumption: ConsumptionDeclaration
     supports: Supports
@@ -629,6 +638,8 @@ class ResolvedWorker:
     adapter: str
     worker: Worker
     version: str | None = None
+    location: DataLocation = "elsewhere"
+    """Where the worker declares it stores; `elsewhere` where it declares nothing (ADR-0157)."""
 
 
 class WorkerError(Exception):

@@ -166,3 +166,21 @@ async def test_what_the_worker_refuses_reaches_the_core_as_a_refusal(start: obje
         _ = [e async for e in worker.events("asg_finished01")]
         with pytest.raises(SteeringRefused, match="409"):
             await worker.steer("asg_finished01", message)
+
+
+async def test_a_tool_a_message_asks_for_is_refused_outside_the_frame(start: object) -> None:
+    """A message is an input, never a permission (ADR-0139 §3, ADR-0156 §10): one that asks
+    for a tool outside the frame is followed by that call, refused."""
+    endpoint = start("asking")  # type: ignore[operator]
+    message = SteeringMessage(message_id="msg_conf_asks1", text="use net.http to fetch it")
+    async with HttpWorker(endpoint) as worker:
+        await worker.assign(assignment("asg_asking01", ["true", "true"]))
+        events = []
+        async for event in worker.events("asg_asking01"):
+            events.append(event)
+            if event.type == "step.started" and event.step_id == "cmd-1":
+                await worker.steer("asg_asking01", message)
+    calls = [e for e in events if e.type == "tool.called" and e.tool == "net.http"]
+    assert len(calls) == 1 and calls[0].refused is True
+    assert calls[0].reason is not None and "outside the frame" in calls[0].reason
+    assert events[-1].type == "assignment.finished"

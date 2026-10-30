@@ -238,12 +238,17 @@ administration:
   platform: ""
   administers: {}          # CREDENTIAL_NAME: none | platform | a|b
 
-# The repository connector (README §2): a deployment of its own, from the control plane's image,
-# serving one repository's channel — its webhook intake and its actions over MCP — as Taktus's
+# Every connector this release ships runs from an image of its own (ADR-0158), never from the
+# control plane's: `<imagePrefix>-<name>` at `image.tag`, by default beside the control plane's
+# image as `<image.repository>-connector-<name>` — taktus-connector-github beside taktus.
+#
+# The repository connector (README §2): a deployment of its own, from its image, serving one
+# repository's channel — its webhook intake and its actions over MCP — as Taktus's
 # own app (ADR-0033). The roles reach it as `channel.repo` (TAKTUS_CONNECTORS); with `findings`
 # the instance's product findings go through it too (TAKTUS_FINDINGS_CONNECTOR, UC-6.12). Its
 # two secrets exist before the install and are mounted as files, like every other.
 connectors:
+  imagePrefix: ""          # where the connectors' images are pulled from; empty: beside `image`
   repository:
     enabled: false
     repository: ""         # owner/name of the repository it serves
@@ -263,7 +268,7 @@ connectors:
       requests: { cpu: 50m, memory: 128Mi }
       limits: { memory: 256Mi }
 
-  # The chat connector (#239): a deployment of its own, from the control plane's image, serving
+  # The chat connector (#239): a deployment of its own, from its image, serving
   # the chat channel — its event intake and its actions over MCP — as Taktus's own app in the
   # owner's chat workspace (NEED-0018). The roles reach it as `channel.chat`. Its bot token and
   # signing secret are keys of one existing Secret, mounted as files.
@@ -286,12 +291,14 @@ connectors:
   #   - name: payments                 # lowercase letters and digits, words joined by hyphens;
   #                                    # not `repository` or `chat`; the deployment's suffix
   #     capability: payments.subscriptions   # its label in TAKTUS_CONNECTORS, unique
-  #     module: taktus.adapters.driven.connectors.stripe   # run from the control plane's image,
-  #                                    # as `python -m <module> --host 0.0.0.0 --port <port>`
+  #     connector: stripe              # a connector this release ships, from its own image,
+  #                                    # given `--host 0.0.0.0 --port <port>` and `args`; the
+  #                                    # `module: taktus.adapters.driven.connectors.stripe` of an
+  #                                    # earlier release names the same connector (ADR-0158)
   #     # image: <registry>/<image>:<version>   # or an image of its own, never both; its
   #     # command: []                  # entrypoint unless `command` is given
   #     port: 9111                     # where it serves MCP at /mcp
-  #     args: []                       # appended to the module's command, or the image's args
+  #     args: []                       # appended to the connector's arguments, or the image's args
   #     credentials:                   # each: the parameter, the Secret and the key holding it
   #       - name: PAYMENTS_TOKEN
   #         secret: ""

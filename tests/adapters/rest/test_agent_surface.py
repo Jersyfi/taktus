@@ -11,6 +11,7 @@ asked; every call is a ledger entry `agent.<tool>` with the person as actor.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import httpx
@@ -336,3 +337,33 @@ async def test_the_person_creates_their_agents_key_with_their_account_key(
     assert "answer_decision" in await tools(http, base, body["agent_key"])
     as_agent = {"Authorization": f"Bearer {body['agent_key']}"}
     is_problem(await http.post(f"{base}/identity/agent-key", headers=as_agent), 401)
+
+
+async def test_a_running_step_is_sent_a_message_by_the_agent_only_with_the_right(
+    client: Client_,
+) -> None:
+    """ADR-0156 §7: `steer_step` needs the right `agent.steer`; without it the call is refused,
+    naming the right, and the engine is never asked."""
+    http, given, base = client
+    await a_run(given, "run_1")
+    key = await agent(given, "idn_ada", "ops")
+    assert "steer_step" not in await tools(http, base, key)
+    refused = await call(http, base, key, "steer_step", run_id="run_1", step_id="a", text="go")
+    assert refused["error"] and "agent.steer" in json.dumps(refused)
+    assert given.takeovers.steered == []
+
+    await given.identities.grant(TENANT, "ops", Right.STEER, by="idn_admin")
+    assert "steer_step" in await tools(http, base, key)
+    sent = await call(http, base, key, "steer_step", run_id="run_1", step_id="a", text="go")
+    assert sent == {
+        "error": False,
+        "message": "msg_0001",
+        "run_id": "run_1",
+        "step_id": "a",
+        "state": "asked",
+    }
+    (command,) = given.takeovers.steered
+    assert (command.text, command.actor, command.tenant) == ("go", "idn_ada", TENANT)
+    recorded = await entries(given)
+    assert ("agent.steer_step", "served", "idn_ada") in recorded
+    assert ("agent.steer_step", "refused", "idn_ada") in recorded

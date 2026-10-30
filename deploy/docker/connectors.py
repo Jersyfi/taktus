@@ -8,12 +8,16 @@ the chart's `connectors.others` (deploy/k8s/README.md §2), checked by the same 
 
     {"connectors": [
       {"name": "payments", "capability": "payments.subscriptions",
-       "module": "taktus.adapters.driven.connectors.stripe", "port": 9111,
+       "connector": "stripe", "port": 9111,
        "credentials": [{"name": "PAYMENTS_TOKEN", "file": "payments_token"}]}
     ]}
 
-Each connector becomes the service `connector-<name>`: from the control plane's image running
-its module, or from an image of its own. It publishes no port; the `taktus` service reaches it,
+Each connector becomes the service `connector-<name>`: a connector this release ships, from its
+own image — `taktus-connector-<connector>:local`, built from this checkout's
+`connectors/Dockerfile` as `compose.yml` builds the control plane's (ADR-0158) — or from an image
+of its own. The `module` an earlier release ran from the control plane's image,
+`taktus.adapters.driven.connectors.<connector>`, names the same connector, so that an operator's
+list keeps working across the upgrade. It publishes no port; the `taktus` service reaches it,
 and `TAKTUS_CONNECTORS` on that service names it by its capability. A credential is a file the
 operator writes under `secrets/`, mounted as a compose secret, its path in
 `TAKTUS_CREDENTIAL_<NAME>_FILE` (CREDENTIALS.md). Its value never passes through this program.
@@ -36,8 +40,14 @@ HERE = Path(__file__).resolve().parent
 LIST = HERE / "connectors.json"
 OUTPUT = HERE / "compose.connectors.yml"
 SETTINGS = HERE / "taktus.env"
-IMAGE = "taktus:local"
-"""The control plane's image as `compose.yml` builds it."""
+IMAGE = "taktus-connector-{name}:local"
+"""A shipped connector's image as the written file builds it, from this checkout."""
+SHIPPED = HERE.parent.parent / "connectors" / "taktus_connectors"
+"""Where the connectors this release ships are, each a directory that runs as a module."""
+MODULE = re.compile(
+    r"^(taktus\.adapters\.driven\.connectors|taktus_connectors)\.([a-z][a-z0-9_]*)$"
+)
+"""The module of a shipped connector as an earlier release named it."""
 MARK = "taktus.connectors"
 """What the written file carries, so that only a file of this program's is ever removed."""
 
@@ -86,11 +96,14 @@ def _check(entries: list[Any]) -> None:
                 f"connectors {name}: capability {label!r} is another connector's label already"
             )
         labels.append(label)
-        module, image = entry.get("module"), entry.get("image")
-        if module and image:
-            raise Refused(f"connectors {name}: give module or image, not both")
-        if not (module or image):
-            raise Refused(f"connectors {name}: module or image is required")
+        given = [k for k in ("connector", "module", "image") if entry.get(k)]
+        if len(given) > 1:
+            raise Refused(f"connectors {name}: give one of connector, module or image, not both")
+        if not given:
+            raise Refused(f"connectors {name}: connector, module or image is required")
+        image = entry.get("image")
+        if not image:
+            shipped(entry)
         if image:
             tag = str(image).rpartition(":")[2] if ":" in str(image).rpartition("/")[2] else ""
             if not tag:
@@ -125,6 +138,27 @@ def _check(entries: list[Any]) -> None:
                 )
 
 
+def shipped(entry: dict[str, Any]) -> str:
+    """The shipped connector an entry names: its `connector`, or the `module` of an earlier
+    release. Refused when this checkout ships no such connector."""
+    connector = entry.get("connector")
+    if not connector:
+        found = MODULE.match(str(entry.get("module")))
+        if found is None:
+            raise Refused(
+                f"connectors {entry.get('name')}: module {entry.get('module')!r} is no shipped "
+                "connector's; give `connector: <name>`, or an image of its own"
+            )
+        connector = found.group(2)
+    known = sorted(p.parent.name for p in SHIPPED.glob("*/__main__.py"))
+    if connector not in known:
+        raise Refused(
+            f"connectors {entry.get('name')}: {connector!r} is no connector this release ships; "
+            f"it ships {', '.join(known)}"
+        )
+    return str(connector)
+
+
 def _secret(name: str, parameter: str) -> str:
     return f"connector_{name.replace('-', '_')}_{parameter.lower()}"
 
@@ -140,12 +174,15 @@ def compose(entries: list[dict[str, Any]]) -> dict[str, Any]:
         service = f"connector-{name}"
         args = list(entry.get("args", []))
         definition: dict[str, Any] = {}
-        if entry.get("module"):
-            definition["image"] = IMAGE
+        if not entry.get("image"):
+            connector = shipped(entry)
+            definition["image"] = IMAGE.format(name=connector)
+            definition["build"] = {
+                "context": "../..",
+                "dockerfile": "connectors/Dockerfile",
+                "target": connector,
+            }
             definition["command"] = [
-                "python",
-                "-m",
-                entry["module"],
                 "--host",
                 "0.0.0.0",  # noqa: S104 — inside its container, reached by the compose network
                 "--port",

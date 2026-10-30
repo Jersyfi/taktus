@@ -17,8 +17,8 @@ from datetime import UTC, datetime
 from components.run.test_participants import CHANNEL, QUESTION_ID, Asked, after, answer, ask
 from fakes import FakeClock
 from fakes.identity import directory
+from taktus_connectors.mail import intake as mail_intake
 
-from taktus.adapters.driven.connectors.mail import intake as mail_intake
 from taktus.adapters.driven.memory import MemoryRepository
 from taktus.components.command.application.service import (
     IntakeOutcome,

@@ -281,6 +281,16 @@ class Anchoring(Value):
         return self.verdict == PROCEED
 
 
+class ReceivedMessage(Value):
+    """A person's message the step's worker received at a boundary (ADR-0156 §9): an input of
+    the step, named by its identifier and its text's digest — never the text, never the
+    person, whom the ledger entry of the ask names."""
+
+    message_id: str = Field(pattern=r"^msg_[A-Za-z0-9_-]{4,}$")
+    digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    received_at: datetime
+
+
 class StepRun(Value):
     step_id: StepId
     index: int = Field(ge=0)
@@ -332,6 +342,9 @@ class StepRun(Value):
     anchoring: Anchoring | None = None
     """The decision requests the step raised because an anchor names its act; None for a step
     no anchor named (ADR-0042)."""
+    messages: tuple[ReceivedMessage, ...] = ()
+    """The persons' messages the step's worker received, in the order it received them: inputs
+    of the step (ADR-0156 §9)."""
 
     def to(self, state: StepState, **changes: Any) -> StepRun:
         if (self.state, state) not in STEP_TRANSITIONS:
@@ -406,6 +419,14 @@ class Run(Value):
     """Purposes bound to one configured model for this run alone, `{purpose: model.<member>}`:
     a model trial's case run (ADR-0149 §1). A bound purpose's chain is that model and no
     other; every other purpose routes as configured. Empty for every other run."""
+    skills: Mapping[str, str] = Field(default_factory=dict)
+    """The version of each skill its steps use, `{name: version}`, pinned when the run was
+    created: the version in production, or the one an evaluation's side binds (ADR-0162 §5). A
+    skill with no version pinned is not handed over."""
+    profile: str | None = Field(default=None, min_length=1)
+    """The role profile of a shared agent the run serves, `<agent>:<role>@<version>`, or
+    `<agent>@<core>/<agent>:<role>@<version>` under a core not yet active: its brief is handed
+    to every step on a model or a worker (ADR-0163 §5). None for every other run."""
     state: RunState = RunState.PLANNED
     cause: Cause | None = None
     reason: str | None = None

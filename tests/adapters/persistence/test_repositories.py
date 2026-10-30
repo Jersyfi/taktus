@@ -8,9 +8,16 @@ import pytest
 
 from adapters.persistence import samples
 from adapters.persistence.conftest import Backend
-from taktus.components.catalog.domain.model import AdapterMaturity
+from taktus.components.catalog.domain.model import (
+    AdapterMaturity,
+    AgentCore,
+    RoleProfile,
+    SkillOwnership,
+    SkillPolicy,
+    SkillVersion,
+)
 from taktus.components.command.domain.model import IntakeEvent
-from taktus.components.decision.domain.model import RegisterEntry, Request
+from taktus.components.decision.domain.model import DecisionRule, RegisterEntry, Request
 from taktus.components.governance.domain.model import (
     AnchorConfiguration,
     CaseAnswer,
@@ -35,6 +42,7 @@ from taktus.components.process.domain.model import (
     Process,
     ProcessVersion,
     TriggerState,
+    ValueStream,
 )
 from taktus.components.reporting.domain.model import Corridor, OwnerChannel, Report
 from taktus.components.run.domain.model import (
@@ -66,6 +74,7 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (AnchorConfiguration, samples.anchor_configuration),
     (Request, samples.decision_request),
     (RegisterEntry, samples.register_entry),
+    (DecisionRule, samples.decision_rule),
     (OwnerChannel, samples.owner_channel),
     (Report, samples.report),
     (Incident, samples.incident),
@@ -79,10 +88,16 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (CaseAnswer, samples.case_answer),
     (Deadline, samples.deadline),
     (StagePlan, samples.stage_plan),
+    (ValueStream, samples.value_stream),
     (WorkingTime, samples.working_time),
     (AdapterStop, samples.adapter_stop),
     (Evaluation, samples.evaluation),
     (CorrectedCase, samples.corrected_case),
+    (SkillVersion, samples.skill_version),
+    (SkillOwnership, samples.skill_ownership),
+    (SkillPolicy, samples.skill_policy),
+    (AgentCore, samples.agent_core),
+    (RoleProfile, samples.role_profile),
 ]
 
 

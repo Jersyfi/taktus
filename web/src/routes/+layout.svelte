@@ -51,6 +51,8 @@
 				{/if}
 			{/each}
 		</nav>
+		<a class="requests" href="#/catalogue" aria-current={page.route.id === '/catalogue' ? 'page' : undefined}>Ask for</a>
+		<a class="requests" href="#/streams" aria-current={page.route.id?.startsWith('/streams') ? 'page' : undefined}>Streams</a>
 		<a class="requests" href="#/register" aria-current={page.route.id === '/register' ? 'page' : undefined}>What acts</a>
 		<a class="requests" href="#/gallery" aria-current={page.route.id === '/gallery' ? 'page' : undefined}>Gallery</a>
 		<a class="requests" href="#/me" aria-current={page.route.id === '/me' ? 'page' : undefined}>Yours</a>

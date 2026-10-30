@@ -74,6 +74,13 @@ the control plane records it in the provenance of every result the worker produc
 (`contracts/shared/v1/Provenance.json`, ADR-0021), so that a result can later be traced to the
 worker version that made it.
 
+`data_location` is optional: where the worker keeps, or lets a service keep, what an assignment
+sends it. `own` is the organisation's own infrastructure, `eu` is inside the European Union,
+`elsewhere` is anywhere else. A worker that declares nothing counts as `elsewhere`. The control
+plane hands a step only to a worker whose location the tenant's residency rule admits, for the
+step's data class; a worker outside it is passed over for the next one (ADR-0157). The operator
+declares the location; the control plane does not verify it.
+
 `consumption.kinds` is any of `currency`, `quota`, `compute`. Each kind brings its own detail:
 `quota` needs `window_seconds` and `unit`, `compute` needs `resource_classes`, `currency` needs
 `currencies`. A subscription-backed worker reports `quota` and describes its window; a training
@@ -476,7 +483,10 @@ uv run taktusctl conformance run --contract worker/v1 --listen 127.0.0.1:9100
 
 The suite then serves the binding at `http://127.0.0.1:9100/relay` and waits for the worker to
 connect. Check W-21 holds the worker to the binding itself. The binding names no
-authentication of its own yet: a host of the control plane decides it when it is built (#625).
+authentication of its own. The control plane's host, on the `api` role at
+`<prefix>/workers/<name>/relay`, admits a worker only with its connect key in
+`Authorization: Bearer`; the reference worker presents the content of the file
+`TAKTUS_CONNECT_KEY_FILE` names (ADR-0156).
 
 ## 9. Two proof cases
 

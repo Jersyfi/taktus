@@ -55,6 +55,10 @@ class ExecutionKind(StrEnum):
     CONTAINER = "container"
     """A unit started per job in a container with limits, a memory-backed credential store
     and a network that reaches the allowed hosts and nothing else."""
+    CONNECTED = "connected"
+    """A worker that connects outbound to the `api` role of any instance and fetches its
+    requests from there, as a worker in a network that admits no inbound connection does
+    (ADR-0156). It has no endpoint; it authenticates with its connect key (`connect.key`)."""
     CLUSTER = "cluster"
     """A unit started per job as a Job in a cluster's execution namespace, with limits,
     credentials from a Secret that lives as long as the job, and the instance's egress gateway
@@ -156,6 +160,10 @@ last segment of the worker's adapter identifier, `worker.<name>`, and a DNS labe
 
 WORKER_NAME_LENGTH = 40
 
+CONNECT_KEY = "connect.key"
+"""The configuration key of a connected worker's connect key: the file `TAKTUS_CONNECT_KEY_FILE`,
+or `TAKTUS_WORKER_<NAME>_CONNECT_KEY_FILE`, names it. The worker's alone (ADR-0156 §3)."""
+
 CREDENTIAL_PREFIX = "credential."
 """The configuration keys a worker's credentials are supplied under (CREDENTIALS.md)."""
 
@@ -173,11 +181,13 @@ class WorkerConfiguration:
     Every key `k` is first read as `worker.<name>.k` — the variable
     `TAKTUS_WORKER_<NAME>_K` — and, where the worker sets nothing, as the instance's own `k`:
     the execution namespace, the gateway and the limits are shared unless a worker sets
-    its own. Two keys have no such fallback. The endpoint (`worker`, read as
+    its own. Three keys have no such fallback. The endpoint (`worker`, read as
     `worker.<name>.endpoint`) is the worker's alone, because two workers at one endpoint are one
     worker. A credential (`credential.<name>`) is the worker's alone, because each launched
     worker receives only its own credentials: two workers that reference the same credential
-    name receive the value configured for each of them, and neither sees the other's."""
+    name receive the value configured for each of them, and neither sees the other's. A
+    connected worker's connect key (`connect.key`) is its own alone, so that one worker's key
+    never admits another (ADR-0156 §3)."""
 
     def __init__(self, configuration: Configuration, name: str) -> None:
         self._configuration = configuration
@@ -189,7 +199,7 @@ class WorkerConfiguration:
 
     @staticmethod
     def _alone(key: str) -> bool:
-        return key == "worker" or key.startswith(CREDENTIAL_PREFIX)
+        return key in ("worker", CONNECT_KEY) or key.startswith(CREDENTIAL_PREFIX)
 
     def _where(self, key: str) -> str:
         """The key the value under `key` is read from for this worker: its own where it is set
@@ -673,7 +683,7 @@ def load_execution(configuration: Configuration) -> ExecutionSettings:
         reader.choice("execution", "endpoint", tuple(k.value for k in ExecutionKind))
     )
     unit = reader.text("execution.unit", "") or None
-    if kind is not ExecutionKind.ENDPOINT and unit is None:
+    if kind not in (ExecutionKind.ENDPOINT, ExecutionKind.CONNECTED) and unit is None:
         what = "a command line" if kind is ExecutionKind.PROCESS else "an image reference"
         raise ConfigurationError(
             configuration.name("execution.unit"),
@@ -723,7 +733,14 @@ def load_workers(configuration: Configuration) -> tuple[WorkerSettings, ...]:
     reader = _Reader(configuration)
     names = reader.names("workers", ())
     if not names:
-        return (WorkerSettings(name=None, execution=load_execution(configuration)),)
+        execution = load_execution(configuration)
+        if execution.kind is ExecutionKind.CONNECTED and configuration.source(CONNECT_KEY) is None:
+            raise ConfigurationError(
+                configuration.name(CONNECT_KEY) + "_FILE",
+                "is not set; the worker connects outbound and is admitted only with its connect "
+                "key (ADR-0156 §3)",
+            )
+        return (WorkerSettings(name=None, execution=execution),)
     setting = configuration.name("workers")
     workers: list[WorkerSettings] = []
     for name in names:
@@ -735,6 +752,12 @@ def load_workers(configuration: Configuration) -> tuple[WorkerSettings, ...]:
             )
         scoped = WorkerConfiguration(configuration, name)
         execution = load_execution(scoped)
+        if execution.kind is ExecutionKind.CONNECTED and scoped.source(CONNECT_KEY) is None:
+            raise ConfigurationError(
+                scoped.name(CONNECT_KEY) + "_FILE",
+                f"is not set; the worker {name} of {setting} connects outbound and is admitted "
+                "only with its connect key (ADR-0156 §3)",
+            )
         if execution.kind is ExecutionKind.ENDPOINT and scoped.get("worker") is None:
             raise ConfigurationError(
                 scoped.name("worker"),

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A fake metrics store that answers the query API, and a fake service to check.
 
-The metrics connector under `src/taktus/adapters/driven/connectors/prometheus/` asks
+The metrics connector under `connectors/taktus_connectors/prometheus/` asks
 `GET /api/v1/query` and `GET /api/v1/query_range`. This fake answers both in the API's shapes,
 with the API's statuses for its faults, over a fixed set of series held in memory. It exists so
 that the connector can be exercised in CI without a network, an account or a secret.

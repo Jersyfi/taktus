@@ -22,6 +22,11 @@ runner claims the job before then. The person's hand-back is written under that 
 as a runner's write is, and releases the job. A lease that ends without a hand-back makes the
 job claimable again.
 
+A person's message to the step a runner is executing is *asked* on the run's job the same way
+(ADR-0156 §7): only while a runner holds it. The runner reads the messages with each renewal,
+hands each to its worker once, and marks it *handed*, so that neither it nor the next runner
+hands it again. A message stays on its job until the job is completed.
+
 Every call happens inside a unit of work of the same persistence and names its tenant
 (`ports/persistence.py`); the claim and the state it changes commit with the transaction. Two
 instances claiming at the same moment never receive the same job: that is the adapter's promise,
@@ -71,6 +76,19 @@ class TakeoverAsked(Value):
     holder: str = Field(min_length=1)
     """The claimant the claim passes to: it names the take-over, never a person."""
     step_id: str = Field(min_length=1)
+
+
+class AskedMessage(Value):
+    """A person's message asked on a run's job (ADR-0156 §7): which step it is for, its text's
+    digest, and the text itself, which the job carries to whichever runner holds it and drops
+    with the job. The ledger names the text by its digest only."""
+
+    message_id: str = Field(pattern=r"^msg_[A-Za-z0-9_-]{4,}$")
+    step_id: str = Field(min_length=1)
+    digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    text: str = Field(min_length=1, max_length=8000)
+    handed: bool = False
+    """The runner holding the job handed it to the worker, or found it could not."""
 
 
 class Queue(Protocol):
@@ -139,4 +157,17 @@ class Queue(Protocol):
         any number of times keeps its attempts. Called inside the transaction that
         fenced `claim`. False, and nothing changed, when `claim` is not the job's current
         claim or `holder` is not the take-over asked."""
+        ...
+
+    async def ask_message(self, tenant: Tenant, run_id: str, message: AskedMessage) -> bool:
+        """Place a message on the job that executes the run. True while a runner holds the job
+        and no take-over holds it; False, and nothing placed, otherwise."""
+        ...
+
+    async def messages_asked(self, tenant: Tenant, job_id: str) -> Sequence[AskedMessage]:
+        """Every message placed on the job, handed or not, in the order they were asked."""
+        ...
+
+    async def message_handed(self, tenant: Tenant, job_id: str, message_id: str) -> None:
+        """Mark the message handed; it is never handed again. A no-op for an unknown one."""
         ...

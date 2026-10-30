@@ -35,6 +35,7 @@ from sqlalchemy import (
     Identity,
     Index,
     Integer,
+    LargeBinary,
     MetaData,
     PrimaryKeyConstraint,
     Table,
@@ -218,6 +219,18 @@ register_entry = Table(
     PrimaryKeyConstraint("tenant", "id"),
 )
 
+decision_rule = Table(
+    "decision_rule",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("status", Text, nullable=False),
+    _at("created_at"),
+    Column("rule", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per rule from precedent a tenant was proposed (ADR-0161)."""
+
 owner_channel = Table(
     "owner_channel",
     metadata,
@@ -266,6 +279,64 @@ evaluation = Table(
     Column("evaluation", JSONB, nullable=False),
     PrimaryKeyConstraint("tenant", "id"),
     Index("evaluation_process", "tenant", "process_id"),
+)
+
+# --- skills and shared agents (ADR-0162, ADR-0163) ----------------------------------------------
+
+skill_version = Table(
+    "skill_version",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("name", Text, nullable=False),
+    Column("stage", Text, nullable=False),
+    _at("registered_at"),
+    Column("skill", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+    Index("skill_version_name", "tenant", "name"),
+)
+
+skill_ownership = Table(
+    "skill_ownership",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("owner", Text, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""Whose own use a skill version was drawn from, apart from its scores (ADR-0162 §1)."""
+
+skill_policy = Table(
+    "skill_policy",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("policy", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+
+agent_core = Table(
+    "agent_core",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("agent", Text, nullable=False),
+    Column("state", Text, nullable=False),
+    _at("proposed_at"),
+    Column("core", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+
+role_profile = Table(
+    "role_profile",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("agent", Text, nullable=False),
+    Column("role", Text, nullable=False),
+    _at("set_at"),
+    Column("profile", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
 )
 
 corrected_case = Table(
@@ -340,6 +411,19 @@ stage_plan = Table(
     PrimaryKeyConstraint("tenant", "id"),
 )
 """One row per tenant that declared its stages (ADR-0137). A stage's state is the ledger's."""
+
+value_stream = Table(
+    "value_stream",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),  # <stream>@<revision>
+    Column("stream", Text, nullable=False),
+    Column("revision", Integer, nullable=False),
+    _at("declared_at"),
+    Column("definition", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per revision of a value stream (ADR-0159 §4); a revision is never overwritten."""
 
 deadline = Table(
     "deadline",
@@ -624,6 +708,8 @@ run = Table(
     Column("actions", JSONB, nullable=False, server_default=text("'{}'::jsonb")),  # ADR-0039
     Column("deadlines", JSONB),  # the copy of its version's deadlines (ADR-0133)
     Column("bindings", JSONB),  # purposes bound to one model for this run alone (ADR-0149)
+    Column("skills", JSONB),  # the skill versions the run pinned (ADR-0162)
+    Column("profile", Text),  # the role profile of a shared agent it serves (ADR-0163)
     Column("state", Text, nullable=False),
     Column("cause", Text),
     Column("reason", Text),
@@ -660,6 +746,7 @@ step_run = Table(
     Column("confirmed_by", Text),  # ADR-0039
     Column("block", JSONB),  # ADR-0043
     Column("anchoring", JSONB),  # ADR-0042
+    Column("messages", JSONB),  # ADR-0156
     PrimaryKeyConstraint("tenant", "run_id", "step_id"),
     ForeignKeyConstraint(
         ["tenant", "run_id"], ["run.tenant", "run.id"], ondelete="CASCADE", name="step_run_run"
@@ -808,6 +895,7 @@ job = Table(
     Column("takeover_by", Text),  # ADR-0128
     Column("takeover_step", Text),
     _at("held_until", nullable=True),
+    Column("messages", JSONB),  # ADR-0156
     PrimaryKeyConstraint("tenant", "id"),
     Index(
         "job_available",
@@ -828,6 +916,39 @@ outbox = Table(
     _at("published_at", nullable=True),
     PrimaryKeyConstraint("tenant", "id"),
     Index("outbox_unpublished", "tenant", "id", postgresql_where=text("published_at IS NULL")),
+)
+
+# The instance's own, not a tenant's (ADR-0156 §1): the outbound binding's requests in flight.
+# Row security admits only a transaction that sets `RELAY_SETTING`.
+worker_relay = Table(
+    "worker_relay",
+    metadata,
+    Column("request_id", Text, primary_key=True),
+    Column("worker", Text, nullable=False),
+    Column("envelope", JSONB, nullable=False),
+    _at("created_at"),
+    _at("taken_at", nullable=True),
+    Column("status", Integer),
+    Column("content_type", Text),
+    Column("ended", Boolean, nullable=False, server_default=text("false")),
+    Column("answers", Integer, nullable=False, server_default=text("0")),
+    Index(
+        "worker_relay_waiting", "worker", "created_at", postgresql_where=text("taken_at IS NULL")
+    ),
+)
+
+worker_relay_chunk = Table(
+    "worker_relay_chunk",
+    metadata,
+    Column(
+        "request_id",
+        Text,
+        ForeignKey("worker_relay.request_id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("seq", Integer, nullable=False),
+    Column("body", LargeBinary, nullable=False),
+    PrimaryKeyConstraint("request_id", "seq"),
 )
 
 # Every table the application touches, for the grants and the row-level security policies.
@@ -862,3 +983,7 @@ REGISTRY_SETTING = "taktus.registry"
 """The session setting the registry's own policy reads (migration 0053, ADR-0104): `on`, and
 every row of `tenant` is visible for reading. Only the tenant store's `every` sets it, in a
 transaction of its own."""
+
+RELAY_SETTING = "taktus.relay"
+"""The session setting the relay's own policy reads (migration 0087, ADR-0156): `on`, and the
+outbound binding's tables are visible. Only the relay store sets it, in transactions of its own."""

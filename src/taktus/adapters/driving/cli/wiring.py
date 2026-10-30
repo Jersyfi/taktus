@@ -8,17 +8,23 @@ adapter or the composition root (docs/architecture/project-structure.md §3).
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from taktus.components.accounting.application.service import (
     CostOfRunHandler,
     SpendHandler,
     TaktRateHandler,
 )
-from taktus.components.catalog.application.service import RunConformanceHandler
+from taktus.components.catalog.application.service import (
+    AgentCatalog,
+    RunConformanceHandler,
+    SkillCatalog,
+)
+from taktus.components.catalog.domain.model import InvalidSkill, Round, SkillVersion
 from taktus.components.command.application.service import CommissionPlanHandler
 from taktus.components.governance.application.service import (
     AnchorsInForce,
@@ -38,7 +44,7 @@ from taktus.components.process.application.service.deactivate import DeactivateP
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
-from taktus.components.process.domain.model import ProcessVersion
+from taktus.components.process.domain.model import Evaluation, ProcessVersion
 from taktus.components.reporting.application.service import (
     Alerts,
     BrokenInterfaces,
@@ -94,9 +100,24 @@ class CatalogueEntry:
     """The digest of the manifest it serves the vendor's server under; None without one."""
 
 
+@dataclass(frozen=True)
+class ShippedConnector:
+    """One connector the release ships, as `taktusctl conformance list` prints it by capability:
+    its name, what it serves, and the image it is shipped as — None for one that runs inside
+    the control plane (ADR-0158)."""
+
+    name: str
+    capabilities: tuple[str, ...]
+    image: str | None
+
+
 class Catalogue(Protocol):
     async def entries(self, tenant: Tenant) -> list[CatalogueEntry]:
         """Every adapter the instance is configured with, with its maturity."""
+        ...
+
+    def shipped(self) -> list[ShippedConnector]:
+        """Every connector the release ships, configured here or not."""
         ...
 
 
@@ -201,6 +222,56 @@ class Services:
     stages: Stages | None = None
     """The tenant's introduction in stages: declared, shown and opened by a person
     (`taktusctl stage`, ADR-0137)."""
+    skills: SkillActs | None = None
+    """The skill lifecycle: registered, evaluated, approved and shown (`taktusctl skill`,
+    ADR-0162)."""
+    agents: AgentActs | None = None
+    """Shared agents with role profiles: called, their core evaluated (`taktusctl agent`,
+    ADR-0163)."""
+
+
+class SkillActs(Protocol):
+    """What `taktusctl skill` asks of the skill lifecycle the composition root wires."""
+
+    @property
+    def catalog(self) -> SkillCatalog: ...
+
+    async def register_directory(
+        self, tenant: str, root: Path, version: str, by: str | None = None
+    ) -> tuple[list[SkillVersion], list[tuple[Path, InvalidSkill]]]: ...
+
+    async def start_round(self, tenant: str, skill_id: str, key: str | None = None) -> Round: ...
+
+    async def approve(self, tenant: str, skill_id: str, by: str | None) -> SkillVersion: ...
+
+    async def produce(self, tenant: str, skill_id: str, by: str | None = None) -> SkillVersion: ...
+
+    async def takeover(self, tenant: str, process_id: str) -> list[dict[str, Any]]: ...
+
+    async def look(self, tenant: str) -> None: ...
+
+
+class AgentActs(Protocol):
+    """What `taktusctl agent` asks of the shared agents the composition root wires."""
+
+    @property
+    def catalog(self) -> AgentCatalog: ...
+
+    async def call(
+        self,
+        tenant: str,
+        agent: str,
+        *,
+        identity: str,
+        inputs: Mapping[str, Any] | None = None,
+        role: str | None = None,
+    ) -> Run: ...
+
+    async def evaluate_core(self, tenant: str, core_id: str) -> list[Evaluation]: ...
+
+    async def advance_core(self, tenant: str, core_id: str) -> list[str]: ...
+
+    async def usage(self, tenant: str, agent: str) -> list[dict[str, Any]]: ...
 
 
 @dataclass(frozen=True)

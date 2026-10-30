@@ -260,10 +260,10 @@ on open work, the introduction path in stages and a stop per adapter (#430, #431
 come with numbers, and a person new to Taktus reaches a first rehearsed process in ten minutes.
 
 ### `0.6.0` — level 4
-Autonomy level 4 · skill lifecycle, with a floor for the number of passed evaluations before a
+Autonomy level 4 (#645) · skill lifecycle, with a floor for the number of passed evaluations before a
 skill is approved automatically, its value set from the evaluation data of `0.5.0` and higher for
-`exact` steps (DEC-0028) · the catalogue, its connectors in images of their own (#339) ·
-role-based agents · recurring decisions become rules on proposal · the organisation seen as value
+`exact` steps (DEC-0028, #646) · the catalogue, its connectors in images of their own (#339) ·
+role-based agents (#647) · recurring decisions become rules on proposal (#648) · the organisation seen as value
 streams (#338) · what a person may ask Taktus for (#340) · the worker contract's outbound-only binding,
 steering and handover, before it freezes (#403) · a software factory as a worker (#411) · outward messages labelled, checked
 independently and held (#435)

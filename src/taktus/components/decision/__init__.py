@@ -12,5 +12,7 @@ What exists today (ADR-0042):
   their name (`application/query`, `domain/service/response_times.py`).
 
 Which acts are anchored is governance's; who holds a role is identity's, asked through
-`ports/deciders.py`. Rules derived from the register arrive with `0.6.0`.
+`ports/deciders.py`. Rules from precedent: a consistent pattern in the register is proposed as a
+rule, which answers its kind of request once a person adopted it (`application/service/rules.py`,
+ADR-0161).
 """

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A fake cloud billing API: the cost query of the AWS Cost Explorer API, in memory.
 
-The cloud billing connector under `src/taktus/adapters/driven/connectors/aws/` asks
+The cloud billing connector under `connectors/taktus_connectors/aws/` asks
 `POST /` with `X-Amz-Target: AWSInsightsIndexService.GetCostAndUsage`, signed with Signature
 Version 4. This fake answers it in the API's shapes, with the API's error types, over costs it
 holds in memory. It exists so that the connector and the cost watcher can be exercised in CI

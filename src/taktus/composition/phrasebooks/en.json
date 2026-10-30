@@ -87,6 +87,12 @@
   "as_text": "as text, exactly as you wrote it",
   "handed_back": "Handed back: step {step} of run {run} is done, as yours, and the run continues.",
   "takeover_not_done": "That cannot be taken over or handed back now; the run's page says why.",
+  "steer_words": [
+    "message"
+  ],
+  "steer_read": "I read this as: send step {step} of run {run} the message \"{text}\". Its worker receives it at its next boundary, and the steps after that take it as an input; it changes nothing the step may do or spend.",
+  "steered": "Sent as {message}: step {step} of run {run} receives it at its worker's next boundary.",
+  "steer_refused": "Not sent: {reason}.",
   "spend_words": [
     "spend"
   ],
@@ -100,5 +106,18 @@
   "spend_compared": "{step}: {left} | {right} | {result}",
   "not_priced": "not priced",
   "same_result": "same result",
-  "other_result": "different result"
+  "other_result": "different result",
+  "catalogue_words": [
+    "what can i ask for",
+    "catalogue"
+  ],
+  "start_words": [
+    "start"
+  ],
+  "catalogue_heading": "What you may ask Taktus for:",
+  "catalogue_line": "{name}: write \"{start}\"",
+  "catalogue_needs": "{name}: needs {inputs}; start it in the web app",
+  "start_read": "I read this as: start {process} ({name}) on your behalf.",
+  "started": "{process} started as run {run}.",
+  "start_not_done": "That cannot be started from here; the list in the web app says why."
 }

@@ -44,7 +44,10 @@ that depend on it; the others run on, and the run waits in `waiting_human` once 
 run. From level 3 a step runs only on an adapter at *verified* or above; one below is not run on
 it, the step is rejected with a finding that names it and the adapter, and the run halts with
 cause `maturity` (NTC-0051). A rehearsal is asked none of this (NTC-0079); a replay is asked
-the level, and not the maturity (ADR-0108).
+the level, and not the maturity (ADR-0108). At level 4 a step that failed with a failure an
+adapter classified as repeatable is healed within the frame (ADR-0160, `domain.service.healing`):
+`step.healed` records it, and the step is admitted again at once; past the frame the run
+escalates, and its reason says why it was not healed.
 
 A person's answer to a step proposed at level 1 or 2 is a decision on a proposal (ADR-0110):
 `released` as proposed, `corrected` — the work as the person released it, which the step then
@@ -146,6 +149,15 @@ fenced as a runner's write is: the step succeeds with method `human`, its proven
 what it read, and the job is released for the next runner. A runner that claims the job once
 the lease has passed gives the step back to its worker at the checkpoint
 (`step.takeover_lapsed`).
+
+A person can send a message to a worker step while it runs (ADR-0156). `steer` refuses it unless
+the step is a running worker step of a run a runner holds and its worker declares steering;
+otherwise it stores the text as an object, records `step.message_asked` with the person as actor
+and the text by digest, and places the message on the run's job. The runner holding the job
+hands it to the worker under its claim (`messages_asked`, `step.message_handed`). The worker's
+`message.received` is recorded as `step.message_received`, and the message joins the step run's
+inputs and its provenance. The message reaches the worker as the contract's closed
+`SteeringMessage`: nothing of the frame, the limits or the exactness class is read from it.
 """
 
 from __future__ import annotations
@@ -189,11 +201,13 @@ from taktus.components.run.domain.model import (
     ExtractRule,
     LlmWork,
     Message,
+    MessageRefused,
     MlWork,
     NoConnector,
     NoWorker,
     ParticipantWork,
     ReadyRule,
+    ReceivedMessage,
     RoadmapRule,
     RuleFailed,
     Run,
@@ -227,13 +241,14 @@ from taktus.components.run.domain.model import (
 )
 from taktus.components.run.domain.model.block import Account, Awaited, OpenBlock
 from taktus.components.run.domain.model.run import IN_FLIGHT, TAKEOVER_RESULT, TAKEOVER_STATE
-from taktus.components.run.domain.model.work import PREDICT
+from taktus.components.run.domain.model.work import PREDICT, SKILLS
 from taktus.components.run.domain.service import (
     anchoring,
     autonomy,
     blocked,
     checking,
     frame,
+    healing,
     interfaces,
     messages,
     open_work,
@@ -263,6 +278,7 @@ from taktus.components.run.ports import (
     ConnectorPool,
     Decisions,
     Draft,
+    Guidance,
     Levels,
     Maturities,
     MessageRules,
@@ -318,7 +334,7 @@ from taktus.ports.persistence import (
     UnitOfWork,
 )
 from taktus.ports.platform import Platform
-from taktus.ports.queue import RUN_EXECUTE, Claim, Job, Queue, TakeoverAsked
+from taktus.ports.queue import RUN_EXECUTE, AskedMessage, Claim, Job, Queue, TakeoverAsked
 from taktus.ports.telemetry import Span, Telemetry
 from taktus.ports.traces import Masking, Traces
 from taktus.ports.worker import (
@@ -334,10 +350,13 @@ from taktus.ports.worker import (
     Frame,
     HandoverRequest,
     Limits,
+    MessageReceived,
     ModelCalled,
     NoEstimator,
     Outcome,
     ResolvedWorker,
+    SteeringMessage,
+    SteeringRefused,
     StepBoundary,
     StopRequest,
     Task,
@@ -387,6 +406,16 @@ TAKEOVER_REFUSED = "step.takeover_refused"
 """The step ended another way before it stopped, and was not taken over. Changes no state."""
 TAKEOVER_LAPSED = "step.takeover_lapsed"
 """The take-over's lease passed without a hand-back: the step is back at its checkpoint."""
+MESSAGE_ASKED = "step.message_asked"
+"""A person sent a message to a running step (ADR-0156 §7): the person as actor, the text by
+digest. Changes no state."""
+MESSAGE_HANDED = "step.message_handed"
+"""The runner holding the run handed the message to the worker: `handed`, `refused` or
+`not_running`. Changes no state."""
+MESSAGE_RECEIVED = "step.message_received"
+"""The worker received the message at a boundary; it is an input of the step from there."""
+MESSAGE_LENGTH = 8000
+"""The longest text a message carries: the contract's `SteeringMessage.text`."""
 HOLDER = "takeover:"
 """What the claimant of a take-over's claim starts with; the take-over identifier follows."""
 
@@ -431,6 +460,12 @@ class StartRun:
     bindings: Mapping[str, str] = field(default_factory=dict)
     """Purposes bound to one configured model for this run alone (`Run.bindings`): a model
     trial's case run (ADR-0149 §1). Empty for every other run."""
+    skills: Mapping[str, str | None] = field(default_factory=dict)
+    """Skill versions bound for this run alone, `{name: version}`; None hands the skill over
+    at no version. An evaluation of a skill binds them (ADR-0162 §3). A skill not named here is
+    pinned at its version in production."""
+    profile: str | None = None
+    """The role profile of the shared agent the run serves (ADR-0163 §5)."""
 
     @property
     def identity(self) -> str:
@@ -506,6 +541,19 @@ class TakeOver:
     step_id: StepId
     actor: str
     """The person who asks; named as the actor of `step.takeover_asked`, for the audit."""
+    tenant: Tenant
+
+
+@dataclass(frozen=True)
+class SteerStep:
+    """A person sends a message to a step of a run while it runs (ADR-0156 §7). Who may is
+    decided by the surface the person uses; the engine checks the step and its worker."""
+
+    run_id: str
+    step_id: StepId
+    text: str
+    actor: str
+    """The person who sends it; named as the actor of `step.message_asked`, for the audit."""
     tenant: Tenant
 
 
@@ -713,7 +761,11 @@ class RunEngine:
         stops: Stops | None = None,
         messages: Messages | None = None,
         statements: Statements | None = None,
+        guidance: Guidance | None = None,
     ) -> None:
+        self._guidance = guidance
+        """Where a run finds the skills its steps name and the profile it serves (ADR-0162,
+        ADR-0163). None: nothing is pinned and nothing is handed over."""
         self._runs = runs
         self._work = work
         self._objects = objects
@@ -766,6 +818,9 @@ class RunEngine:
         self._repeating: set[str] = set()
         """Runs whose current step the rule on repetition stopped: they halt with cause
         `repeated`."""
+        self._declining: set[str] = set()
+        """Runs whose anchored step a rule from precedent declined as it was raised: they halt
+        with cause `declined` (ADR-0161)."""
         self._cooling: dict[str, datetime] = {}
         """Every model cooling down, by adapter, with when its cool-down ends: for every run and
         tenant this engine executes (ADR-0116 §5)."""
@@ -795,6 +850,9 @@ class RunEngine:
         self._inflight_adapter: dict[str, tuple[Tenant, str]] = {}
         """The tenant and the adapter of the step each run in `_inflight` is inside: a stop of
         that adapter stops the step at its boundary (ADR-0138)."""
+        self._message_digests: dict[str, str] = {}
+        """The text's digest of every message this process read on a job, by its identifier:
+        what a `message.received` is matched with (ADR-0156 §9)."""
         self._taking_over: dict[str, TakeoverAsked] = {}
         """Runs whose runner read a take-over asked on their job, with the ask (ADR-0128)."""
         self._answered: set[str] = set()
@@ -925,6 +983,8 @@ class RunEngine:
             else await self._deadlines.declared(command.tenant, command.process_version),
             rehearsal=command.rehearsal,
             bindings=dict(command.bindings),
+            skills=await self._pinned(command),
+            profile=command.profile,
             created_at=now,
             updated_at=now,
         )
@@ -954,6 +1014,55 @@ class RunEngine:
             raise
         await self._state_budget(run, command.actor)
         return run
+
+    async def _pinned(self, command: StartRun) -> dict[str, str]:
+        """The version of every skill the work names: the command's binding, else the version
+        in production (ADR-0162 §5)."""
+        named = sorted(
+            {
+                name
+                for step_work in command.work.values()
+                for name in (step_work.get(SKILLS) or ())
+                if isinstance(name, str)
+            }
+        )
+        if not named:
+            return {}
+        bound = {name: command.skills[name] for name in named if name in command.skills}
+        found: Mapping[str, str] = {}
+        rest = [name for name in named if name not in bound]
+        if rest and self._guidance is not None:
+            found = await self._guidance.production(command.tenant, rest)
+        pinned = {name: version for name, version in bound.items() if version is not None}
+        pinned.update({name: found[name] for name in rest if name in found})
+        return pinned
+
+    async def _guided(self, run: Run, work: Work, control: Control) -> Work:
+        """The step's work with its brief extended by the skills it names, at the run's pins,
+        and by the profile the run serves: before a model's system text, after a worker's goal
+        (ADR-0162 §5, ADR-0163 §5). Every other kind of work is what it was."""
+        if self._guidance is None or not isinstance(work, LlmWork | WorkerWork):
+            return work
+        blocks: list[str] = []
+        if run.profile is not None:
+            brief = await self._guidance.profile(run.tenant, run.profile)
+            if brief:
+                blocks.append(brief.strip())
+        for name in control.skills:
+            version = run.skills.get(name)
+            if version is None:
+                continue
+            text = await self._guidance.skill(run.tenant, name, version)
+            if text:
+                blocks.append(f"Skill {name}@{version}:\n\n{text.strip()}")
+        if not blocks:
+            return work
+        guidance = "\n\n".join(blocks)
+        if isinstance(work, LlmWork):
+            system = guidance if not work.system else f"{guidance}\n\n{work.system}"
+            return work.model_copy(update={"system": system})
+        task = work.task.model_copy(update={"goal": f"{work.task.goal}\n\n{guidance}"})
+        return work.model_copy(update={"task": task})
 
     async def _exists(self, tenant: Tenant, run_id: str) -> bool:
         async with self._work.transaction(tenant):
@@ -1412,8 +1521,10 @@ class RunEngine:
                     anchoring=settled,
                     reason=None,
                     # The decision is the person's confirmation of the step (level 2 and up);
-                    # at level 1 the person still performs the act.
-                    confirmed_by=by if level >= 2 else step_run.confirmed_by,
+                    # at level 1 the person still performs the act. A rule's is no person's.
+                    confirmed_by=by
+                    if level >= 2 and not any(v.by_rule for v in verdicts)
+                    else step_run.confirmed_by,
                 )
             elif self._continues(run, step_run.step_id):
                 # The process acts on a decline itself (ADR-0088): the act is not performed,
@@ -1496,6 +1607,168 @@ class RunEngine:
             run = await self._runs.get(tenant, run_id)
             if run is not None:
                 await self._record(run, CLAIM_LOST, outcome="lost")
+
+    # --- steering (ADR-0156) ----------------------------------------------------------------------
+
+    async def steer(self, command: SteerStep) -> str:
+        """A person's message to a running step (ADR-0156 §7). Returns the message's
+        identifier. Refused with `MessageRefused`, writing nothing, unless the step is a running
+        `worker` step of a run a runner holds and its worker declares steering."""
+        if self._queue is None:
+            raise MessageRefused(
+                "no queue is wired: a message reaches a step through the runner that holds its run"
+            )
+        if not command.text.strip() or len(command.text) > MESSAGE_LENGTH:
+            raise MessageRefused(
+                f"a message carries a text of 1 to {MESSAGE_LENGTH} characters, not "
+                f"{len(command.text)}"
+            )
+        async with self._work.transaction(command.tenant):
+            run = await self._runs.get(command.tenant, command.run_id)
+        if run is None:
+            raise UnknownRun(command.run_id)
+        step_run = self._steerable(run, command.step_id)
+        step = run.step(command.step_id)
+        try:
+            resolved = await self._worker_pool(run).resolve(step.required_capabilities)
+            supports = None if resolved is None else (await resolved.worker.capabilities()).supports
+        except WorkerError as error:
+            raise MessageRefused(
+                f"the worker of step {step.id!r} could not be asked whether it takes messages: "
+                f"{error}"
+            ) from error
+        if resolved is None or supports is None or not supports.steering:
+            named = step_run.adapter or ("none" if resolved is None else resolved.adapter)
+            raise MessageRefused(
+                f"the worker {named} of step {step.id!r} declares no steering: it takes no "
+                "message while it runs"
+            )
+        digest = await self._objects.put(command.text.encode())
+        message_id = self._ids.new("msg")
+        async with self._work.transaction(command.tenant):
+            run = await self._runs.get(command.tenant, command.run_id)
+            if run is None:
+                raise UnknownRun(command.run_id)
+            step_run = self._steerable(run, command.step_id)
+            placed = await self._queue.ask_message(
+                run.tenant,
+                run.id,
+                AskedMessage(
+                    message_id=message_id,
+                    step_id=step_run.step_id,
+                    digest=digest,
+                    text=command.text,
+                ),
+            )
+            if not placed:
+                raise MessageRefused(
+                    f"run {run.id!r} is not held by a runner, or a person holds it: a message "
+                    "reaches a step only through the runner that executes it"
+                )
+            await self._record(
+                run,
+                MESSAGE_ASKED,
+                step=step_run,
+                outcome="asked",
+                actor=command.actor,
+                digest=digest,
+                bare=True,
+            )
+        return message_id
+
+    @staticmethod
+    def _steerable(run: Run, step_id: StepId) -> StepRun:
+        try:
+            step_run = run.step_run(step_id)
+        except KeyError:
+            raise UnknownRun(f"run {run.id!r} has no step {step_id!r}") from None
+        method = run.step(step_id).method
+        if method is not Method.WORKER:
+            raise MessageRefused(
+                f"step {step_id!r} is a {method} step: only a worker step takes a message while "
+                "it runs"
+            )
+        if run.state is not RunState.RUNNING or step_run.state is not StepState.RUNNING:
+            raise MessageRefused(
+                f"step {step_id!r} is {step_run.state} in a run that is {run.state}: a message "
+                "reaches a step while it runs"
+            )
+        return step_run
+
+    async def messages_asked(
+        self, tenant: Tenant, run_id: str, claim: Claim, messages: Sequence[AskedMessage]
+    ) -> None:
+        """The runner holding the run read messages placed on its job (ADR-0156 §8). Each is
+        handed to the worker of the step it is for, once, and marked handed in the transaction
+        that records it, fenced by the claim."""
+        if self._queue is None:
+            return
+        inflight = self._inflight.get(run_id)
+        inside = self._inflight_step.get(run_id)
+        for message in messages:
+            self._message_digests[message.message_id] = message.digest
+            outcome = "not_running"
+            if inflight is not None and inside == message.step_id:
+                worker, assignment_id = inflight
+                # The text is kept here too, under the digest the ledger names it by.
+                await self._objects.put(message.text.encode())
+                try:
+                    await worker.steer(
+                        assignment_id,
+                        SteeringMessage(message_id=message.message_id, text=message.text),
+                    )
+                    outcome = "handed"
+                except SteeringRefused:
+                    outcome = "refused"
+                except WorkerError:
+                    continue  # unreachable for now: handed at the next renewal
+            async with self._work.transaction(tenant):
+                if not await self._queue.fence(tenant, claim):
+                    return
+                run = await self._runs.get(tenant, run_id)
+                if run is None:
+                    return
+                named = next((s for s in run.step_runs if s.step_id == message.step_id), None)
+                await self._queue.message_handed(tenant, claim.job_id, message.message_id)
+                await self._record(
+                    run,
+                    MESSAGE_HANDED,
+                    step=named,
+                    outcome=outcome,
+                    digest=message.digest,
+                    bare=True,
+                )
+
+    async def _received(self, run: Run, step_run: StepRun, event: MessageReceived) -> StepRun:
+        """The worker received a message at its boundary: it is an input of the step from here
+        (ADR-0156 §9). A message the step run holds already is not counted twice."""
+        if any(m.message_id == event.message_id for m in step_run.messages):
+            return step_run
+        digest = self._message_digests.get(event.message_id)
+        if digest is None:
+            digest = await self._asked_digest(run, event.message_id)
+        if digest is None:
+            return step_run  # no person sent it through this run: it is not an input of ours
+        return step_run.model_copy(
+            update={
+                "messages": (
+                    *step_run.messages,
+                    ReceivedMessage(
+                        message_id=event.message_id, digest=digest, received_at=event.ts
+                    ),
+                )
+            }
+        )
+
+    async def _asked_digest(self, run: Run, message_id: str) -> str | None:
+        """The digest of a message asked on the run's job, read from the queue: what a runner
+        that adopted the step knows of a message another runner handed."""
+        claim = self._claim.get()
+        if claim is None or self._queue is None:
+            return None
+        async with self._work.transaction(run.tenant):
+            asked = await self._queue.messages_asked(run.tenant, claim.job_id)
+        return next((m.digest for m in asked if m.message_id == message_id), None)
 
     # --- take-over (ADR-0128) ---------------------------------------------------------------------
 
@@ -2080,7 +2353,9 @@ class RunEngine:
                     )
                 continue
             if step_run.state is StepState.REJECTED:
-                if run.id in self._administering:
+                if run.id in self._declining:
+                    cause = Cause.DECLINED
+                elif run.id in self._administering:
                     cause = Cause.ADMINISTRATION
                 elif run.id in self._repeating:
                     cause = Cause.REPEATED
@@ -2091,6 +2366,7 @@ class RunEngine:
                 self._immature.discard(run.id)
                 self._administering.discard(run.id)
                 self._repeating.discard(run.id)
+                self._declining.discard(run.id)
                 return await self._end(run, RunState.HALTED, cause, step_run.reason, span)
             if run.id in self._moving:
                 # The step went back to its boundary to move to the next model of its
@@ -2100,9 +2376,18 @@ class RunEngine:
             capacity = run.id in self._at_capacity
             self._at_capacity.discard(run.id)
             if step_run.state is StepState.FAILED:
+                verdict = None if capacity else await self._healing(run, step, step_run)
+                if verdict is not None and verdict.heals:
+                    # Level 4: a known failure inside the frame is healed by Taktus, and the
+                    # step is admitted again at once (ADR-0160).
+                    run = await self._heal(run, step_run)
+                    continue
                 cause = Cause.CAPACITY if capacity else Cause.FAILURE
+                reason = step_run.reason
+                if verdict is not None and verdict.why_not is not None:
+                    reason = f"{reason}; not healed: {verdict.why_not}"
                 run = await self._escalating(run)
-                return await self._end(run, RunState.ESCALATED, cause, step_run.reason, span)
+                return await self._end(run, RunState.ESCALATED, cause, reason, span)
             parked = run.id in self._parked
             self._parked.discard(run.id)
             if step_run.state is StepState.STOPPED:
@@ -2151,6 +2436,60 @@ class RunEngine:
                     run, aside, {"skipped": True, "because": "the run did not escalate"}, "skipped"
                 )
         return await self._end(run, RunState.FINISHED, None, None, span)
+
+    async def _healing(self, run: Run, step: Step, step_run: StepRun) -> healing.Healing:
+        """Whether Taktus heals the step that failed: at level 4, a known failure inside the
+        frame (ADR-0160, `domain.service.healing`)."""
+        work = parse_work(step, run.work.get(step.id), run.inputs)
+        held = autonomy.held(run.autonomy_level, run.actions, autonomy.actions_of(step, work))
+        if held.level < healing.UNATTENDED or run.rehearsal:
+            return healing.Healing(heals=False)
+        healed = sum(
+            1
+            for entry in await self._entries(run)
+            if entry.kind == healing.HEALED and entry.refs.step_id == step.id
+        )
+        return healing.healing(
+            held.level,
+            rehearsal=run.rehearsal,
+            retryable=step_run.retryable,
+            blocked=step_run.block is not None,
+            repeatable=await self._repeatable(run, work),
+            stop_requested=run.id in self._stop_requested,
+            healed=healed,
+        )
+
+    async def _repeatable(self, run: Run, work: Work) -> bool:
+        """Whether the step's call may be made again without a second effect: true for a step
+        that calls nothing outward, and for an outward operation that recognises a repeat. An
+        operation whose declaration cannot be read is not (ADR-0024)."""
+        if isinstance(work, ConnectorRule):
+            capability, name = work.capability, work.operation
+        elif isinstance(work, WaitWork) and work.until is not None:
+            capability, name = work.until.capability, work.until.operation
+        else:
+            return True
+        pool = self._connector_pool(run)
+        resolved = None if pool is None else await pool.resolve(capability)
+        operation = None if resolved is None else resolved.declaration.operation(name)
+        if operation is None:
+            return False
+        return not operation.outward or operation.repeatable
+
+    async def _heal(self, run: Run, step_run: StepRun) -> Run:
+        """The heal recorded as `step.healed`, with the failure it answered by digest; the step
+        stays failed, and the loop admits it again, through admission as any retry
+        (`step.retried`, ADR-0147 §4). What it led to is the step's next `step.finished`."""
+        answered = {
+            "failure": step_run.reason,
+            "action": healing.RETRY,
+            "attempt": step_run.attempt,
+        }
+        content = json.dumps(answered, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        digest = await self._objects.put(content)
+        return await self._commit(
+            run, healing.HEALED, step=step_run, outcome=healing.RETRY, digest=digest
+        )
 
     @staticmethod
     def _aside(run: Run) -> list[StepId]:
@@ -2290,6 +2629,7 @@ class RunEngine:
             held = autonomy.held(run.autonomy_level, run.actions, used)
             span.set_attribute("autonomy.level", held.level)
             control = control_of(step, run.work.get(step.id), run.inputs)
+            work = await self._guided(run, work, control)
             if control.when and step_run.state in (StepState.PLANNED, StepState.REJECTED):
                 # Whether the step runs at all, before anything asks about it (ADR-0088).
                 values, read = await self._conditions(run, control)
@@ -2489,7 +2829,30 @@ class RunEngine:
                 outcome=draft.class_,
                 decision=draft.id,
             )
-        return run, step_run
+        return await self._answered_at_once(run, step, step_run)
+
+    async def _answered_at_once(
+        self, run: Run, step: Step, step_run: StepRun
+    ) -> tuple[Run, StepRun]:
+        """An anchored step whose every request took effect as it was raised — each answered by
+        a rule from precedent a person adopted (ADR-0161) — is decided at once: it continues
+        from its boundary, ends declined, or halts the run, as a person's decision would have
+        it. One request still open, and the step waits."""
+        held = step_run.anchoring
+        if held is None or self._decisions is None:
+            return run, step_run
+        for request in held.requests:
+            verdict = await self._decisions.verdict(run.tenant, request)
+            if verdict is None or not verdict.applied:
+                return run, step_run
+        run, declined = await self._apply_decisions(run)
+        decided = run.step_run(step.id)
+        if declined is not None:
+            self._declining.add(run.id)
+            return run, decided
+        if decided.state is StepState.PLANNED:
+            return await self._execute_step(run, step, decided)
+        return run, decided
 
     async def _settle(
         self,
@@ -5091,8 +5454,18 @@ class RunEngine:
         span: Span,
         held: autonomy.Held,
     ) -> tuple[Run, StepRun]:
+        permitted: Permitted = "anywhere"
+        if self._residency is not None:
+            permitted = await self._residency.permitted(run.tenant, work.data_class)
+        outside: tuple[str, str] | None = None
         try:
-            resolved = await self._worker_pool(run).resolve(step.required_capabilities)
+            resolved = await self._worker_pool(run).resolve(step.required_capabilities, permitted)
+            if resolved is None and permitted != "anywhere":
+                # Whether a worker offers the capabilities and is outside the rule: the step
+                # then fails naming the rule, and nothing is sent to it (ADR-0157 §2).
+                beyond = await self._worker_pool(run).resolve(step.required_capabilities)
+                if beyond is not None:
+                    outside = (beyond.adapter, beyond.location)
         except UnaskedWorker as unasked:
             # A worker that cannot be asked what it offers is a worker that cannot answer: the
             # step fails with that cause, or waits for a platform without room for its unit,
@@ -5113,7 +5486,11 @@ class RunEngine:
             )
             step_run = step_run.to(
                 StepState.FAILED,
-                reason=str(NoWorker(step.id, step.required_capabilities)),
+                reason=str(
+                    NoWorker(
+                        step.id, step.required_capabilities, permitted=permitted, outside=outside
+                    )
+                ),
                 retryable=True,
                 finished_at=self._clock.now(),
             )
@@ -5235,6 +5612,7 @@ class RunEngine:
                 capabilities=tuple(step.required_capabilities),
             ),
             span,
+            retryable=None,  # what a failure was classified as holds for that failure only
         )
         if not admitted:
             return run, step_run
@@ -5638,6 +6016,17 @@ class RunEngine:
                         }
                     )
                     run = await self._commit(run.with_step_run(step_run))
+                elif isinstance(event, MessageReceived):
+                    received = await self._received(run, step_run, event)
+                    if received is not step_run:
+                        step_run = received
+                        run = await self._commit(
+                            run.with_step_run(step_run),
+                            MESSAGE_RECEIVED,
+                            step=step_run,
+                            outcome="received",
+                            digest=step_run.messages[-1].digest,
+                        )
                 elif isinstance(event, AssignmentFinished):
                     finished = event
                 last_seq = event.seq
@@ -5675,6 +6064,9 @@ class RunEngine:
         step_run = step_run.model_copy(
             update={"assignment_open": False, "assignment_seq": last_seq}
         )
+        if step_run.messages:
+            # Every message the worker received is an input of what the step produced.
+            trace = dataclasses.replace(trace, inputs=(*trace.inputs, *_message_inputs(step_run)))
         if finished.outcome is Outcome.STOPPED:
             if fired is not None:
                 # Stopped at its boundary by the rule on repetition: the run halts with cause
@@ -6513,3 +6905,17 @@ def _credential_names(work: Work) -> list[str]:
     if isinstance(work, WaitWork) and work.until is not None:
         return [c.name for c in work.until.credentials]
     return []
+
+
+def _message_inputs(step_run: StepRun) -> tuple[ProvenanceInput, ...]:
+    """The persons' messages the step's worker received, as inputs of its provenance: each by
+    its identifier and its text's digest, read when it was received (ADR-0156 §9)."""
+    return tuple(
+        ProvenanceInput(
+            kind=InputKind.MESSAGE,
+            ref=message.message_id,
+            digest=message.digest,
+            observed_at=message.received_at,
+        )
+        for message in step_run.messages
+    )

@@ -18,7 +18,7 @@ boundaries, `import-linter` contracts and `tests/architecture` are not optional 
 | `process` | process, version, step, method, exactness class, bundle |
 | `run` | run, step run, checkpoint, artifact, blocked-time account |
 | `governance` | autonomy levels, policies, anchors, budgets, limits, admission control; today: a tenant's anchors and which of them name a step's act (ADR-0042), whether a result has left the system (ADR-0022), a tenant's introduction in stages and the ceiling each keeps (ADR-0137) |
-| `decision` | decision requests, the decision register, rules derived from it; today: requests raised, answered, their reading confirmed, the register, the decider's list and response times (ADR-0042) |
+| `decision` | decision requests, the decision register, rules derived from it: requests raised, answered, their reading confirmed, the register, the decider's list and response times (ADR-0042); rules from precedent proposed, adopted and answering their kind (`decision_rule`, ADR-0161), wired with the requests in `composition/decisions.py` |
 | `catalog` | models, agents, skills, connectors, blueprints, maturity |
 | `accounting` | consumption capture, Takt, forecasts, marginal value |
 | `knowledge` | knowledge sources, embeddings, citations. Its package's first content is the guides beyond the repository (UC-13.6, ADR-0065): the manifest, the rendering by rule, the seven states a page in a knowledge system can be in, and the publishing through `knowledge.pages` |
@@ -62,9 +62,11 @@ taktus/
 │   └── composition/                 # composition root: wires and runs `taktusd` and `taktusctl`
 │
 ├── workers/                         # separate deployables behind the worker contract, each with its own image; none in the control plane image (DEC-0011)
+├── connectors/                      # the connectors behind the connector contract, package `taktus_connectors`: each an image of its own, a stage of connectors/Dockerfile; none in the control plane image, none importing it (ADR-0158)
 │   ├── script/                      # the reference worker: shell commands, no AI
 │   ├── claudecode/                  # the coding worker: a coding agent behind the contract, and the fake agent the gate runs it against
 │   ├── codex/                       # the second coding worker: a second vendor's coding agent behind the contract, and its fake agent
+│   ├── factory/                     # a software factory behind the contract, generic over its task API through a profile (ADR-0157); its release entry is in composition/shipped.json
 │   └── mlbench/                     # the ML bench: trains, evaluates and serves classical models; embeddings next (#210)
 │
 ├── contracts/                       # what third parties implement — JSON Schema
@@ -106,6 +108,7 @@ adapters.driven      → ports, shared, wire
 conformance          → contracts, wire                   — nothing else in src/taktus
 wire                 → nothing                           — stdlib only
 workers/*            → contracts only                    — NEVER src/taktus
+taktus_connectors    → nothing of taktus                 — and src/taktus never imports it (ADR-0158)
 components.X         → components.X, ports, shared
 ports                → shared
 shared               → nothing
@@ -129,6 +132,13 @@ plane; `taktusctl conformance` (a driving adapter) is its entry point, and `test
 gate. It ships in the wheel together with `contracts/`, so that a third party can run it without
 the rest of Taktus. It speaks HTTP and SSE to a worker and MCP to a connector; the reference
 connector is a driven adapter and the suite its client, and neither imports the other.
+
+`connectors/` holds every connector served as an MCP server, the package `taktus_connectors`
+(ADR-0158). It is a separate deployable, as a worker is: each connector is an image of its own,
+a stage of `connectors/Dockerfile`, and the control plane image copies nothing of it. The
+control plane keeps its side of the port under `adapters/driven/connectors/` — the MCP client,
+the pool, and the loopback and directory connectors, which reach the instance itself and run in
+its process.
 
 `tests/architecture` fails on:
 
@@ -304,7 +314,14 @@ role it would tie the core to a model stack and the removal test would be lost.
   as an incident. `ProposalActs` (`composition/proposals.py`) starts a proposal's evaluation
   beside its rehearsal and holds commissioning to its verdict; the HTTP surface reads the
   evaluations and confirms the cases (`adapters/driving/rest/evaluations.py`), and `taktusctl
-  incident configure` sets the tenant's tolerance. The models
+  incident configure` sets the tenant's tolerance. `Evaluations.start_guided` runs the same
+  version on its cases under two kinds of know-how, a skill version pinned or a shared agent's
+  profile under a new core. The same leader looks at every tenant's skills once a minute
+  (`composition/skills.py`, ADR-0162): `SkillLifecycle` drafts a skill from corrections that
+  recurred, scores its rounds, approves it by rule at level 4 once n rounds passed, puts it into
+  production and falls it back by rule; `CatalogGuidance` answers the run's `Guidance` port,
+  and the postgres adapter keeps the tables `skill_version`, `skill_ownership`, `skill_policy`,
+  `agent_core` and `role_profile` (ADR-0163). The models
   configured in `TAKTUS_MODELS` reach the run as one pool in chain order
   (`composition/execution.py`, `composition/settings.py`, ADR-0116), and each is held to the
   model contract's suite with its own endpoint (`composition/conformance.py`); deadlines and
@@ -350,6 +367,22 @@ role it would tie the core to a model stack and the removal test would be lost.
   `composition/agent_surface.py`, which also records every call. The identity component keeps
   the agent key's digest on the identity and the rights per role (`RoleRights`, table
   `role_rights`).
+- **A message to a running step** is the `api` role's (`adapters/driving/rest/steering.py`, the
+  MCP tool `steer_step` under the right `agent.steer`, and the chat's read-back in
+  `composition/takeover_in_channel.py` with the phrasebooks' `steer_*` entries; ADR-0156). Each
+  hands the run engine `SteerStep` through the port `Takeovers` of
+  `adapters/driving/rest/wiring.py`. The engine places the message on the run's job
+  (`ports/queue.py`, `ask_message`), and the runner holding it hands it to the worker with each
+  renewal of its lease.
+- **A worker that connects outbound** is hosted by the `api` role
+  (`adapters/driving/rest/relay.py`, ADR-0156) at `<prefix>/workers/<name>/relay`, admitted by
+  its connect key. Its requests in flight live in the relay every instance shares
+  (`ports/relay.py`; `adapters/driven/postgres/relay.py`, migration 0087), and every runner
+  reaches it through `adapters/driven/workers/connected.py`. `composition/execution.py` opens a
+  worker of kind `connected` over the relay, `composition/daemon.py` builds the host from the
+  connect keys `composition/settings.py` reads, `composition/pools.py` names the binding in its
+  configuration, and `composition/conformance.py` runs the instance's suite over it;
+  `composition/local.py` takes a relay for the same, in tests.
 - **A decision that takes effect** on the HTTP surface (`adapters/driving/rest/app.py`) or in
   the owner's channel (`composition/owner_channel.py`) is handed to the run engine, which
   continues or halts the run it holds, and to `composition/moves.py` with its request. A
@@ -388,6 +421,19 @@ role it would tie the core to a model stack and the removal test would be lost.
   daemon's intake, finds the waiting `human` step of the tenant by the intake's channel and
   thread, hands the message to `RunEngine.answer_participant`, and says the engine's reply in
   the thread through `ConnectorReplies`. A message it does not match goes on to `OwnerAnswers`.
+- **What a person may ask for** (ADR-0159 §1 to §3) is `AgentSurface.catalogue`
+  (`composition/agent_surface.py`), drawn by the reporting component's pure
+  `domain/service/catalogue.py` and served at `GET /catalogue` (`adapters/driving/rest/catalogue.py`).
+  Every start of a process — the command line, the MCP surface, `POST /catalogue/{process}/start`
+  and the chat — builds its command with the command component's `domain/service/start.py`.
+  `composition/catalogue_in_channel.py` reads the list and a confirmed start in the owner's
+  conversation, handed to `OwnerAnswers` by `catalogue_with`.
+- **The organisation as value streams** (ADR-0159 §4 to §6): the process component keeps a
+  stream's revisions (`domain/model/stream.py`, `application/service/streams.py`, the table
+  `value_stream`); `composition/streams.py` gathers the active versions, the finished runs, their
+  blocks and `IdentityDirectory.role_units`, and the reporting component's pure
+  `domain/service/streams.py` draws the map and the swimlanes, stored nowhere. The HTTP surface
+  is `adapters/driving/rest/streams.py`, through the port `StreamActs`.
 - **A first process from the gallery** (ADR-0136) is read and proposed by
   `composition/gallery.py`: `Gallery` reads the directory `TAKTUS_GALLERY_DIRECTORY` names
   (`composition/settings.py`) on every request, offers a bundle that `parse_bundle` accepts at
