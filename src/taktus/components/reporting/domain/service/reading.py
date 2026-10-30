@@ -148,7 +148,7 @@ class TakeoverAct(Value):
     """The take-over of a running step asked for in the owner's conversation, its hand-back, or
     the question where a take-over stands (UC-4.19, ADR-0128 §7)."""
 
-    kind: Literal["take_over", "hand_back", "show"]
+    kind: Literal["take_over", "hand_back", "show", "steer"]
     run: str | None = Field(default=None, pattern=r"^\S+$")
     """For a take-over: the run."""
     step: str | None = Field(default=None, pattern=r"^\S+$")
@@ -156,7 +156,8 @@ class TakeoverAct(Value):
     takeover: str | None = Field(default=None, pattern=r"^\S+$")
     """For a hand-back and a question: the take-over identifier."""
     result: str | None = Field(default=None, min_length=1)
-    """For a hand-back: the result in the person's own words, as written."""
+    """For a hand-back: the result in the person's own words, as written. For a message to a
+    step: its text, as written."""
 
 
 def takeover_act(text: str, book: Phrasebook) -> TakeoverAct | None:
@@ -166,12 +167,22 @@ def takeover_act(text: str, book: Phrasebook) -> TakeoverAct | None:
     - one of `hand_back_words`, the take-over's identifier, a colon, and the result;
     - one of `takeover_show_words`, and the take-over's identifier.
 
+    - one of `steer_words`, the run's identifier, the step's, a colon, and the text of a message
+      to the running step (ADR-0156 §7).
+
     The words are matched as the other words are; identifiers and the result are taken as
     written. None for anything else, and for a phrasebook that reads no take-over."""
     if book.takeover_words is None:
         return None
     message = text.strip()
     folded = message.casefold()
+    for word in book.steer_words or ():
+        if folded.startswith(word + " "):
+            named, colon, said = message[len(word) :].strip().partition(":")
+            parts = named.split()
+            if colon and len(parts) == 2 and said.strip():
+                return TakeoverAct(kind="steer", run=parts[0], step=parts[1], result=said.strip())
+            return None
     for word in book.hand_back_words or ():
         if folded.startswith(word + " "):
             takeover, colon, result = message[len(word) :].strip().partition(":")

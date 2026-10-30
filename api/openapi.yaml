@@ -2830,6 +2830,67 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /runs/{run_id}/steps/{step_id}/messages:
+    post:
+      tags:
+      - steering
+      summary: Send a message to a running step
+      description: Hands a message to a running worker step whose worker declares steering. The runner
+        that holds the run gives it to the worker, which receives it at its next boundary; the steps after
+        that boundary have it as an input, and the step's provenance names it (ADR-0156).
+      operationId: send_runs__run_id__steps__step_id__messages_post
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run Id
+      - name: step_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Step Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageBody'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '202':
+          description: 'Asked: the message''s identifier.'
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such run or step that you may see.
+          content:
+            application/problem+json: {}
+        '409':
+          description: The step is not a running worker step, no runner holds the run, a person holds
+            it, or its worker declares no steering; the problem says which.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
   /register:
     get:
       tags:
@@ -3432,6 +3493,20 @@ components:
       required:
       - channel
       title: LinkCodeRequest
+    MessageBody:
+      properties:
+        text:
+          type: string
+          maxLength: 8000
+          minLength: 1
+          title: Text
+          description: What the step's worker should take into account from its next boundary on. It is
+            an input of the steps after that boundary; it never widens what the step may do, nor what
+            it may consume.
+      type: object
+      required:
+      - text
+      title: MessageBody
     ProposeBody:
       properties:
         bundle:

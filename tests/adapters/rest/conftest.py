@@ -57,7 +57,7 @@ from taktus.components.reporting.application.service import (
     StepTraces,
 )
 from taktus.components.reporting.domain.model import BackupState, Corridor, Judged
-from taktus.components.run.application.service import HandBack, RunEngine, TakeOver
+from taktus.components.run.application.service import HandBack, RunEngine, SteerStep, TakeOver
 from taktus.components.run.domain.model import Run, RunError, UnknownTakeover
 from taktus.composition.agent_surface import AgentSurface
 from taktus.composition.decisions import DecisionWiring, decision_wiring
@@ -150,6 +150,7 @@ class FakeTakeovers:
 
     asked: list[TakeOver] = field(default_factory=list)
     handed: list[HandBack] = field(default_factory=list)
+    steered: list[SteerStep] = field(default_factory=list)
     refusal: RunError | None = None
     states: dict[str, Any] = field(default_factory=dict)
     runs: Repository[Run] | None = None
@@ -175,6 +176,12 @@ class FakeTakeovers:
             run = await self.runs.get(command.tenant, command.run_id)
         assert run is not None
         return run
+
+    async def steer(self, command: SteerStep) -> str:
+        if self.refusal is not None:
+            raise self.refusal
+        self.steered.append(command)
+        return f"msg_{len(self.steered):04d}"
 
 
 @dataclass

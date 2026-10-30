@@ -58,7 +58,7 @@ from taktus.components.reporting.domain.model.acting import (
     WrongResultView,
 )
 from taktus.components.reporting.domain.service.variants import VariantsView
-from taktus.components.run.application.service import HandBack, TakeOver
+from taktus.components.run.application.service import HandBack, SteerStep, TakeOver
 from taktus.components.run.domain.model import Run
 from taktus.ports.clock import Clock
 from taktus.ports.configuration import Secret
@@ -202,6 +202,11 @@ class Takeovers(Protocol):
 
     async def hand_back(self, command: HandBack) -> Run:
         """The person's result, written under the take-over's claim."""
+        ...
+
+    async def steer(self, command: SteerStep) -> str:
+        """A person's message to a running step, asked on the run's job; its identifier
+        (ADR-0156)."""
         ...
 
 
