@@ -218,6 +218,18 @@ register_entry = Table(
     PrimaryKeyConstraint("tenant", "id"),
 )
 
+decision_rule = Table(
+    "decision_rule",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("status", Text, nullable=False),
+    _at("created_at"),
+    Column("rule", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per rule from precedent a tenant was proposed (ADR-0161)."""
+
 owner_channel = Table(
     "owner_channel",
     metadata,

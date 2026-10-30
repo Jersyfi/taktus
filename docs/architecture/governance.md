@@ -48,7 +48,16 @@ asked as any run is, and is not asked an adapter's maturity (ADR-0108). A level 
 version is registered: with a person's approval and the quality history — runs in a row without
 a failure or a result defect — that the replaced version names under `history`. A refusal is the
 ledger entry `autonomy.refused`; Taktus may propose a raise (`autonomy.proposed`) and never
-applies one. Level 4 and levels per risk class are not built yet.
+applies one. Levels per risk class are not built yet.
+
+**How level 4 is enforced** (ADR-0160). Before a step starts, level 4 asks what level 3 asks.
+After a step failed, a failure an adapter classified as repeatable is healed by Taktus: the step
+is admitted again at once, against the budget, and `step.healed` records it with the failure it
+answered. A step is healed at most twice per run, never for an operation that cannot recognise a
+repeat, and never when an action of it is set lower. Past that, and for a failure of no known
+kind, the run escalates, and its reason says why it was not healed. Below level 4 nothing
+heals: the person on the loop resumes. Every anchor halts a level-4 run as it halts a level-1
+run.
 
 **How a level falls, and what a raise rests on** (ADR-0110, UC-7.5). A person answers a step
 proposed at level 1 or 2 in one of three ways: released as proposed, corrected with the work the
@@ -191,6 +200,15 @@ sent back and confirmed. The reading is a rule — the answer names exactly one 
 read — and every answer is confirmed, a chosen option as well as free text. A decider reads their
 own response times, with their own total and median; anyone else reads them aggregated by role or department over at least two
 deciders (ADR-0015).
+
+**Rules from precedent** (ADR-0161, UC-7.10). After every decision that took effect, the
+decision component looks at its kind: one anchor at one step of one process. Where the five
+most recent decisions of a kind chose the same option, by the same role and without
+modifications, it raises a decision request that proposes a rule and names the five. Only a
+strategic anchor of the tenant's own configuration is ever proposed; legal, correction and
+frame anchors, a step's own `ask`, approvals and samples never are (NTC-0249). An adopted rule
+answers each later request of its kind as it is raised, and the register entry names the rule.
+A rule is no person's confirmation of a step, and nobody's response time. A person retires it.
 
 ### 3.3 Against escalation
 

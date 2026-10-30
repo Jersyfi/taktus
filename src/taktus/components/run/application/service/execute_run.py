@@ -44,7 +44,10 @@ that depend on it; the others run on, and the run waits in `waiting_human` once 
 run. From level 3 a step runs only on an adapter at *verified* or above; one below is not run on
 it, the step is rejected with a finding that names it and the adapter, and the run halts with
 cause `maturity` (NTC-0051). A rehearsal is asked none of this (NTC-0079); a replay is asked
-the level, and not the maturity (ADR-0108).
+the level, and not the maturity (ADR-0108). At level 4 a step that failed with a failure an
+adapter classified as repeatable is healed within the frame (ADR-0160, `domain.service.healing`):
+`step.healed` records it, and the step is admitted again at once; past the frame the run
+escalates, and its reason says why it was not healed.
 
 A person's answer to a step proposed at level 1 or 2 is a decision on a proposal (ADR-0110):
 `released` as proposed, `corrected` — the work as the person released it, which the step then
@@ -234,6 +237,7 @@ from taktus.components.run.domain.service import (
     blocked,
     checking,
     frame,
+    healing,
     interfaces,
     messages,
     open_work,
@@ -766,6 +770,9 @@ class RunEngine:
         self._repeating: set[str] = set()
         """Runs whose current step the rule on repetition stopped: they halt with cause
         `repeated`."""
+        self._declining: set[str] = set()
+        """Runs whose anchored step a rule from precedent declined as it was raised: they halt
+        with cause `declined` (ADR-0161)."""
         self._cooling: dict[str, datetime] = {}
         """Every model cooling down, by adapter, with when its cool-down ends: for every run and
         tenant this engine executes (ADR-0116 §5)."""
@@ -1412,8 +1419,10 @@ class RunEngine:
                     anchoring=settled,
                     reason=None,
                     # The decision is the person's confirmation of the step (level 2 and up);
-                    # at level 1 the person still performs the act.
-                    confirmed_by=by if level >= 2 else step_run.confirmed_by,
+                    # at level 1 the person still performs the act. A rule's is no person's.
+                    confirmed_by=by
+                    if level >= 2 and not any(v.by_rule for v in verdicts)
+                    else step_run.confirmed_by,
                 )
             elif self._continues(run, step_run.step_id):
                 # The process acts on a decline itself (ADR-0088): the act is not performed,
@@ -2080,7 +2089,9 @@ class RunEngine:
                     )
                 continue
             if step_run.state is StepState.REJECTED:
-                if run.id in self._administering:
+                if run.id in self._declining:
+                    cause = Cause.DECLINED
+                elif run.id in self._administering:
                     cause = Cause.ADMINISTRATION
                 elif run.id in self._repeating:
                     cause = Cause.REPEATED
@@ -2091,6 +2102,7 @@ class RunEngine:
                 self._immature.discard(run.id)
                 self._administering.discard(run.id)
                 self._repeating.discard(run.id)
+                self._declining.discard(run.id)
                 return await self._end(run, RunState.HALTED, cause, step_run.reason, span)
             if run.id in self._moving:
                 # The step went back to its boundary to move to the next model of its
@@ -2100,9 +2112,18 @@ class RunEngine:
             capacity = run.id in self._at_capacity
             self._at_capacity.discard(run.id)
             if step_run.state is StepState.FAILED:
+                verdict = None if capacity else await self._healing(run, step, step_run)
+                if verdict is not None and verdict.heals:
+                    # Level 4: a known failure inside the frame is healed by Taktus, and the
+                    # step is admitted again at once (ADR-0160).
+                    run = await self._heal(run, step_run)
+                    continue
                 cause = Cause.CAPACITY if capacity else Cause.FAILURE
+                reason = step_run.reason
+                if verdict is not None and verdict.why_not is not None:
+                    reason = f"{reason}; not healed: {verdict.why_not}"
                 run = await self._escalating(run)
-                return await self._end(run, RunState.ESCALATED, cause, step_run.reason, span)
+                return await self._end(run, RunState.ESCALATED, cause, reason, span)
             parked = run.id in self._parked
             self._parked.discard(run.id)
             if step_run.state is StepState.STOPPED:
@@ -2151,6 +2172,60 @@ class RunEngine:
                     run, aside, {"skipped": True, "because": "the run did not escalate"}, "skipped"
                 )
         return await self._end(run, RunState.FINISHED, None, None, span)
+
+    async def _healing(self, run: Run, step: Step, step_run: StepRun) -> healing.Healing:
+        """Whether Taktus heals the step that failed: at level 4, a known failure inside the
+        frame (ADR-0160, `domain.service.healing`)."""
+        work = parse_work(step, run.work.get(step.id), run.inputs)
+        held = autonomy.held(run.autonomy_level, run.actions, autonomy.actions_of(step, work))
+        if held.level < healing.UNATTENDED or run.rehearsal:
+            return healing.Healing(heals=False)
+        healed = sum(
+            1
+            for entry in await self._entries(run)
+            if entry.kind == healing.HEALED and entry.refs.step_id == step.id
+        )
+        return healing.healing(
+            held.level,
+            rehearsal=run.rehearsal,
+            retryable=step_run.retryable,
+            blocked=step_run.block is not None,
+            repeatable=await self._repeatable(run, work),
+            stop_requested=run.id in self._stop_requested,
+            healed=healed,
+        )
+
+    async def _repeatable(self, run: Run, work: Work) -> bool:
+        """Whether the step's call may be made again without a second effect: true for a step
+        that calls nothing outward, and for an outward operation that recognises a repeat. An
+        operation whose declaration cannot be read is not (ADR-0024)."""
+        if isinstance(work, ConnectorRule):
+            capability, name = work.capability, work.operation
+        elif isinstance(work, WaitWork) and work.until is not None:
+            capability, name = work.until.capability, work.until.operation
+        else:
+            return True
+        pool = self._connector_pool(run)
+        resolved = None if pool is None else await pool.resolve(capability)
+        operation = None if resolved is None else resolved.declaration.operation(name)
+        if operation is None:
+            return False
+        return not operation.outward or operation.repeatable
+
+    async def _heal(self, run: Run, step_run: StepRun) -> Run:
+        """The heal recorded as `step.healed`, with the failure it answered by digest; the step
+        stays failed, and the loop admits it again, through admission as any retry
+        (`step.retried`, ADR-0147 §4). What it led to is the step's next `step.finished`."""
+        answered = {
+            "failure": step_run.reason,
+            "action": healing.RETRY,
+            "attempt": step_run.attempt,
+        }
+        content = json.dumps(answered, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        digest = await self._objects.put(content)
+        return await self._commit(
+            run, healing.HEALED, step=step_run, outcome=healing.RETRY, digest=digest
+        )
 
     @staticmethod
     def _aside(run: Run) -> list[StepId]:
@@ -2489,7 +2564,30 @@ class RunEngine:
                 outcome=draft.class_,
                 decision=draft.id,
             )
-        return run, step_run
+        return await self._answered_at_once(run, step, step_run)
+
+    async def _answered_at_once(
+        self, run: Run, step: Step, step_run: StepRun
+    ) -> tuple[Run, StepRun]:
+        """An anchored step whose every request took effect as it was raised — each answered by
+        a rule from precedent a person adopted (ADR-0161) — is decided at once: it continues
+        from its boundary, ends declined, or halts the run, as a person's decision would have
+        it. One request still open, and the step waits."""
+        held = step_run.anchoring
+        if held is None or self._decisions is None:
+            return run, step_run
+        for request in held.requests:
+            verdict = await self._decisions.verdict(run.tenant, request)
+            if verdict is None or not verdict.applied:
+                return run, step_run
+        run, declined = await self._apply_decisions(run)
+        decided = run.step_run(step.id)
+        if declined is not None:
+            self._declining.add(run.id)
+            return run, decided
+        if decided.state is StepState.PLANNED:
+            return await self._execute_step(run, step, decided)
+        return run, decided
 
     async def _settle(
         self,
@@ -5249,6 +5347,7 @@ class RunEngine:
                 capabilities=tuple(step.required_capabilities),
             ),
             span,
+            retryable=None,  # what a failure was classified as holds for that failure only
         )
         if not admitted:
             return run, step_run

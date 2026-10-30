@@ -12,7 +12,9 @@ What a level asks before a step starts, at the step boundary:
   a rule, a read, a model's text, a wait — is the analysis Taktus supplies, and runs;
 - **level 2** — execute after approval: no step starts before a person confirmed it;
 - **level 3** and above — autonomous under supervision: no confirmation, and a step runs only on
-  an adapter whose maturity is *verified* or above (NTC-0051).
+  an adapter whose maturity is *verified* or above (NTC-0051);
+- **level 4** asks the same before a step starts. After a step failed, Taktus heals a known
+  failure inside the frame on its own (`healing.py`, ADR-0160).
 
 A rehearsal acts on nothing outside (ADR-0030) and is asked none of this: it exists to observe
 where a run comes to (NTC-0079).

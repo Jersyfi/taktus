@@ -6,8 +6,8 @@ epic: E7
 serves: [P10, P11, P12]
 state: building
 version: 0.6.0
-tests: [tests/components/process/test_bundle_parsing.py::test_autonomy_without_its_reason_is_refused, tests/governance/test_anchors.py::test_no_autonomy_level_overrides_an_anchor, tests/governance/test_autonomy.py::test_an_action_at_level_two_waits_while_the_rest_of_a_level_three_run_continues, tests/governance/test_autonomy.py::test_at_level_two_no_step_starts_before_a_person_confirmed_it, tests/governance/test_autonomy.py::test_at_level_one_taktus_proposes_and_executes_no_act, tests/governance/test_autonomy.py::test_at_level_three_the_run_proceeds_without_confirmations, tests/governance/test_autonomy.py::test_a_level_three_step_is_not_run_on_an_adapter_below_verified, tests/governance/test_autonomy.py::test_no_level_switches_off_the_stop_the_reports_or_the_escalation, tests/governance/test_autonomy.py::test_no_field_of_the_statement_reaches_the_stop_the_reports_or_the_escalation, tests/governance/test_autonomy.py::test_a_tenant_of_one_person_sets_any_of_the_three_levels, tests/governance/test_raise.py::test_a_raise_without_a_persons_approval_is_refused_and_recorded, tests/governance/test_raise.py::test_a_raise_without_the_history_is_refused_even_with_the_approval, tests/governance/test_raise.py::test_a_proposal_carries_the_evidence_and_never_applies_itself, tests/governance/test_raise.py::test_no_code_path_stores_a_version_but_the_one_that_asks_for_the_approval]
-adrs: {ADR-0008: e6a4e033abd4, ADR-0022: 69572977f46b, ADR-0023: 949c6f4e13af, ADR-0026: ccc4bd1f5423, ADR-0039: c716494667e5, ADR-0042: bfc76a4a3797}
+tests: [tests/components/process/test_bundle_parsing.py::test_autonomy_without_its_reason_is_refused, tests/governance/test_anchors.py::test_no_autonomy_level_overrides_an_anchor, tests/governance/test_autonomy.py::test_an_action_at_level_two_waits_while_the_rest_of_a_level_three_run_continues, tests/governance/test_autonomy.py::test_at_level_two_no_step_starts_before_a_person_confirmed_it, tests/governance/test_autonomy.py::test_at_level_one_taktus_proposes_and_executes_no_act, tests/governance/test_autonomy.py::test_at_level_three_the_run_proceeds_without_confirmations, tests/governance/test_autonomy.py::test_a_level_three_step_is_not_run_on_an_adapter_below_verified, tests/governance/test_autonomy.py::test_an_action_at_level_two_waits_while_the_rest_of_a_level_four_run_continues, tests/governance/test_autonomy.py::test_at_level_four_a_known_failure_inside_the_frame_is_healed_and_reported, tests/governance/test_autonomy.py::test_at_level_four_a_failure_past_the_frame_escalates_with_what_was_tried, tests/governance/test_autonomy.py::test_below_level_four_a_failure_reaches_a_person_without_a_heal, tests/governance/test_anchors.py::test_a_level_four_run_halts_at_each_anchor_with_a_decision_request, tests/governance/test_autonomy.py::test_no_level_switches_off_the_stop_the_reports_or_the_escalation, tests/governance/test_autonomy.py::test_no_field_of_the_statement_reaches_the_stop_the_reports_or_the_escalation, tests/governance/test_autonomy.py::test_a_tenant_of_one_person_sets_any_of_the_four_levels, tests/governance/test_raise.py::test_a_raise_without_a_persons_approval_is_refused_and_recorded, tests/governance/test_raise.py::test_a_raise_without_the_history_is_refused_even_with_the_approval, tests/governance/test_raise.py::test_a_proposal_carries_the_evidence_and_never_applies_itself, tests/governance/test_raise.py::test_a_raise_to_level_four_needs_a_persons_approval_and_the_history, tests/governance/test_raise.py::test_no_code_path_stores_a_version_but_the_one_that_asks_for_the_approval]
+adrs: {ADR-0008: e6a4e033abd4, ADR-0022: 69572977f46b, ADR-0023: 949c6f4e13af, ADR-0026: ccc4bd1f5423, ADR-0039: c716494667e5, ADR-0042: bfc76a4a3797, ADR-0160: 34e64cb9d5ce}
 supersedes: null
 ---
 
@@ -86,7 +86,15 @@ run proceeds without confirmations, and only on adapters at *verified*, a step o
 refused with a finding that names the step and the adapter. A raise needs a person's approval and
 the quality history the replaced version names; a refusal is a ledger entry, and no code path but
 registration stores a version. No level switches off the stop, the reports or the escalation, and a
-tenant of one person sets any of the three. An act under a legal or a correction anchor halts the
-run at the step boundary with a decision request at each of levels 1 to 3, before the level is
-applied (ADR-0042). Not built: level 4, which runs as level 3 until `0.6.0`, so the anchor test at
-level 4 waits for it; levels per risk class; result defects counted in the history (`0.5.0`).
+tenant of one person sets any of the four.
+
+Level 4 is built (ADR-0160): an action at level 2 of a level-4 process waits while the rest runs;
+a failure an adapter classified as repeatable is healed by Taktus within the frame — at most twice
+per step and run, never for an operation that cannot recognise a repeat — and reported as
+`step.healed`; past the frame, or for a failure of no known kind, the run escalates and says why;
+below level 4 nothing heals. A raise to level 4 needs the approval and the history like any raise,
+and is proposed, never applied. A legal, a strategic and a correction anchor each halt a level-4
+run at the step boundary with a decision request of their class.
+
+Not built: levels per risk class — a tenant's risk classes select anchors, not levels yet; result
+defects counted in the quality history.
