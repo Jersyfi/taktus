@@ -107,6 +107,24 @@ export interface RunLevel {
 	exactness?: ExactnessStatement | null;
 }
 
+export interface Stage {
+	name: string;
+	state: 'done' | 'current' | 'ahead';
+	/** The role the stage waits for, never a person. */
+	waiting_for?: string | null;
+	/** Name, state and, where it waits, the role. */
+	text: string;
+}
+
+/** The stage view of UC-6.15: `GET /levels/runs/<run>/stages`. */
+export interface StageView {
+	run_id: string;
+	state: string;
+	stages: Stage[];
+	summary: string;
+	link: string;
+}
+
 export interface SnapshotRun {
 	id: string;
 	process_version: string;

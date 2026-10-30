@@ -6,6 +6,11 @@ export function runLink(runId: string): string {
 	return `#/runs/${encodeURIComponent(runId)}`;
 }
 
+/** A run's stages, for a participant (UC-6.15). */
+export function stagesLink(runId: string): string {
+	return `#/stages/${encodeURIComponent(runId)}`;
+}
+
 /** A process's level, for `process@version` or a bare process id (the active version). */
 export function processLink(ref: string): string {
 	const at = ref.lastIndexOf('@');
