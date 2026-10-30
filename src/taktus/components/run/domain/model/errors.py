@@ -25,9 +25,24 @@ class RuleFailed(RunError):
 
 
 class NoWorker(RunError):
-    def __init__(self, step_id: str, required: tuple[str, ...]) -> None:
+    def __init__(
+        self,
+        step_id: str,
+        required: tuple[str, ...],
+        *,
+        permitted: str | None = None,
+        outside: tuple[str, str] | None = None,
+    ) -> None:
+        """`outside` is a worker that offers the capabilities and stores where the residency
+        rule does not admit, with its location; `permitted` what the rule admits (ADR-0157)."""
+        offered = ", ".join(required) or "nothing"
+        if outside is None or permitted is None:
+            super().__init__(f"step {step_id!r}: no configured worker offers {offered}")
+            return
+        adapter, location = outside
         super().__init__(
-            f"step {step_id!r}: no configured worker offers {', '.join(required) or 'nothing'}"
+            f"step {step_id!r}: no configured worker that the residency rule admits ({permitted}) "
+            f"offers {offered}; {adapter} offers it and stores {location}, so nothing was sent"
         )
 
 

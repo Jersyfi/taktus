@@ -74,6 +74,13 @@ the control plane records it in the provenance of every result the worker produc
 (`contracts/shared/v1/Provenance.json`, ADR-0021), so that a result can later be traced to the
 worker version that made it.
 
+`data_location` is optional: where the worker keeps, or lets a service keep, what an assignment
+sends it. `own` is the organisation's own infrastructure, `eu` is inside the European Union,
+`elsewhere` is anywhere else. A worker that declares nothing counts as `elsewhere`. The control
+plane hands a step only to a worker whose location the tenant's residency rule admits, for the
+step's data class; a worker outside it is passed over for the next one (ADR-0157). The operator
+declares the location; the control plane does not verify it.
+
 `consumption.kinds` is any of `currency`, `quota`, `compute`. Each kind brings its own detail:
 `quota` needs `window_seconds` and `unit`, `compute` needs `resource_classes`, `currency` needs
 `currencies`. A subscription-backed worker reports `quota` and describes its window; a training

@@ -60,6 +60,11 @@
           "type": "string",
           "minLength": 1
         },
+        "data_location": {
+          "description": "Where the worker keeps, or lets a service keep, what an assignment sends it: own, the organisation's own infrastructure; eu, inside the European Union; elsewhere, anywhere else (ADR-0157, ADR-0116 §2). Optional. A worker that declares nothing counts as elsewhere: a step whose tenant's residency rule is narrower than anywhere is not routed to it. The operator declares it; Taktus does not verify it.",
+          "type": "string",
+          "enum": ["own", "eu", "elsewhere"]
+        },
         "capabilities": {
           "type": "array",
           "items": { "$ref": "../../shared/v1/Capability.json" },

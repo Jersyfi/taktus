@@ -5091,8 +5091,18 @@ class RunEngine:
         span: Span,
         held: autonomy.Held,
     ) -> tuple[Run, StepRun]:
+        permitted: Permitted = "anywhere"
+        if self._residency is not None:
+            permitted = await self._residency.permitted(run.tenant, work.data_class)
+        outside: tuple[str, str] | None = None
         try:
-            resolved = await self._worker_pool(run).resolve(step.required_capabilities)
+            resolved = await self._worker_pool(run).resolve(step.required_capabilities, permitted)
+            if resolved is None and permitted != "anywhere":
+                # Whether a worker offers the capabilities and is outside the rule: the step
+                # then fails naming the rule, and nothing is sent to it (ADR-0157 §2).
+                beyond = await self._worker_pool(run).resolve(step.required_capabilities)
+                if beyond is not None:
+                    outside = (beyond.adapter, beyond.location)
         except UnaskedWorker as unasked:
             # A worker that cannot be asked what it offers is a worker that cannot answer: the
             # step fails with that cause, or waits for a platform without room for its unit,
@@ -5113,7 +5123,11 @@ class RunEngine:
             )
             step_run = step_run.to(
                 StepState.FAILED,
-                reason=str(NoWorker(step.id, step.required_capabilities)),
+                reason=str(
+                    NoWorker(
+                        step.id, step.required_capabilities, permitted=permitted, outside=outside
+                    )
+                ),
                 retryable=True,
                 finished_at=self._clock.now(),
             )

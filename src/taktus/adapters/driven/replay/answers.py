@@ -31,7 +31,14 @@ from taktus.ports.connector import (
     Result,
 )
 from taktus.ports.connector import Cause as ConnectorCause
-from taktus.ports.model import Calculability, Completion, ModelError, Prompt, ResolvedModel
+from taktus.ports.model import (
+    Calculability,
+    Completion,
+    ModelError,
+    Permitted,
+    Prompt,
+    ResolvedModel,
+)
 from taktus.ports.worker import (
     ArtifactList,
     ArtifactProduced,
@@ -454,7 +461,11 @@ class ReplayWorkerPool:
         self._recording = recording
         self._worker = ReplayWorker(recording, directory)
 
-    async def resolve(self, required: Sequence[Capability]) -> ResolvedWorker | None:
+    async def resolve(
+        self, required: Sequence[Capability], permitted: Permitted = "anywhere"
+    ) -> ResolvedWorker | None:
+        """The worker the recording names. `permitted` is not held again: the recorded run
+        was routed under the rule as it stood, and a replay sends nothing (ADR-0157)."""
         for _, answer in self._recording.answers("worker"):
             if set(required) <= set(answer.capabilities):
                 return ResolvedWorker(

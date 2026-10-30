@@ -35,6 +35,7 @@ not the bottleneck here; adapter variety is.
 | **Accept credentials at runtime, never store them** | secret safety |
 | **Least privilege** — only the tools the process allows; a worker that offers its work only those may state so, once, as `reach.stated` (ADR-0098), and the core reads the event and acts on nothing in it | permission model |
 | **Declare capabilities** — what this worker can do, and optionally its own version | processes reference capabilities, never product names; the version is recorded in the provenance of every result (ADR-0021) |
+| **Declare where it stores data** — optionally, `own`, `eu` or `elsewhere`; a worker that declares nothing counts as `elsewhere` (ADR-0157) | a step goes only to a worker the tenant's residency rule admits, for the step's data class; one outside it is passed over for the next, and with none admitted the step fails naming the rule before anything is sent (principle 11, UC-11.1) |
 | **Optionally: take a message at a boundary, hand an assignment over, connect outbound only** — steering, a `handover.state` document another place continues from, and the outbound binding, which carries the same requests from the control plane to a worker that opens no port; a tool call may say whether it acts outward, and a model's answer may be reported (ADR-0139) | a person corrects or takes over running work; a worker runs inside a customer's network; a worker's repeated calls can be counted |
 
 Full specification: [`contracts/worker/v1/README.md`](../../contracts/worker/v1/README.md).

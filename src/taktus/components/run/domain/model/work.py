@@ -534,6 +534,9 @@ class WorkerWork(Value):
     capacity_ceiling_seconds: int | None = Field(default=None, ge=1)
     """How long the step may wait for a free place at its worker before it ends with cause
     `capacity` and the run escalates (ADR-0037). None takes the engine's default."""
+    data_class: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_-]*$")
+    """The class of the data the assignment carries, as the process declares it: the tenant's
+    residency rule for that class decides which workers may be handed the step (ADR-0157)."""
 
 
 PREDICT = "ml.predict"
