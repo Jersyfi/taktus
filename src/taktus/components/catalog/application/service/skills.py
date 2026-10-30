@@ -69,7 +69,7 @@ class SkillCatalog:
         clock: Clock,
     ) -> None:
         self._owners = owners
-        self._versions = versions
+        self._skills = versions
         self._policies = policies
         self._work = work
         self._ledger = ledger
@@ -79,19 +79,19 @@ class SkillCatalog:
 
     async def get(self, tenant: Tenant, skill_id: str) -> SkillVersion | None:
         async with self._work.transaction(tenant):
-            return await self._versions.get(tenant, skill_id)
+            return await self._skills.get(tenant, skill_id)
 
     async def of_tenant(self, tenant: Tenant, viewer: str | None = None) -> list[SkillVersion]:
         """Every version the viewer may see: a private draft only by its owner."""
         async with self._work.transaction(tenant):
-            found = await self._versions.list(tenant)
+            found = await self._skills.list(tenant)
             mine = {o.id for o in await self._owners.list(tenant) if o.owner == viewer}
         return sorted((v for v in found if not v.private or v.id in mine), key=lambda v: v.id)
 
     async def production(self, tenant: Tenant, name: str) -> SkillVersion | None:
         """The version of the skill in production; None while none is."""
         async with self._work.transaction(tenant):
-            found = await self._versions.list(tenant)
+            found = await self._skills.list(tenant)
         return next((v for v in found if v.name == name and v.stage is SkillStage.PRODUCTION), None)
 
     async def policy(self, tenant: Tenant) -> SkillPolicy:
@@ -116,7 +116,7 @@ class SkillCatalog:
         changes."""
         skill_id = f"{file.name}@{version}"
         async with self._work.transaction(tenant):
-            stored = await self._versions.get(tenant, skill_id)
+            stored = await self._skills.get(tenant, skill_id)
             if stored is not None:
                 if stored.file.digest == file.digest:
                     return stored
@@ -128,7 +128,7 @@ class SkillCatalog:
             current = next(
                 (
                     v
-                    for v in await self._versions.list(tenant)
+                    for v in await self._skills.list(tenant)
                     if v.name == file.name and v.stage is SkillStage.PRODUCTION
                 ),
                 None,
@@ -148,7 +148,7 @@ class SkillCatalog:
                 predecessor=None if current is None else current.id,
                 registered_at=now,
             )
-            await self._versions.put(tenant, drafted)
+            await self._skills.put(tenant, drafted)
             if owner is not None:
                 await self._owners.put(
                     tenant, SkillOwnership(id=skill_id, tenant=tenant, owner=owner)
@@ -169,7 +169,7 @@ class SkillCatalog:
             raise SkillError("owner", f"only the owner of {skill_id} shares it")
         shared = version.model_copy(update={"shared": True})
         async with self._work.transaction(tenant):
-            await self._versions.put(tenant, shared)
+            await self._skills.put(tenant, shared)
             await self._record(tenant, SHARED, shared, "owner")
         return shared
 
@@ -184,7 +184,7 @@ class SkillCatalog:
             return version
         changed = version.model_copy(update={"rounds": (*version.rounds, started)})
         async with self._work.transaction(tenant):
-            await self._versions.put(tenant, changed)
+            await self._skills.put(tenant, changed)
         return changed
 
     async def round_scored(
@@ -225,7 +225,7 @@ class SkillCatalog:
             if changed.stage is SkillStage.DRAFT and skills.passed_round(changed) is not None:
                 changed = skills.advanced(changed, SkillStage.EVALUATED, now, "round")
                 await self._record(tenant, EVALUATED, changed, "round")
-            await self._versions.put(tenant, changed)
+            await self._skills.put(tenant, changed)
         return changed
 
     async def measured(
@@ -236,7 +236,7 @@ class SkillCatalog:
             return version
         changed = version.model_copy(update={"measurements": (*version.measurements, measurement)})
         async with self._work.transaction(tenant):
-            await self._versions.put(tenant, changed)
+            await self._skills.put(tenant, changed)
         return changed
 
     # --- the stages -------------------------------------------------------------------------
@@ -299,16 +299,16 @@ class SkillCatalog:
                         outcome="named",
                     ),
                 )
-            for other in await self._versions.list(tenant):
+            for other in await self._skills.list(tenant):
                 if (
                     other.name == version.name
                     and other.id != skill_id
                     and other.stage is SkillStage.PRODUCTION
                 ):
                     retired = skills.advanced(other, SkillStage.RETIRED, now, "successor")
-                    await self._versions.put(tenant, retired)
+                    await self._skills.put(tenant, retired)
                     await self._record(tenant, RETIRED, retired, "successor")
-            await self._versions.put(tenant, produced)
+            await self._skills.put(tenant, produced)
             await self._record(tenant, PRODUCED, produced, "approved", actor=by)
         return produced
 
@@ -325,9 +325,9 @@ class SkillCatalog:
         retired = skills.advanced(version, SkillStage.RETIRED, now, "fallback")
         restored = skills.advanced(predecessor, SkillStage.PRODUCTION, now, "fallback")
         async with self._work.transaction(tenant):
-            await self._versions.put(tenant, retired)
+            await self._skills.put(tenant, retired)
             await self._record(tenant, RETIRED, retired, "fallback")
-            await self._versions.put(tenant, restored)
+            await self._skills.put(tenant, restored)
             await self._record(tenant, PRODUCED, restored, "fallback")
         return True
 
@@ -394,7 +394,7 @@ class SkillCatalog:
             await self.refused(tenant, version, error.reason)
             raise
         async with self._work.transaction(tenant):
-            await self._versions.put(tenant, changed)
+            await self._skills.put(tenant, changed)
             await self._record(tenant, KIND_OF[to], changed, reason, actor=by)
         return changed
 
