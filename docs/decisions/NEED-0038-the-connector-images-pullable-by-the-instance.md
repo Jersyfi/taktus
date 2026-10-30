@@ -56,3 +56,10 @@ curl --silent --output /dev/null --write-out '%{http_code}\n' \
 ```
 
 It prints `200`.
+
+## Outcome
+
+**Provided:** 2026-10-30
+**Confirmed by:** the command of section 7, for each of the twelve images at `0.2.0-rc.34`, printed `200` without signing in.
+**How it was provided:** by itself, as step 1 of section 4 foresaw: the release workflow pushed the images, and the registry made them public with the repository; nothing was asked of the owner. rc.34 is installed, and the repository and chat connectors run from their own images.
+**Recorded in:** this pull request
