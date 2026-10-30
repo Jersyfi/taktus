@@ -10,6 +10,7 @@ from taktus.components.run.ports.anchors import (
 )
 from taktus.components.run.ports.connectors import ConnectorPool
 from taktus.components.run.ports.deadlines import DeclaredDeadlines
+from taktus.components.run.ports.guidance import Guidance
 from taktus.components.run.ports.levels import Breach, Levels, LoweredLevels, ProposalDecided
 from taktus.components.run.ports.maturity import Maturities, Standing
 from taktus.components.run.ports.messages import MessageRules, Messages, QuietHours
@@ -36,6 +37,7 @@ __all__ = [
     "DeclaredDeadlines",
     "Draft",
     "DraftOption",
+    "Guidance",
     "Levels",
     "LoweredLevels",
     "Maturities",

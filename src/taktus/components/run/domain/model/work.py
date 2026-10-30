@@ -103,7 +103,7 @@ from base64 import b64decode, b64encode
 from collections.abc import Mapping
 from typing import Annotated, Any, Literal
 
-from pydantic import Field, TypeAdapter, ValidationError, model_validator
+from pydantic import Field, StringConstraints, TypeAdapter, ValidationError, model_validator
 
 from taktus.components.run.domain.model.errors import UnsupportedWork
 from taktus.ports.connector import CaseScope
@@ -751,8 +751,22 @@ ANALYTIC = "analytic"
 MESSAGE = "message"
 RECIPIENTS = "recipients"
 CHECKING = "checking"
+SKILLS = "skills"
+"""The skills a step uses, by name (ADR-0113 §2): handed to it in its brief, at the version the
+run pinned (ADR-0162 §5)."""
 CONTROL_KEYS = frozenset(
-    {WHEN, ASK, ON_ESCALATION, EMPTY_WHEN_SKIPPED, SCOPE, ANALYTIC, MESSAGE, RECIPIENTS, CHECKING}
+    {
+        WHEN,
+        ASK,
+        ON_ESCALATION,
+        EMPTY_WHEN_SKIPPED,
+        SCOPE,
+        ANALYTIC,
+        MESSAGE,
+        RECIPIENTS,
+        CHECKING,
+        SKILLS,
+    }
 )
 
 
@@ -842,6 +856,9 @@ class Checking(Value):
         return self
 
 
+type SkillName = Annotated[str, StringConstraints(pattern=r"^[a-z0-9]+(-[a-z0-9]+)*$")]
+
+
 class Control(Value):
     """When a step runs, whom it asks first and what it may see: the keys of a step's work that
     are not what the step does (ADR-0088, ADR-0097, ADR-0130, ADR-0142)."""
@@ -864,6 +881,8 @@ class Control(Value):
     """Whom an outward step addresses, with references; None: one recipient (ADR-0142 §6)."""
     checking: Checking | None = None
     """What the step's declared checks judge, and how they read their sources (ADR-0152)."""
+    skills: tuple[SkillName, ...] = ()
+    """The skills the step uses, by name (ADR-0162 §5)."""
 
     @model_validator(mode="after")
     def _a_step_on_escalation_asks_nobody(self) -> Control:

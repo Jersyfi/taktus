@@ -189,6 +189,16 @@ class Purpose(StrEnum):
     """A proposal held to the active version."""
     DRIFT = "drift"
     """The active version alone, with no change."""
+    SKILL = "skill"
+    """The active version with a skill version pinned, held to it with the skill as it is in
+    production (ADR-0162 §3)."""
+    PROFILE = "profile"
+    """The active version serving a shared agent's role profile under a new core, held to it
+    under the active core (ADR-0163 §4)."""
+
+
+GUIDED = frozenset({Purpose.SKILL, Purpose.PROFILE})
+"""The purposes whose two sides run the same version with different know-how handed over."""
 
 
 class Side(StrEnum):
@@ -291,6 +301,9 @@ class Evaluation(Value):
     """The reference the proposal's runs ran under; None for drift."""
     slot: datetime | None = None
     """The schedule's slot a drift evaluation was started for; None when started by an act."""
+    subject: str | None = Field(default=None, min_length=1)
+    """What a guided evaluation holds to the cases: a skill version, `<name>@<version>`, or a
+    core and profile, `<agent>@<version>/<agent>:<role>@<version>`; None for the others."""
     acting_for: str = Field(min_length=1)
     cases: tuple[EvaluationCase, ...] = ()
     """The cases as they were when it started: the set may change while it runs."""
