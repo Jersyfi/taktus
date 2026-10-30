@@ -62,6 +62,7 @@ taktus/
 │   └── composition/                 # composition root: wires and runs `taktusd` and `taktusctl`
 │
 ├── workers/                         # separate deployables behind the worker contract, each with its own image; none in the control plane image (DEC-0011)
+├── connectors/                      # the connectors behind the connector contract, package `taktus_connectors`: each an image of its own, a stage of connectors/Dockerfile; none in the control plane image, none importing it (ADR-0158)
 │   ├── script/                      # the reference worker: shell commands, no AI
 │   ├── claudecode/                  # the coding worker: a coding agent behind the contract, and the fake agent the gate runs it against
 │   ├── codex/                       # the second coding worker: a second vendor's coding agent behind the contract, and its fake agent
@@ -106,6 +107,7 @@ adapters.driven      → ports, shared, wire
 conformance          → contracts, wire                   — nothing else in src/taktus
 wire                 → nothing                           — stdlib only
 workers/*            → contracts only                    — NEVER src/taktus
+taktus_connectors    → nothing of taktus                 — and src/taktus never imports it (ADR-0158)
 components.X         → components.X, ports, shared
 ports                → shared
 shared               → nothing
@@ -129,6 +131,13 @@ plane; `taktusctl conformance` (a driving adapter) is its entry point, and `test
 gate. It ships in the wheel together with `contracts/`, so that a third party can run it without
 the rest of Taktus. It speaks HTTP and SSE to a worker and MCP to a connector; the reference
 connector is a driven adapter and the suite its client, and neither imports the other.
+
+`connectors/` holds every connector served as an MCP server, the package `taktus_connectors`
+(ADR-0158). It is a separate deployable, as a worker is: each connector is an image of its own,
+a stage of `connectors/Dockerfile`, and the control plane image copies nothing of it. The
+control plane keeps its side of the port under `adapters/driven/connectors/` — the MCP client,
+the pool, and the loopback and directory connectors, which reach the instance itself and run in
+its process.
 
 `tests/architecture` fails on:
 
