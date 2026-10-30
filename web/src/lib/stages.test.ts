@@ -57,10 +57,17 @@ describe('the stages of a run', () => {
 			onAbsent: () => {},
 			onRefused: () => {},
 			fetcher,
-			sleep: async () => controller.abort()
+			// The stream stays away a moment, so that the reads it asked for land, and then ends.
+			sleep: () =>
+				new Promise<void>((r) =>
+					setTimeout(() => {
+						controller.abort();
+						r();
+					}, 20)
+				)
 		});
 		expect(reads.every((p) => p === '/levels/runs/r1/stages')).toBe(true);
 		expect(seen.length).toBeGreaterThan(0);
-		expect(seen[0].stages.map((s) => s.state)).toEqual(['done', 'current', 'ahead']);
+		expect(seen[0]?.stages.map((s) => s.state)).toEqual(['done', 'current', 'ahead']);
 	});
 });
