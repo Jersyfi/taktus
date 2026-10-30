@@ -129,6 +129,7 @@ from taktus.composition.moves import MethodMoves
 from taktus.composition.owner_channel import known_secrets, owner_channel_wiring
 from taktus.composition.proposals import InstanceChanges
 from taktus.composition.settings import (
+    ExecutionKind,
     load_administration,
     load_backup_expected_hours,
     load_budget,
@@ -161,6 +162,7 @@ from taktus.ports.persistence import (
     UnreadableState,
 )
 from taktus.ports.queue import Queue
+from taktus.ports.relay import Relay
 from taktus.ports.traces import Traces
 from taktus.shared.v1 import Command, Plan
 
@@ -196,7 +198,11 @@ class LocalWiring:
         self._configuration = configuration or EnvironmentConfiguration()
 
     @asynccontextmanager
-    async def services(self, *, state_dir: Path, worker_endpoint: str) -> AsyncIterator[Services]:
+    async def services(
+        self, *, state_dir: Path, worker_endpoint: str, relay: Relay | None = None
+    ) -> AsyncIterator[Services]:
+        """`relay`: the outbound binding's relay, for a worker configured as connected
+        (ADR-0156); without one such a worker cannot be reached here."""
         clock = SystemClock()
         ids = SystemIdentifiers()
         try:
@@ -222,7 +228,11 @@ class LocalWiring:
         async with (
             self._stores(state_dir) as stores,
             open_workers(
-                configured, self._configuration, state_dir=state_dir, endpoint=worker_endpoint
+                configured,
+                self._configuration,
+                state_dir=state_dir,
+                endpoint=worker_endpoint,
+                relay=relay,
             ) as opened,
         ):
             runs = stores.of(Run)
@@ -257,6 +267,11 @@ class LocalWiring:
                     opened,
                     hosts=service_hosts(configured),
                     environment=unit_environments(configured),
+                    connected=frozenset(
+                        w.identifier
+                        for w in configured
+                        if w.execution.kind is ExecutionKind.CONNECTED
+                    ),
                 ),
                 connector_pool(
                     connectors,

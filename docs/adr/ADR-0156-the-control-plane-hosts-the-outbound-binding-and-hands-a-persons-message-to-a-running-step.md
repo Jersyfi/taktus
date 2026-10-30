@@ -106,7 +106,9 @@ owner or someone the owner named, and only on the same person's `yes` to the mes
 
 An accepted message is three facts in one transaction. The text is stored as an object. The
 ledger records `step.message_asked`, naming the person as actor and the text by its digest,
-never the text. The message, `msg_…`, is placed on the run's job with the text's digest.
+never the text. The message, `msg_…`, is placed on the run's job with its text and the text's
+digest. The job carries the text to whichever runner holds it, which need not share the asking
+instance's object store, and drops it when the job is completed.
 
 ### 8. The runner holding the run hands it over under its claim
 
@@ -157,7 +159,7 @@ only (principle 14).
 ## Consequences
 
 - `ports/relay.py` and its memory and PostgreSQL adapters; migration 0087 adds `worker_relay`,
-  `worker_relay_chunk`, `job_message` and `step_run.messages`.
+  `worker_relay_chunk`, `job.messages` and `step_run.messages`.
 - `adapters/driven/workers/connected.py` is the runner's transport and
   `adapters/driving/rest/relay.py` the host; `ExecutionKind.CONNECTED` and `connect.key` in the
   settings; a row in `CREDENTIALS.md`.

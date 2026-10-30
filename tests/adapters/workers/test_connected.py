@@ -81,10 +81,12 @@ async def hosting(relay: Relay, keys: dict[str, str], port: int) -> AsyncIterato
 
 
 @contextlib.contextmanager
-def connected(base: str, tmp_path: Path, key: str | None, *options: str) -> Iterator[Path]:
+def connected(
+    base: str, tmp_path: Path, key: str | None, *options: str, env: dict[str, str] | None = None
+) -> Iterator[Path]:
     """The reference worker connected to `base`, presenting `key`; yields its log."""
     log = tmp_path / f"worker-{os.urandom(3).hex()}.log"
-    env = {k: v for k, v in os.environ.items() if k != "TAKTUS_CONNECT_KEY_FILE"}
+    env = {k: v for k, v in {**os.environ, **(env or {})}.items() if k != "TAKTUS_CONNECT_KEY_FILE"}
     if key is not None:
         key_file = tmp_path / f"connect-{os.urandom(3).hex()}.key"
         key_file.write_text(key)

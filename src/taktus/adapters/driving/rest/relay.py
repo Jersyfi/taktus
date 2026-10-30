@@ -80,9 +80,7 @@ def router(host: ConnectedHost | None) -> APIRouter:
             **common,
         },
     )
-    async def next_request(
-        name: str, authorization: str | None = Header(default=None)
-    ) -> Response:
+    async def next_request(name: str, authorization: str | None = Header(default=None)) -> Response:
         refused = admitted(name, authorization)
         if refused is not None or host is None:
             return refused or problem(404, f"no worker {name!r} connects to this instance")

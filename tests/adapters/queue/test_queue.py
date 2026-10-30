@@ -298,7 +298,7 @@ DIGEST = "sha256:" + "ab" * 32
 async def place(backend: Backend, tenant: str, message_id: str, run: str = "run_1") -> bool:
     async with backend.work.transaction(tenant):
         return await backend.queue.ask_message(
-            tenant, run, AskedMessage(message_id=message_id, step_id="s", digest=DIGEST)
+            tenant, run, AskedMessage(message_id=message_id, step_id="s", digest=DIGEST, text="go")
         )
 
 

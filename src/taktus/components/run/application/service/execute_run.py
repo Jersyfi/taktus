@@ -1582,7 +1582,12 @@ class RunEngine:
             placed = await self._queue.ask_message(
                 run.tenant,
                 run.id,
-                AskedMessage(message_id=message_id, step_id=step_run.step_id, digest=digest),
+                AskedMessage(
+                    message_id=message_id,
+                    step_id=step_run.step_id,
+                    digest=digest,
+                    text=command.text,
+                ),
             )
             if not placed:
                 raise MessageRefused(
@@ -1634,13 +1639,12 @@ class RunEngine:
             outcome = "not_running"
             if inflight is not None and inside == message.step_id:
                 worker, assignment_id = inflight
-                text = await self._objects.get(message.digest)
-                if text is None:
-                    continue  # the object is not readable here yet: the next renewal again
+                # The text is kept here too, under the digest the ledger names it by.
+                await self._objects.put(message.text.encode())
                 try:
                     await worker.steer(
                         assignment_id,
-                        SteeringMessage(message_id=message.message_id, text=text.decode()),
+                        SteeringMessage(message_id=message.message_id, text=message.text),
                     )
                     outcome = "handed"
                 except SteeringRefused:

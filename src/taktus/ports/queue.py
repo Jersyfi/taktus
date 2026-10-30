@@ -79,12 +79,14 @@ class TakeoverAsked(Value):
 
 
 class AskedMessage(Value):
-    """A person's message asked on a run's job (ADR-0156 §7): which step it is for, and its
-    text by digest, never the text."""
+    """A person's message asked on a run's job (ADR-0156 §7): which step it is for, its text's
+    digest, and the text itself, which the job carries to whichever runner holds it and drops
+    with the job. The ledger names the text by its digest only."""
 
     message_id: str = Field(pattern=r"^msg_[A-Za-z0-9_-]{4,}$")
     step_id: str = Field(min_length=1)
     digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    text: str = Field(min_length=1, max_length=8000)
     handed: bool = False
     """The runner holding the job handed it to the worker, or found it could not."""
 

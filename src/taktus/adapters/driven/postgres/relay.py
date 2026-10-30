@@ -89,9 +89,7 @@ class PostgresRelay:
     async def append(self, request_id: str, seq: int, chunk: bytes) -> bool:
         async with self._transaction() as connection:
             present = await connection.scalar(
-                select(s.worker_relay.c.request_id).where(
-                    s.worker_relay.c.request_id == request_id
-                )
+                select(s.worker_relay.c.request_id).where(s.worker_relay.c.request_id == request_id)
             )
             if present is None:
                 return False

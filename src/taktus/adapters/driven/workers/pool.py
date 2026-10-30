@@ -24,11 +24,13 @@ class StaticWorkerPool:
         *,
         hosts: Mapping[str, tuple[str, ...]] | None = None,
         environment: Mapping[str, tuple[str, ...]] | None = None,
+        connected: frozenset[str] = frozenset(),
     ) -> None:
         self._workers = list(workers)
         self._declared: dict[str, tuple[frozenset[str], str | None]] = {}
         self._hosts = dict(hosts or {})
         self._environment = dict(environment or {})
+        self._connected = connected
 
     def hosts(self, adapter: str) -> tuple[str, ...]:
         """The hosts the configuration lets one worker's own service reach, beyond a step's
@@ -39,6 +41,10 @@ class StaticWorkerPool:
         """The names of the variables the configuration gives one worker's unit (ADR-0090);
         empty when it names none."""
         return self._environment.get(adapter, ())
+
+    def outbound(self, adapter: str) -> bool:
+        """Whether the worker connects outbound and is reached over the binding (ADR-0156)."""
+        return adapter in self._connected
 
     async def resolve(self, required: Sequence[Capability]) -> ResolvedWorker | None:
         needed = set(required)
@@ -89,6 +95,7 @@ class StaticWorkerPool:
             [(a, w) for a, w in self._workers if a != adapter],
             hosts={a: h for a, h in self._hosts.items() if a != adapter},
             environment={a: e for a, e in self._environment.items() if a != adapter},
+            connected=self._connected - {adapter},
         )
         pool._declared = {a: d for a, d in self._declared.items() if a != adapter}
         return pool
@@ -98,6 +105,8 @@ class StaticWorkerPool:
         runs its baseline against, so that a worker standing behind another one serves every
         step it can serve (ADR-0078). The original is untouched."""
         ordered = sorted(self._workers, key=lambda entry: entry[0] != adapter)
-        pool = StaticWorkerPool(ordered, hosts=self._hosts, environment=self._environment)
+        pool = StaticWorkerPool(
+            ordered, hosts=self._hosts, environment=self._environment, connected=self._connected
+        )
         pool._declared = dict(self._declared)
         return pool

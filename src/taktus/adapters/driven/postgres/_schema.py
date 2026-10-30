@@ -846,7 +846,6 @@ worker_relay = Table(
     Column("status", Integer),
     Column("content_type", Text),
     Column("ended", Boolean, nullable=False, server_default=text("false")),
-    Column("abandoned", Boolean, nullable=False, server_default=text("false")),
     Column("answers", Integer, nullable=False, server_default=text("0")),
     Index(
         "worker_relay_waiting", "worker", "created_at", postgresql_where=text("taken_at IS NULL")
