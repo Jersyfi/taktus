@@ -13,6 +13,7 @@ from taktus.components.run.application.service.execute_run import (
     ResumeRun,
     RunEngine,
     StartRun,
+    SteerStep,
     TakeOver,
 )
 from taktus.components.run.application.service.maturation import (
@@ -44,5 +45,6 @@ __all__ = [
     "Runner",
     "RunnerOptions",
     "StartRun",
+    "SteerStep",
     "TakeOver",
 ]

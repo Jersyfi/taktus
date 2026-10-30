@@ -61,5 +61,11 @@ class TakeoverRefused(RunError):
     was written."""
 
 
+class MessageRefused(RunError):
+    """A person's message to a step that cannot be handed to it: the step is not a running
+    worker step, no runner holds the run, a person holds it, or its worker declares no steering
+    (ADR-0156 §7). The message names which. Nothing was written."""
+
+
 class UnknownTakeover(RunError):
     """No step of the run is held under the take-over named (ADR-0128)."""

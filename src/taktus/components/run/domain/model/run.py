@@ -281,6 +281,16 @@ class Anchoring(Value):
         return self.verdict == PROCEED
 
 
+class ReceivedMessage(Value):
+    """A person's message the step's worker received at a boundary (ADR-0156 §9): an input of
+    the step, named by its identifier and its text's digest — never the text, never the
+    person, whom the ledger entry of the ask names."""
+
+    message_id: str = Field(pattern=r"^msg_[A-Za-z0-9_-]{4,}$")
+    digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    received_at: datetime
+
+
 class StepRun(Value):
     step_id: StepId
     index: int = Field(ge=0)
@@ -332,6 +342,9 @@ class StepRun(Value):
     anchoring: Anchoring | None = None
     """The decision requests the step raised because an anchor names its act; None for a step
     no anchor named (ADR-0042)."""
+    messages: tuple[ReceivedMessage, ...] = ()
+    """The persons' messages the step's worker received, in the order it received them: inputs
+    of the step (ADR-0156 §9)."""
 
     def to(self, state: StepState, **changes: Any) -> StepRun:
         if (self.state, state) not in STEP_TRANSITIONS:

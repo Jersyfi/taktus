@@ -146,6 +146,15 @@ fenced as a runner's write is: the step succeeds with method `human`, its proven
 what it read, and the job is released for the next runner. A runner that claims the job once
 the lease has passed gives the step back to its worker at the checkpoint
 (`step.takeover_lapsed`).
+
+A person can send a message to a worker step while it runs (ADR-0156). `steer` refuses it unless
+the step is a running worker step of a run a runner holds and its worker declares steering;
+otherwise it stores the text as an object, records `step.message_asked` with the person as actor
+and the text by digest, and places the message on the run's job. The runner holding the job
+hands it to the worker under its claim (`messages_asked`, `step.message_handed`). The worker's
+`message.received` is recorded as `step.message_received`, and the message joins the step run's
+inputs and its provenance. The message reaches the worker as the contract's closed
+`SteeringMessage`: nothing of the frame, the limits or the exactness class is read from it.
 """
 
 from __future__ import annotations
@@ -189,11 +198,13 @@ from taktus.components.run.domain.model import (
     ExtractRule,
     LlmWork,
     Message,
+    MessageRefused,
     MlWork,
     NoConnector,
     NoWorker,
     ParticipantWork,
     ReadyRule,
+    ReceivedMessage,
     RoadmapRule,
     RuleFailed,
     Run,
@@ -318,7 +329,7 @@ from taktus.ports.persistence import (
     UnitOfWork,
 )
 from taktus.ports.platform import Platform
-from taktus.ports.queue import RUN_EXECUTE, Claim, Job, Queue, TakeoverAsked
+from taktus.ports.queue import RUN_EXECUTE, AskedMessage, Claim, Job, Queue, TakeoverAsked
 from taktus.ports.telemetry import Span, Telemetry
 from taktus.ports.traces import Masking, Traces
 from taktus.ports.worker import (
@@ -334,10 +345,13 @@ from taktus.ports.worker import (
     Frame,
     HandoverRequest,
     Limits,
+    MessageReceived,
     ModelCalled,
     NoEstimator,
     Outcome,
     ResolvedWorker,
+    SteeringMessage,
+    SteeringRefused,
     StepBoundary,
     StopRequest,
     Task,
@@ -387,6 +401,16 @@ TAKEOVER_REFUSED = "step.takeover_refused"
 """The step ended another way before it stopped, and was not taken over. Changes no state."""
 TAKEOVER_LAPSED = "step.takeover_lapsed"
 """The take-over's lease passed without a hand-back: the step is back at its checkpoint."""
+MESSAGE_ASKED = "step.message_asked"
+"""A person sent a message to a running step (ADR-0156 §7): the person as actor, the text by
+digest. Changes no state."""
+MESSAGE_HANDED = "step.message_handed"
+"""The runner holding the run handed the message to the worker: `handed`, `refused` or
+`not_running`. Changes no state."""
+MESSAGE_RECEIVED = "step.message_received"
+"""The worker received the message at a boundary; it is an input of the step from there."""
+MESSAGE_LENGTH = 8000
+"""The longest text a message carries: the contract's `SteeringMessage.text`."""
 HOLDER = "takeover:"
 """What the claimant of a take-over's claim starts with; the take-over identifier follows."""
 
@@ -506,6 +530,19 @@ class TakeOver:
     step_id: StepId
     actor: str
     """The person who asks; named as the actor of `step.takeover_asked`, for the audit."""
+    tenant: Tenant
+
+
+@dataclass(frozen=True)
+class SteerStep:
+    """A person sends a message to a step of a run while it runs (ADR-0156 §7). Who may is
+    decided by the surface the person uses; the engine checks the step and its worker."""
+
+    run_id: str
+    step_id: StepId
+    text: str
+    actor: str
+    """The person who sends it; named as the actor of `step.message_asked`, for the audit."""
     tenant: Tenant
 
 
@@ -795,6 +832,9 @@ class RunEngine:
         self._inflight_adapter: dict[str, tuple[Tenant, str]] = {}
         """The tenant and the adapter of the step each run in `_inflight` is inside: a stop of
         that adapter stops the step at its boundary (ADR-0138)."""
+        self._message_digests: dict[str, str] = {}
+        """The text's digest of every message this process read on a job, by its identifier:
+        what a `message.received` is matched with (ADR-0156 §9)."""
         self._taking_over: dict[str, TakeoverAsked] = {}
         """Runs whose runner read a take-over asked on their job, with the ask (ADR-0128)."""
         self._answered: set[str] = set()
@@ -1496,6 +1536,164 @@ class RunEngine:
             run = await self._runs.get(tenant, run_id)
             if run is not None:
                 await self._record(run, CLAIM_LOST, outcome="lost")
+
+    # --- steering (ADR-0156) ----------------------------------------------------------------------
+
+    async def steer(self, command: SteerStep) -> str:
+        """A person's message to a running step (ADR-0156 §7). Returns the message's
+        identifier. Refused with `MessageRefused`, writing nothing, unless the step is a running
+        `worker` step of a run a runner holds and its worker declares steering."""
+        if self._queue is None:
+            raise MessageRefused(
+                "no queue is wired: a message reaches a step through the runner that holds its run"
+            )
+        if not command.text.strip() or len(command.text) > MESSAGE_LENGTH:
+            raise MessageRefused(
+                f"a message carries a text of 1 to {MESSAGE_LENGTH} characters, not "
+                f"{len(command.text)}"
+            )
+        async with self._work.transaction(command.tenant):
+            run = await self._runs.get(command.tenant, command.run_id)
+        if run is None:
+            raise UnknownRun(command.run_id)
+        step_run = self._steerable(run, command.step_id)
+        step = run.step(command.step_id)
+        try:
+            resolved = await self._worker_pool(run).resolve(step.required_capabilities)
+            supports = None if resolved is None else (await resolved.worker.capabilities()).supports
+        except WorkerError as error:
+            raise MessageRefused(
+                f"the worker of step {step.id!r} could not be asked whether it takes messages: "
+                f"{error}"
+            ) from error
+        if resolved is None or supports is None or not supports.steering:
+            named = step_run.adapter or ("none" if resolved is None else resolved.adapter)
+            raise MessageRefused(
+                f"the worker {named} of step {step.id!r} declares no steering: it takes no "
+                "message while it runs"
+            )
+        digest = await self._objects.put(command.text.encode())
+        message_id = self._ids.new("msg")
+        async with self._work.transaction(command.tenant):
+            run = await self._runs.get(command.tenant, command.run_id)
+            if run is None:
+                raise UnknownRun(command.run_id)
+            step_run = self._steerable(run, command.step_id)
+            placed = await self._queue.ask_message(
+                run.tenant,
+                run.id,
+                AskedMessage(message_id=message_id, step_id=step_run.step_id, digest=digest),
+            )
+            if not placed:
+                raise MessageRefused(
+                    f"run {run.id!r} is not held by a runner, or a person holds it: a message "
+                    "reaches a step only through the runner that executes it"
+                )
+            await self._record(
+                run,
+                MESSAGE_ASKED,
+                step=step_run,
+                outcome="asked",
+                actor=command.actor,
+                digest=digest,
+                bare=True,
+            )
+        return message_id
+
+    @staticmethod
+    def _steerable(run: Run, step_id: StepId) -> StepRun:
+        try:
+            step_run = run.step_run(step_id)
+        except KeyError:
+            raise UnknownRun(f"run {run.id!r} has no step {step_id!r}") from None
+        method = run.step(step_id).method
+        if method is not Method.WORKER:
+            raise MessageRefused(
+                f"step {step_id!r} is a {method} step: only a worker step takes a message while "
+                "it runs"
+            )
+        if run.state is not RunState.RUNNING or step_run.state is not StepState.RUNNING:
+            raise MessageRefused(
+                f"step {step_id!r} is {step_run.state} in a run that is {run.state}: a message "
+                "reaches a step while it runs"
+            )
+        return step_run
+
+    async def messages_asked(
+        self, tenant: Tenant, run_id: str, claim: Claim, messages: Sequence[AskedMessage]
+    ) -> None:
+        """The runner holding the run read messages placed on its job (ADR-0156 §8). Each is
+        handed to the worker of the step it is for, once, and marked handed in the transaction
+        that records it, fenced by the claim."""
+        if self._queue is None:
+            return
+        inflight = self._inflight.get(run_id)
+        inside = self._inflight_step.get(run_id)
+        for message in messages:
+            self._message_digests[message.message_id] = message.digest
+            outcome = "not_running"
+            if inflight is not None and inside == message.step_id:
+                worker, assignment_id = inflight
+                text = await self._objects.get(message.digest)
+                if text is None:
+                    continue  # the object is not readable here yet: the next renewal again
+                try:
+                    await worker.steer(
+                        assignment_id,
+                        SteeringMessage(message_id=message.message_id, text=text.decode()),
+                    )
+                    outcome = "handed"
+                except SteeringRefused:
+                    outcome = "refused"
+                except WorkerError:
+                    continue  # unreachable for now: handed at the next renewal
+            async with self._work.transaction(tenant):
+                if not await self._queue.fence(tenant, claim):
+                    return
+                run = await self._runs.get(tenant, run_id)
+                if run is None:
+                    return
+                named = next((s for s in run.step_runs if s.step_id == message.step_id), None)
+                await self._queue.message_handed(tenant, claim.job_id, message.message_id)
+                await self._record(
+                    run,
+                    MESSAGE_HANDED,
+                    step=named,
+                    outcome=outcome,
+                    digest=message.digest,
+                    bare=True,
+                )
+
+    async def _received(self, run: Run, step_run: StepRun, event: MessageReceived) -> StepRun:
+        """The worker received a message at its boundary: it is an input of the step from here
+        (ADR-0156 §9). A message the step run holds already is not counted twice."""
+        if any(m.message_id == event.message_id for m in step_run.messages):
+            return step_run
+        digest = self._message_digests.get(event.message_id)
+        if digest is None:
+            digest = await self._asked_digest(run, event.message_id)
+        if digest is None:
+            return step_run  # no person sent it through this run: it is not an input of ours
+        return step_run.model_copy(
+            update={
+                "messages": (
+                    *step_run.messages,
+                    ReceivedMessage(
+                        message_id=event.message_id, digest=digest, received_at=event.ts
+                    ),
+                )
+            }
+        )
+
+    async def _asked_digest(self, run: Run, message_id: str) -> str | None:
+        """The digest of a message asked on the run's job, read from the queue: what a runner
+        that adopted the step knows of a message another runner handed."""
+        claim = self._claim.get()
+        if claim is None or self._queue is None:
+            return None
+        async with self._work.transaction(run.tenant):
+            asked = await self._queue.messages_asked(run.tenant, claim.job_id)
+        return next((m.digest for m in asked if m.message_id == message_id), None)
 
     # --- take-over (ADR-0128) ---------------------------------------------------------------------
 
@@ -5638,6 +5836,17 @@ class RunEngine:
                         }
                     )
                     run = await self._commit(run.with_step_run(step_run))
+                elif isinstance(event, MessageReceived):
+                    received = await self._received(run, step_run, event)
+                    if received is not step_run:
+                        step_run = received
+                        run = await self._commit(
+                            run.with_step_run(step_run),
+                            MESSAGE_RECEIVED,
+                            step=step_run,
+                            outcome="received",
+                            digest=step_run.messages[-1].digest,
+                        )
                 elif isinstance(event, AssignmentFinished):
                     finished = event
                 last_seq = event.seq
@@ -5675,6 +5884,9 @@ class RunEngine:
         step_run = step_run.model_copy(
             update={"assignment_open": False, "assignment_seq": last_seq}
         )
+        if step_run.messages:
+            # Every message the worker received is an input of what the step produced.
+            trace = dataclasses.replace(trace, inputs=(*trace.inputs, *_message_inputs(step_run)))
         if finished.outcome is Outcome.STOPPED:
             if fired is not None:
                 # Stopped at its boundary by the rule on repetition: the run halts with cause
@@ -6513,3 +6725,17 @@ def _credential_names(work: Work) -> list[str]:
     if isinstance(work, WaitWork) and work.until is not None:
         return [c.name for c in work.until.credentials]
     return []
+
+
+def _message_inputs(step_run: StepRun) -> tuple[ProvenanceInput, ...]:
+    """The persons' messages the step's worker received, as inputs of its provenance: each by
+    its identifier and its text's digest, read when it was received (ADR-0156 §9)."""
+    return tuple(
+        ProvenanceInput(
+            kind=InputKind.MESSAGE,
+            ref=message.message_id,
+            digest=message.digest,
+            observed_at=message.received_at,
+        )
+        for message in step_run.messages
+    )
