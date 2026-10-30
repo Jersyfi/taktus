@@ -476,7 +476,10 @@ uv run taktusctl conformance run --contract worker/v1 --listen 127.0.0.1:9100
 
 The suite then serves the binding at `http://127.0.0.1:9100/relay` and waits for the worker to
 connect. Check W-21 holds the worker to the binding itself. The binding names no
-authentication of its own yet: a host of the control plane decides it when it is built (#625).
+authentication of its own. The control plane's host, on the `api` role at
+`<prefix>/workers/<name>/relay`, admits a worker only with its connect key in
+`Authorization: Bearer`; the reference worker presents the content of the file
+`TAKTUS_CONNECT_KEY_FILE` names (ADR-0156).
 
 ## 9. Two proof cases
 

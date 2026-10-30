@@ -8,9 +8,10 @@ What this adds:
 - `worker_relay`: one row per request a runner relays to a worker connected outbound — the
   worker's adapter identifier, the request as `RelayRequest`, when a host took it, the answer's
   status and type, whether its body ended, and how many answers were posted. A request the
-  runner read to its end, or stopped reading, is deleted with its chunks. `worker_relay_chunk`: the answer's body in the order it arrived. Both belong to
-  the instance, not to a tenant: row security admits only a transaction that sets
-  `taktus.relay` to `on`, which no tenant's transaction does.
+  runner read to its end, or stopped reading, is deleted with its chunks. `worker_relay_chunk`:
+  the answer's body in the order it arrived. Both belong to the instance, not to a tenant: row
+  security admits only a transaction that sets `taktus.relay` to `on`, which no tenant's
+  transaction does.
 - `job.messages`, nullable: the persons' messages asked on a run's job, each with its text,
   which the job carries to its runner and drops with itself (ADR-0156 §7). Every job stored
   before carries none, which is what happened.

@@ -2891,6 +2891,123 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /workers/{name}/relay/next:
+    post:
+      tags:
+      - workers
+      summary: The next request for a connected worker
+      description: A worker that connects outbound fetches the next request of the worker contract here.
+        Answered `200` with a `RelayRequest` of contracts/worker/v1, or `204` when none arrived within
+        the wait (ADR-0156).
+      operationId: next_request_workers__name__relay_next_post
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The request.
+          content:
+            application/json:
+              schema: {}
+        '204':
+          description: None yet.
+        '401':
+          description: No connect key, or not the worker's.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No worker of this name connects to the instance.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /workers/{name}/relay/answers/{request_id}:
+    post:
+      tags:
+      - workers
+      summary: The answer of a connected worker to one request
+      description: The header `Relay-Status` carries the answer's status, `Content-Type` its type, and
+        the body is the answer's body, streamed while it lasts (ADR-0156).
+      operationId: answer_workers__name__relay_answers__request_id__post
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Request Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: relay-status
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Relay-Status
+      - name: content-type
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Content-Type
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '204':
+          description: Received.
+        '400':
+          description: Relay-Status carries no status code.
+          content:
+            application/problem+json: {}
+        '409':
+          description: Answered already.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No connect key, or not the worker's.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No worker of this name connects to the instance.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
   /register:
     get:
       tags:

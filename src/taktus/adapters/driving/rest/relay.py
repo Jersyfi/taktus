@@ -54,6 +54,7 @@ def router(host: ConnectedHost | None) -> APIRouter:
     common: dict[int | str, dict[str, Any]] = {
         401: {"description": "No connect key, or not the worker's.", **PROBLEM},
         404: {"description": "No worker of this name connects to the instance.", **PROBLEM},
+        422: {"description": "A parameter does not validate.", **PROBLEM},
     }
 
     def admitted(name: str, authorization: str | None) -> JSONResponse | None:
@@ -101,6 +102,7 @@ def router(host: ConnectedHost | None) -> APIRouter:
         "type, and the body is the answer's body, streamed while it lasts (ADR-0156).",
         responses={
             204: {"description": "Received."},
+            400: {"description": "Relay-Status carries no status code.", **PROBLEM},
             409: {"description": "Answered already.", **PROBLEM},
             **common,
         },

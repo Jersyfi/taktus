@@ -350,6 +350,22 @@ role it would tie the core to a model stack and the removal test would be lost.
   `composition/agent_surface.py`, which also records every call. The identity component keeps
   the agent key's digest on the identity and the rights per role (`RoleRights`, table
   `role_rights`).
+- **A message to a running step** is the `api` role's (`adapters/driving/rest/steering.py`, the
+  MCP tool `steer_step` under the right `agent.steer`, and the chat's read-back in
+  `composition/takeover_in_channel.py` with the phrasebooks' `steer_*` entries; ADR-0156). Each
+  hands the run engine `SteerStep` through the port `Takeovers` of
+  `adapters/driving/rest/wiring.py`. The engine places the message on the run's job
+  (`ports/queue.py`, `ask_message`), and the runner holding it hands it to the worker with each
+  renewal of its lease.
+- **A worker that connects outbound** is hosted by the `api` role
+  (`adapters/driving/rest/relay.py`, ADR-0156) at `<prefix>/workers/<name>/relay`, admitted by
+  its connect key. Its requests in flight live in the relay every instance shares
+  (`ports/relay.py`; `adapters/driven/postgres/relay.py`, migration 0087), and every runner
+  reaches it through `adapters/driven/workers/connected.py`. `composition/execution.py` opens a
+  worker of kind `connected` over the relay, `composition/daemon.py` builds the host from the
+  connect keys `composition/settings.py` reads, `composition/pools.py` names the binding in its
+  configuration, and `composition/conformance.py` runs the instance's suite over it;
+  `composition/local.py` takes a relay for the same, in tests.
 - **A decision that takes effect** on the HTTP surface (`adapters/driving/rest/app.py`) or in
   the owner's channel (`composition/owner_channel.py`) is handed to the run engine, which
   continues or halts the run it holds, and to `composition/moves.py` with its request. A
