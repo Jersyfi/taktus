@@ -208,6 +208,13 @@
     },
     {
       "capabilities": [
+        "change.implement"
+      ],
+      "name": "factory",
+      "operations": []
+    },
+    {
+      "capabilities": [
         "data.generate",
         "data.read",
         "ml.evaluate",

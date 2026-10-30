@@ -65,6 +65,7 @@ taktus/
 │   ├── script/                      # the reference worker: shell commands, no AI
 │   ├── claudecode/                  # the coding worker: a coding agent behind the contract, and the fake agent the gate runs it against
 │   ├── codex/                       # the second coding worker: a second vendor's coding agent behind the contract, and its fake agent
+│   ├── factory/                     # a software factory behind the contract, generic over its task API through a profile (ADR-0157); its release entry is in composition/shipped.json
 │   └── mlbench/                     # the ML bench: trains, evaluates and serves classical models; embeddings next (#210)
 │
 ├── contracts/                       # what third parties implement — JSON Schema
