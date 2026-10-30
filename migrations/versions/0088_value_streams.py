@@ -1,7 +1,7 @@
 """A tenant's value streams (ADR-0159 §4, UC-15.6).
 
 Revision: 0088
-Revises: 0086
+Revises: 0087
 
 What this adds: `value_stream`, one row per revision of a value stream, the definition as a
 document, beside it the stream and its revision. A revision is never overwritten: a changed
@@ -21,7 +21,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision = "0088"
-down_revision = "0086"
+down_revision = "0087"
 branch_labels = None
 depends_on = None
 

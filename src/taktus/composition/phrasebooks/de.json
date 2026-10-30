@@ -87,6 +87,12 @@
   "as_text": "als Text, genau wie du ihn geschrieben hast",
   "handed_back": "Zurückgegeben: Schritt {step} von Lauf {run} ist erledigt, als deiner, und der Lauf geht weiter.",
   "takeover_not_done": "Das lässt sich gerade nicht übernehmen oder zurückgeben; die Seite des Laufs sagt, warum.",
+  "steer_words": [
+    "nachricht"
+  ],
+  "steer_read": "Ich verstehe das so: Schritt {step} von Lauf {run} die Nachricht \"{text}\" schicken. Sein Worker erhält sie an seiner nächsten Grenze, und die Schritte danach nehmen sie als Eingabe; sie ändert nichts daran, was der Schritt tun oder verbrauchen darf.",
+  "steered": "Geschickt als {message}: Schritt {step} von Lauf {run} erhält sie an der nächsten Grenze seines Workers.",
+  "steer_refused": "Nicht geschickt: {reason}.",
   "spend_words": [
     "kosten"
   ],

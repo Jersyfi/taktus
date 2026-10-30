@@ -35,6 +35,7 @@ from sqlalchemy import (
     Identity,
     Index,
     Integer,
+    LargeBinary,
     MetaData,
     PrimaryKeyConstraint,
     Table,
@@ -745,6 +746,7 @@ step_run = Table(
     Column("confirmed_by", Text),  # ADR-0039
     Column("block", JSONB),  # ADR-0043
     Column("anchoring", JSONB),  # ADR-0042
+    Column("messages", JSONB),  # ADR-0156
     PrimaryKeyConstraint("tenant", "run_id", "step_id"),
     ForeignKeyConstraint(
         ["tenant", "run_id"], ["run.tenant", "run.id"], ondelete="CASCADE", name="step_run_run"
@@ -893,6 +895,7 @@ job = Table(
     Column("takeover_by", Text),  # ADR-0128
     Column("takeover_step", Text),
     _at("held_until", nullable=True),
+    Column("messages", JSONB),  # ADR-0156
     PrimaryKeyConstraint("tenant", "id"),
     Index(
         "job_available",
@@ -913,6 +916,39 @@ outbox = Table(
     _at("published_at", nullable=True),
     PrimaryKeyConstraint("tenant", "id"),
     Index("outbox_unpublished", "tenant", "id", postgresql_where=text("published_at IS NULL")),
+)
+
+# The instance's own, not a tenant's (ADR-0156 §1): the outbound binding's requests in flight.
+# Row security admits only a transaction that sets `RELAY_SETTING`.
+worker_relay = Table(
+    "worker_relay",
+    metadata,
+    Column("request_id", Text, primary_key=True),
+    Column("worker", Text, nullable=False),
+    Column("envelope", JSONB, nullable=False),
+    _at("created_at"),
+    _at("taken_at", nullable=True),
+    Column("status", Integer),
+    Column("content_type", Text),
+    Column("ended", Boolean, nullable=False, server_default=text("false")),
+    Column("answers", Integer, nullable=False, server_default=text("0")),
+    Index(
+        "worker_relay_waiting", "worker", "created_at", postgresql_where=text("taken_at IS NULL")
+    ),
+)
+
+worker_relay_chunk = Table(
+    "worker_relay_chunk",
+    metadata,
+    Column(
+        "request_id",
+        Text,
+        ForeignKey("worker_relay.request_id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("seq", Integer, nullable=False),
+    Column("body", LargeBinary, nullable=False),
+    PrimaryKeyConstraint("request_id", "seq"),
 )
 
 # Every table the application touches, for the grants and the row-level security policies.
@@ -947,3 +983,7 @@ REGISTRY_SETTING = "taktus.registry"
 """The session setting the registry's own policy reads (migration 0053, ADR-0104): `on`, and
 every row of `tenant` is visible for reading. Only the tenant store's `every` sets it, in a
 transaction of its own."""
+
+RELAY_SETTING = "taktus.relay"
+"""The session setting the relay's own policy reads (migration 0087, ADR-0156): `on`, and the
+outbound binding's tables are visible. Only the relay store sets it, in transactions of its own."""

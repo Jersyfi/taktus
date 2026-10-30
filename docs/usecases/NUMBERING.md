@@ -77,7 +77,9 @@ and a stop to repetition; `UC-9.6` introduced in stages, each opened on evidence
 blueprint-level `UC-03` was numbered with them. `UC-7.9` an input check is a visible step, not a hidden filter (#336, DEC-0190), the next free number of its area. 
 `UC-14.4` every connector ships as an image of its own (#339, ADR-0158), the next free number of
 its area, built with package B in concept mode (DEC-0222).
-Issue #402 had named its own future case
+Numbered for package B (DEC-0222), each the next free number of its area: `UC-4.21` a person
+steers a running worker step (#624, NTC-0244); `UC-4.22` a worker that only connects outbound
+serves the runs of every instance (#625, NTC-0245). Issue #402 had named its own future case
 `AF-03`; that case, if it is needed, is `UC-04`.
 
 ## Numbers of the definition with no file of their own

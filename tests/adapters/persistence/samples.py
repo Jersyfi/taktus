@@ -91,6 +91,7 @@ from taktus.components.run.domain.model import (
     DeadlineAction,
     DeadlineRule,
     OpenBlock,
+    ReceivedMessage,
     Run,
     RunState,
     Start,
@@ -389,6 +390,11 @@ def run(id: str = "run_1", tenant: str = "t") -> Run:
                 round=1,
                 verdict="proceed",
                 decided_by="idn_ada",
+            ),
+            "messages": (
+                ReceivedMessage(
+                    message_id="msg_0001", digest=DIGEST, received_at=AT + timedelta(seconds=4)
+                ),
             ),
             "checkpoint": Checkpoint(
                 ref="ckpt/asg_0001/0",

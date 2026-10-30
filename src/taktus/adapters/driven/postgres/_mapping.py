@@ -507,6 +507,7 @@ class RunMapper:
                     "confirmed_by": sr.get("confirmed_by"),
                     "block": sr.get("block"),
                     "anchoring": sr.get("anchoring"),
+                    "messages": sr.get("messages") or None,
                 }
                 for sr in step_runs
             ],
@@ -742,6 +743,7 @@ def _step_run_from(
             "confirmed_by": row.confirmed_by,
             "block": row.block,
             "anchoring": row.anchoring,
+            "messages": row.messages or (),
         }
     )
 

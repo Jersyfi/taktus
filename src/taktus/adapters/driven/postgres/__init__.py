@@ -17,6 +17,7 @@ from taktus.adapters.driven.postgres.persistence import PostgresPersistence
 from taktus.adapters.driven.postgres.projection_store import PostgresProjectionStore
 from taktus.adapters.driven.postgres.provenance_store import PostgresProvenanceStore
 from taktus.adapters.driven.postgres.queue import PostgresQueue
+from taktus.adapters.driven.postgres.relay import PostgresRelay
 from taktus.adapters.driven.postgres.repository import PostgresRepository
 from taktus.adapters.driven.postgres.signal import PostgresLedgerSignal
 from taktus.adapters.driven.postgres.tenant_store import PostgresTenantStore
@@ -32,6 +33,7 @@ __all__ = [
     "PostgresProjectionStore",
     "PostgresProvenanceStore",
     "PostgresQueue",
+    "PostgresRelay",
     "PostgresRepository",
     "PostgresTenantStore",
     "PostgresTraceStore",

@@ -112,7 +112,9 @@ It offers the contract's three optional extensions (ADR-0139), and declares `ste
 **Steering.** A message to a running assignment (`POST /v1/assignments/{id}/messages`) waits for
 the next boundary and is received there, as `message.received`, once per `message_id`. The
 commands of the steps after it find every message received so far in `TAKTUS_STEERING`, a JSON
-list of texts. A message changes neither the frame nor the limits (W-19).
+list of texts. A message changes neither the frame nor the limits (W-19). A message that begins
+`use <capability>` makes the next step call that tool as well; the call is held against the
+frame like every other, and refused outside it (ADR-0156 §10).
 
 **Handover.** `POST /v1/assignments/{id}/handover` stops the assignment at the next boundary,
 as a stop does. After that boundary the worker produces the artifact `handover`, of kind
@@ -125,7 +127,10 @@ continues there, on any instance of this worker, with no checkpoint in its state
 listening (README §8). It opens no port: it asks `BASE/next` for the next request, answers it
 with the same handler that answers at an endpoint, and posts the answer to
 `BASE/answers/{request_id}`, the event stream in chunks while it lasts. The conformance suite
-serves `BASE` itself with `--listen` (W-21).
+serves `BASE` itself with `--listen` (W-21). The control plane serves it at
+`<prefix>/workers/<name>/relay` and admits the worker only with its connect key: where the
+variable `TAKTUS_CONNECT_KEY_FILE` names a file, the worker sends its content as
+`Authorization: Bearer` with every request to the host, and writes it nowhere (ADR-0156).
 
 ## Fault injection
 
