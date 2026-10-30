@@ -62,7 +62,10 @@ class HttpWorker:
         idle_timeout: float = 60.0,
         stream_timeout: float = 3600.0,
         reconnects: int = 3,
+        transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
+        """`transport`: how a request reaches the worker, where not over the network to
+        `endpoint` — the outbound binding's relay for a connected worker (ADR-0156 §2)."""
         self.endpoint = endpoint.rstrip("/")
         self._idle_timeout = idle_timeout
         self._stream_timeout = stream_timeout
@@ -71,6 +74,7 @@ class HttpWorker:
             base_url=self.endpoint,
             timeout=httpx.Timeout(timeout, connect=10.0),
             headers={"Accept": "application/json"},
+            transport=transport,
         )
 
     async def __aenter__(self) -> Self:

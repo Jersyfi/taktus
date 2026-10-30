@@ -20,6 +20,7 @@ from taktus.adapters.driven.memory.persistence import MemoryPersistence
 from taktus.adapters.driven.memory.projection_store import MemoryProjectionStore
 from taktus.adapters.driven.memory.provenance_store import MemoryProvenanceStore
 from taktus.adapters.driven.memory.queue import MemoryQueue
+from taktus.adapters.driven.memory.relay import MemoryRelay
 from taktus.adapters.driven.memory.repository import MemoryRepository
 from taktus.adapters.driven.memory.tenant_store import MemoryTenantStore
 from taktus.adapters.driven.memory.trace_store import MemoryTraceStore
@@ -34,6 +35,7 @@ __all__ = [
     "MemoryProjectionStore",
     "MemoryProvenanceStore",
     "MemoryQueue",
+    "MemoryRelay",
     "MemoryRepository",
     "MemoryTenantStore",
     "MemoryTraceStore",
