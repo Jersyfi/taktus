@@ -21,7 +21,7 @@ from taktus.components.catalog.domain.model import (
     Verdict,
 )
 from taktus.components.command.domain.model import IntakeEvent
-from taktus.components.decision.domain.model import RegisterEntry, Request
+from taktus.components.decision.domain.model import DecisionRule, RegisterEntry, Request
 from taktus.components.governance.domain.model import (
     AnchorConfiguration,
     CaseAnswer,
@@ -483,6 +483,25 @@ def register_entry(tenant: str = "t") -> RegisterEntry:
             "raised_at": AT,
             "answered_at": AT + timedelta(hours=2),
             "decided_at": AT + timedelta(hours=2, minutes=1),
+        }
+    )
+
+
+def decision_rule(tenant: str = "t") -> DecisionRule:
+    return DecisionRule.model_validate(
+        {
+            "id": "dru_1",
+            "tenant": tenant,
+            "kind": {"process": "release", "step_id": "roadmap-consistency", "anchor": "anc-x"},
+            "option": "A",
+            "proposal": "Ship as planned.",
+            "decider": "product.owner",
+            "precedents": ["dce_1", "dce_2", "dce_3", "dce_4", "dce_5"],
+            "request_id": "dr_rule_1",
+            "status": "adopted",
+            "created_at": AT,
+            "decided_by": "idn_ada",
+            "decided_at": AT + timedelta(hours=1),
         }
     )
 

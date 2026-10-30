@@ -201,6 +201,15 @@ read — and every answer is confirmed, a chosen option as well as free text. A 
 own response times, with their own total and median; anyone else reads them aggregated by role or department over at least two
 deciders (ADR-0015).
 
+**Rules from precedent** (ADR-0161, UC-7.10). After every decision that took effect, the
+decision component looks at its kind: one anchor at one step of one process. Where the five
+most recent decisions of a kind chose the same option, by the same role and without
+modifications, it raises a decision request that proposes a rule and names the five. Only a
+strategic anchor of the tenant's own configuration is ever proposed; legal, correction and
+frame anchors, a step's own `ask`, approvals and samples never are (NTC-0249). An adopted rule
+answers each later request of its kind as it is raised, and the register entry names the rule.
+A rule is no person's confirmation of a step, and nobody's response time. A person retires it.
+
 ### 3.3 Against escalation
 
 | | Decision request | Escalation |

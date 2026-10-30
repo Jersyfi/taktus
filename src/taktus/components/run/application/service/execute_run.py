@@ -770,6 +770,9 @@ class RunEngine:
         self._repeating: set[str] = set()
         """Runs whose current step the rule on repetition stopped: they halt with cause
         `repeated`."""
+        self._declining: set[str] = set()
+        """Runs whose anchored step a rule from precedent declined as it was raised: they halt
+        with cause `declined` (ADR-0161)."""
         self._cooling: dict[str, datetime] = {}
         """Every model cooling down, by adapter, with when its cool-down ends: for every run and
         tenant this engine executes (ADR-0116 §5)."""
@@ -1416,8 +1419,10 @@ class RunEngine:
                     anchoring=settled,
                     reason=None,
                     # The decision is the person's confirmation of the step (level 2 and up);
-                    # at level 1 the person still performs the act.
-                    confirmed_by=by if level >= 2 else step_run.confirmed_by,
+                    # at level 1 the person still performs the act. A rule's is no person's.
+                    confirmed_by=by
+                    if level >= 2 and not any(v.by_rule for v in verdicts)
+                    else step_run.confirmed_by,
                 )
             elif self._continues(run, step_run.step_id):
                 # The process acts on a decline itself (ADR-0088): the act is not performed,
@@ -2084,7 +2089,9 @@ class RunEngine:
                     )
                 continue
             if step_run.state is StepState.REJECTED:
-                if run.id in self._administering:
+                if run.id in self._declining:
+                    cause = Cause.DECLINED
+                elif run.id in self._administering:
                     cause = Cause.ADMINISTRATION
                 elif run.id in self._repeating:
                     cause = Cause.REPEATED
@@ -2095,6 +2102,7 @@ class RunEngine:
                 self._immature.discard(run.id)
                 self._administering.discard(run.id)
                 self._repeating.discard(run.id)
+                self._declining.discard(run.id)
                 return await self._end(run, RunState.HALTED, cause, step_run.reason, span)
             if run.id in self._moving:
                 # The step went back to its boundary to move to the next model of its
@@ -2556,7 +2564,30 @@ class RunEngine:
                 outcome=draft.class_,
                 decision=draft.id,
             )
-        return run, step_run
+        return await self._answered_at_once(run, step, step_run)
+
+    async def _answered_at_once(
+        self, run: Run, step: Step, step_run: StepRun
+    ) -> tuple[Run, StepRun]:
+        """An anchored step whose every request took effect as it was raised — each answered by
+        a rule from precedent a person adopted (ADR-0161) — is decided at once: it continues
+        from its boundary, ends declined, or halts the run, as a person's decision would have
+        it. One request still open, and the step waits."""
+        held = step_run.anchoring
+        if held is None or self._decisions is None:
+            return run, step_run
+        for request in held.requests:
+            verdict = await self._decisions.verdict(run.tenant, request)
+            if verdict is None or not verdict.applied:
+                return run, step_run
+        run, declined = await self._apply_decisions(run)
+        decided = run.step_run(step.id)
+        if declined is not None:
+            self._declining.add(run.id)
+            return run, decided
+        if decided.state is StepState.PLANNED:
+            return await self._execute_step(run, step, decided)
+        return run, decided
 
     async def _settle(
         self,

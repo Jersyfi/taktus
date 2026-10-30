@@ -10,7 +10,7 @@ from adapters.persistence import samples
 from adapters.persistence.conftest import Backend
 from taktus.components.catalog.domain.model import AdapterMaturity
 from taktus.components.command.domain.model import IntakeEvent
-from taktus.components.decision.domain.model import RegisterEntry, Request
+from taktus.components.decision.domain.model import DecisionRule, RegisterEntry, Request
 from taktus.components.governance.domain.model import (
     AnchorConfiguration,
     CaseAnswer,
@@ -66,6 +66,7 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (AnchorConfiguration, samples.anchor_configuration),
     (Request, samples.decision_request),
     (RegisterEntry, samples.register_entry),
+    (DecisionRule, samples.decision_rule),
     (OwnerChannel, samples.owner_channel),
     (Report, samples.report),
     (Incident, samples.incident),

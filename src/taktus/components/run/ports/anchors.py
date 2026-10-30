@@ -79,6 +79,9 @@ class Verdict(Value):
     modified: bool = False
     """The reading that took effect carries modifications beside the option: what a rule that
     applies only the option as proposed must not apply (ADR-0114 §2)."""
+    by_rule: bool = False
+    """A rule from precedent a person adopted took the decision, not a person (ADR-0161): it is
+    no person's confirmation of the step."""
 
 
 class Decisions(Protocol):

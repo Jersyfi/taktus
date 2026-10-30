@@ -1179,6 +1179,32 @@ class RegisterEntryMapper:
         return [dict(row.entry) for row in rows]
 
 
+class DecisionRuleMapper:
+    """One row per rule from precedent; the rule stays a document (ADR-0161)."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.decision_rule, tenant, id)
+        return None if row is None else dict(row.rule)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.decision_rule,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "status": document["status"],
+                "created_at": _at(document["created_at"]),
+                "rule": document,
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.decision_rule, tenant, s.decision_rule.c.created_at)
+        return [dict(row.rule) for row in rows]
+
+
 # --- the owner-facing channel ------------------------------------------------------------------
 
 
@@ -1688,6 +1714,7 @@ MAPPERS: dict[str, Mapper] = {
     "anchor_configuration": AnchorConfigurationMapper(),
     "request": DecisionRequestMapper(),
     "register_entry": RegisterEntryMapper(),
+    "decision_rule": DecisionRuleMapper(),
     "owner_channel": OwnerChannelMapper(),
     "report": ReportMapper(),
     "proposal": ProposalMapper(),
