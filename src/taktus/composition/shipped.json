@@ -225,6 +225,7 @@
       "capabilities": [
         "change.implement"
       ],
+      "image": null,
       "name": "factory",
       "operations": []
     },
