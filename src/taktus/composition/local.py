@@ -71,13 +71,26 @@ from taktus.components.accounting.application.service import (
     TaktRateHandler,
 )
 from taktus.components.catalog.application.service import (
+    AgentCatalog,
     RecordRemovalResultHandler,
     RunConformanceHandler,
+    SkillCatalog,
 )
-from taktus.components.catalog.domain.model import AdapterMaturity
+from taktus.components.catalog.domain.model import (
+    AdapterMaturity,
+    AgentCore,
+    RoleProfile,
+    SkillOwnership,
+    SkillPolicy,
+    SkillVersion,
+)
 from taktus.components.command.application.service import CommissionPlanHandler
 from taktus.components.decision.domain.model import Request
-from taktus.components.governance.application.service import ExpectedRuns, ResultDefects
+from taktus.components.governance.application.service import (
+    Drifts,
+    ExpectedRuns,
+    ResultDefects,
+)
 from taktus.components.governance.domain.model import Incident, WatchConfiguration
 from taktus.components.governance.domain.model.anchors import AnchorConfiguration
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
@@ -95,7 +108,13 @@ from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
-from taktus.components.process.domain.model import Process, ProcessVersion, Proposal
+from taktus.components.process.domain.model import (
+    CorrectedCase,
+    Evaluation,
+    Process,
+    ProcessVersion,
+    Proposal,
+)
 from taktus.components.reporting.application.service import Kept, ProductFindings, StepTraces
 from taktus.components.run.application.query import (
     BlockedTime,
@@ -105,10 +124,12 @@ from taktus.components.run.application.query import (
 from taktus.components.run.application.service import EngineOptions, RunEngine
 from taktus.components.run.application.service.stops import Stops
 from taktus.components.run.domain.model import AdapterStop, Run
+from taktus.composition.agents import SharedAgents
 from taktus.composition.alerts import alerts
 from taktus.composition.capacity import capacity_report, rules_of
 from taktus.composition.conformance import InstanceSuites, worker_suites
 from taktus.composition.decisions import decision_wiring
+from taktus.composition.evaluations import Evaluations
 from taktus.composition.execution import (
     connector_pool,
     memory_demand,
@@ -145,6 +166,7 @@ from taktus.composition.settings import (
 )
 from taktus.composition.shipped import load as load_shipped
 from taktus.composition.signals import signal_wiring
+from taktus.composition.skills import CatalogGuidance, SkillLifecycle
 from taktus.composition.stages import stage_wiring
 from taktus.ports.backups import BackupLog
 from taktus.ports.configuration import Configuration, ConfigurationError
@@ -275,10 +297,25 @@ class LocalWiring:
                 stoppable=pools.identifiers(),
             )
 
+            # Skills and shared agents in the catalogue, handed to a run's steps (ADR-0162,
+            # ADR-0163).
+            skill_catalog = SkillCatalog(
+                stores.of(SkillVersion),
+                stores.of(SkillPolicy),
+                stores.of(SkillOwnership),
+                stores.work,
+                ledger,
+                clock,
+            )
+            agent_catalog = AgentCatalog(
+                stores.of(AgentCore), stores.of(RoleProfile), stores.work, ledger, clock
+            )
+
             def engine_for(
                 workers: StaticWorkerPool, connectors: StaticConnectorPool, models: StaticModelPool
             ) -> RunEngine:
                 return RunEngine(
+                    guidance=CatalogGuidance(skill_catalog, agent_catalog),
                     runs=runs,
                     work=stores.work,
                     objects=objects,
@@ -427,6 +464,55 @@ class LocalWiring:
                     stores.work,
                 ),
             )
+            drifts = Drifts(
+                stores.of(Incident),
+                stores.of(WatchConfiguration),
+                ledger,
+                stores.work,
+                clock,
+            )
+            evaluations = Evaluations(
+                processes=stores.of(Process),
+                versions=stores.of(ProcessVersion),
+                evaluations=stores.of(Evaluation),
+                cases=stores.of(CorrectedCase),
+                runs=runs,
+                commission=commission,
+                engine=engine,
+                identities=identities,
+                drifts=drifts,
+                ledger=ledger,
+                objects=objects,
+                work=stores.work,
+                clock=clock,
+                ids=ids,
+            )
+            skill_lifecycle = SkillLifecycle(
+                catalog=skill_catalog,
+                processes=stores.of(Process),
+                versions=stores.of(ProcessVersion),
+                evaluations=evaluations,
+                evaluation_records=stores.of(Evaluation),
+                runs=runs,
+                drifts=drifts,
+                ledger=ledger,
+                work=stores.work,
+                clock=clock,
+            )
+            shared_agents = SharedAgents(
+                catalog=agent_catalog,
+                processes=stores.of(Process),
+                versions=stores.of(ProcessVersion),
+                evaluations=evaluations,
+                commission=commission,
+                engine=engine,
+                identities=identities,
+                ledger=ledger,
+                work=stores.work,
+                clock=clock,
+                ids=ids,
+                costs=CostOfRunHandler(ledger, objects, stores.work),
+            )
             register_version = RegisterProcessVersionHandler(
                 stores.of(ProcessVersion),
                 stores.work,
@@ -554,6 +640,8 @@ class LocalWiring:
                     clock=clock,
                 ),
                 stages=staged.stages,
+                skills=skill_lifecycle,
+                agents=shared_agents,
             )
             telemetry.shutdown()
 

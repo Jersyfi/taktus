@@ -1,0 +1,12 @@
+{
+  "seq": 87,
+  "ts": "2026-10-30T09:00:00Z",
+  "kind": "skill.approved",
+  "prev_hash": "sha256:4d1e6b3c8a5f0d7e2b9c4a1e6b3d8f5a0c7e2b9d4f1a6c3e8b5d0f7a2c9e4b1d",
+  "hash": "sha256:7a2c9e4b1d6f3a8c5e0b7d2f9a4c1e6b3d8f5a0c7e2b9d4f1a6c3e8b5d0f7a2c",
+  "refs": {
+    "tenant": "acme",
+    "skill_id": "triage-an-issue@2"
+  },
+  "outcome": "rule"
+}

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, date, datetime, time, timedelta
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -12,11 +13,26 @@ import yaml
 
 from taktus.components.catalog.domain.model import (
     AdapterMaturity,
+    AgentCore,
     Configuration,
     ConformanceResult,
+    CoreState,
+    Grants,
+    Measurement,
+    OriginKind,
     ProcessFinding,
     RemovalResult,
+    RoleProfile,
+    Round,
+    RoundState,
     RunSummary,
+    SkillFile,
+    SkillOrigin,
+    SkillOwnership,
+    SkillPolicy,
+    SkillStage,
+    SkillVersion,
+    StageChange,
     StepFinding,
     Verdict,
 )
@@ -312,6 +328,8 @@ def run(id: str = "run_1", tenant: str = "t") -> Run:
         work=version.work,
         deadlines=(deadline_rule(),),
         bindings={"drafting": "model.candidate"},
+        skills={"triage-an-issue": "2"},
+        profile="inbox:sales@1",
         state=RunState.RUNNING,
         created_at=AT,
         updated_at=AT + timedelta(seconds=5),
@@ -965,3 +983,97 @@ def adapter_stop(tenant: str = "t") -> AdapterStop:
         confirmed_at=AT + timedelta(seconds=40),
         stopped=("run_1",),
     )
+
+
+def skill_version(tenant: str = "t") -> SkillVersion:
+    """A version two rounds in, the first passed with its dry run, in production."""
+    file = SkillFile(
+        name="triage-an-issue",
+        description="How to triage an issue of the tracker.",
+        instructions="Read the issue, then label it.",
+        fields={"license": "MIT"},
+        files=("references/labels.md",),
+        digest=DIGEST,
+    )
+    return SkillVersion(
+        id="triage-an-issue@2",
+        tenant=tenant,
+        name="triage-an-issue",
+        version="2",
+        file=file,
+        origin=SkillOrigin(
+            kind=OriginKind.RECURRING,
+            processes=("triage",),
+            steps=("triage/label",),
+            runs=("run_1", "run_2", "run_3"),
+            corrections=3,
+        ),
+        stage=SkillStage.PRODUCTION,
+        history=(
+            StageChange(stage=SkillStage.DRAFT, at=AT, reason="recurring"),
+            StageChange(stage=SkillStage.EVALUATED, at=AT + timedelta(days=1), reason="round"),
+        ),
+        rounds=(
+            Round(
+                id="rnd_1",
+                evaluations=("evl_1",),
+                state=RoundState.PASSED,
+                score=0.9,
+                dry_run=True,
+                started_at=AT,
+                scored_at=AT + timedelta(hours=1),
+            ),
+            Round(id="rnd_2", evaluations=("evl_2",), started_at=AT + timedelta(days=1)),
+        ),
+        measurements=(
+            Measurement(source="round", evaluation="rnd_1", score=0.9, at=AT + timedelta(hours=1)),
+        ),
+        predecessor="triage-an-issue@1",
+        registered_at=AT,
+    )
+
+
+def skill_policy(tenant: str = "t") -> SkillPolicy:
+    return SkillPolicy(tenant=tenant, floor=12, exact_factor=3, n=15)
+
+
+def agent_core(tenant: str = "t") -> AgentCore:
+    return AgentCore(
+        id="inbox@2",
+        tenant=tenant,
+        agent="inbox",
+        version="2",
+        purpose="Order the inbox by what needs an answer first.",
+        instructions="Read each message and say how soon it needs an answer.",
+        flow="inbox-order",
+        model="drafting",
+        autonomy_level=2,
+        grants=Grants(
+            sources=("handbook",),
+            connectors=("mail",),
+            tools=("mail.read", "mail.label"),
+            formats=("list",),
+            approval_limit=Decimal("500"),
+        ),
+        state=CoreState.ACTIVE,
+        verdicts={"inbox:sales@1": "passed"},
+        proposed_at=AT,
+    )
+
+
+def role_profile(tenant: str = "t") -> RoleProfile:
+    return RoleProfile(
+        id="inbox:sales@1",
+        tenant=tenant,
+        agent="inbox",
+        role="sales",
+        version="1",
+        grants=Grants(tools=("mail.read",), approval_limit=Decimal("100")),
+        vocabulary=("lead", "quote"),
+        tone="brief",
+        set_at=AT,
+    )
+
+
+def skill_ownership(tenant: str = "t") -> SkillOwnership:
+    return SkillOwnership(id="mine@1", tenant=tenant, owner="idn_t")

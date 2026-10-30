@@ -60,12 +60,25 @@ from taktus.adapters.driven.postgres import (
 from taktus.adapters.driven.postgres.url import described
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.adapters.driving.rest import build_app
-from taktus.components.accounting.application.service import SpendHandler, TrialReports
+from taktus.components.accounting.application.service import (
+    CostOfRunHandler,
+    SpendHandler,
+    TrialReports,
+)
 from taktus.components.catalog.application.service import (
+    AgentCatalog,
     RecordRemovalResultHandler,
     RunConformanceHandler,
+    SkillCatalog,
 )
-from taktus.components.catalog.domain.model import AdapterMaturity
+from taktus.components.catalog.domain.model import (
+    AdapterMaturity,
+    AgentCore,
+    RoleProfile,
+    SkillOwnership,
+    SkillPolicy,
+    SkillVersion,
+)
 from taktus.components.command.application.service import (
     CommissionPlanHandler,
     CompleteIntakeHandler,
@@ -144,6 +157,7 @@ from taktus.components.run.domain.model import AdapterStop, Run
 from taktus.composition import roles
 from taktus.composition.acting import ActingReads
 from taktus.composition.agent_surface import AgentSurface
+from taktus.composition.agents import SharedAgents
 from taktus.composition.alerts import alerts, alerts_tick, say_who_hears
 from taktus.composition.capacity import capacity_report, capacity_tick, rules_of
 from taktus.composition.catalogue_in_channel import CatalogueInChannel
@@ -192,6 +206,7 @@ from taktus.composition.replies import ConnectorReplies
 from taktus.composition.settings import Role, Settings, load
 from taktus.composition.shipped import load as load_shipped
 from taktus.composition.signals import CommandInterventions, signal_wiring, signals_tick
+from taktus.composition.skills import CatalogGuidance, SkillLifecycle, skills_tick
 from taktus.composition.spend_in_channel import SpendInChannel
 from taktus.composition.stages import stage_wiring, stages_tick
 from taktus.composition.stops import StopsConfirmed
@@ -311,6 +326,10 @@ class Wired:
     moves: MethodMoves | None = None
     """An accepted proposal to move a step applied, and a move rolled back (ADR-0114)."""
     runner: Runner | None = None
+    skills: SkillLifecycle | None = None
+    """The skill lifecycle the scheduler looks at once a minute (ADR-0162)."""
+    agents: SharedAgents | None = None
+    """Shared agents with role profiles (ADR-0163)."""
     leading: bool = field(default=False, init=False)
     """Whether this process holds the scheduler's lead right now."""
 
@@ -503,6 +522,24 @@ async def wire(
                 stoppable=pools.identifiers(),
             )
 
+            # Skills and shared agents in the catalogue, handed to a run's steps (ADR-0162,
+            # ADR-0163).
+            skill_catalog = SkillCatalog(
+                PostgresRepository(persistence, SkillVersion),
+                PostgresRepository(persistence, SkillPolicy),
+                PostgresRepository(persistence, SkillOwnership),
+                persistence,
+                ledger,
+                clock,
+            )
+            agent_catalog = AgentCatalog(
+                PostgresRepository(persistence, AgentCore),
+                PostgresRepository(persistence, RoleProfile),
+                persistence,
+                ledger,
+                clock,
+            )
+
             def engine_for(
                 workers: StaticWorkerPool, connectors: StaticConnectorPool, models: StaticModelPool
             ) -> RunEngine:
@@ -555,6 +592,7 @@ async def wire(
                     statements=VersionStatements(
                         persistence, PostgresRepository(persistence, ProcessVersion)
                     ),
+                    guidance=CatalogGuidance(skill_catalog, agent_catalog),
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -753,6 +791,38 @@ async def wire(
                 clock=clock,
                 ids=ids,
                 outward=outward_by(pools),
+            )
+            skill_lifecycle = SkillLifecycle(
+                catalog=skill_catalog,
+                processes=PostgresRepository(persistence, Process),
+                versions=PostgresRepository(persistence, ProcessVersion),
+                evaluations=evaluations,
+                evaluation_records=PostgresRepository(persistence, Evaluation),
+                runs=runs,
+                drifts=Drifts(
+                    PostgresRepository(persistence, Incident),
+                    PostgresRepository(persistence, WatchConfiguration),
+                    ledger,
+                    persistence,
+                    clock,
+                ),
+                ledger=ledger,
+                work=persistence,
+                clock=clock,
+            )
+            shared_agents = SharedAgents(
+                catalog=agent_catalog,
+                processes=PostgresRepository(persistence, Process),
+                versions=PostgresRepository(persistence, ProcessVersion),
+                evaluations=evaluations,
+                commission=commission,
+                engine=engine,
+                identities=identities,
+                ledger=ledger,
+                work=persistence,
+                clock=clock,
+                ids=ids,
+                costs=CostOfRunHandler(ledger, objects, persistence),
             )
             # Where a process spends, and a model tried on fixed cases (ADR-0148, ADR-0149).
             spend = SpendHandler(ledger, objects, persistence)
@@ -1046,6 +1116,8 @@ async def wire(
                 ),
                 stops=StopsConfirmed(tenants, stops),
                 stages=staged.stages,
+                skills=skill_lifecycle,
+                agents=shared_agents,
                 deadlines=Deadlines(
                     tenants=tenants,
                     keeper=decisions.deadlines,
@@ -1269,6 +1341,11 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
         # And it looks at every tenant's stages: one that holds or stopped holding, and the
         # next one proposed for a person to open (ADR-0137).
         look_at_stages = stages_tick(wired.stages, wired.tenants, wired.clock)
+        # And it moves every tenant's skills through their lifecycle: drafts from recurring
+        # corrections, rounds scored, approval by rule at level 4, fallback by rule (ADR-0162).
+        look_at_skills = (
+            None if wired.skills is None else skills_tick(wired.skills, wired.tenants, wired.clock)
+        )
 
         async def scheduled() -> None:
             await wired.triggers.tick()
@@ -1285,6 +1362,8 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
             await evaluate()
             await erase_traces()
             await look_at_stages()
+            if look_at_skills is not None:
+                await look_at_skills()
 
         tasks.append(
             asyncio.create_task(

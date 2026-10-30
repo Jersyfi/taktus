@@ -230,7 +230,7 @@ from taktus.components.run.domain.model import (
 )
 from taktus.components.run.domain.model.block import Account, Awaited, OpenBlock
 from taktus.components.run.domain.model.run import IN_FLIGHT, TAKEOVER_RESULT, TAKEOVER_STATE
-from taktus.components.run.domain.model.work import PREDICT
+from taktus.components.run.domain.model.work import PREDICT, SKILLS
 from taktus.components.run.domain.service import (
     anchoring,
     autonomy,
@@ -267,6 +267,7 @@ from taktus.components.run.ports import (
     ConnectorPool,
     Decisions,
     Draft,
+    Guidance,
     Levels,
     Maturities,
     MessageRules,
@@ -435,6 +436,12 @@ class StartRun:
     bindings: Mapping[str, str] = field(default_factory=dict)
     """Purposes bound to one configured model for this run alone (`Run.bindings`): a model
     trial's case run (ADR-0149 §1). Empty for every other run."""
+    skills: Mapping[str, str | None] = field(default_factory=dict)
+    """Skill versions bound for this run alone, `{name: version}`; None hands the skill over
+    at no version. An evaluation of a skill binds them (ADR-0162 §3). A skill not named here is
+    pinned at its version in production."""
+    profile: str | None = None
+    """The role profile of the shared agent the run serves (ADR-0163 §5)."""
 
     @property
     def identity(self) -> str:
@@ -717,7 +724,11 @@ class RunEngine:
         stops: Stops | None = None,
         messages: Messages | None = None,
         statements: Statements | None = None,
+        guidance: Guidance | None = None,
     ) -> None:
+        self._guidance = guidance
+        """Where a run finds the skills its steps name and the profile it serves (ADR-0162,
+        ADR-0163). None: nothing is pinned and nothing is handed over."""
         self._runs = runs
         self._work = work
         self._objects = objects
@@ -932,6 +943,8 @@ class RunEngine:
             else await self._deadlines.declared(command.tenant, command.process_version),
             rehearsal=command.rehearsal,
             bindings=dict(command.bindings),
+            skills=await self._pinned(command),
+            profile=command.profile,
             created_at=now,
             updated_at=now,
         )
@@ -961,6 +974,55 @@ class RunEngine:
             raise
         await self._state_budget(run, command.actor)
         return run
+
+    async def _pinned(self, command: StartRun) -> dict[str, str]:
+        """The version of every skill the work names: the command's binding, else the version
+        in production (ADR-0162 §5)."""
+        named = sorted(
+            {
+                name
+                for step_work in command.work.values()
+                for name in (step_work.get(SKILLS) or ())
+                if isinstance(name, str)
+            }
+        )
+        if not named:
+            return {}
+        bound = {name: command.skills[name] for name in named if name in command.skills}
+        found: Mapping[str, str] = {}
+        rest = [name for name in named if name not in bound]
+        if rest and self._guidance is not None:
+            found = await self._guidance.production(command.tenant, rest)
+        pinned = {name: version for name, version in bound.items() if version is not None}
+        pinned.update({name: found[name] for name in rest if name in found})
+        return pinned
+
+    async def _guided(self, run: Run, work: Work, control: Control) -> Work:
+        """The step's work with its brief extended by the skills it names, at the run's pins,
+        and by the profile the run serves: before a model's system text, after a worker's goal
+        (ADR-0162 §5, ADR-0163 §5). Every other kind of work is what it was."""
+        if self._guidance is None or not isinstance(work, LlmWork | WorkerWork):
+            return work
+        blocks: list[str] = []
+        if run.profile is not None:
+            brief = await self._guidance.profile(run.tenant, run.profile)
+            if brief:
+                blocks.append(brief.strip())
+        for name in control.skills:
+            version = run.skills.get(name)
+            if version is None:
+                continue
+            text = await self._guidance.skill(run.tenant, name, version)
+            if text:
+                blocks.append(f"Skill {name}@{version}:\n\n{text.strip()}")
+        if not blocks:
+            return work
+        guidance = "\n\n".join(blocks)
+        if isinstance(work, LlmWork):
+            system = guidance if not work.system else f"{guidance}\n\n{work.system}"
+            return work.model_copy(update={"system": system})
+        task = work.task.model_copy(update={"goal": f"{work.task.goal}\n\n{guidance}"})
+        return work.model_copy(update={"task": task})
 
     async def _exists(self, tenant: Tenant, run_id: str) -> bool:
         async with self._work.transaction(tenant):
@@ -2365,6 +2427,7 @@ class RunEngine:
             held = autonomy.held(run.autonomy_level, run.actions, used)
             span.set_attribute("autonomy.level", held.level)
             control = control_of(step, run.work.get(step.id), run.inputs)
+            work = await self._guided(run, work, control)
             if control.when and step_run.state in (StepState.PLANNED, StepState.REJECTED):
                 # Whether the step runs at all, before anything asks about it (ADR-0088).
                 values, read = await self._conditions(run, control)

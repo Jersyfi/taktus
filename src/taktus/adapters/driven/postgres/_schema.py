@@ -280,6 +280,64 @@ evaluation = Table(
     Index("evaluation_process", "tenant", "process_id"),
 )
 
+# --- skills and shared agents (ADR-0162, ADR-0163) ----------------------------------------------
+
+skill_version = Table(
+    "skill_version",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("name", Text, nullable=False),
+    Column("stage", Text, nullable=False),
+    _at("registered_at"),
+    Column("skill", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+    Index("skill_version_name", "tenant", "name"),
+)
+
+skill_ownership = Table(
+    "skill_ownership",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("owner", Text, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""Whose own use a skill version was drawn from, apart from its scores (ADR-0162 §1)."""
+
+skill_policy = Table(
+    "skill_policy",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("policy", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+
+agent_core = Table(
+    "agent_core",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("agent", Text, nullable=False),
+    Column("state", Text, nullable=False),
+    _at("proposed_at"),
+    Column("core", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+
+role_profile = Table(
+    "role_profile",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("agent", Text, nullable=False),
+    Column("role", Text, nullable=False),
+    _at("set_at"),
+    Column("profile", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+
 corrected_case = Table(
     "corrected_case",
     metadata,
@@ -649,6 +707,8 @@ run = Table(
     Column("actions", JSONB, nullable=False, server_default=text("'{}'::jsonb")),  # ADR-0039
     Column("deadlines", JSONB),  # the copy of its version's deadlines (ADR-0133)
     Column("bindings", JSONB),  # purposes bound to one model for this run alone (ADR-0149)
+    Column("skills", JSONB),  # the skill versions the run pinned (ADR-0162)
+    Column("profile", Text),  # the role profile of a shared agent it serves (ADR-0163)
     Column("state", Text, nullable=False),
     Column("cause", Text),
     Column("reason", Text),

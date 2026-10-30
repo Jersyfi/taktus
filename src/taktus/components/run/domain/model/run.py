@@ -406,6 +406,14 @@ class Run(Value):
     """Purposes bound to one configured model for this run alone, `{purpose: model.<member>}`:
     a model trial's case run (ADR-0149 §1). A bound purpose's chain is that model and no
     other; every other purpose routes as configured. Empty for every other run."""
+    skills: Mapping[str, str] = Field(default_factory=dict)
+    """The version of each skill its steps use, `{name: version}`, pinned when the run was
+    created: the version in production, or the one an evaluation's side binds (ADR-0162 §5). A
+    skill with no version pinned is not handed over."""
+    profile: str | None = Field(default=None, min_length=1)
+    """The role profile of a shared agent the run serves, `<agent>:<role>@<version>`, or
+    `<agent>@<core>/<agent>:<role>@<version>` under a core not yet active: its brief is handed
+    to every step on a model or a worker (ADR-0163 §5). None for every other run."""
     state: RunState = RunState.PLANNED
     cause: Cause | None = None
     reason: str | None = None
