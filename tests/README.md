@@ -13,6 +13,7 @@ for that. A gate is weakened only under a notice that demonstrates it had no val
 `make check` runs the unit tests a change selects, and always the three tests that a file
 `make generate` writes is the one committed (`GENERATED_FRESH` in the Makefile, NTC-0243): a
 change anywhere can make one stale, and no lane selects them from the files that cause it.
+A change that touches `web/` also runs `make gate-web` in `make check` (NTC-0250).
 
 PostgreSQL comes from testcontainers, once per session, migrated to the current schema
 (`conftest.py`). Without Docker the tests that need it skip and name the reason; with

@@ -254,6 +254,9 @@ check: need-uv ## The fast local check before a commit: lint, types, architectur
 	$(MAKE) lint gate-arch gate-docs gate-decisions gate-adrs gate-status
 	@# What `make generate` writes is committed, so its freshness is checked on every change (NTC-0243).
 	$(UV) run pytest -q -p no:randomly $(GENERATED_FRESH)
+	@# A change to the web app runs its types and tests too: no unit test lane holds them (NTC-0250).
+	@if git diff --name-only "$$(git merge-base $(or $(BASE),origin/main) HEAD)" -- web/ | grep -q .; then \
+		$(MAKE) gate-web; else echo "check: the change touches no file of the web app"; fi
 	@targets="$$(python3 tools/lanes.py --base $(or $(BASE),origin/main) --tests --within tests/components --within tests/tools --within tests/contract)"; \
 	if [ -z "$$targets" ]; then echo "check: the change selects no unit test"; exit 0; fi; \
 	$(UV) run pytest -q -p no:randomly $$targets
