@@ -304,7 +304,14 @@ role it would tie the core to a model stack and the removal test would be lost.
   as an incident. `ProposalActs` (`composition/proposals.py`) starts a proposal's evaluation
   beside its rehearsal and holds commissioning to its verdict; the HTTP surface reads the
   evaluations and confirms the cases (`adapters/driving/rest/evaluations.py`), and `taktusctl
-  incident configure` sets the tenant's tolerance. The models
+  incident configure` sets the tenant's tolerance. `Evaluations.start_guided` runs the same
+  version on its cases under two kinds of know-how, a skill version pinned or a shared agent's
+  profile under a new core. The same leader looks at every tenant's skills once a minute
+  (`composition/skills.py`, ADR-0162): `SkillLifecycle` drafts a skill from corrections that
+  recurred, scores its rounds, approves it by rule at level 4 once n rounds passed, puts it into
+  production and falls it back by rule; `CatalogGuidance` answers the run's `Guidance` port,
+  and the postgres adapter keeps the tables `skill_version`, `skill_ownership`, `skill_policy`,
+  `agent_core` and `role_profile` (ADR-0163). The models
   configured in `TAKTUS_MODELS` reach the run as one pool in chain order
   (`composition/execution.py`, `composition/settings.py`, ADR-0116), and each is held to the
   model contract's suite with its own endpoint (`composition/conformance.py`); deadlines and

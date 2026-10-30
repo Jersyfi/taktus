@@ -8,7 +8,14 @@ import pytest
 
 from adapters.persistence import samples
 from adapters.persistence.conftest import Backend
-from taktus.components.catalog.domain.model import AdapterMaturity
+from taktus.components.catalog.domain.model import (
+    AdapterMaturity,
+    AgentCore,
+    RoleProfile,
+    SkillOwnership,
+    SkillPolicy,
+    SkillVersion,
+)
 from taktus.components.command.domain.model import IntakeEvent
 from taktus.components.decision.domain.model import RegisterEntry, Request
 from taktus.components.governance.domain.model import (
@@ -83,6 +90,11 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (AdapterStop, samples.adapter_stop),
     (Evaluation, samples.evaluation),
     (CorrectedCase, samples.corrected_case),
+    (SkillVersion, samples.skill_version),
+    (SkillOwnership, samples.skill_ownership),
+    (SkillPolicy, samples.skill_policy),
+    (AgentCore, samples.agent_core),
+    (RoleProfile, samples.role_profile),
 ]
 
 
