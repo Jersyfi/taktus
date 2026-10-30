@@ -16,9 +16,8 @@ from typing import Any
 import httpx
 import pytest
 from mcp import Client
-
-from taktus.adapters.driven.connectors.github import declaration
-from taktus.adapters.driven.connectors.github.server import Config, Connector, build_server
+from taktus_connectors.github import declaration
+from taktus_connectors.github.server import Config, Connector, build_server
 
 from .conftest import READ_CREDENTIAL, WRITE_CREDENTIAL, Service
 

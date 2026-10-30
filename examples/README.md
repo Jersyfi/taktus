@@ -161,7 +161,7 @@ version; every other method is refused before the run starts.
 | `llm` | `purpose`, `prompt`, optional `system`, `values`, `max_output_tokens`, `pattern` | the prompt, with every `${name}` replaced from `values`, goes to the model configured for the purpose (`TAKTUS_MODEL_*`); the result is the text it answered, once it matches `pattern` — the check that keeps a `sourced` step from passing on an answer beside the point |
 
 **When a step runs, and whom it asks first** (ADR-0088, ADR-0097). Beside what it does, a step's
-`work` may carry four keys of its own, for every method:
+`work` may carry keys of its own, for every method:
 
 | Key | Meaning |
 |---|---|
@@ -169,6 +169,7 @@ version; every other method is refused before the run starts.
 | `ask` | `question`, optional `situation`, `proposal` — templates over `values`, as a `template` rule's text is — `role` (`owner` unless named) and `on_decline` (`halt` or `continue`). Before the step's act, at every level, a decision request is raised for it, beside any anchor's (ADR-0042): perform the act (A, recommended) or not (B). A rehearsal asks nothing. Declined with `halt`, the run halts as for an anchor; with `continue`, the act is not performed and the step succeeds with `{declined: true, by, answer}` — the decider's answer as written — for the steps after it to act on |
 | `on_escalation` | `true`: the step is no part of the sequence. When a step fails and the run escalates, the steps marked so run first, in the plan's order, each once every step it depends on succeeded; then the run ends escalated for the step that failed. A run that finishes skips them, with `{skipped: true, because: "the run did not escalate"}`. A step of the sequence may not depend on one, and one may not `ask`. P-03 gives its claim back with them |
 | `empty_when_skipped` | `true`: a run that finishes with this step skipped, because its `when` did not hold, found nothing to do. It ends `empty`, not `ok` (ADR-0107). The step needs a `when`, and a step `on_escalation` may not carry it |
+| `skills` | a list of skill names: the skills under the bundle's `skills/<name>/SKILL.md` the step uses (ADR-0113 §2). The run pins each at its version in production, or none while none is, and hands a step on a model or a worker their instructions in its brief; the step's method and exactness class stay its own (ADR-0162). `taktusctl skill register` registers a bundle's skills as drafts, and `bundle check` checks them |
 
 P-05 Triage of contributions uses both: a step that closes spam runs only `when` the class is
 spam, and the step that keeps a contribution `ask`s the owner first

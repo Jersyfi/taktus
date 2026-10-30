@@ -69,6 +69,7 @@ CLAIMS: dict[str, tuple[str, ...]] = {
     "conformance": (
         r"src/taktus/(conformance|wire|ports|adapters)/.*",
         r"workers/.*",
+        r"connectors/.*",
         r"tests/conformance/.*",
         r"tests/fakes/.*",
     ),
@@ -80,6 +81,7 @@ CLAIMS: dict[str, tuple[str, ...]] = {
         r"examples/.*",
         r"deploy/.*",
         r"workers/.*",
+        r"connectors/.*",
         r"tools/.*",
         r"\.claude/(settings\.json|hooks/.*)",
         r"\.importlinter",
@@ -116,6 +118,7 @@ CLAIMS: dict[str, tuple[str, ...]] = {
         r"blueprints/.*",
         r"deploy/.*",
         r"workers/.*",
+        r"connectors/.*",
         r"tools/machine_lock\.py",
     ),
 }
@@ -185,12 +188,12 @@ def holes(paths: list[str]) -> list[str]:
 # --- Selection of tests inside the lane `test` (#394) ---------------------------------------
 
 ALL_TESTS = "tests"
-_MODULE_IN_STRING = re.compile(r"\btaktus(?:\.[A-Za-z_][A-Za-z0-9_]*)+")
+_MODULE_IN_STRING = re.compile(r"\btaktus(?:_connectors)?(?:\.[A-Za-z_][A-Za-z0-9_]*)+")
 
 
 def _dotted(path: Path) -> str:
     parts = list(path.with_suffix("").parts)
-    if parts[0] == "src":
+    if parts[0] in ("src", "connectors"):
         parts = parts[1:]
     if parts[-1] == "__init__":
         parts = parts[:-1]
@@ -198,12 +201,17 @@ def _dotted(path: Path) -> str:
 
 
 def _python_files() -> list[Path]:
-    files = [*(ROOT / "src" / "taktus").rglob("*.py"), *(ROOT / "tests").rglob("*.py")]
+    files = [
+        *(ROOT / "src" / "taktus").rglob("*.py"),
+        *(ROOT / "connectors" / "taktus_connectors").rglob("*.py"),
+        *(ROOT / "tests").rglob("*.py"),
+    ]
     return sorted(f.relative_to(ROOT) for f in files if "__pycache__" not in f.parts)
 
 
 def import_graph() -> dict[str, set[str]]:
-    """Path -> the paths of the Python files it imports, from `src/taktus` and `tests`.
+    """Path -> the paths of the Python files it imports, from `src/taktus`, the connectors
+    (`connectors/taktus_connectors`, ADR-0158) and `tests`.
 
     Importing `a.b.c` also runs `a/__init__.py` and `a/b/__init__.py`, so those are edges. A
     test file depends on every `conftest.py` above it."""

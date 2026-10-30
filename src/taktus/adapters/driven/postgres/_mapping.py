@@ -466,6 +466,8 @@ class RunMapper:
                 "actions": document.get("actions", {}),
                 "deadlines": document.get("deadlines") or None,
                 "bindings": document.get("bindings") or None,
+                "skills": document.get("skills") or None,
+                "profile": document.get("profile"),
                 "state": document["state"],
                 "cause": document.get("cause"),
                 "reason": document.get("reason"),
@@ -505,6 +507,7 @@ class RunMapper:
                     "confirmed_by": sr.get("confirmed_by"),
                     "block": sr.get("block"),
                     "anchoring": sr.get("anchoring"),
+                    "messages": sr.get("messages") or None,
                 }
                 for sr in step_runs
             ],
@@ -671,6 +674,8 @@ class RunMapper:
                 "actions": row.actions,
                 "deadlines": row.deadlines,
                 "bindings": row.bindings,
+                "skills": row.skills,
+                "profile": row.profile,
                 "state": row.state,
                 "cause": row.cause,
                 "reason": row.reason,
@@ -738,6 +743,7 @@ def _step_run_from(
             "confirmed_by": row.confirmed_by,
             "block": row.block,
             "anchoring": row.anchoring,
+            "messages": row.messages or (),
         }
     )
 
@@ -1179,6 +1185,32 @@ class RegisterEntryMapper:
         return [dict(row.entry) for row in rows]
 
 
+class DecisionRuleMapper:
+    """One row per rule from precedent; the rule stays a document (ADR-0161)."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.decision_rule, tenant, id)
+        return None if row is None else dict(row.rule)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.decision_rule,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "status": document["status"],
+                "created_at": _at(document["created_at"]),
+                "rule": document,
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.decision_rule, tenant, s.decision_rule.c.created_at)
+        return [dict(row.rule) for row in rows]
+
+
 # --- the owner-facing channel ------------------------------------------------------------------
 
 
@@ -1434,6 +1466,34 @@ class StagePlanMapper:
         return [dict(row.plan) for row in rows]
 
 
+class ValueStreamMapper:
+    """One row per revision of a value stream (ADR-0159 §4): the definition as a document, and
+    beside it the stream and its revision. A row is never overwritten by another revision."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.value_stream, tenant, id)
+        return None if row is None else dict(row.definition)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.value_stream,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "stream": document["stream"],
+                "revision": document["revision"],
+                "declared_at": _at(document["declared_at"]),
+                "definition": document,
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.value_stream, tenant, s.value_stream.c.id)
+        return [dict(row.definition) for row in rows]
+
+
 class DeadlineMapper:
     """One row per deadline (ADR-0133): the deadline as a document, and beside it the columns the
     scheduler reads the open ones by. A row is never deleted: its state moves on."""
@@ -1669,6 +1729,132 @@ class CaseAnswerMapper:
         return [dict(row.answer) for row in rows]
 
 
+class SkillVersionMapper:
+    """One row per skill version (ADR-0162 §1), as a document, with the columns it is listed by.
+    A row is never deleted: its stage moves on."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.skill_version, tenant, id)
+        return None if row is None else dict(row.skill)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.skill_version,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "name": document["name"],
+                "stage": document.get("stage", "draft"),
+                "registered_at": _at(document["registered_at"]),
+                "skill": document,
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.skill_version, tenant, s.skill_version.c.id)
+        return [dict(row.skill) for row in rows]
+
+
+class SkillOwnershipMapper:
+    """Whose own use a skill version was drawn from: one row, its owner a column of its own."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.skill_ownership, tenant, id)
+        return None if row is None else {"id": row.id, "tenant": row.tenant, "owner": row.owner}
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.skill_ownership,
+            ("tenant", "id"),
+            {"tenant": tenant, "id": document["id"], "owner": document["owner"]},
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.skill_ownership, tenant, s.skill_ownership.c.id)
+        return [{"id": row.id, "tenant": row.tenant, "owner": row.owner} for row in rows]
+
+
+class SkillPolicyMapper:
+    """A tenant's skill policy, one row, as a document (ADR-0162 §4)."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.skill_policy, tenant, id)
+        return None if row is None else dict(row.policy)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.skill_policy,
+            ("tenant", "id"),
+            {"tenant": tenant, "id": document.get("id", "skills"), "policy": document},
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.skill_policy, tenant, s.skill_policy.c.id)
+        return [dict(row.policy) for row in rows]
+
+
+class AgentCoreMapper:
+    """One row per version of a shared agent's core (ADR-0163 §1), as a document."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.agent_core, tenant, id)
+        return None if row is None else dict(row.core)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.agent_core,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "agent": document["agent"],
+                "state": document.get("state", "held"),
+                "proposed_at": _at(document["proposed_at"]),
+                "core": document,
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(
+            connection, s.agent_core, tenant, s.agent_core.c.proposed_at, s.agent_core.c.id
+        )
+        return [dict(row.core) for row in rows]
+
+
+class RoleProfileMapper:
+    """One row per version of a role's profile of a shared agent (ADR-0163 §2), as a document."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.role_profile, tenant, id)
+        return None if row is None else dict(row.profile)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.role_profile,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "agent": document["agent"],
+                "role": document["role"],
+                "set_at": _at(document["set_at"]),
+                "profile": document,
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(
+            connection, s.role_profile, tenant, s.role_profile.c.set_at, s.role_profile.c.id
+        )
+        return [dict(row.profile) for row in rows]
+
+
 # Keyed by the aggregate's class name in snake case: `Run` → "run", `ProcessVersion` →
 # "process_version". The persistence looks a mapper up by the class the composition root binds.
 MAPPERS: dict[str, Mapper] = {
@@ -1688,6 +1874,7 @@ MAPPERS: dict[str, Mapper] = {
     "anchor_configuration": AnchorConfigurationMapper(),
     "request": DecisionRequestMapper(),
     "register_entry": RegisterEntryMapper(),
+    "decision_rule": DecisionRuleMapper(),
     "owner_channel": OwnerChannelMapper(),
     "report": ReportMapper(),
     "proposal": ProposalMapper(),
@@ -1698,6 +1885,7 @@ MAPPERS: dict[str, Mapper] = {
     "watch_configuration": WatchConfigurationMapper(),
     "corridor": CorridorMapper(),
     "stage_plan": StagePlanMapper(),
+    "value_stream": ValueStreamMapper(),
     "deadline": DeadlineMapper(),
     "adapter_stop": AdapterStopMapper(),
     "working_time": WorkingTimeMapper(),
@@ -1706,4 +1894,9 @@ MAPPERS: dict[str, Mapper] = {
     "source_declaration": SourceDeclarationMapper(),
     "message_rules": MessageRulesMapper(),
     "case_answer": CaseAnswerMapper(),
+    "skill_version": SkillVersionMapper(),
+    "skill_ownership": SkillOwnershipMapper(),
+    "skill_policy": SkillPolicyMapper(),
+    "agent_core": AgentCoreMapper(),
+    "role_profile": RoleProfileMapper(),
 }

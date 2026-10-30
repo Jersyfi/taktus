@@ -520,8 +520,12 @@ def implementation(case: UseCase) -> list[str]:
 
 
 def concept_branch(root: Path) -> str | None:
-    """The branch's name when it is a concept-mode branch (`concept/<name>`, DEC-0222)."""
-    name = os.environ.get("GITHUB_HEAD_REF") or ""
+    """The branch's name when it is a concept-mode branch (`concept/<name>`, DEC-0222).
+
+    A pull request names its branch in `GITHUB_HEAD_REF`. A commit on `main` names the branch
+    its pull request was merged from in `TAKTUS_MERGED_FROM`, which CI looks up, so that the
+    squash commit of a concept-mode pull request keeps the exception its branch had."""
+    name = os.environ.get("GITHUB_HEAD_REF") or os.environ.get("TAKTUS_MERGED_FROM") or ""
     if not name:
         try:
             name = git(root, "rev-parse", "--abbrev-ref", "HEAD").strip()

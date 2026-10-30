@@ -346,7 +346,7 @@ planned → admitted → running → [waiting_human] → running → finished
                         │            │
                         │            └─ a step waits for a person (approval, an act to perform, anchor)
                         ├─ halted (limit, emergency stop, user, worker at capacity, maturity) → resumed
-                        ├─ self-healed (retry or correction within frame) → running
+                        ├─ self-healed (level 4: a known failure retried within frame) → running
                         └─ escalated (frame exceeded) → situation package to a person
 ```
 

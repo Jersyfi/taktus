@@ -3716,5 +3716,301 @@
         }
       ]
     }
+  },
+  "views": {
+    "catalogue": {
+      "entries": [
+        {
+          "process": "offer",
+          "name": "An offer",
+          "version": "offer@1",
+          "level": 2,
+          "needs": [
+            {
+              "name": "client",
+              "description": "who asks",
+              "required": true
+            }
+          ],
+          "roles": [
+            "sales"
+          ],
+          "command": {
+            "intent": "run offer@1",
+            "recognised": "process.run"
+          },
+          "start": {
+            "web": "/catalogue/offer/start",
+            "agent": {
+              "tool": "start_process",
+              "arguments": {
+                "process": "offer"
+              },
+              "right": "agent.start",
+              "held": false
+            }
+          },
+          "text": "An offer (offer): An offer. Runs at level 2. Needs client. A person acts in the role sales."
+        },
+        {
+          "process": "daily",
+          "name": "Daily report",
+          "description": "The figures of yesterday.",
+          "version": "daily@3",
+          "level": 3,
+          "needs": [],
+          "roles": [],
+          "command": {
+            "intent": "run daily@3",
+            "recognised": "process.run"
+          },
+          "start": {
+            "web": "/catalogue/daily/start",
+            "agent": {
+              "tool": "start_process",
+              "arguments": {
+                "process": "daily"
+              },
+              "right": "agent.start",
+              "held": false
+            },
+            "chat": "start daily"
+          },
+          "text": "Daily report (daily): The figures of yesterday. Runs at level 3. Needs nothing from you to start."
+        }
+      ],
+      "summary": "You may start 2 processes.",
+      "nothing_fits": "If nothing here fits, describe what you need as a change in dialogue, or choose a first process from the gallery."
+    },
+    "streams": {
+      "days": 30,
+      "management": [
+        {
+          "stream": "planning",
+          "revision": 1,
+          "name": "Planning",
+          "kind": "management",
+          "trigger": "A year begins",
+          "outcome": "the budget is set",
+          "role": "executive",
+          "processes": [
+            "budget"
+          ],
+          "figures": {
+            "steps": 0,
+            "autonomy": {},
+            "methods": {},
+            "runs": 0,
+            "crossings": []
+          },
+          "text": "Planning (management): from A year begins to the budget is set, the role executive responsible; 1 process, 0 steps; no run ended in the period; 0 department boundaries crossed."
+        }
+      ],
+      "core": [
+        {
+          "stream": "order-to-cash",
+          "revision": 1,
+          "name": "Order to cash",
+          "kind": "core",
+          "trigger": "A customer wants to buy",
+          "outcome": "the customer has what they paid for",
+          "role": "sales-lead",
+          "processes": [
+            "order",
+            "invoice"
+          ],
+          "figures": {
+            "steps": 5,
+            "autonomy": {
+              "2": 0.4,
+              "3": 0.6
+            },
+            "methods": {
+              "human": 0.4,
+              "llm": 0.2,
+              "rule": 0.4
+            },
+            "reproducible": 0.4,
+            "runs": 1,
+            "flow_efficiency": 0.5,
+            "blocked_share": 0.5,
+            "top_cause": "wait.human",
+            "crossings": [
+              {
+                "from_process": "order",
+                "from_step": "accept",
+                "from_role": "sales",
+                "from_units": [
+                  "acme/sales"
+                ],
+                "to_process": "invoice",
+                "to_step": "release",
+                "to_role": "accounting",
+                "to_units": [
+                  "acme/finance"
+                ],
+                "text": "order/accept (sales, acme/sales) hands over to invoice/release (accounting, acme/finance)."
+              }
+            ]
+          },
+          "text": "Order to cash (core): from A customer wants to buy to the customer has what they paid for, the role sales-lead responsible; 2 processes, 5 steps, 40 % reproducible; flow efficiency 50 % over 1 run; 1 department boundary crossed."
+        }
+      ],
+      "support": [],
+      "outside": [
+        {
+          "process": "loose",
+          "name": "Loose"
+        }
+      ],
+      "summary": "1 core, 1 management and 0 support streams over 30 days; 1 process in no stream."
+    },
+    "lanes": {
+      "card": {
+        "stream": "order-to-cash",
+        "revision": 1,
+        "name": "Order to cash",
+        "kind": "core",
+        "trigger": "A customer wants to buy",
+        "outcome": "the customer has what they paid for",
+        "role": "sales-lead",
+        "processes": [
+          "order",
+          "invoice"
+        ],
+        "figures": {
+          "steps": 5,
+          "autonomy": {
+            "2": 0.4,
+            "3": 0.6
+          },
+          "methods": {
+            "human": 0.4,
+            "llm": 0.2,
+            "rule": 0.4
+          },
+          "reproducible": 0.4,
+          "runs": 1,
+          "flow_efficiency": 0.5,
+          "blocked_share": 0.5,
+          "top_cause": "wait.human",
+          "crossings": [
+            {
+              "from_process": "order",
+              "from_step": "accept",
+              "from_role": "sales",
+              "from_units": [
+                "acme/sales"
+              ],
+              "to_process": "invoice",
+              "to_step": "release",
+              "to_role": "accounting",
+              "to_units": [
+                "acme/finance"
+              ],
+              "text": "order/accept (sales, acme/sales) hands over to invoice/release (accounting, acme/finance)."
+            }
+          ]
+        },
+        "text": "Order to cash (core): from A customer wants to buy to the customer has what they paid for, the role sales-lead responsible; 2 processes, 5 steps, 40 % reproducible; flow efficiency 50 % over 1 run; 1 department boundary crossed."
+      },
+      "columns": [
+        {
+          "process": "order",
+          "name": "Order",
+          "version": "order@2",
+          "level": 3
+        },
+        {
+          "process": "invoice",
+          "name": "Invoice",
+          "version": "invoice@1",
+          "level": 2
+        }
+      ],
+      "lanes": [
+        {
+          "key": "taktus.reproducible",
+          "kind": "reproducible",
+          "title": "Taktus — reproducible",
+          "units": [],
+          "text": "Taktus, by a method whose result does not vary: rule, statistics, ml, neural, wait."
+        },
+        {
+          "key": "taktus.variable",
+          "kind": "variable",
+          "title": "Taktus — variable",
+          "units": [],
+          "text": "Taktus, by a method whose result can vary: llm, worker."
+        },
+        {
+          "key": "role:sales",
+          "kind": "role",
+          "title": "sales",
+          "role": "sales",
+          "units": [
+            "acme/sales"
+          ],
+          "waiting_seconds": 1800.0,
+          "text": "The role sales in acme/sales: waited on for 0.5 h."
+        },
+        {
+          "key": "role:accounting",
+          "kind": "role",
+          "title": "accounting",
+          "role": "accounting",
+          "units": [
+            "acme/finance"
+          ],
+          "text": "The role accounting in acme/finance: too few hold it to show its waiting."
+        }
+      ],
+      "chips": [
+        {
+          "process": "order",
+          "step": "read",
+          "method": "llm",
+          "exactness": "tolerant",
+          "lane": "taktus.variable",
+          "fallback_lane": "role:sales",
+          "text": "order/read: llm, tolerant, falls back to the role sales."
+        },
+        {
+          "process": "order",
+          "step": "price",
+          "method": "rule",
+          "exactness": "exact",
+          "lane": "taktus.reproducible",
+          "text": "order/price: rule, exact."
+        },
+        {
+          "process": "order",
+          "step": "accept",
+          "method": "human",
+          "lane": "role:sales",
+          "text": "order/accept: human, by the role sales."
+        },
+        {
+          "process": "invoice",
+          "step": "book",
+          "method": "rule",
+          "exactness": "exact",
+          "lane": "taktus.reproducible",
+          "text": "invoice/book: rule, exact."
+        },
+        {
+          "process": "invoice",
+          "step": "release",
+          "method": "human",
+          "lane": "role:accounting",
+          "text": "invoice/release: human, by the role accounting."
+        }
+      ],
+      "units": [
+        "acme/finance",
+        "acme/sales"
+      ],
+      "summary": "Order to cash (core): from A customer wants to buy to the customer has what they paid for, the role sales-lead responsible; 2 processes, 5 steps, 40 % reproducible; flow efficiency 50 % over 1 run; 1 department boundary crossed. 2 roles act along it."
+    }
   }
 }

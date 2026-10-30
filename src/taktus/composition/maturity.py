@@ -16,17 +16,18 @@ removal half (`docs/architecture/contracts.md` §4). It is answered as such, not
 (NTC-0079). An adapter nothing has recorded is *experimental*. So is a connector that serves a
 vendor's MCP server without a manifest, whatever it passed (ADR-0117).
 
-`InstanceCatalogue` lists every configured adapter with its standing, for `taktusctl
-conformance list`.
+`InstanceCatalogue` lists every configured adapter with its standing, and every connector the
+release ships with the image it is shipped as (ADR-0158), for `taktusctl conformance list`.
 """
 
 from __future__ import annotations
 
 from taktus.adapters.driven.connectors.loopback import ADAPTER as LOOPBACK
-from taktus.adapters.driving.cli.wiring import CatalogueEntry
+from taktus.adapters.driving.cli.wiring import CatalogueEntry, ShippedConnector
 from taktus.components.catalog.domain.model import NO_MANIFEST, AdapterMaturity
 from taktus.components.run.ports import Standing
 from taktus.composition.pools import Pools
+from taktus.composition.shipped import load as load_shipped
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 
 NOT_INTEGRATIONS: frozenset[str] = frozenset({LOOPBACK})
@@ -67,9 +68,11 @@ class CatalogMaturities:
 
 
 class InstanceCatalogue:
-    """Every adapter the instance is configured with, with its maturity: what `taktusctl
-    conformance list` prints, until the catalogue of issues #339 and #348 exists. A connector
-    that serves a vendor's MCP server says so, and under which manifest (ADR-0117)."""
+    """Every adapter the instance is configured with, with its maturity, and every connector the
+    release ships, with its capabilities and its image: what `taktusctl conformance list`
+    prints. A connector that serves a vendor's MCP server says so, and under which manifest
+    (ADR-0117). A maturity belongs to a configuration (ADR-0044), so a connector shipped and not
+    configured has none; a public catalogue of third-party adapters is #348."""
 
     def __init__(self, pools: Pools, maturities: CatalogMaturities) -> None:
         self._pools = pools
@@ -102,3 +105,9 @@ class InstanceCatalogue:
                 )
             )
         return entries
+
+    def shipped(self) -> list[ShippedConnector]:
+        return [
+            ShippedConnector(name=c.name, capabilities=c.capabilities, image=c.image)
+            for c in load_shipped().connectors
+        ]

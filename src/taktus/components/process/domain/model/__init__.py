@@ -35,6 +35,7 @@ from taktus.components.process.domain.model.proposal import (
     ProposalState,
     StepChange,
 )
+from taktus.components.process.domain.model.stream import StreamKind, ValueStream
 from taktus.components.process.domain.model.trigger_state import Firing, TriggerState
 
 __all__ = [
@@ -67,7 +68,9 @@ __all__ = [
     "Scorer",
     "Slo",
     "StepChange",
+    "StreamKind",
     "Trigger",
     "TriggerState",
+    "ValueStream",
     "holds",
 ]

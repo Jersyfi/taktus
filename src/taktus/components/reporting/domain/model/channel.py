@@ -55,11 +55,18 @@ PLACEHOLDERS: dict[str, frozenset[str]] = {
     "takeover_handed": frozenset({"takeover", "step"}),
     "hand_back_read": frozenset({"takeover", "run", "step", "form"}),
     "handed_back": frozenset({"run", "step"}),
+    "steer_read": frozenset({"run", "step", "text"}),
+    "steered": frozenset({"message", "run", "step"}),
+    "steer_refused": frozenset({"reason"}),
     "spend_of_run": frozenset({"run"}),
     "spend_against": frozenset({"run", "other"}),
     "spend_of_process": frozenset({"process", "days", "runs"}),
     "spend_line": frozenset({"step", "money", "takte", "tokens_in", "tokens_out", "turns"}),
     "spend_compared": frozenset({"step", "left", "right", "result"}),
+    "catalogue_line": frozenset({"name", "start"}),
+    "catalogue_needs": frozenset({"name", "inputs"}),
+    "start_read": frozenset({"process", "name"}),
+    "started": frozenset({"process", "run"}),
 }
 """The sentences that take values, and the values each must use — no more, no fewer."""
 
@@ -174,6 +181,14 @@ class Phrasebook(Value):
     takeover_not_done: str | None = Field(default=None, min_length=1)
     """Said when a take-over or a hand-back cannot be done, or concerns nothing the person may
     see; the run's page in the web app says why."""
+    steer_words: tuple[str, ...] | None = None
+    """The words before `<run> <step>:` and a text, which send a running step a message
+    (ADR-0156 §7); read back first. None: the channel reads no message to a step."""
+    steer_read: str | None = Field(default=None, min_length=1)
+    steered: str | None = Field(default=None, min_length=1)
+    """Said once the message was asked, with its identifier."""
+    steer_refused: str | None = Field(default=None, min_length=1)
+    """Said when the engine refused the message, with its `{reason}`."""
 
     spend_words: tuple[str, ...] | None = None
     """The words before `<run>`, or `<run> <other run>`, that ask where a run spent, step by
@@ -192,6 +207,22 @@ class Phrasebook(Value):
     """Said where money or Takte could not be computed: never counted as nothing."""
     same_result: str | None = Field(default=None, min_length=1)
     other_result: str | None = Field(default=None, min_length=1)
+
+    catalogue_words: tuple[str, ...] | None = None
+    """The words that, standing alone, ask what the person may ask Taktus for (UC-1.13,
+    ADR-0159 §3). None: the channel reads no such request — a phrasebook configured before
+    there were any."""
+    start_words: tuple[str, ...] | None = None
+    """The words before `<process>` that ask to start it; read back first."""
+    catalogue_heading: str | None = Field(default=None, min_length=1)
+    catalogue_line: str | None = Field(default=None, min_length=1)
+    """One entry a reply can start: its name, and what to write to start it."""
+    catalogue_needs: str | None = Field(default=None, min_length=1)
+    """One entry that needs an input a reply cannot give: its name and those inputs."""
+    start_read: str | None = Field(default=None, min_length=1)
+    started: str | None = Field(default=None, min_length=1)
+    start_not_done: str | None = Field(default=None, min_length=1)
+    """Said when a start cannot be done, or concerns a process the person may not see."""
 
     @model_validator(mode="after")
     def _readable(self) -> Phrasebook:
@@ -218,8 +249,11 @@ class Phrasebook(Value):
             "takeover_words": self.takeover_words or (),
             "hand_back_words": self.hand_back_words or (),
             "takeover_show_words": self.takeover_show_words or (),
+            "steer_words": self.steer_words or (),
             "spend_words": self.spend_words or (),
             "spend_process_words": self.spend_process_words or (),
+            "catalogue_words": self.catalogue_words or (),
+            "start_words": self.start_words or (),
         }
         for name, listed in words.items():
             if any(w != w.strip().casefold() or not w for w in listed):
@@ -284,6 +318,14 @@ class Phrasebook(Value):
                 "a phrasebook that reads a take-over names every one of its fifteen entries, "
                 "from takeover_words to takeover_not_done (ADR-0128 §7)"
             )
+        steering = (self.steer_words, self.steer_read, self.steered, self.steer_refused)
+        if any(x is not None for x in steering) and any(not x for x in steering):
+            problems.append(
+                "a phrasebook that reads a message to a step names steer_words, steer_read, "
+                "steered and steer_refused, all four (ADR-0156 §7)"
+            )
+        if self.steer_words is not None and self.takeover_words is None:
+            problems.append("steer_words are read with the take-over's words, not without them")
         spending = (
             self.spend_words,
             self.spend_process_words,
@@ -303,6 +345,21 @@ class Phrasebook(Value):
             )
         if set(self.spend_words or ()) & set(self.spend_process_words or ()):
             problems.append("a word cannot ask for the spend of a run and of a process")
+        starting = (
+            self.catalogue_words,
+            self.start_words,
+            self.catalogue_heading,
+            self.catalogue_line,
+            self.catalogue_needs,
+            self.start_read,
+            self.started,
+            self.start_not_done,
+        )
+        if any(x is not None for x in starting) and any(not x for x in starting):
+            problems.append(
+                "a phrasebook that reads a request for the catalogue names every one of its "
+                "eight entries, from catalogue_words to start_not_done (ADR-0159 §3)"
+            )
         acting = [
             set(words or ())
             for words in (
@@ -313,6 +370,7 @@ class Phrasebook(Value):
                 self.takeover_words,
                 self.hand_back_words,
                 self.takeover_show_words,
+                self.start_words,
             )
         ]
         if any(a & b for i, a in enumerate(acting) for b in acting[i + 1 :]):
@@ -368,18 +426,19 @@ class OwnerChannel(Value):
 
 class PendingAct(Value):
     """An act asked for in the owner's conversation, read back and waiting for its confirmation
-    (ADR-0008): a commissioning or a rollback (ADR-0091 §6), or the take-over of a running step
-    and its hand-back (ADR-0128 §7). Stored under its conversation and thread, so that the next
-    `yes` there confirms it; never deleted, only moved to `done` or `dropped`. A take-over that
-    was asked is kept once more under its own identifier, so that its state is shown and its
-    result handed back from any thread of the conversation."""
+    (ADR-0008): a commissioning or a rollback (ADR-0091 §6), the take-over of a running step
+    and its hand-back (ADR-0128 §7), or the start of a process (ADR-0159 §3). Stored under its
+    conversation and thread, so that the next `yes` there confirms it; never deleted, only
+    moved to `done` or `dropped`. A take-over that was asked is kept once more under its own
+    identifier, so that its state is shown and its result handed back from any thread of the
+    conversation."""
 
     id: str = Field(min_length=1)
     """`<address>:<thread>`: one act waits per thread. For a take-over asked: its identifier."""
     tenant: str = Field(min_length=1)
-    kind: str = Field(pattern=r"^(commission|rollback|take_over|hand_back)$")
+    kind: str = Field(pattern=r"^(commission|rollback|take_over|hand_back|start|steer)$")
     process: str | None = Field(default=None, min_length=1)
-    """For a commissioning or a rollback: the process."""
+    """For a commissioning, a rollback or a start (ADR-0159 §3): the process."""
     proposal: str | None = None
     version: str | None = Field(default=None, min_length=1)
     """The version a commissioning makes active, or the one a rollback makes current again."""
@@ -390,7 +449,8 @@ class PendingAct(Value):
     takeover: str | None = Field(default=None, min_length=1)
     """For a hand-back, and for a take-over once it was asked: the take-over identifier."""
     result: Any = None
-    """For a hand-back: the result as it was read — a JSON value, or the text as written."""
+    """For a hand-back: the result as it was read — a JSON value, or the text as written. For
+    a message to a step: its text."""
     by: str = Field(min_length=1)
     """Who asked; only the same person confirms it."""
     state: str = Field(default="awaiting", pattern=r"^(awaiting|done|dropped)$")
@@ -402,6 +462,8 @@ class PendingAct(Value):
             raise ValueError(f"a {self.kind} names its process and its version")
         if self.kind in ("take_over", "hand_back") and (not self.run or not self.step):
             raise ValueError(f"a {self.kind} names its run and its step")
+        if self.kind == "start" and not self.process:
+            raise ValueError("a start names its process")
         if self.kind == "hand_back" and not self.takeover:
             raise ValueError("a hand-back names its take-over")
         return self

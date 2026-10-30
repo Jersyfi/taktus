@@ -34,14 +34,14 @@ from typing import Any
 
 import httpx
 import pytest
-
-from taktus.adapters.driven.connectors.bookstack import declaration
-from taktus.adapters.driven.connectors.bookstack.server import (
+from taktus_connectors.bookstack import declaration
+from taktus_connectors.bookstack.server import (
     Config,
     Connector,
     build_server,
     secret_named,
 )
+
 from taktus.adapters.driven.connectors.mcp import McpActionConnector
 from taktus.adapters.driving.cli.guides_command import rendered
 from taktus.components.knowledge.application.service import PublishGuides, PublishGuidesHandler
@@ -54,7 +54,7 @@ TARGET = os.environ.get("TAKTUS_LIVE_KNOWLEDGE_TARGET", "")
 SCRATCH = ("Taktus live test", "Live test")
 """The shelf and the book NEED-0021 asks for this test alone."""
 ROOT = Path(__file__).resolve().parents[3]
-CONNECTOR = ROOT / "src/taktus/adapters/driven/connectors/bookstack"
+CONNECTOR = ROOT / "connectors/taktus_connectors/bookstack"
 TOKEN = declaration.ACTIONS_CREDENTIAL
 
 pytestmark = pytest.mark.skipif(
@@ -101,7 +101,7 @@ def connector(tmp_path: Path) -> Iterator[tuple[str, Path]]:
             [
                 sys.executable,
                 "-m",
-                "taktus.adapters.driven.connectors.bookstack",
+                "taktus_connectors.bookstack",
                 "--port",
                 str(port),
                 "--target",

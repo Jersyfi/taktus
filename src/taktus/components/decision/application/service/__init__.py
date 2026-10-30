@@ -20,6 +20,7 @@ from taktus.components.decision.application.service.raise_request import (
     RaiseRequest,
     RaiseRequestHandler,
 )
+from taktus.components.decision.application.service.rules import PrecedentRules, UnknownRule
 
 __all__ = [
     "CHANNEL",
@@ -33,7 +34,9 @@ __all__ = [
     "NotAnswerable",
     "NotRaised",
     "NotTheDecider",
+    "PrecedentRules",
     "RaiseRequest",
     "RaiseRequestHandler",
     "UnknownRequest",
+    "UnknownRule",
 ]

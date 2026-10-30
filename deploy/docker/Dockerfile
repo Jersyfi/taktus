@@ -7,7 +7,9 @@
 # compiler, no secret, and no worker. A worker executes foreign code; the control plane image
 # contains none of it, so that a compromised control plane finds no execution primitive ready
 # to hand (DEC-0011). Workers have their own images (workers/*/Dockerfile) and are reached
-# through the execution port. tests/architecture holds this file to that.
+# through the execution port. Nor does it carry a connector: each connector is an image of its
+# own (connectors/Dockerfile), reached over MCP, and src/ holds only the port's side of it
+# (ADR-0158). tests/architecture holds this file to both.
 # Secrets reach the container as files (TAKTUS_*_FILE).
 # The web app is built in a stage of its own, from its lock file, and only its static build is
 # carried over: the runtime image holds no Node and no package of the web app's (ADR-0063). The

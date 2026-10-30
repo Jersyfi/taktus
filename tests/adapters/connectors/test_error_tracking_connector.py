@@ -16,10 +16,10 @@ from pathlib import Path
 import pytest
 from fakes import error_tracking_service
 from fakes.ports import free_port
+from taktus_connectors.sentry.operations import Config
+from taktus_connectors.sentry.server import build_server
 
 from taktus.adapters.driven.connectors.mcp import McpActionConnector
-from taktus.adapters.driven.connectors.sentry.operations import Config
-from taktus.adapters.driven.connectors.sentry.server import build_server
 from taktus.ports.connector import CallContext, CallFailed, idempotency_key
 from taktus.ports.worker import CredentialReference
 

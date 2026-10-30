@@ -1,6 +1,6 @@
 {{- /*
-The repository connector (README §2, ADR-0033): one deployment from the control plane's image,
-serving one repository's channel over MCP. The roles reach it, nothing else does; it reaches the
+The repository connector (README §2, ADR-0033): one deployment from the connector's own image
+(ADR-0158), serving one repository's channel over MCP. The roles reach it, nothing else does; it reaches the
 name service and the service's API outside the cluster. It acts as Taktus's own app: the app's
 key and the webhook secret are mounted files, their paths in TAKTUS_CREDENTIAL_<NAME>_FILE, and
 it mounts no service-account token — it never talks to the cluster.
@@ -53,12 +53,9 @@ spec:
           type: RuntimeDefault
       containers:
         - name: connector
-          image: {{ include "taktus.image" (dict "what" "image" "image" .Values.image) }}
+          image: {{ include "taktus.connectorImage" (dict "root" . "name" "github") }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command:
-            - python
-            - -m
-            - taktus.adapters.driven.connectors.github
+          args:
             - --host
             - "0.0.0.0"
             - --port

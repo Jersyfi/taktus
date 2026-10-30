@@ -24,9 +24,10 @@ person creates for their own agent, and the gallery a person chooses a first pro
 (ADR-0136), and the register of what acts for a tenant with its stop, what depends on an
 adapter or a result, and how a process really runs (ADR-0147). The same role serves MCP at
 `/mcp` for that agent, which reads and acts as the person within the rights of their roles
-(ADR-0131). No other write, no UI. An answer the owner writes in the thread of a report
-arrives through the webhook intake. A browser that opens an old link to a report without a
-key is sent to the report's page in the web app (ADR-0120).
+(ADR-0131). It hosts the outbound binding a worker in a network without inbound connections
+fetches its requests from (ADR-0156). No other write, no UI. An answer the owner writes in the
+thread of a report arrives through the webhook intake. A browser that opens an old link to a
+report without a key is sent to the report's page in the web app (ADR-0120).
 
 The prefix is applied to every route literally, so that an instance placed under a sub-path by
 the platform works whether or not the platform strips the prefix before forwarding, and every
@@ -55,15 +56,19 @@ from taktus.adapters.driving.rest import (
     acting,
     agent_surface,
     autonomy,
+    catalogue,
     evaluations,
     findings,
     gallery,
     levels,
     operation,
     proposals,
+    relay,
     review,
     session,
     spend,
+    steering,
+    streams,
     takeover,
     tenants,
     trials,
@@ -126,10 +131,17 @@ REFUSAL_STATUS = {
 
 
 def build_app(
-    services: RestServices, *, prefix: str = "/", full: bool = True, web: Path | None = None
+    services: RestServices,
+    *,
+    prefix: str = "/",
+    full: bool = True,
+    web: Path | None = None,
+    connected: relay.ConnectedHost | None = None,
 ) -> FastAPI:
     """`full` is the `api` role: without it a process serves health and readiness only. `web`
-    is the web app's static build, served by the `api` role where it exists (ADR-0063)."""
+    is the web app's static build, served by the `api` role where it exists (ADR-0063).
+    `connected` is the host of the outbound binding for the workers that connect to it; without
+    it no worker connects here (ADR-0156)."""
     base = "" if prefix == "/" else prefix.rstrip("/")
     app = FastAPI(
         title="Taktus",
@@ -168,7 +180,11 @@ def build_app(
         app.include_router(review.router(services, _authenticated), prefix=base)
         app.include_router(autonomy.router(services, _authenticated), prefix=base)
         app.include_router(takeover.router(services, _authenticated), prefix=base)
+        app.include_router(steering.router(services, _authenticated), prefix=base)
+        app.include_router(relay.router(connected), prefix=base)
         app.include_router(acting.router(services, _authenticated), prefix=base)
+        app.include_router(catalogue.router(services, _authenticated), prefix=base)
+        app.include_router(streams.router(services, _authenticated), prefix=base)
         app.include_router(spend.router(services, _authenticated), prefix=base)
         app.include_router(trials.router(services, _authenticated), prefix=base)
         # A person's own agent, over MCP, with a key of its own (ADR-0131).

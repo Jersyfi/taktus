@@ -25,7 +25,7 @@ from pydantic import Field
 from taktus.adapters.driven.memory.persistence import MemoryPersistence
 from taktus.ports.clock import Clock
 from taktus.ports.persistence import PersistenceError, Tenant
-from taktus.ports.queue import RUN_EXECUTE, Claim, Job, TakeoverAsked
+from taktus.ports.queue import RUN_EXECUTE, AskedMessage, Claim, Job, TakeoverAsked
 from taktus.shared.v1 import Value
 
 KIND = "job"
@@ -47,6 +47,8 @@ class JobRow(Value):
     takeover_by: str | None = None
     """The take-over asked and not yet served: the claimant the claim passes to."""
     takeover_step: str | None = None
+    messages: tuple[AskedMessage, ...] = ()
+    """The persons' messages asked on the job (ADR-0156 §7)."""
 
     def job(self) -> Job:
         return Job(
@@ -237,3 +239,37 @@ class MemoryQueue:
             }
         )
         return True
+
+    async def ask_message(self, tenant: Tenant, run_id: str, message: AskedMessage) -> bool:
+        self._persistence.current(tenant)
+        table = self._persistence.table(KIND, tenant)
+        for row in table.values():
+            if row.kind != RUN_EXECUTE or row.payload.get("run_id") != run_id:
+                continue
+            if row.claimed_by is None or row.held_until is not None:
+                return False
+            if any(m.message_id == message.message_id for m in row.messages):
+                return True
+            table[row.id] = row.model_copy(update={"messages": (*row.messages, message)})
+            return True
+        return False
+
+    async def messages_asked(self, tenant: Tenant, job_id: str) -> Sequence[AskedMessage]:
+        self._persistence.current(tenant)
+        row = self._persistence.table(KIND, tenant).get(job_id)
+        return () if row is None else row.messages
+
+    async def message_handed(self, tenant: Tenant, job_id: str, message_id: str) -> None:
+        self._persistence.current(tenant)
+        table = self._persistence.table(KIND, tenant)
+        row = table.get(job_id)
+        if row is None:
+            return
+        table[job_id] = row.model_copy(
+            update={
+                "messages": tuple(
+                    m.model_copy(update={"handed": True}) if m.message_id == message_id else m
+                    for m in row.messages
+                )
+            }
+        )

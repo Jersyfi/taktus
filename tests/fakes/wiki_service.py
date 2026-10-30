@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A fake of the wiki the wiki connector talks to.
 
-The connector under `src/taktus/adapters/driven/connectors/bookstack/` speaks the wiki's
+The connector under `connectors/taktus_connectors/bookstack/` speaks the wiki's
 interface for programs. This fake answers the six requests the connector makes — shelves by
 name, one shelf with its books, the pages of a book, one page, a page created, a page updated —
 in the same shapes, with the same statuses for the same faults, and keeps everything in memory.

@@ -17,15 +17,13 @@ from typing import Any
 
 import pytest
 from mcp import Client
+from taktus_connectors.github import intake
+from taktus_connectors.github.declaration import INTAKE_CREDENTIAL, INTAKE_EVENTS
+from taktus_connectors.github.server import Config, build_server
 
-from taktus.adapters.driven.connectors.github import intake
-from taktus.adapters.driven.connectors.github.declaration import INTAKE_CREDENTIAL, INTAKE_EVENTS
-from taktus.adapters.driven.connectors.github.server import Config, build_server
 from taktus.conformance.contracts import first_error
 
-PAYLOADS = (
-    Path(__file__).resolve().parents[3] / "src/taktus/adapters/driven/connectors/github/payloads"
-)
+PAYLOADS = Path(__file__).resolve().parents[3] / "connectors/taktus_connectors/github/payloads"
 SHARED = "any-shared-value-0123456789"  # not a secret: the test signs and verifies with it
 RECEIVED = "2026-09-16T08:15:02Z"
 

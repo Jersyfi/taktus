@@ -182,7 +182,7 @@ def test_without_a_manifest_a_listing_that_needs_a_credential_refuses_the_start(
         _wait_listening(vendor, port, tmp_path / "vendor.log", "vendor's notes server")
         refused = subprocess.run(  # noqa: S603 — our own module, fixed arguments
             [
-                sys.executable, "-m", "taktus.adapters.driven.connectors.vendor",
+                sys.executable, "-m", "taktus_connectors.vendor",
                 "--upstream", f"http://127.0.0.1:{port}/mcp", "--capability", "notes.pages",
             ],
             capture_output=True, text=True, timeout=60, check=False,

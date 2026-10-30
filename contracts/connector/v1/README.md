@@ -518,7 +518,7 @@ as acting does not start. Each call reads the vendor's listing again before it c
 and a tool that has gone, or that is now marked as acting where it is declared a read, ends the
 call as `unexpected` without calling it.
 
-The vendor connector under `src/taktus/adapters/driven/connectors/vendor/` is this section's
+The vendor connector under `connectors/taktus_connectors/vendor/` is this section's
 implementation. It reaches the vendor's server at an MCP URL and runs no vendor's server
 itself. It passes the suite against the MCP project's reference time server, without a manifest
 and with one, and against a stand-in with tools that write under its manifest

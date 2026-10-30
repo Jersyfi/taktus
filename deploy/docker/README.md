@@ -4,7 +4,7 @@
 |---|---|
 | `compose.yml` | **the deployment shape**: Taktus and PostgreSQL, two containers for the control plane (ADR-0002). No worker: a worker is configured by endpoint, or started by the execution port (`TAKTUS_EXECUTION`) |
 | `compose.reference-worker.yml` | **development only**, layered over `compose.yml`: the reference worker in its own image, reached by endpoint, for trying a bundle out and for `verify.sh` (`make up-dev`) |
-| `Dockerfile` | the control plane image, every role, selected at start by `TAKTUS_ROLES`; carries no worker code (DEC-0011). The web app is built in a stage of its own with Node, and only its static build is carried over; the runtime holds no Node (ADR-0063). `npm ci` gives up a request that stalls after 30 s and retries it, so that a stalled download is retried rather than stopping the build (#360). It runs as user 999, pinned by number because the chart runs it as that number (`deploy/k8s/`). On a version tag, `.github/workflows/images.yml` builds it and each worker's image for the registry the repository names |
+| `Dockerfile` | the control plane image, every role, selected at start by `TAKTUS_ROLES`; carries no worker code (DEC-0011) and no connector (ADR-0158). The web app is built in a stage of its own with Node, and only its static build is carried over; the runtime holds no Node (ADR-0063). `npm ci` gives up a request that stalls after 30 s and retries it, so that a stalled download is retried rather than stopping the build (#360). It runs as user 999, pinned by number because the chart runs it as that number (`deploy/k8s/`). On a version tag, `.github/workflows/images.yml` builds it and each worker's image for the registry the repository names |
 | `connectors.py` | writes `compose.connectors.yml` from the operator's `connectors.json` — a service per further connector, its credentials as secret files, and `TAKTUS_CONNECTORS` on the `taktus` service — which `make up`, `make up-dev` and `make start` lay over `compose.yml` (see *Connectors*). Both files are the operator's, ignored by git; `connectors.example.json` is the shape |
 | `secrets.sh` | writes the two secret files `compose.yml` reads, once, under `secrets/` (ignored by git); the directory is closed to other host users and the files are readable, because the containers read them as their own user |
 | `start.py` | `make start`, the one command of a first install (ADR-0136 §6): what `make up` does, then `taktusctl first start` — the first tenant, its administrator and the account key, printed once — and a clock that runs until the tenant's first rehearsal has finished; it writes what it measured to `first-process.json`, which is never committed |
@@ -106,8 +106,11 @@ server each runs in a container of its own, as on a cluster (`deploy/k8s/README.
 
 1. Copy `connectors.example.json` to `connectors.json` and keep the entries you use. Each names
    the connector (`name`), its `capability` — its label in `TAKTUS_CONNECTORS` — either a
-   `module` run from the control plane's image or an `image` by version, its `port`, `args`,
-   and each credential as `{name, file}`. Optional: `healthPath` (`/health`; empty for none).
+   shipped `connector` by its name, built from this checkout's `connectors/Dockerfile` as
+   `taktus-connector-<connector>:local`, or an `image` of its own by version, its `port`,
+   `args`, and each credential as `{name, file}`. The `module` an earlier release ran from the
+   control plane's image, `taktus.adapters.driven.connectors.<connector>`, names the same
+   connector, so a list written then keeps working (ADR-0158). Optional: `healthPath` (`/health`; empty for none).
 2. Write each credential's value into the file it names under `secrets/`. `CREDENTIALS.md`
    says what each parameter needs. The value never enters `connectors.json`.
 3. `make up`, as always.
@@ -165,7 +168,7 @@ make verify-compose
 ```
 
 `verify.sh` does, from nothing: `make up-dev`, the deployment with the reference worker in
-its own image; checks that the control plane image holds no worker code; adds the identity
+its own image; checks that the control plane image holds no worker code and no connector; adds the identity
 `idn_verify`, which reads the API and submits and confirms the run, since nothing executes
 without an identity; queues a bundle
 whose worker step runs 24 commands, confirming each step as an operator would, since the bundle

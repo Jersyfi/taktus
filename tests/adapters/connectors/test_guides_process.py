@@ -33,8 +33,8 @@ from fakes import FakeIdentifiers
 from fakes.knowledge_system import FakeKnowledgeSystem
 from fakes.maturity import VERIFIED
 from fakes.owner_channel import OwnerChannel, owner_channel
+from taktus_connectors.github.server import Config, build_server
 
-from taktus.adapters.driven.connectors.github.server import Config, build_server
 from taktus.adapters.driven.connectors.loopback import ADAPTER as LOOPBACK
 from taktus.adapters.driven.connectors.loopback import LoopbackConnector
 from taktus.adapters.driven.connectors.mcp import McpActionConnector

@@ -29,11 +29,17 @@ from taktus.components.decision.application.query import DecisionQueries
 from taktus.components.decision.application.service import (
     AnswerRequestHandler,
     ConfirmRequestHandler,
+    PrecedentRules,
     RaiseRequest,
     RaiseRequestHandler,
 )
 from taktus.components.decision.application.service import NotRaised as RequestNotRaised
-from taktus.components.decision.domain.model import RegisterEntry, Request
+from taktus.components.decision.domain.model import (
+    RULE_ACTOR_PREFIX,
+    DecisionRule,
+    RegisterEntry,
+    Request,
+)
 from taktus.components.decision.ports import Decider
 from taktus.components.governance.application.service import (
     AnchorsInForce,
@@ -178,6 +184,7 @@ class RequestsOfTheRun:
             entry=shaped.outcome,
             answer=shaped.answer_raw,
             modified=shaped.answer_interpreted.modifications is not None,
+            by_rule=(request.decided_by or "").startswith(RULE_ACTOR_PREFIX),
         )
 
 
@@ -363,6 +370,8 @@ class DecisionWiring:
     answer: AnswerRequestHandler
     confirm: ConfirmRequestHandler
     queries: DecisionQueries
+    rules: PrecedentRules
+    """Recurring decisions proposed as rules, and the rules a person adopted (ADR-0161)."""
     corrections: Corrections
     """The decisions on proposals counted, and the levels that fall by rule (ADR-0110)."""
     levels: LevelsOfTheRun
@@ -397,16 +406,18 @@ def decision_wiring(
     requests: Repository[Request] = of(Request)
     register: Repository[RegisterEntry] = of(RegisterEntry)
     deciders = DirectoryDeciders(directory)
+    rules = PrecedentRules(of(DecisionRule), register, requests, work, ledger, clock)
     corrections = Corrections(of(Incident), of(CorrectionLimits), ledger, work, clock)
     return DecisionWiring(
         anchors=AnchorsInForce(configurations, work),
         configure=ConfigureAnchorsHandler(configurations, work, ledger, clock),
         requests=RequestsOfTheRun(
-            RaiseRequestHandler(requests, work, ledger, clock), requests, work
+            RaiseRequestHandler(requests, work, ledger, clock, rules), requests, work
         ),
         answer=AnswerRequestHandler(requests, work, ledger, clock, deciders),
-        confirm=ConfirmRequestHandler(requests, register, work, ledger, clock),
+        confirm=ConfirmRequestHandler(requests, register, work, ledger, clock, rules),
         queries=DecisionQueries(requests, register, work, clock, deciders),
+        rules=rules,
         corrections=corrections,
         levels=LevelsOfTheRun(corrections),
         lowered=LoweredOfTheVersion(corrections),

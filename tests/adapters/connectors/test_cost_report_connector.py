@@ -18,9 +18,9 @@ import httpx
 import pytest
 from fakes import cost_report_service
 from fakes.ports import free_port
+from taktus_connectors.anthropic.operations import Config
+from taktus_connectors.anthropic.server import build_server
 
-from taktus.adapters.driven.connectors.anthropic.operations import Config
-from taktus.adapters.driven.connectors.anthropic.server import build_server
 from taktus.adapters.driven.connectors.mcp import McpActionConnector
 from taktus.ports.connector import CallContext, CallFailed, idempotency_key
 from taktus.ports.worker import CredentialReference

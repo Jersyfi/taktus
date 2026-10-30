@@ -1,6 +1,6 @@
 {{- /*
-Every further connector (`connectors.others`, README §2): one deployment each, from the control
-plane's image running the connector's module, or from an image of its own. The roles reach it,
+Every further connector (`connectors.others`, README §2): one deployment each, from the image of
+the shipped connector it names (ADR-0158), or from an image of its own. The roles reach it,
 nothing else does; it reaches the name service and its service outside the cluster on the ports
 it names. Each credential it reads is a key of an existing Secret, mounted as a file whose path
 is in TAKTUS_CREDENTIAL_<NAME>_FILE (CREDENTIALS.md), and it mounts no service-account token.
@@ -55,13 +55,10 @@ spec:
           type: RuntimeDefault
       containers:
         - name: connector
-          {{- if $c.module }}
-          image: {{ include "taktus.image" (dict "what" "image" "image" $root.Values.image) }}
+          {{- if not $c.image }}
+          image: {{ include "taktus.connectorImage" (dict "root" $root "name" (include "taktus.otherConnectorName" $c)) }}
           imagePullPolicy: {{ $root.Values.image.pullPolicy }}
-          command:
-            - python
-            - -m
-            - {{ $c.module | quote }}
+          args:
             - --host
             - "0.0.0.0"
             - --port

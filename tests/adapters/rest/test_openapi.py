@@ -79,12 +79,17 @@ def test_the_document_is_openapi_3_1_with_the_prefix_as_a_server_variable() -> N
         "/trials",
         "/trials/offers",
         "/trials/{trial_id}",
+        "/runs/{run_id}/steps/{step_id}/messages",
         "/runs/{run_id}/steps/{step_id}/takeover",
         "/runs/{run_id}/takeovers/{takeover_id}",
         "/runs/{run_id}/takeovers/{takeover_id}/hand-back",
         "/changes",
         "/levels/runs/{run_id}",
         "/levels/runs/{run_id}/stages",
+        "/catalogue",
+        "/catalogue/{process_id}/start",
+        "/streams",
+        "/streams/{stream}",
         "/levels/processes/{process_id}",
         "/levels/overview",
         "/levels/origins/{run_id}/{step_id}",
@@ -113,6 +118,8 @@ def test_the_document_is_openapi_3_1_with_the_prefix_as_a_server_variable() -> N
         "/processes/{process_id}/evaluation-cases/{case_id}/reject",
         "/administration/tenants",
         "/administration/tenants/{tenant}",
+        "/workers/{name}/relay/next",
+        "/workers/{name}/relay/answers/{request_id}",
     }
     for path, operations in document["paths"].items():
         for method, operation in operations.items():

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A fake payment provider: the subscriptions of the Stripe REST API, in memory.
 
-The payment provider connector under `src/taktus/adapters/driven/connectors/stripe/` asks
+The payment provider connector under `connectors/taktus_connectors/stripe/` asks
 `GET /v1/subscriptions` and `GET /v1/subscriptions/<id>`. This fake answers both in the API's
 shapes, with the API's statuses for its errors, over subscriptions it holds in memory. It exists
 so that the connector can be exercised in CI without a network, an account or a secret.

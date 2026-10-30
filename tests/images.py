@@ -57,6 +57,8 @@ class Image:
     # raised — a build that needs them has hung, and the stall check says so sooner.
     timeout: float = 600.0
     stall: float = STALL_SECONDS
+    target: str | None = None
+    """The stage to build, for a Dockerfile that holds several images (connectors/Dockerfile)."""
 
 
 REFERENCE_WORKER = Image("taktus-worker-script:test", ROOT / "workers/script/Dockerfile", ROOT)
@@ -64,7 +66,23 @@ CONTROL_PLANE = Image("taktus:test", ROOT / "deploy/docker/Dockerfile", ROOT, ti
 HOG_CONTEXT = ROOT / "tests/adapters/execution/hog"
 HOG = Image("taktus-test-unit:hog", HOG_CONTEXT / "Dockerfile", HOG_CONTEXT)
 BACKUP = Image("taktus-backup:test", ROOT / "deploy/backup/Dockerfile", ROOT)
-ALL = (REFERENCE_WORKER, CONTROL_PLANE, HOG, BACKUP)
+CONNECTOR_DOCKERFILE = ROOT / "connectors/Dockerfile"
+
+
+def connector_names() -> tuple[str, ...]:
+    """Every connector shipped as an image of its own: a package under connectors/ that runs
+    as a module (ADR-0158)."""
+    package = ROOT / "connectors" / "taktus_connectors"
+    return tuple(sorted(p.parent.name for p in package.glob("*/__main__.py")))
+
+
+def connector(name: str) -> Image:
+    """The image of one connector: its stage of connectors/Dockerfile."""
+    return Image(f"taktus-connector-{name}:test", CONNECTOR_DOCKERFILE, ROOT, target=name)
+
+
+CONNECTORS = tuple(connector(name) for name in connector_names())
+ALL = (REFERENCE_WORKER, CONTROL_PLANE, HOG, BACKUP, *CONNECTORS)
 
 
 class ImageBuildError(Exception):
@@ -101,10 +119,43 @@ def _instructions(dockerfile: str) -> list[str]:
     return lines
 
 
-def copied_sources(dockerfile: str) -> list[str]:
-    """Every context path a COPY or ADD instruction reads; `--from=` copies read a stage."""
+def _stages(instructions: list[str], target: str | None) -> list[str]:
+    """The instructions a build of `target` runs: its stage and every stage it is built from or
+    copies from; every instruction when there is no target."""
+    if target is None:
+        return instructions
+    stages: dict[str, list[str]] = {}
+    parents: dict[str, set[str]] = {}
+    current = ""
+    for instruction in instructions:
+        words = instruction.split()
+        if words[0].upper() == "FROM":
+            current = words[3] if len(words) >= 4 and words[2].upper() == "AS" else words[1]
+            stages[current] = []
+            parents[current] = {words[1]}
+            continue
+        stages.setdefault(current, []).append(instruction)
+        parents.setdefault(current, set()).update(
+            word.removeprefix("--from=") for word in words if word.startswith("--from=")
+        )
+    if target not in stages:
+        raise ImageBuildError(f"the Dockerfile has no stage {target!r}")
+    needed: list[str] = []
+    pending = [target]
+    while pending:
+        stage = pending.pop()
+        if stage in needed or stage not in stages:
+            continue
+        needed.append(stage)
+        pending.extend(parents[stage])
+    return [i for stage in stages if stage in needed for i in stages[stage]]
+
+
+def copied_sources(dockerfile: str, target: str | None = None) -> list[str]:
+    """Every context path a COPY or ADD instruction reads, of the stages a build of `target`
+    runs; `--from=` copies read a stage."""
     sources: list[str] = []
-    for instruction in _instructions(dockerfile):
+    for instruction in _stages(_instructions(dockerfile), target):
         keyword, _, rest = instruction.partition(" ")
         if keyword.upper() not in ("COPY", "ADD"):
             continue
@@ -173,7 +224,7 @@ def content_digest(image: Image) -> str:
     text = image.dockerfile.read_text(encoding="utf-8")
     rules = _ignore_rules(image.context)
     files: set[Path] = set()
-    for source in copied_sources(text):
+    for source in copied_sources(text, image.target):
         if "://" in source:
             continue  # a URL is in the Dockerfile's text, which is hashed
         for match in sorted(image.context.glob(source)) or [image.context / source]:
@@ -185,6 +236,7 @@ def content_digest(image: Image) -> str:
                 raise ImageBuildError(f"{image.tag}: {image.dockerfile} copies {source}, absent")
     digest = hashlib.sha256()
     digest.update(text.encode())
+    digest.update(b"\0target\0" + (image.target or "").encode())
     for path in sorted(files):
         relative = path.relative_to(image.context).as_posix()
         if _ignored(relative, rules):
@@ -279,6 +331,7 @@ def build(image: Image, digest: str) -> str:
         f"{LABEL}={digest}",
         "-f",
         str(image.dockerfile),
+        *(["--target", image.target] if image.target else []),
         "-t",
         tag,
         "-t",

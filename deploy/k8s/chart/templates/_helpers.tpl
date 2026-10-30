@@ -74,6 +74,50 @@ are refused at render time: what runs must be what was released. Call with (dict
 {{- include "taktus.image" (dict "what" .what "image" (dict "repository" (trimSuffix $parts $ref) "tag" (trimPrefix ":" $parts))) -}}
 {{- end -}}
 
+{{/*
+The connectors this release ships, each an image of its own (ADR-0158): the directories under
+connectors/taktus_connectors/ that run as a module. tests/governance/test_chart.py holds this
+list to that directory.
+*/}}
+{{- define "taktus.shippedConnectors" -}}
+anthropic aws bookstack github httpcheck mail openai prometheus sentry slack stripe vendor
+{{- end -}}
+
+{{/*
+A shipped connector's image (ADR-0158): `<connectors.imagePrefix>-<name>`, by default beside the
+control plane's as `<image.repository>-connector-<name>`, at the control plane's tag, because a
+release builds and pushes them together (.github/workflows/images.yml). Call with
+(dict "root" $ "name" "github").
+*/}}
+{{- define "taktus.connectorImage" -}}
+{{- $shipped := splitList " " (include "taktus.shippedConnectors" .root) -}}
+{{- if not (has .name $shipped) -}}
+{{- fail (printf "%q is no connector this release ships; it ships %s" .name (join ", " $shipped)) -}}
+{{- end -}}
+{{- $repository := required "image.repository is required" .root.Values.image.repository -}}
+{{- $prefix := .root.Values.connectors.imagePrefix | default (printf "%s-connector" $repository) -}}
+{{- include "taktus.image" (dict "what" "image" "image" (dict "repository" (printf "%s-%s" $prefix .name) "tag" .root.Values.image.tag)) -}}
+{{- end -}}
+
+{{/*
+The shipped connector an entry of `connectors.others` runs: its `connector`, or the `module` an
+earlier release ran from the control plane's image — `taktus.adapters.driven.connectors.<name>`
+— which now runs from the connector's own image, so that an installed instance's values keep
+working (ADR-0158). Empty for an entry with an image of its own.
+*/}}
+{{- define "taktus.otherConnectorName" -}}
+{{- if .connector -}}
+{{- .connector -}}
+{{- else if .module -}}
+{{- $module := toString .module -}}
+{{- $found := regexFind "^(taktus\\.adapters\\.driven\\.connectors|taktus_connectors)\\.[a-z][a-z0-9_]*$" $module -}}
+{{- if not $found -}}
+{{- fail (printf "connectors.others %s: module %q is no shipped connector's; give `connector: <name>`, or an image of its own" .name $module) -}}
+{{- end -}}
+{{- last (splitList "." $module) -}}
+{{- end -}}
+{{- end -}}
+
 {{/* A unit's variables (ADR-0090), a map, as TAKTUS_EXECUTION_UNIT_ENV reads them: NAME=value
 pairs, comma separated, in the order of their names. A value holds no comma, which separates
 the pairs. Which names are refused is the daemon's to say, at its start. */}}
@@ -196,14 +240,18 @@ capability its label in TAKTUS_CONNECTORS: each is unique, and neither repeats a
 {{- fail (printf "connectors.others %s: capability %q is another connector's label already" $name $label) -}}
 {{- end -}}
 {{- $labels = append $labels $label -}}
-{{- if and .module .image -}}
-{{- fail (printf "connectors.others %s: give module or image, not both" $name) -}}
+{{- $given := 0 -}}
+{{- range list .connector .module .image -}}{{- if . }}{{- $given = add1 $given -}}{{- end -}}{{- end -}}
+{{- if gt $given 1 -}}
+{{- fail (printf "connectors.others %s: give one of connector, module or image, not both" $name) -}}
 {{- end -}}
-{{- if not (or .module .image) -}}
-{{- fail (printf "connectors.others %s: module or image is required" $name) -}}
+{{- if eq $given 0 -}}
+{{- fail (printf "connectors.others %s: connector, module or image is required" $name) -}}
 {{- end -}}
 {{- if .image -}}
 {{- $_ := include "taktus.imageRef" (dict "what" (printf "connectors.others %s image" $name) "ref" .image) -}}
+{{- else -}}
+{{- $_ := include "taktus.connectorImage" (dict "root" $ "name" (include "taktus.otherConnectorName" .)) -}}
 {{- end -}}
 {{- $port := required (printf "connectors.others %s: port is required" $name) .port -}}
 {{- if or (lt (int $port) 1) (gt (int $port) 65535) -}}

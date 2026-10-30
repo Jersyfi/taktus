@@ -3,14 +3,14 @@
     {
       "name": "payments",
       "capability": "payments.subscriptions",
-      "module": "taktus.adapters.driven.connectors.stripe",
+      "connector": "stripe",
       "port": 9111,
       "credentials": [{"name": "PAYMENTS_TOKEN", "file": "payments_token"}]
     },
     {
       "name": "model-costs",
       "capability": "models.costs",
-      "module": "taktus.adapters.driven.connectors.anthropic",
+      "connector": "anthropic",
       "port": 9112,
       "credentials": [{"name": "MODEL_COSTS_TOKEN", "file": "model_costs_token"}]
     }
