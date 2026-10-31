@@ -1,0 +1,276 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taktus.eu/contracts/catalogue/v1/Catalogue.json",
+  "title": "Catalogue",
+  "description": "The catalogue contract: an index over signed images and bundles that an instance reads, verifies and installs from, and the file of keys its operator trusts. An index runs no code; each entry names one artifact by digest and is signed over its own content. An entry states the tier of its publisher, reference or community; verified is never stated, the instance derives it from its own records. See README.md, ADR-0175 and UC-14.6.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/Index"
+    },
+    {
+      "$ref": "#/$defs/Trust"
+    }
+  ],
+  "$defs": {
+    "Digest": {
+      "title": "Digest",
+      "description": "A SHA-256 digest: of an image's manifest, or of a bundle file's bytes.",
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "PublicKey": {
+      "title": "PublicKey",
+      "description": "An Ed25519 public key: its 32 raw bytes, base64url without padding.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{43}$"
+    },
+    "Tier": {
+      "title": "Tier",
+      "description": "The tier a publisher states. reference: kept by the Taktus project. community: signed by its author, experimental, at level 2 or below until verified in the instance. verified is not a value: an index never states it.",
+      "type": "string",
+      "enum": [
+        "reference",
+        "community"
+      ]
+    },
+    "Signature": {
+      "title": "Signature",
+      "description": "The signature over the entry without this field, as canonical JSON: keys sorted, no whitespace between tokens, UTF-8 without escaping.",
+      "type": "object",
+      "properties": {
+        "scheme": {
+          "const": "ed25519"
+        },
+        "key": {
+          "$ref": "#/$defs/PublicKey"
+        },
+        "value": {
+          "description": "The 64 bytes of the signature, base64url without padding.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{86}$"
+        }
+      },
+      "required": [
+        "scheme",
+        "key",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "Entry": {
+      "title": "Entry",
+      "description": "One artifact of the index. An image entry names an adapter's image by digest, its family, the contract it implements and the capabilities it serves. A bundle entry names a process bundle, as a file beside the index, by the digest of its bytes.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "image",
+            "bundle"
+          ]
+        },
+        "tier": {
+          "$ref": "#/$defs/Tier"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "family": {
+          "type": "string",
+          "enum": [
+            "worker",
+            "connector",
+            "model"
+          ]
+        },
+        "contract": {
+          "type": "string",
+          "pattern": "^[a-z]+/v[0-9]+$"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "image": {
+          "description": "The image's name without a tag; it is pulled by its digest.",
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._/-]*[a-z0-9](:[0-9]+)?(/[a-z0-9._-]+)*$"
+        },
+        "process": {
+          "description": "The process the bundle is a version of.",
+          "type": "string",
+          "minLength": 1
+        },
+        "bundle": {
+          "description": "The bundle's file, relative to the index, below its directory.",
+          "type": "string",
+          "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$)).+\\.(yaml|yml)$"
+        },
+        "signature": {
+          "$ref": "#/$defs/Signature"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "tier",
+        "version",
+        "summary",
+        "digest",
+        "signature"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "image"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "family",
+              "contract",
+              "capabilities",
+              "image"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "process"
+                  ]
+                },
+                {
+                  "required": [
+                    "bundle"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "bundle"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "process",
+              "bundle"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "family"
+                  ]
+                },
+                {
+                  "required": [
+                    "contract"
+                  ]
+                },
+                {
+                  "required": [
+                    "capabilities"
+                  ]
+                },
+                {
+                  "required": [
+                    "image"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "Index": {
+      "title": "Index",
+      "description": "A catalogue: its name and its entries. An entry's id is unique within it.",
+      "type": "object",
+      "properties": {
+        "catalogue": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Entry"
+          }
+        }
+      },
+      "required": [
+        "catalogue",
+        "entries"
+      ],
+      "additionalProperties": false
+    },
+    "TrustedKey": {
+      "title": "TrustedKey",
+      "description": "A public key the operator trusts, for the one tier it may sign, and the author it stands for.",
+      "type": "object",
+      "properties": {
+        "key": {
+          "$ref": "#/$defs/PublicKey"
+        },
+        "tier": {
+          "$ref": "#/$defs/Tier"
+        },
+        "author": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "key",
+        "tier",
+        "author"
+      ],
+      "additionalProperties": false
+    },
+    "Trust": {
+      "title": "Trust",
+      "description": "The keys an instance trusts: the file TAKTUS_CATALOGUE_KEYS names. Public keys only; no secret.",
+      "type": "object",
+      "properties": {
+        "keys": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TrustedKey"
+          }
+        }
+      },
+      "required": [
+        "keys"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
