@@ -4356,7 +4356,12 @@ class RunEngine:
         document, done, _, _ = await self._connector_call(
             run,
             step_run,
-            ConnectorRule(rule="connector", operation=read.operation, input=read.input),
+            ConnectorRule(
+                rule="connector",
+                operation=read.operation,
+                input=read.input,
+                credentials=read.credentials,
+            ),
             span,
         )
         try:
