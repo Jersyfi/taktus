@@ -2,11 +2,12 @@
 
 The binding (`workers/a2a/`) is run against the reference agent (`tests/fakes/a2a_agent.py`), a
 small server of the agent-to-agent protocol served in this process that knows nothing of
-Taktus: a task changes its status every 0.3 s and completes after three turns. The binding's
-estimate is 0.6 s of `agent.remote`, below the 0.9 s a task takes, so that the suite's `tight`
-run shows the halt at a limit (W-14). The agent's host is the one host the main run's frame
-allows; the narrowed run withdraws it (W-13). The agent's token is the credential the suite
-references, and it reaches the agent only in its header (W-08). No real agent is exercised.
+Taktus: a task changes its status every `TURN_SECONDS` and completes after three turns. The
+binding's estimate is two turns of `agent.remote`, below the three a task takes, so that the
+suite's `tight` run shows the halt at a limit (W-14). The agent's host is the one host the main
+run's frame allows; the narrowed run withdraws it (W-13). The agent's token is the credential
+the suite references, and it reaches the agent only in its header (W-08). No real agent is
+exercised.
 """
 
 from __future__ import annotations
@@ -42,6 +43,15 @@ FAULTS = _list_faults([sys.executable, str(BINDING), "--list-faults"])
 NOT_OFFERED = {"W-20", "W-21"}
 
 
+# A turn of the reference agent. Short, because the suite runs a dozen assignments for every
+# fault and UC-14.5 names every fault, so `make gate-usecases` runs them all; at 0.3 s the
+# self-test of that gate outran its 20 minutes. The binding reads the task four times a turn,
+# so every status change is seen, and estimates two turns of the three a task takes.
+TURN_SECONDS = 0.1
+POLL_SECONDS = TURN_SECONDS / 4
+ESTIMATE_SECONDS = 2 * TURN_SECONDS
+
+
 @pytest.fixture
 def start_binding(tmp_path: Path) -> Iterator[StartWorker]:
     started: list[subprocess.Popen[bytes]] = []
@@ -49,6 +59,7 @@ def start_binding(tmp_path: Path) -> Iterator[StartWorker]:
 
     def start(*, fault: str | None = None, stores: str = "eu", **agent: Any) -> RunningWorker:
         value = "conf-" + secrets.token_hex(12)
+        agent.setdefault("turn_seconds", TURN_SECONDS)
         reference = ReferenceAgent(token=value, **agent).start()
         agents.append(reference)
         port = free_port()
@@ -67,11 +78,11 @@ def start_binding(tmp_path: Path) -> Iterator[StartWorker]:
             "--state-dir",
             str(tmp_path / f"a2a-state-{fault or 'honest'}-{len(agents)}"),
             "--estimate-seconds",
-            "0.6",
+            str(ESTIMATE_SECONDS),
             "--estimate-turns",
             "3",
             "--poll-seconds",
-            "0.05",
+            str(POLL_SECONDS),
         ]
         if fault:
             args += ["--fault", fault]
@@ -168,7 +179,7 @@ async def test_a_turn_per_status_and_the_agents_artifact(start_binding: StartWor
     started = [e["step_id"] for e in events if e["type"] == "step.started"]
     assert started == ["send", "turn-1", "turn-2", "turn-3", "fetch"]
     seconds = [e["compute_seconds"] for e in events if e["type"] == "consumption.reported"]
-    assert len(seconds) == 5 and sum(seconds[1:4]) >= 0.6, seconds
+    assert len(seconds) == 5 and sum(seconds[1:4]) >= 2 * TURN_SECONDS, seconds
     kinds = {a["id"]: a["kind"] for a in listed["artifacts"]}
     assert kinds == {"agent-task": "a2a.task", "agent-report": "agent.output", "summary": "report"}
     assert report.text == f"Report on: {TASK['goal']}"
@@ -194,7 +205,9 @@ async def test_an_estimate_above_the_limit_sends_nothing(start_binding: StartWor
     worker = start_binding()
     (agent,) = start_binding.agents  # type: ignore[attr-defined]
     body = assignment("asg_a2a03", [agent.host])
-    body["limits"] = {"compute": {"seconds": 0.3, "resource_class": "agent.remote"}}
+    body["limits"] = {
+        "compute": {"seconds": ESTIMATE_SECONDS / 2, "resource_class": "agent.remote"}
+    }
     money = assignment("asg_a2a04", [agent.host])
     money["limits"] = {"currency": {"eur": 5.0}}
     async with WorkerClient(worker.endpoint, timeout=30.0, idle_timeout=10.0) as client:
