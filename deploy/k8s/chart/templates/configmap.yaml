@@ -16,6 +16,14 @@ data:
   TAKTUS_PATH_PREFIX: {{ .Values.ingress.pathPrefix | default "/" | quote }}
   TAKTUS_MIGRATE_ON_START: "false"
   TAKTUS_STATE_DIR: /var/lib/taktus
+  {{- include "taktus.checkProfile" . }}
+  TAKTUS_OBJECT_STORE: {{ include "taktus.objectStore" . | quote }}
+  {{- if eq (include "taktus.objectStore" .) "s3" }}
+  TAKTUS_OBJECT_STORE_ENDPOINT: {{ .Values.objectStore.endpoint | quote }}
+  TAKTUS_OBJECT_STORE_BUCKET: {{ .Values.objectStore.bucket | quote }}
+  TAKTUS_OBJECT_STORE_PREFIX: {{ .Values.objectStore.prefix | default "" | quote }}
+  TAKTUS_OBJECT_STORE_REGION: {{ .Values.objectStore.region | default "us-east-1" | quote }}
+  {{- end }}
   TAKTUS_SHUTDOWN_CEILING_SECONDS: {{ .Values.shutdownCeilingSeconds | quote }}
   TAKTUS_LOG_LEVEL: {{ .Values.logLevel | quote }}
   TAKTUS_EXECUTION: {{ $execution.kind | quote }}

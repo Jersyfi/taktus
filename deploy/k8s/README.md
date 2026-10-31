@@ -42,7 +42,9 @@ administers the cluster nor reaches into it (ADR-0025 §1, DEC-0023).
   create, change and delete secrets, config maps, services, service accounts, volume claims,
   deployments, stateful sets, jobs, roles, role bindings, network policies and ingresses — in
   the control plane's namespace cron jobs too, for the backup (section 11) — and
-  read pods, their logs and events. It may not create a namespace or any object of the cluster
+  read pods, their logs and events. For the profile `ha` it manages disruption budgets
+  (`policy/poddisruptionbudgets`) in the control plane's namespace too (ADR-0165); the other
+  profiles render none. It may not create a namespace or any object of the cluster
   as a whole (NEED-0007). It belongs to the person running `helm`. It is **never** given to
   Taktus. The chart renders no kind outside that list, and a test holds it to that.
 - **Taktus's own service account** runs the control plane. In the execution namespace it may:
@@ -81,10 +83,11 @@ operator's. The parts that carry a decision:
 |---|---|
 | `namespaces.create` | `false` by default: both namespaces exist before the install, created by whoever may create namespaces, with the labels of section 4. The control plane renders into the release's namespace (`helm --namespace`), the execution units' objects into `execution.namespace`. `true` renders both Namespace objects with those labels, for a cluster where the installing identity may (DEC-0060) |
 | `image.repository`, `image.tag`, `image.pullSecret` | the control plane image; the tag is a version, and `latest` or an empty tag fails the render |
-| `profile` | `standard` (default): one deployment per role. `small`: one deployment running every role in one process (`TAKTUS_ROLES=all`), sized by `small.resources`, beside the database. See "Which profile" below |
+| `profile` | `standard` (default): one deployment per role. `small`: one deployment running every role in one process (`TAKTUS_ROLES=all`), sized by `small.resources`, beside the database. `ha`: highly available (ADR-0165), with `ha.replicas`, `ha.minAvailable` and `ha.antiAffinity`. See "Which profile" below |
 | `roles.<role>.replicas`, `.resources` | one deployment per role (ADR-0002), for the `standard` profile; the scheduler is elected, more than one is allowed and idle |
 | `database.deploy`, `.size`, `.storageClass`, `.passwordSecret`/`.passwordKey`, `.urlSecret`/`.urlKey` | a PostgreSQL of its own (DEC-0032) on a volume of 20 Gi (DEC-0033); its password and the instance's connection URL are existing Secrets |
-| `state.size`, `.storageClass` | one volume for artifact bytes, shared by every role (`TAKTUS_STATE_DIR`); kept on uninstall. A role keeps at most `TAKTUS_OBJECT_CACHE_MB` of them in memory (default 64; set through `env`) |
+| `state.size`, `.storageClass` | one volume for artifact bytes, shared by every role (`TAKTUS_STATE_DIR`), with `objectStore.kind: filesystem`; kept on uninstall. A role keeps at most `TAKTUS_OBJECT_CACHE_MB` of them in memory (default 64; set through `env`) |
+| `objectStore.*` | where artifact bytes live (`TAKTUS_OBJECT_STORE`, ADR-0165): `filesystem` (default), the state volume; `s3`, keys `<prefix>/<hex>` in one bucket of an S3-compatible store at `endpoint`, path-style, with `bucket`, `prefix` and `region` (empty: `us-east-1`). Its credential is two keys of one existing Secret (`secret`, `accessKeyIdKey`, `secretKeyKey`), mounted as files. With `s3` no state volume is rendered, `backup.objects` must be false, and the roles reach the store through `networkPolicy.controlPlaneEgress`. Moving from `filesystem` is below |
 | `execution.*` | `kind` (`cluster` for the cluster adapter of section 7, `endpoint` by default), the execution namespace, the jobs' account, the unit's image, the per-job defaults (`defaults.cpuRequestShare` the share of the CPU limit a unit requests, section 7; `defaults.serviceHosts` the hosts a worker's own service needs, section 6; `defaults.unitEnv` the variables a worker's own program needs to start, section 7 — configuration, never a secret), the claim the units' state lives on (`stateClaim`, rendered and kept on uninstall), the egress gateway (`gateway.replicas`, and optionally `gateway.keySecret` with `gateway.keyKey`, an existing Secret in both namespaces that holds its key; without them the chart makes the key and keeps it; section 6), and the egress port, allowed ports and excluded ranges, with `egress.proxyImage` the container adapter's gateway image. `workers[]` names several workers in the order a step is resolved in (`TAKTUS_WORKERS`, ADR-0078): each entry a `name` and what it sets itself — `kind`, `endpoint` (required for kind `endpoint`), `image`, `unitPort`, `cpus`, `cpuRequestShare`, `memoryMb`, `wallSeconds`, `startTimeoutSeconds`, an existing `stateClaim`, `serviceHosts` (`[]` for none), `unitEnv` (`{}` for none) — and the settings above for the rest. A name that is not lowercase words joined by hyphens, a name twice, or an endpoint worker without its endpoint fails the render |
 | `credentials[]` | one entry per parameter of `CREDENTIALS.md`: `parameter`, `secret`, `key`, optional `mountPath`; mounted as a file, its path in `TAKTUS_<PARAMETER>_FILE`. A credential of one of several workers has the parameter `worker.<worker>.credential.<name>`, and only that worker receives it |
 | `administration.platform`, `.administers` | the platform this instance runs on and, per credential parameter, the platforms it administers or `none` — `TAKTUS_PLATFORM`, `TAKTUS_ADMINISTERS` (ADR-0052). A process naming a credential that administers this platform, or one declared about nothing, is refused; with no platform nothing is checked |
@@ -169,8 +172,20 @@ read-only root filesystem. The control plane's namespace can therefore enforce `
 | `small` | one team or a trial on a cluster; the smallest footprint: the control plane in one pod, plus the database | not highly available: a restart of the pod stops every role until it is back, resuming at the last step boundary. The pod holds Taktus's service-account token, as the runner does. Roles cannot be scaled apart |
 | `standard` | an instance that needs roles scaled or restarted apart | one pod per role |
 
-Neither is the highly available profile (#342). For one machine, Docker Compose remains the
-way; the chart is for a cluster.
+| `ha` | an instance a business depends on (ADR-0013 A): its roles on several nodes, a node drained without stopping one | at least two pods per role, `ha.replicas`, on separate nodes where the cluster has them (`ha.antiAffinity: preferred`; `required` needs one node more than a role's replicas, or a rolling update cannot place its new pod); a disruption budget per role; an S3-compatible store; an external database, which must run with a standby replica, archive its write-ahead log for point-in-time recovery and keep one address across a failover — a PostgreSQL operator in the cluster or a managed server. The chart cannot see the server and does not check it. The connectors stay one pod each |
+
+For one machine, Docker Compose remains the way; the chart is for a cluster.
+
+**Moving artifacts from the state volume to an S3-compatible store** keeps every name: the file
+`objects/<hex>` becomes the key `<prefix>/<hex>`. By hand, without Taktus (UC-4.12):
+
+1. Stop the roles (scale each deployment to 0), so that nothing is written during the copy.
+2. Copy the directory `objects/` of the state volume into the bucket under the prefix, with any
+   client of the interface, from a pod that mounts the volume read-only.
+3. Compare the count of files with the count of keys under the prefix.
+4. Set `objectStore.*` and `backup.objects: false`, upgrade, and scale the roles back.
+5. Keep the state volume until the instance has read finished runs' artifacts from the bucket;
+   an uninstall keeps it anyway.
 
 ## 3. The image, and how it gets there
 
@@ -476,8 +491,10 @@ the names they gave are in the owner's private note.
 
 ## 9. What this plan does not cover
 
-- **Several nodes.** A node-local storage class binds a volume to one node. On one node that is
-  invisible; the day there is a second, the database's volume is a migration.
+- **Several nodes outside the profile `ha`.** A node-local storage class binds a volume to one
+  node. In `small` and `standard` the state volume and the database's volume are such volumes;
+  the profile `ha` keeps neither (ADR-0165), and has been shown by rendering, not on a
+  cluster of several nodes.
 - **A kernel boundary between the control plane and execution.** Deliberately not here
   (DEC-0023), and the three situations that would bring it back are named in that record.
 - **Autoscaling and load.** The scaling claims of ADR-0002 are proven for two daemons on one

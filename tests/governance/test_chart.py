@@ -35,7 +35,8 @@ RELEASE_NAMESPACE = "taktus"
 EXECUTION_NAMESPACE = "taktus-execution"
 
 # What the deployment identity may create and change in the two namespaces (NEED-0007). The
-# chart renders nothing else: no cluster-wide object, no certificate, no disruption budget.
+# chart renders nothing else: no cluster-wide object, no certificate, and outside the profile
+# `ha` no disruption budget (ADR-0165; the profile needs that right too, README §1).
 ALLOWED_KINDS = {
     "Secret",
     "ConfigMap",
@@ -1087,3 +1088,115 @@ def test_without_the_backup_nothing_of_it_is_rendered() -> None:
 )
 def test_a_backup_without_its_store_or_its_version_is_refused(setting: str) -> None:
     assert "backup." in render_fails(setting)
+
+
+# The highly available profile (ADR-0165, #342): an S3-compatible store and an external database.
+S3 = (
+    "objectStore.kind=s3",
+    "objectStore.endpoint=https://store.example",
+    "objectStore.bucket=artifacts",
+    "objectStore.secret=taktus-object-store",
+    "objectStore.accessKeyIdKey=access_key",
+    "objectStore.secretKeyKey=secret_key",
+    "backup.objects=false",
+)
+HA = ("profile=ha", "database.deploy=false", *S3)
+ROLES = {"api", "runner", "scheduler", "automation"}
+
+
+def role_deployments(documents: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    return {
+        d["spec"]["template"]["metadata"]["labels"]["taktus-role"]: d
+        for d in of_kind(documents, "Deployment")
+        if d["metadata"]["labels"]["app.kubernetes.io/component"] == "control-plane"
+    }
+
+
+def test_the_highly_available_profile_shares_no_volume_and_budgets_and_spreads_every_role() -> None:
+    documents = render(*HA)
+    deployments = role_deployments(documents)
+    assert set(deployments) == ROLES
+    claims = {
+        d["metadata"]["name"]: d["spec"]["accessModes"]
+        for d in of_kind(documents, "PersistentVolumeClaim")
+        if d["metadata"]["namespace"] == RELEASE_NAMESPACE
+    }
+    assert not any("ReadWriteOnce" in modes for modes in claims.values()), claims
+    assert not of_kind(documents, "StatefulSet"), "no database of the chart's own"
+    budgets = {
+        b["spec"]["selector"]["matchLabels"]["taktus-role"]: b
+        for b in of_kind(documents, "PodDisruptionBudget")
+    }
+    assert set(budgets) == ROLES
+    for role, deployment in deployments.items():
+        assert deployment["spec"]["replicas"] >= 2, role
+        pod = deployment["spec"]["template"]
+        assert not [v for v in pod["spec"]["volumes"] if "persistentVolumeClaim" in v], role
+        selector = budgets[role]["spec"]["selector"]["matchLabels"]
+        assert selector.items() <= pod["metadata"]["labels"].items(), role
+        assert budgets[role]["spec"]["minAvailable"] == 1
+        [term] = pod["spec"]["affinity"]["podAntiAffinity"][
+            "preferredDuringSchedulingIgnoredDuringExecution"
+        ]
+        assert term["podAffinityTerm"]["topologyKey"] == "kubernetes.io/hostname"
+        spread = term["podAffinityTerm"]["labelSelector"]["matchLabels"]
+        assert spread["taktus-role"] == role
+        assert spread.items() <= pod["metadata"]["labels"].items()
+
+    required = role_deployments(render(*HA, "ha.antiAffinity=required", "roles.runner.replicas=3"))
+    assert required["runner"]["spec"]["replicas"] == 3
+    affinity = required["api"]["spec"]["template"]["spec"]["affinity"]["podAntiAffinity"]
+    assert list(affinity) == ["requiredDuringSchedulingIgnoredDuringExecution"]
+
+
+def test_the_other_profiles_render_no_disruption_budget_and_no_affinity() -> None:
+    for documents in (render(), render("profile=small"), render(*S3)):
+        assert not of_kind(documents, "PodDisruptionBudget")
+        for deployment in role_deployments(documents).values():
+            assert "affinity" not in deployment["spec"]["template"]["spec"]
+
+
+@pytest.mark.parametrize(
+    ("sets", "said"),
+    [
+        (("profile=ha", "database.deploy=false"), "requires objectStore.kind: s3"),
+        (("profile=ha", *S3), "requires database.deploy: false"),
+        ((*HA, "ha.antiAffinity=sometimes"), "ha.antiAffinity must be"),
+        ((*HA, "ha.replicas=1"), "ha.replicas must be at least 2"),
+        ((*S3, "backup.objects=true"), "backup.objects must be false"),
+        ((*S3, "objectStore.endpoint="), "objectStore.endpoint is required"),
+        ((*S3, "objectStore.secret="), "objectStore.secret is required"),
+        (("objectStore.kind=tape",), "objectStore.kind must be"),
+    ],
+)
+def test_the_profile_and_the_store_refuse_what_would_pin_a_role_to_one_node(
+    sets: tuple[str, ...], said: str
+) -> None:
+    assert said in render_fails(*sets)
+
+
+def test_the_s3_store_is_configured_and_its_credential_mounted_as_files() -> None:
+    documents = render(*S3)
+    [config] = [
+        c for c in of_kind(documents, "ConfigMap") if c["metadata"]["name"].endswith("-config")
+    ]
+    assert config["data"]["TAKTUS_OBJECT_STORE"] == "s3"
+    assert config["data"]["TAKTUS_OBJECT_STORE_ENDPOINT"] == "https://store.example"
+    assert config["data"]["TAKTUS_OBJECT_STORE_BUCKET"] == "artifacts"
+    assert config["data"]["TAKTUS_OBJECT_STORE_REGION"] == "us-east-1"
+    assert not [
+        p
+        for p in of_kind(documents, "PersistentVolumeClaim")
+        if p["metadata"]["name"].endswith("-state")
+    ]
+    for role, deployment in role_deployments(documents).items():
+        container = deployment["spec"]["template"]["spec"]["containers"][0]
+        env = {e["name"]: e.get("value") for e in container["env"]}
+        assert env["TAKTUS_OBJECT_STORE_ACCESS_KEY_ID_FILE"].endswith("/access_key"), role
+        assert env["TAKTUS_OBJECT_STORE_SECRET_KEY_FILE"].endswith("/secret_key"), role
+    standard = render()
+    [default] = [
+        c for c in of_kind(standard, "ConfigMap") if c["metadata"]["name"].endswith("-config")
+    ]
+    assert default["data"]["TAKTUS_OBJECT_STORE"] == "filesystem"
+    assert "TAKTUS_OBJECT_STORE_ENDPOINT" not in default["data"]

@@ -61,9 +61,10 @@ One suite, `tests/adapters/objectstore/`, runs against every adapter:
 
 `profile: ha` is the chart's third profile, beside `small` and `standard`:
 
-- one deployment per role, as `standard`, with **at least two replicas of each role**. The
-  scheduler and the automation role are elected; their second replica waits and takes over.
-  The render fails below two.
+- one deployment per role, as `standard`, with **at least two replicas of each role**:
+  `roles.<role>.replicas` or `ha.replicas` (2), whichever is more. The scheduler and the
+  automation role are elected; their second replica waits and takes over. `ha.replicas` below
+  two fails the render.
 - **no volume shared by roles.** The profile requires `objectStore.kind: s3`; the state
   directory is a volume of the pod's own (`emptyDir`). The render fails with the filesystem
   store.
