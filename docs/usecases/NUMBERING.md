@@ -81,6 +81,8 @@ Numbered for package B (DEC-0222), each the next free number of its area: `UC-4.
 steers a running worker step (#624, NTC-0244); `UC-4.22` a worker that only connects outbound
 serves the runs of every instance (#625, NTC-0245). Issue #402 had named its own future case
 `AF-03`; that case, if it is needed, is `UC-04`.
+Numbered for package C (DEC-0222): `UC-7.11` departments share the runners fairly and hold their
+quotas (#343, NTC-0254), the next free number of its area.
 
 ## Numbers of the definition with no file of their own
 

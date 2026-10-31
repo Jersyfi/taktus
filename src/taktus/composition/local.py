@@ -35,6 +35,7 @@ from taktus.adapters.driven.memory import (
     MemoryBackupLog,
     MemoryLedgerStore,
     MemoryObjectStore,
+    MemoryOrgUnitSpends,
     MemoryPersistence,
     MemoryProjectionStore,
     MemoryProvenanceStore,
@@ -47,6 +48,7 @@ from taktus.adapters.driven.platform import HostPlatform
 from taktus.adapters.driven.postgres import (
     PostgresBackupLog,
     PostgresLedgerStore,
+    PostgresOrgUnitSpends,
     PostgresPersistence,
     PostgresProjectionStore,
     PostgresProvenanceStore,
@@ -147,6 +149,7 @@ from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.maturation import InstanceMaturation, maturation_wiring
 from taktus.composition.maturity import CatalogMaturities, InstanceCatalogue
 from taktus.composition.moves import MethodMoves
+from taktus.composition.org_units import OrgUnitsOfTheRun
 from taktus.composition.owner_channel import known_secrets, owner_channel_wiring
 from taktus.composition.proposals import InstanceChanges
 from taktus.composition.settings import (
@@ -171,6 +174,7 @@ from taktus.composition.skills import CatalogGuidance, SkillLifecycle
 from taktus.composition.stages import stage_wiring
 from taktus.ports.backups import BackupLog
 from taktus.ports.configuration import Configuration, ConfigurationError
+from taktus.ports.org_units import OrgUnitSpends
 from taktus.ports.persistence import (
     LedgerStore,
     ProjectionStore,
@@ -213,6 +217,9 @@ class Stores:
     directory, which the platform measures."""
     traces: Traces | None = None
     """The trace inside a worker's step (ADR-0135); None where nothing reads one."""
+    spends: OrgUnitSpends | None = None
+    """What organisational units committed of their budget quotas (ADR-0166); None where no
+    run commits to one."""
 
 
 class LocalWiring:
@@ -279,6 +286,11 @@ class LocalWiring:
                 randomness=SystemRandomness(),
             )
             decisions = decision_wiring(stores.of, stores.work, ledger, clock, identities)
+            org_units = (
+                None
+                if stores.spends is None
+                else OrgUnitsOfTheRun(decisions.org_units, stores.spends)
+            )
             objects = MemoryObjectStore(state_dir / "objects")
             recordings = RecordedResponses(runs, stores.work, objects)
             # The loopback connector is in the pool the engine resolves from and needs the
@@ -375,6 +387,7 @@ class LocalWiring:
                     stops=stops,
                     messages=decisions.messages,
                     statements=VersionStatements(stores.work, stores.of(ProcessVersion)),
+                    org_units=org_units,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -635,6 +648,7 @@ class LocalWiring:
                 residency=decisions.residency,
                 sources=decisions.sources,
                 messages=decisions.messages.tenant,
+                org_units=decisions.org_units,
                 deadlines=decisions.deadlines,
                 stops=stops,
                 traces=None
@@ -718,6 +732,7 @@ class LocalWiring:
                     projection_store=MemoryProjectionStore(memory),
                     traces=MemoryTraceStore(memory),
                     backups=MemoryBackupLog(memory),
+                    spends=MemoryOrgUnitSpends(memory),
                     storage=f"memory with a snapshot under {state_dir} — development only, "
                     "not durable; set TAKTUS_DATABASE_URL for a database",
                 )
@@ -765,6 +780,7 @@ class LocalWiring:
                 backups=PostgresBackupLog(postgres),
                 storage=f"database {described(url)}; artifact bytes under {state_dir}/objects",
                 queue=PostgresQueue(postgres),
+                spends=PostgresOrgUnitSpends(postgres),
                 size=postgres,
             )
         finally:

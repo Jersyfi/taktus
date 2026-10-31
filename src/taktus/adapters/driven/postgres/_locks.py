@@ -13,6 +13,9 @@ LEADERSHIP = 1
 named by the code."""
 LEDGER = 2
 """Namespace of the ledger chain claim; the key is the tenant's `lock_key`."""
+CLAIM = 3
+"""Namespace of a claim of jobs that holds units' limits (ADR-0166); the key is the tenant's
+`lock_key`. Claims without limits take no lock and stay parallel."""
 
 # A projection's claim (projection_store.py) is one bigint in the one-key form, a key space apart
 # from the two-key form above: the tenant's `lock_key` in the high 32 bits, the hash of the

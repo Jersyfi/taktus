@@ -46,6 +46,7 @@ from taktus.components.governance.domain.model import (
     Incident,
     IncidentKind,
     MessageRules,
+    OrgUnitQuota,
     ResidencyRule,
     RunSeen,
     SourceDeclaration,
@@ -331,6 +332,8 @@ def run(id: str = "run_1", tenant: str = "t") -> Run:
         bindings={"drafting": "model.candidate"},
         skills={"triage-an-issue": "2"},
         profile="inbox:sales@1",
+        org_unit="sales",
+        org_unit_month="2026-10",
         state=RunState.RUNNING,
         created_at=AT,
         updated_at=AT + timedelta(seconds=5),
@@ -761,6 +764,18 @@ def message_rules(tenant: str = "t") -> MessageRules:
         quiet_ends=time(7, 0),
         zone="Europe/Berlin",
         recipient_limit=5,
+        configured_at=AT,
+    )
+
+
+def org_unit_quota(tenant: str = "t") -> OrgUnitQuota:
+    return OrgUnitQuota(
+        id="sales",
+        tenant=tenant,
+        org_unit="sales",
+        concurrent_runs=2,
+        budget={"eur": 250.0},
+        check_every_seconds=600,
         configured_at=AT,
     )
 

@@ -35,6 +35,7 @@ from taktus.components.governance.application.service import (
     ResultDefects,
     Stages,
     TenantMessages,
+    TenantOrgUnits,
     TenantResidency,
     TenantSources,
 )
@@ -211,6 +212,9 @@ class Services:
     messages: TenantMessages | None = None
     """The tenant's rules for outward messages and the cases a person answered in
     (`taktusctl messages`, `taktusctl case`, ADR-0142)."""
+    org_units: TenantOrgUnits | None = None
+    """The tenant's quotas per organisational unit, shown and set (`taktusctl units`,
+    ADR-0166)."""
     deadlines: DeadlineKeeper | None = None
     """The tenant's open deadlines and its working time (`taktusctl deadline`, ADR-0133)."""
     stops: Stops | None = None

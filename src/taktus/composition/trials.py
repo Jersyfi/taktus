@@ -249,6 +249,7 @@ class Trials:
         )
         return await self._engine.submit(
             StartRun(
+                org_unit=command.org_unit,
                 plan=plan,
                 work={k: dict(v) for k, v in version.work.items()},
                 budget=Limits.model_validate(dict(version.limits or {})),

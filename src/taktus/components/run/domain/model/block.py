@@ -91,6 +91,12 @@ HOLDING_MESSAGE = "holding_message"
 AWAITING_PARTICIPANT = "awaiting_participant"
 """A `human` step waits for a participant outside the organisation to answer in its own
 channel (ADR-0155). Booked to `wait.external`: the one who answers is outside."""
+AT_UNIT_QUOTA = "at_unit_quota"
+"""The run's organisational unit held as many runner places as its tenant's quota allows: a
+claim skipped its job until one freed (ADR-0166). Booked to `limit.quota`."""
+AT_UNIT_BUDGET = "at_unit_budget"
+"""The run's budget did not fit what is left of its organisational unit's budget quota for the
+month, or names no amount in the quota's currency (ADR-0166). Booked to `limit.budget`."""
 HELD_BACK = "held_back"
 """The step depends on a step that waits, and cannot start before it ends."""
 NO_WORKER = "no_worker"
