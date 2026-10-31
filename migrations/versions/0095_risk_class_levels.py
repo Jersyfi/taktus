@@ -2,7 +2,7 @@
 (ADR-0170, UC-7.1).
 
 Revision: 0095
-Revises: 0090
+Revises: 0092
 
 What this adds: `anchor_configuration.levels`, nullable: the ceiling of each risk class a
 tenant set, as a document from the class's name to its level. Every configuration stored
