@@ -381,8 +381,8 @@ schema is valid and carries the `$id` its path prescribes, every example validat
 W-01..W-21 and C-01..C-11 has a fixture (`tools/validate_contracts.py`).
 
 Every schema is identified by `https://taktus.eu/contracts/<family>/v1/<Concept>.json` — its path
-under `contracts/` behind the project's domain. A released v1 schema is immutable; changes become
-v2 (ADR-0019).
+under `contracts/` behind the project's domain. A released schema changes only compatibly, and
+from the freeze not at all; a breaking change becomes v2 (ADR-0019, ADR-0171, §8).
 
 ---
 
@@ -464,3 +464,38 @@ permissions remain in force, no circumvention.
 **Excluded outright in both tiers:** tools with a surveillance character towards individuals
 (keystroke logging, productivity scoring, location tracking) · tools that bypass source-system
 permissions · tools with no data export for Taktus's own data.
+
+---
+
+## 8. Versions and compatibility
+
+A contract is **published** once a version of Taktus that uses it is released. A release is a
+tag `vMAJOR.MINOR.PATCH` without a pre-release part; a candidate (`-rc.N`) or a beta is none
+(NTC-0255). Before the first release, `v1` may still move (ADR-0019).
+
+From the first release on, a published schema changes **only compatibly** (ADR-0171). Seen from
+an adapter that sends the documents a contract describes or reads them:
+
+- **Compatible:** a property, definition or schema added and not required; a type or enum
+  widened; a bound loosened or removed; a description or example changed; an alternative added
+  to `anyOf` or `oneOf`. In an `openapi.yaml`, a path, operation or component added.
+- **Breaking:** a property, definition or schema removed; a property newly required or no
+  longer required; a type or enum narrowed; a `const`, a bound, a `pattern` or a `format`
+  added or tightened; a changed `$id`, `$ref` or condition; additional properties no longer
+  admitted. Every keyword the check does not classify counts as breaking until it is taught it.
+
+**A breaking change is a new major version under a new `$id`**:
+`contracts/<family>/v2/<Concept>.json` beside `v1`, which stays as it was. A `v1` schema may be
+retired once its successor exists. A breaking change of a published contract is the owner's
+decision (anchor M3.5).
+
+`make gate-compat` (`tools/contract_compat.py`) holds the rule. It compares every schema with
+the same path at the last release tag and fails a breaking change. With no release yet, it
+reports the change against the base and passes. CI runs it in the lane `contracts`, which every
+change under `contracts/` selects. It needs `git` and nothing of the project, so an adapter's
+author can run it on a checkout: `uv run tools/contract_compat.py --baseline <tag>`.
+
+**The freeze** is the owner's act (M3.5): a record `contracts/FREEZE.json` names every file of a
+frozen version with its digest, the date and the decision. Once it exists, `make
+gate-contracts` fails any change to a frozen file, compatible or not, and any file added to a
+frozen version. Not covered: the HTTP API's own compatibility, which `api/openapi.yaml` carries.
