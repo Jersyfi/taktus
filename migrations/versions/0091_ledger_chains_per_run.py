@@ -42,6 +42,7 @@ depends_on = None
 ROLE = "taktus_app"
 CURRENT_TENANT = "NULLIF(current_setting('taktus.tenant', true), '')"
 
+CHAIN = "(tenant, on_chain, seq)"
 INDEXES = {
     "ledger_entry_run": "(tenant, (refs ->> 'run_id'))",
     "ledger_entry_process": "(tenant, (split_part(refs ->> 'process_version', '@', 1)), kind, ts)",
@@ -49,6 +50,11 @@ INDEXES = {
     "ledger_entry_kind": "(tenant, kind, seq)",
     "ledger_entry_kind_ts": "(tenant, kind, ts)",
 }
+
+
+def _quoted(sql: str) -> str:
+    """A statement's text inside a string literal of SQL."""
+    return sql.replace("'", "''")
 
 
 def upgrade() -> None:
@@ -66,10 +72,13 @@ def upgrade() -> None:
         "ALTER TABLE ledger_entry_before ADD CONSTRAINT ledger_entry_before_pkey "
         "PRIMARY KEY (tenant, seq, ts)"
     )
+    # A partition's index is named after the partitioned table's, with the partition's
+    # suffix, so that a plan names the index it reads by (ADR-0105).
     for name in INDEXES:
-        op.execute(
-            f"ALTER INDEX {name} RENAME TO {name.replace('ledger_entry', 'ledger_entry_before')}"
-        )
+        op.execute(f"ALTER INDEX {name} RENAME TO {name}_before")
+    op.execute(
+        "CREATE INDEX ledger_entry_chain_before ON ledger_entry_before (tenant, on_chain, seq)"
+    )
     # The row trigger and the notification move to the partitioned table; the truncate guard
     # stays on the partition, where a truncate would be aimed.
     op.execute("DROP TRIGGER ledger_entry_append_only ON ledger_entry_before")
@@ -94,7 +103,7 @@ def upgrade() -> None:
     for name, columns in INDEXES.items():
         op.execute(f"CREATE INDEX {name} ON ledger_entry {columns}")
     # The newest entry of a chain, and a place in it (ADR-0164).
-    op.execute("CREATE INDEX ledger_entry_chain ON ledger_entry (tenant, on_chain, seq)")
+    op.execute(f"CREATE INDEX ledger_entry_chain ON ledger_entry {CHAIN}")
     op.execute(
         """
         DO $$
@@ -111,14 +120,31 @@ def upgrade() -> None:
         $$
         """
     )
-    op.execute("CREATE TABLE ledger_entry_later PARTITION OF ledger_entry DEFAULT")
+    # What a partition made after this one carries, under its own names (ADR-0105).
+    indexed = "".join(
+        f"EXECUTE format('CREATE INDEX %I ON %I {_quoted(columns)}', '{name}_' || suffix, "
+        "partition);\n"
+        for name, columns in {**INDEXES, "ledger_entry_chain": CHAIN}.items()
+    )
     op.execute(
-        """
-        CREATE TRIGGER ledger_entry_no_truncate
-        BEFORE TRUNCATE ON ledger_entry_later
-        FOR EACH STATEMENT EXECUTE FUNCTION ledger_entry_is_append_only()
+        f"""
+        CREATE FUNCTION ledger_partition_made(partition text, suffix text) RETURNS void
+        LANGUAGE plpgsql SET search_path = public AS $$
+        BEGIN
+            {indexed}
+            EXECUTE format(
+                'CREATE TRIGGER ledger_entry_no_truncate BEFORE TRUNCATE ON %I '
+                'FOR EACH STATEMENT EXECUTE FUNCTION ledger_entry_is_append_only()',
+                partition
+            );
+        END
+        $$
         """
     )
+    op.execute("REVOKE ALL ON FUNCTION ledger_partition_made(text, text) FROM PUBLIC")
+    op.execute("CREATE TABLE ledger_entry_later (LIKE ledger_entry INCLUDING DEFAULTS)")
+    op.execute("SELECT ledger_partition_made('ledger_entry_later', 'later')")
+    op.execute("ALTER TABLE ledger_entry ATTACH PARTITION ledger_entry_later DEFAULT")
     op.execute(
         """
         CREATE TRIGGER ledger_entry_append_only
@@ -167,13 +193,15 @@ def upgrade() -> None:
                 name := 'ledger_entry_' || to_char(month AT TIME ZONE 'UTC', 'YYYY_MM');
                 BEGIN
                     EXECUTE format(
-                        'CREATE TABLE %I PARTITION OF ledger_entry FOR VALUES FROM (%L) TO (%L)',
-                        name, month, month + interval '1 month'
+                        'CREATE TABLE %I (LIKE ledger_entry INCLUDING DEFAULTS)', name
+                    );
+                    PERFORM ledger_partition_made(
+                        name, to_char(month AT TIME ZONE 'UTC', 'YYYY_MM')
                     );
                     EXECUTE format(
-                        'CREATE TRIGGER ledger_entry_no_truncate BEFORE TRUNCATE ON %I '
-                        'FOR EACH STATEMENT EXECUTE FUNCTION ledger_entry_is_append_only()',
-                        name
+                        'ALTER TABLE ledger_entry ATTACH PARTITION %I '
+                        'FOR VALUES FROM (%L) TO (%L)',
+                        name, month, month + interval '1 month'
                     );
                     made := made + 1;
                 EXCEPTION WHEN check_violation THEN
