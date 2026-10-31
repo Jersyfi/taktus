@@ -69,10 +69,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # The whole history with its tags: the compatibility check compares with the last release
+      # tag, and a shallow clone has none, which it refuses rather than read as "no release".
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v5
       - name: contracts
         run: make gate-contracts
+      # A breaking change of a published contract fails unless its major version rises
+      # (ADR-0171, #396); before the first release it is reported against the base.
+      - name: compatibility
+        run: make gate-compat BASE=${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD~1' }}
 
   # The decision register is plain Markdown and needs no installed project either. What a pull
   # request's description says — and the draft flag a BLOCKING decision requires — is the
