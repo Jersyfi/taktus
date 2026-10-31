@@ -5,10 +5,13 @@ owners and deciders, and for the legal anchors that keep acts with a person what
 It is the domain where "a business run by agents" most visibly does not mean "a business without people":
 it means people exactly where law and responsibility require them.
 
-**State: a description.** No process of it exists as a bundle, and it is not on the roadmap: the second
-domain the roadmap schedules is systems operation (`it-operations`, `0.7.0`). Before it is used for any
-tenant, its legal-anchor catalogue is reviewed for that tenant's jurisdiction by a tax adviser
-(DEC-0029).
+**State: a description, and its first part as processes.** The second domain the roadmap schedules
+is `invoice-to-payment` (`0.7.0`, DEC-0195): incoming invoices, read in an open standard, checked,
+proposed for booking and paid on a person's release. It is a blueprint of its own,
+[`invoice-to-payment`](../invoice-to-payment/README.md), use case UC-04; the connectors it reads
+and proposes through are UC-15.8. The rest of this domain is a description. Before any of it is
+used for a tenant, its legal-anchor catalogue is reviewed for that tenant's jurisdiction by a tax
+adviser (DEC-0029).
 
 **Who it involves:** the owner of the finance processes, who is the domain's responsibility anchor
 (UC-15.5); the tax adviser, outside the organisation; and the executive.

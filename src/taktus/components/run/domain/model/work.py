@@ -412,6 +412,20 @@ class Expectation(Value):
     says: str | None = Field(default=None, min_length=1)
 
 
+class InvoiceRule(Value):
+    """An incoming invoice's amounts computed again by the calculation rules of EN 16931, and
+    the invoice matched against what was ordered (`domain.service.invoices`, ADR-0169).
+    `invoice` is a reading of the invoice's business terms, as the documents connector gives
+    it; `order` a reading of the order or contract it names, as the accounting connector gives
+    it; both usually references. Any difference fails the step and names itself; the result is
+    the amounts to book and to pay, each as decimal text, recomputed in decimal arithmetic. The
+    same readings always give the same result: admissible for `exact`."""
+
+    rule: Literal["invoice"]
+    invoice: Any
+    order: Any
+
+
 class ConnectorRule(Value):
     """The result is what one connector operation answered: its output, the effect it reported
     and what it consumed (`contracts/connector/v1` §5). The operation's capability — every
@@ -450,6 +464,7 @@ type RuleWork = Annotated[
     | TemplateRule
     | ExtractRule
     | CommitTitleRule
+    | InvoiceRule
     | ConnectorRule,
     Field(discriminator="rule"),
 ]

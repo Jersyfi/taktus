@@ -199,6 +199,7 @@ from taktus.components.run.domain.model import (
     DeviationStatistic,
     Ended,
     ExtractRule,
+    InvoiceRule,
     LlmWork,
     Message,
     MessageRefused,
@@ -250,6 +251,7 @@ from taktus.components.run.domain.service import (
     frame,
     healing,
     interfaces,
+    invoices,
     messages,
     open_work,
     participants,
@@ -4508,6 +4510,9 @@ class RunEngine:
             )
             titled = rules.commit_title(work, title, number, labels, files, proposal)
             return titled, Trace(inputs=read), None, None
+        if isinstance(work, InvoiceRule):
+            (invoice, order), read = await self._resolved(run, [work.invoice, work.order])
+            return invoices.invoice(invoice, order), Trace(inputs=read), None, None
         if isinstance(work, DeviationStatistic):
             (days,), read = await self._resolved(run, [work.days])
             return statistics.deviation(work, days), Trace(inputs=read), None, None

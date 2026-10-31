@@ -21,7 +21,7 @@ definition is complete, so that an old reference stays findable.
 - **Blueprint-level cases** — one whole business function run by Taktus — are numbered
   `UC-<nn>` with two digits and no dot, and live with their blueprint: `UC-01` is
   `AF-01-dev-orchestration.md`, `UC-02` is `AF-02-it-operations.md`, `UC-03` is
-  `AF-03-software-operations.md`.
+  `AF-03-software-operations.md`, `UC-04` is `AF-04-invoice-to-payment.md`.
 
 ## Where the definition and the repository disagree
 
@@ -81,6 +81,9 @@ Numbered for package B (DEC-0222), each the next free number of its area: `UC-4.
 steers a running worker step (#624, NTC-0244); `UC-4.22` a worker that only connects outbound
 serves the runs of every instance (#625, NTC-0245). Issue #402 had named its own future case
 `AF-03`; that case, if it is needed, is `UC-04`.
+Numbered for package C (DEC-0222): the blueprint-level `UC-04`, from an incoming invoice to its
+payment (#402, NTC-0251); `UC-15.8` invoices in an open standard are read, and proposed into the
+organisation's own books (NTC-0252), the next free number of its area.
 
 ## Numbers of the definition with no file of their own
 
