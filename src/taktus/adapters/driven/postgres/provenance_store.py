@@ -106,6 +106,18 @@ class PostgresProvenanceStore:
         )
         return [_record(row) for row in rows]
 
+    async def of_subject(self, tenant: Tenant, subject: str) -> Sequence[Provenance]:
+        connection = self._persistence.connection(tenant)
+        rows = await connection.execute(
+            select(s.provenance)
+            .where(
+                s.provenance.c.tenant == tenant,
+                s.provenance.c.scope["subject"].astext == subject,
+            )
+            .order_by(s.provenance.c.ledger_seq)
+        )
+        return [_record(row) for row in rows]
+
     async def chain(self, tenant: Tenant, run_id: str, artifact_id: str) -> Sequence[Provenance]:
         connection = self._persistence.connection(tenant)
         rows = await connection.execute(

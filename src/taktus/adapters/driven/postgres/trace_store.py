@@ -86,6 +86,14 @@ class PostgresTraceStore:
         )
         return int(result.rowcount or 0)
 
+    async def erase_run(self, tenant: Tenant, run_id: str) -> int:
+        connection = self._persistence.connection(tenant)
+        t = s.step_trace
+        result = await connection.execute(
+            delete(t).where(t.c.tenant == tenant, t.c.run_id == run_id)
+        )
+        return int(result.rowcount or 0)
+
     async def share(self, tenant: Tenant, run_id: str, step_id: str, role: str) -> bool:
         connection = self._persistence.connection(tenant)
         result = await connection.execute(

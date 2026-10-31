@@ -514,6 +514,19 @@ source_declaration = Table(
 )
 """One row per tenant that declared its sources (ADR-0130)."""
 
+subject_request = Table(
+    "subject_request",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("kind", Text, nullable=False),  # access, rectification, erasure, portability
+    Column("state", Text, nullable=False),  # prepared, carried_out, withdrawn
+    _at("created_at"),
+    Column("request", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per data-protection request (ADR-0176); never deleted, its state moves on."""
+
 message_rules = Table(
     "message_rules",
     metadata,
@@ -911,6 +924,8 @@ provenance = Table(
     PrimaryKeyConstraint("tenant", "id"),
     UniqueConstraint("tenant", "run_id", "step_id", name="provenance_once_per_step_run"),
     Index("provenance_run", "tenant", "run_id"),
+    # The steps that served a subject's cases, found without reading the rest (ADR-0176 §2).
+    Index("provenance_scope_subject", "tenant", text("(scope ->> 'subject')")),
 )
 
 # --- queue and outbox (ADR-0002) — created now, used from the daemon on --------------------

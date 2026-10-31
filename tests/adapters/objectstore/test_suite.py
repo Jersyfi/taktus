@@ -172,6 +172,22 @@ async def test_a_digest_never_written_reads_as_absent(adapter: Opened) -> None:
     assert await store.get("sha256:not-a-digest") is None
 
 
+async def test_a_removed_object_reads_as_absent_and_a_second_removal_finds_nothing(
+    adapter: Opened,
+) -> None:
+    # An erasure removes an object (ADR-0176 §3); one that stopped half-way is carried out
+    # again, so removing what is gone already is no error.
+    store = adapter.open()
+    digest = await store.put(os.urandom(512))
+    kept = await store.put(b"another run's")
+    assert await store.remove(digest) is True
+    assert await store.get(digest) is None
+    assert await adapter.open().get(digest) is None
+    assert await store.remove(digest) is False
+    assert await store.remove("sha256:" + "0" * 64) is False
+    assert await store.get(kept) == b"another run's"
+
+
 async def test_an_object_outlives_the_store_that_wrote_it(adapter: Opened) -> None:
     writer = adapter.open()
     digest = await writer.put(b"kept")

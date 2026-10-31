@@ -95,6 +95,18 @@ class MemoryTraceStore:
             transaction.removed.add((LINE, id))
         return len(gone)
 
+    async def erase_run(self, tenant: Tenant, run_id: str) -> int:
+        transaction = self._persistence.current(tenant)
+        gone = [
+            id
+            for id, line in self._items(transaction, LINE).items()
+            if isinstance(line, TraceLine) and line.run_id == run_id
+        ]
+        for id in gone:
+            transaction.puts.pop((LINE, id), None)
+            transaction.removed.add((LINE, id))
+        return len(gone)
+
     async def share(self, tenant: Tenant, run_id: str, step_id: str, role: str) -> bool:
         transaction = self._persistence.current(tenant)
         share = _Share(run_id=run_id, step_id=step_id, role=role)

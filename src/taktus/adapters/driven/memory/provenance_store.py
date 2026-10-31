@@ -31,6 +31,13 @@ class MemoryProvenanceStore:
             (r for r in self._all(tenant) if r.run_id == run_id), key=lambda r: r.ledger_seq
         )
 
+    async def of_subject(self, tenant: Tenant, subject: str) -> Sequence[Provenance]:
+        self._persistence.current(tenant)
+        return sorted(
+            (r for r in self._all(tenant) if r.scope is not None and r.scope.subject == subject),
+            key=lambda r: r.ledger_seq,
+        )
+
     async def chain(self, tenant: Tenant, run_id: str, artifact_id: str) -> Sequence[Provenance]:
         self._persistence.current(tenant)
         records = self._all(tenant)

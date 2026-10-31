@@ -50,6 +50,11 @@ class ObjectCache:
             self._objects.move_to_end(digest)
         return content
 
+    def drop(self, digest: str) -> None:
+        content = self._objects.pop(digest, None)
+        if content is not None:
+            self.size -= len(content)
+
     def keep(self, digest: str, content: bytes) -> None:
         if digest in self._objects:
             self._objects.move_to_end(digest)
@@ -123,3 +128,21 @@ class MemoryObjectStore:
         if found is not None:
             self._cache.keep(digest, found)
         return found
+
+    async def remove(self, digest: Digest) -> bool:
+        if self._directory is None:
+            return self._all.pop(digest, None) is not None
+        self._cache.drop(digest)
+        path = self._directory / digest.removeprefix("sha256:")
+
+        def _unlink() -> bool:
+            try:
+                path.unlink()
+            except (FileNotFoundError, NotADirectoryError):
+                return False
+            return True
+
+        try:
+            return await asyncio.to_thread(_unlink)
+        except OSError as error:
+            raise ObjectStoreUnavailable(f"the directory refused the removal: {error}") from error
