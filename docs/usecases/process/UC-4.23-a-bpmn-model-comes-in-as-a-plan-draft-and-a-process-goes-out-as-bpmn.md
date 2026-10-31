@@ -4,10 +4,10 @@ title: A BPMN model comes in as a plan draft, and a process goes out as BPMN
 component: process
 epic: E4
 serves: [P4, P13, P14]
-state: specified
+state: verified
 version: 0.7.0
-tests: []
-adrs: {ADR-0004: ffdb1f1537f5, ADR-0011: f25413d512b9, ADR-0091: 22e6c748bb90, ADR-0146: 75a7f7402f7b}
+tests: [tests/components/process/test_bpmn.py::test_an_import_yields_a_plan_draft_with_its_steps_as_proposals_and_no_method_chosen, tests/components/process/test_bpmn.py::test_a_draft_is_never_a_version_and_is_refused_with_every_question_named, tests/components/process/test_bpmn.py::test_a_filled_draft_becomes_a_bundle_that_registers, tests/components/process/test_bpmn.py::test_an_export_round_trips_the_graph_the_roles_and_the_gateways, tests/components/process/test_bpmn.py::test_the_bundles_exported_carry_every_gateway_kind_and_a_role, tests/components/process/test_bpmn.py::test_a_model_with_a_document_type_or_an_entity_is_refused, tests/components/process/test_bpmn.py::test_a_model_too_large_or_of_another_kind_is_refused, tests/components/process/test_bpmn.py::test_a_lane_suggests_a_role_and_a_performer_is_never_imported, tests/components/process/test_bpmn.py::test_an_unconfirmed_role_does_not_reach_the_bundle, tests/components/process/test_bpmn.py::test_a_loop_the_model_draws_is_not_imported_and_the_draft_says_where_it_was, tests/components/process/test_bpmn.py::test_the_command_line_drafts_completes_and_exports_without_an_instance]
+adrs: {ADR-0004: ffdb1f1537f5, ADR-0011: f25413d512b9, ADR-0091: 22e6c748bb90, ADR-0146: 75a7f7402f7b, ADR-0168: 6778cf43f533}
 supersedes: null
 ---
 
@@ -60,5 +60,18 @@ process nobody has written down is UC-9.4.
 
 The process bundle (ADR-0011); method selection with its reason and rejected alternatives
 (ADR-0004); the proposal, its rehearsal and commissioning (ADR-0091); a human step that names a
-role, never a person (ADR-0146). The roadmap's `0.7.0` names it: BPMN in as a plan draft and out
+role, never a person (ADR-0146); how a model is read into a draft and a version written out
+(ADR-0168). The roadmap's `0.7.0` names it: BPMN in as a plan draft and out
 as an export (#345). The idea is E of `docs/research/2026-10-12-market-review.md`.
+
+## 5. What is proven so far
+
+Every condition of section 2, by the named tests. A model an organisation might keep — lanes,
+a user and a service task, an exclusive gateway with conditions in words, a parallel split and
+join, a loop, a performer and a timer start — is read into a draft with no method chosen and every
+question named; the draft is refused by registration and by `complete` until it is filled in,
+and then registers. Every example and blueprint bundle is exported and read back with the same
+steps, dependencies, roles and conditions, and the same gateways. A document type, an entity
+and an external entity are each refused. `taktusctl bpmn draft`, `complete` and `export` do the
+same from the command line. The plan dialogue of the web app does not yet read a draft: a draft
+reaches it today as the bundle `complete` makes, proposed as any bundle is.

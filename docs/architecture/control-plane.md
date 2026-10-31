@@ -195,6 +195,12 @@ by the run. `examples/README.md` is the reference for that shape.
 code and without an instance, a database or a login, so that a repository holding bundles checks
 them in its own CI (ADR-0113 §4, `examples/README.md`).
 
+BPMN is a second projection of a version, and a description to start one from (ADR-0168,
+UC-4.23). `taktusctl bpmn export` writes a bundle's version as BPMN 2.0. `taktusctl bpmn draft`
+reads a BPMN model into a plan draft: its tasks as proposed steps with no method chosen, and
+the questions to be answered. `taktusctl bpmn complete` turns the filled draft into a bundle.
+A draft is never a version; the bundle it becomes is proposed as any bundle is.
+
 A **skill** in a bundle is a directory in the open `SKILL.md` format, under
 `skills/<name>/SKILL.md`: YAML front matter with `name` and `description`, then the instructions.
 A step names the skills it uses in its `work`, under `skills`, by name; it still reaches its
