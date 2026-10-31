@@ -37,7 +37,6 @@ from taktus.adapters.driven.connectors.loopback import ADAPTER as LOOPBACK
 from taktus.adapters.driven.connectors.loopback import LoopbackConnector
 from taktus.adapters.driven.connectors.mcp import McpIntakeConnector
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
-from taktus.adapters.driven.memory import MemoryObjectStore
 from taktus.adapters.driven.models.pool import StaticModelPool
 from taktus.adapters.driven.platform import HostPlatform
 from taktus.adapters.driven.postgres import (
@@ -195,6 +194,7 @@ from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.maturation import InstanceMaturation, maturation_wiring
 from taktus.composition.maturity import CatalogMaturities, InstanceCatalogue
 from taktus.composition.moves import MethodMoves
+from taktus.composition.objects import object_store_of
 from taktus.composition.operation import OperationRecords
 from taktus.composition.owner_channel import (
     OwnerChannelWiring,
@@ -506,8 +506,10 @@ async def wire(
             # The loopback connector is in the pool the engine resolves from and needs the
             # engine; it is created first and bound last (composition/loopback.py).
             loopback = LoopbackConnector()
-            objects = MemoryObjectStore(
-                settings.state_dir / "objects", cache_bytes=settings.object_cache_mb * 1024 * 1024
+            objects = object_store_of(
+                settings.object_store,
+                state_dir=settings.state_dir,
+                cache_bytes=settings.object_cache_mb * 1024 * 1024,
             )
             recordings = RecordedResponses(runs, persistence, objects)
             pools = Pools(

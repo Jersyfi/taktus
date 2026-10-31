@@ -10,7 +10,7 @@ never mirroring a tool (ADR-0016). Nothing here imports a component or a technol
 | `backups.py` | what the instance knows of its backups: the outcome each run of the backup program recorded, read per tenant (ADR-0106) | `adapters/driven/postgres/backup_log.py`; `adapters/driven/memory/backup_log.py` (development and test only) |
 | `ledger.py` | facts in, chained entries out, `verify` — one chain per tenant | `components/ledger` |
 | `configuration.py` | what an instance is told about itself, by key; `Secret` for what must not be shown | `adapters/driven/configuration/` |
-| `objectstore.py` | artifact bytes by digest | `adapters/driven/memory/` |
+| `objectstore.py` | artifact bytes by digest | `adapters/driven/memory/` (memory, filesystem), `adapters/driven/s3/` (S3-compatible, ADR-0165) |
 | `clock.py` | time, identifiers, randomness — the core never reads them by itself | `adapters/driven/clock/` |
 | `execution.py` | how an execution unit comes to exist for one job, with what isolation; the fail-closed rule that refuses an unisolated unit from autonomy level 3 (ADR-0002) | `adapters/driven/execution/` (`process`, `container`); `adapters/driven/workers/launched.py` puts the worker port over it |
 | `platform.py` | what the machine or container the instance runs on has left — CPU, memory, the state directory's storage — each observed with its source or `Unobserved` with the reason (`docs/architecture/platform.md`) | `adapters/driven/platform/` (`host`) |
