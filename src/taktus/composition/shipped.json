@@ -2,6 +2,20 @@
   "connectors": [
     {
       "capabilities": [
+        "accounting.bookings",
+        "accounting.orders",
+        "payment.release"
+      ],
+      "image": "taktus-connector-accounting",
+      "name": "accounting",
+      "operations": [
+        "accounting.bookings.propose",
+        "accounting.orders.read",
+        "payment.release.submit"
+      ]
+    },
+    {
+      "capabilities": [
         "models.costs"
       ],
       "image": "taktus-connector-anthropic",
@@ -42,6 +56,17 @@
         "knowledge.pages.list",
         "knowledge.pages.read",
         "knowledge.pages.write"
+      ]
+    },
+    {
+      "capabilities": [
+        "documents.invoices"
+      ],
+      "image": "taktus-connector-einvoice",
+      "name": "einvoice",
+      "operations": [
+        "documents.invoices.list",
+        "documents.invoices.read"
       ]
     },
     {

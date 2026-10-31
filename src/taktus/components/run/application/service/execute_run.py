@@ -205,6 +205,7 @@ from taktus.components.run.domain.model import (
     Ended,
     ExtractRule,
     HumanWork,
+    InvoiceRule,
     LlmWork,
     Message,
     MessageRefused,
@@ -256,6 +257,7 @@ from taktus.components.run.domain.service import (
     frame,
     healing,
     interfaces,
+    invoices,
     messages,
     open_work,
     participants,
@@ -1014,6 +1016,7 @@ class RunEngine:
             updated_at=now,
         )
         self._check_executable(run)
+        run = await self._under_ceilings(run)
         job = None
         if enqueue:
             # A derived run gets a derived job: two creators of the same run collide on the
@@ -2742,6 +2745,28 @@ class RunEngine:
             if isinstance(work, WorkerWork):
                 return await self._worker_step(run, step, step_run, work, span, held)
             return await self._local_step(run, step, step_run, work, span, held)
+
+    async def _under_ceilings(self, run: Run) -> Run:
+        """The run with the ceilings the tenant's risk classes set on the tool actions its steps
+        use, where they are lower than the run's own levels (ADR-0170). A ceiling is taken on
+        when the run is created, as its levels are; a rehearsal is asked no level."""
+        if self._anchors is None or run.rehearsal:
+            return run
+        used: list[str] = []
+        for step in run.steps:
+            try:
+                work = parse_work(step, run.work.get(step.id), run.inputs)
+            except (UnsupportedWork, ValueError):
+                continue  # refused where the step runs, with the reason
+            used.extend(autonomy.actions_of(step, work))
+        ceilings = await self._anchors.ceilings(run.tenant, tuple(dict.fromkeys(used)))
+        actions = dict(run.actions)
+        for action, ceiling in sorted(ceilings.items()):
+            if ceiling < min(actions.get(action, run.autonomy_level), run.autonomy_level):
+                actions[action] = ceiling  # type: ignore[assignment]
+        if actions == dict(run.actions):
+            return run
+        return run.model_copy(update={"actions": actions})
 
     async def _take_lowered(self, run: Run) -> Run:
         """The run with the levels its version was lowered to by rule, where they are lower
@@ -4590,7 +4615,12 @@ class RunEngine:
         document, done, _, _ = await self._connector_call(
             run,
             step_run,
-            ConnectorRule(rule="connector", operation=read.operation, input=read.input),
+            ConnectorRule(
+                rule="connector",
+                operation=read.operation,
+                input=read.input,
+                credentials=read.credentials,
+            ),
             span,
         )
         try:
@@ -4737,6 +4767,9 @@ class RunEngine:
             )
             titled = rules.commit_title(work, title, number, labels, files, proposal)
             return titled, Trace(inputs=read), None, None
+        if isinstance(work, InvoiceRule):
+            (invoice, order), read = await self._resolved(run, [work.invoice, work.order])
+            return invoices.invoice(invoice, order), Trace(inputs=read), None, None
         if isinstance(work, DeviationStatistic):
             (days,), read = await self._resolved(run, [work.days])
             return statistics.deviation(work, days), Trace(inputs=read), None, None

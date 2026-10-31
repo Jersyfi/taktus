@@ -466,6 +466,7 @@ def anchor_configuration(tenant: str = "t") -> AnchorConfiguration:
                 "financial.high": ["payment.release:large"],
                 "egress.any": ["correction.execute:*"],
             },
+            "levels": {"financial.high": 2},
             "configured_at": AT,
             "configured_by": "idn_admin",
         }

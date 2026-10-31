@@ -182,6 +182,7 @@ anchor_configuration = Table(
     Column("id", Text, nullable=False),  # the tenant: one configuration each
     Column("anchors", JSONB, nullable=False),
     Column("risk_classes", JSONB, nullable=False),
+    Column("levels", JSONB),  # the ceiling of each risk class (ADR-0170); NULL: none
     _at("configured_at", nullable=True),
     Column("configured_by", Text),
     PrimaryKeyConstraint("tenant", "id"),

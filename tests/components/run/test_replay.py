@@ -36,6 +36,9 @@ class Recorded:
 
 
 class AnchorOnWrites:
+    async def ceilings(self, tenant: str, actions: Sequence[str]) -> dict[str, int]:
+        return {}
+
     async def applying(
         self, tenant: str, process: str, actions: Sequence[str]
     ) -> tuple[Anchor, ...]:

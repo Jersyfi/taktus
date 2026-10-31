@@ -17,6 +17,9 @@ as the last segment it matches everything below (`code.*` matches `code.edit` an
 `code.edit.inline`). A qualifier narrows: `vcs.push:protected` matches only that qualifier; a
 pattern without one, or with `:*`, matches the capability with any qualifier or none.
 
+A risk class's **level** is a ceiling (ADR-0170): `ceilings` names, for each tool action a
+risk class with a level covers, the lowest such level and the class that sets it.
+
 Scope: an anchor's `domain` and `jurisdiction` are not evaluated until domains exist (UC-15.5).
 Meanwhile such an anchor holds everywhere in the tenant: never less than configured.
 """
@@ -81,3 +84,19 @@ def applying(
         for a in configuration.anchors
         if applies(a, configuration, process=process, actions=actions)
     )
+
+
+def ceilings(
+    configuration: AnchorConfiguration, actions: Sequence[str]
+) -> dict[str, tuple[int, str]]:
+    """For each of `actions` that a risk class with a level covers: the lowest such level and
+    the class that sets it. Between two classes at the same level, the first by name holds."""
+    found: dict[str, tuple[int, str]] = {}
+    for action in actions:
+        for name in sorted(configuration.levels):
+            level = configuration.levels[name]
+            if not any(matches(p, action) for p in configuration.risk_classes.get(name, ())):
+                continue
+            if action not in found or level < found[action][0]:
+                found[action] = (level, name)
+    return found

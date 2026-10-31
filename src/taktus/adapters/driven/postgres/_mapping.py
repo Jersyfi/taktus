@@ -1068,7 +1068,7 @@ class RoleRightsMapper:
 
 
 class AnchorConfigurationMapper:
-    """One row per tenant; the anchors and the risk classes stay documents."""
+    """One row per tenant; the anchors, the risk classes and their levels stay documents."""
 
     async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
         row = await _one(connection, s.anchor_configuration, tenant, id)
@@ -1084,6 +1084,7 @@ class AnchorConfigurationMapper:
                 "id": document["id"],
                 "anchors": document["anchors"],
                 "risk_classes": document.get("risk_classes", {}),
+                "levels": document.get("levels", {}),
                 "configured_at": _at(document.get("configured_at")),
                 "configured_by": document.get("configured_by"),
             },
@@ -1101,6 +1102,7 @@ class AnchorConfigurationMapper:
                 "tenant": row.tenant,
                 "anchors": row.anchors,
                 "risk_classes": row.risk_classes,
+                "levels": row.levels or {},
                 "configured_at": _iso(row.configured_at),
                 "configured_by": row.configured_by,
             }

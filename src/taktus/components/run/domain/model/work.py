@@ -91,9 +91,10 @@ person at every level, addressed to the role, and the step hands on no result of
 **How a step's checks are carried out** (ADR-0152). The checks a step declares from the
 catalogue (`Step.checks`, UC-4.13) run when its value is computed, before it counts:
 
-- `checking: {select?, reads?: {<capability>: {operation, input?, select?}}}` — `select` the
-  part of the result the checks judge; `reads` the operation through which a reconciliation
-  reads its total, or an agreement the second system's value, at the moment of the check.
+- `checking: {select?, reads?: {<capability>: {operation, input?, select?, credentials?}}}` —
+  `select` the part of the result the checks judge; `reads` the operation through which a
+  reconciliation reads its total, or an agreement the second system's value, at the moment of
+  the check, with the credentials it names.
 """
 
 from __future__ import annotations
@@ -415,6 +416,20 @@ class Expectation(Value):
     says: str | None = Field(default=None, min_length=1)
 
 
+class InvoiceRule(Value):
+    """An incoming invoice's amounts computed again by the calculation rules of EN 16931, and
+    the invoice matched against what was ordered (`domain.service.invoices`, ADR-0169).
+    `invoice` is a reading of the invoice's business terms, as the documents connector gives
+    it; `order` a reading of the order or contract it names, as the accounting connector gives
+    it; both usually references. Any difference fails the step and names itself; the result is
+    the amounts to book and to pay, each as decimal text, recomputed in decimal arithmetic. The
+    same readings always give the same result: admissible for `exact`."""
+
+    rule: Literal["invoice"]
+    invoice: Any
+    order: Any
+
+
 class ConnectorRule(Value):
     """The result is what one connector operation answered: its output, the effect it reported
     and what it consumed (`contracts/connector/v1` §5). The operation's capability — every
@@ -453,6 +468,7 @@ type RuleWork = Annotated[
     | TemplateRule
     | ExtractRule
     | CommitTitleRule
+    | InvoiceRule
     | ConnectorRule,
     Field(discriminator="rule"),
 ]
@@ -848,12 +864,14 @@ class Message(Value):
 
 class CheckRead(Value):
     """How a check reads its source at the moment of the check (ADR-0152): the operation under
-    the check's `source` capability, its input with references, and the part of the output
-    that is the total or the second system's value."""
+    the check's `source` capability, its input with references, the part of the output that is
+    the total or the second system's value, and the credentials of the requesting identity the
+    read names, as any connector call names them (ADR-0169)."""
 
     operation: str = Field(pattern=r"^[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*){2,}$")
     input: dict[str, Any] = Field(default_factory=dict)
     select: str | None = Field(default=None, min_length=1)
+    credentials: tuple[CredentialReference, ...] = ()
 
     @property
     def capability(self) -> str:
