@@ -66,6 +66,7 @@ from taktus.composition.decisions import DecisionWiring, decision_wiring
 from taktus.composition.levels import RepositoryLevelRecords
 from taktus.composition.live import LiveHub, LiveOptions, Records, state_of
 from taktus.composition.owner_channel import KnownSecrets, OwnerChannelWiring, owner_channel_wiring
+from taktus.composition.profiles import RoleProfiles
 from taktus.composition.streams import StreamReads
 from taktus.ports.configuration import Secret
 from taktus.ports.connector import (
@@ -292,6 +293,28 @@ class Services:
             ),
             processes=MemoryRepository(self.persistence, Process),
             versions=MemoryRepository(self.persistence, ProcessVersion),
+            runs=self.runs,
+            blocked=BlockedTime(self.ledger, self.objects, self.persistence, self.runs),
+            identities=self.identities,
+            work=self.persistence,
+            clock=self.clock,
+        )
+
+    @property
+    def profiles(self) -> RoleProfiles:
+        """A role's profile, over this world's stores (ADR-0167)."""
+        return RoleProfiles(
+            processes=MemoryRepository(self.persistence, Process),
+            versions=MemoryRepository(self.persistence, ProcessVersion),
+            streams=ValueStreams(
+                MemoryRepository(self.persistence, ValueStream),
+                MemoryRepository(self.persistence, Process),
+                self.persistence,
+                self.ledger,
+                self.clock,
+            ),
+            anchors=self.decisions.anchors,
+            requests=MemoryRepository(self.persistence, Request),
             runs=self.runs,
             blocked=BlockedTime(self.ledger, self.objects, self.persistence, self.runs),
             identities=self.identities,

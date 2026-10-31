@@ -439,6 +439,11 @@ role it would tie the core to a model stack and the removal test would be lost.
   blocks and `IdentityDirectory.role_units`, and the reporting component's pure
   `domain/service/streams.py` draws the map and the swimlanes, stored nowhere. The HTTP surface
   is `adapters/driving/rest/streams.py`, through the port `StreamActs`.
+- **A role's profile** (ADR-0167 §3 to §5): `composition/profiles.py` gathers the active
+  versions, the value streams, the anchors, the open decision requests, the runs and the blocks;
+  the reporting component's `domain/service/profiles.py` derives the profile and its draft
+  position description, stored nowhere. The HTTP surface is `adapters/driving/rest/profiles.py`,
+  through the port `ProfileReads`.
 - **A first process from the gallery** (ADR-0136) is read and proposed by
   `composition/gallery.py`: `Gallery` reads the directory `TAKTUS_GALLERY_DIRECTORY` names
   (`composition/settings.py`) on every request, offers a bundle that `parse_bundle` accepts at

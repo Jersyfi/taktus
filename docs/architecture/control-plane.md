@@ -140,7 +140,8 @@ process is shown; a bundle with a bare level does not register. A registered ver
 - a **role**, on a `human` step and on a fallback to a person: the role of the tenant's
   structure that acts there, never a named person, with the **expertise** the work needs.
   Registration requires it once an identity of the tenant holds a role, and refuses a role no
-  identity holds (ADR-0146)
+  identity holds (ADR-0146). A run addresses the wait at such a step to the role
+  (ADR-0167)
 
 See [methods.md](methods.md). The choice is measured continuously and Taktus proposes changes.
 A step of method `ml` registers only with its model's evaluation on held-out cases, for the
@@ -359,7 +360,8 @@ planned → admitted → running → [waiting_human] → running → finished
 A run reaches `waiting_human` when every step it can still run waits for a person: a step at
 autonomy level 2 for a confirmation, a step that acts at level 1 for the person to perform it
 (ADR-0039), a step whose act an anchor names for the decision its request asks for, at every
-level (ADR-0042). Such a step is in the step state `waiting_human`; the steps that do not depend
+level (ADR-0042), and a person's own `human` step for a person of its role to perform it, at
+every level (ADR-0167). Such a step is in the step state `waiting_human`; the steps that do not depend
 on it run on before the run waits. A person's answer continues the run; a stop halts it at once.
 A declined anchored act halts the run with cause `declined`, and a resume asks again.
 

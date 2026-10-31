@@ -202,6 +202,7 @@ from taktus.composition.owner_channel import (
     owner_channel_wiring,
 )
 from taktus.composition.participants import ParticipantAnswers
+from taktus.composition.profiles import RoleProfiles
 from taktus.composition.proposals import InstanceChanges, ProposalActs
 from taktus.composition.reactions import Reactions, capacity_condition
 from taktus.composition.replies import ConnectorReplies
@@ -329,6 +330,8 @@ class Wired:
     agent: AgentSurface
     streams: StreamReads
     """The organisation as value streams, and their declaration (ADR-0159)."""
+    profiles: RoleProfiles
+    """A role's profile, derived from the processes (ADR-0167)."""
     traces: StepTraces
     """The trace inside a worker's step, read and shared by role, and erased by the scheduler
     when its retention ends (ADR-0135)."""
@@ -1069,6 +1072,24 @@ async def wire(
                     ),
                     processes=PostgresRepository(persistence, Process),
                     versions=PostgresRepository(persistence, ProcessVersion),
+                    runs=runs,
+                    blocked=BlockedTime(ledger, objects, persistence, runs),
+                    identities=identities,
+                    work=persistence,
+                    clock=clock,
+                ),
+                profiles=RoleProfiles(
+                    processes=PostgresRepository(persistence, Process),
+                    versions=PostgresRepository(persistence, ProcessVersion),
+                    streams=ValueStreams(
+                        PostgresRepository(persistence, ValueStream),
+                        PostgresRepository(persistence, Process),
+                        persistence,
+                        ledger,
+                        clock,
+                    ),
+                    anchors=decisions.anchors,
+                    requests=PostgresRepository(persistence, Request),
                     runs=runs,
                     blocked=BlockedTime(ledger, objects, persistence, runs),
                     identities=identities,

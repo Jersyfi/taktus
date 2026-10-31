@@ -3515,6 +3515,146 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /roles:
+    get:
+      tags:
+      - roles
+      summary: The roles of the tenant, and what the processes need of each
+      description: 'Every role the tenant''s structure holds, or its processes, value streams and anchors
+        name. Each with the number of steps it performs, takes over, decides and supervises, and its open
+        decision requests. Not reviewed: see `review`.'
+      operationId: listed_roles_get
+      parameters:
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 366
+          minimum: 1
+          description: The window of runs and waits, in days.
+          default: 30
+          title: Days
+        description: The window of runs and waits, in days.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The roles.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /roles/{role}:
+    get:
+      tags:
+      - roles
+      summary: A role's profile, derived from the processes it takes part in
+      description: 'The value streams the role is responsible for and serves; the steps it performs and
+        those it must be able to take over, with the expertise they need; what it decides and supervises;
+        its load now and if Taktus stopped; what waits at it; the decision requests open for it. A figure
+        that persons'' work produced is withheld where fewer than two identities hold the role; a reader
+        who holds it sees their own waits beside it. No field says whether a person is needed. Not reviewed:
+        see `review`.'
+      operationId: one_roles__role__get
+      parameters:
+      - name: role
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Role
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 366
+          minimum: 1
+          description: The window of runs and waits, in days.
+          default: 30
+          title: Days
+        description: The window of runs and waits, in days.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The profile.
+          content:
+            application/json:
+              schema: {}
+        '404':
+          description: No such role.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /roles/{role}/description:
+    get:
+      tags:
+      - roles
+      summary: A role's profile as a draft position description
+      description: 'Markdown. It says that it is a draft, not to be used before the labour-law review
+        DEC-0029 names. It carries no time figure, nothing of the reader''s own and no person: a role''s
+        description, never a person''s file.'
+      operationId: drafted_roles__role__description_get
+      parameters:
+      - name: role
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Role
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The draft.
+          content:
+            text/markdown; charset=utf-8: {}
+        '404':
+          description: No such role.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
   /runs/{run_id}/spend:
     get:
       tags:
