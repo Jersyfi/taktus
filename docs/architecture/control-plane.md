@@ -530,8 +530,10 @@ the figures took 3 ms, the raises 4 ms and the sweep 14 ms
 (`tests/integration/test_ledger_at_scale.py`).
 
 **A chain is verified from its last verified checkpoint.** The checkpoint is the sequence number
-and hash of the newest entry a verification found intact, stored as a projection. A verification
-walks the entries after it and moves it when it finds nothing. `GET /runs/{id}/ledger` answers
+of the newest entry a verification found intact, with the count of entries up to it and the bound
+of the newest anchor, stored as a projection. A verification walks the entries after it, every
+chain at once, links a chain whose predecessor lies before it by one read, compares every anchor
+with the heads it covers, and moves the checkpoint when it finds nothing (ADR-0164 §6). `GET /runs/{id}/ledger` answers
 where its walk started, as `chain.checkpoint`. A full verification walks from the first entry
 and trusts no checkpoint: `taktusctl ledger verify --full`. When it finds a fault, the checkpoint
 goes back to the start, so every later verification finds the fault again. A change to an entry
@@ -545,12 +547,22 @@ application role may insert and read, and a trigger rejects every update, delete
 for everyone but a superuser (`migrations/`). A hash chain whose rows can be edited proves
 nothing.
 
-**One chain per tenant, one claim on it.** Each entry carries the next sequence number and the
-hash of the entry before it, so two transactions must not append to one chain at once. The
-ledger store claims the tenant's chain when it reads the newest entry, and holds the claim until
-the transaction ends: in the database a transaction advisory lock, in memory a lock released at
-the transaction's end. A second transaction waits, then reads the first one's entries. The claim
-is the only lock on the chain; no lock of the process is held beside it. A lock of the process
+**A chain per run, one claim on each** (ADR-0164, #341). An entry that references a run goes on
+its run's chain; what references no run, what is recorded `in_order` (`open_work.admitted`) and
+the anchors go on the tenant's chain. Each entry carries its place in its chain, `chain_seq`, and
+the hash of the entry before it there, so two transactions must not append to one chain at once.
+The ledger store claims a chain when it reads its newest entry, and holds the claim until the
+transaction ends: in the database a transaction advisory lock, a run's in namespace `RUN_CHAIN`,
+the tenant's in `LEDGER`; in memory one lock per tenant, released at the transaction's end.
+Writers of different runs do not wait for each other. Each takes its reading position, `seq`,
+from the sequence `ledger_entry_seq`; a position may commit after a higher one, so a reader that
+keeps its place reads up to the **stable head** only, the newest entry below every open
+writer's marker. Once a minute the scheduler anchors the heads of the run chains written since
+the last anchor in the tenant's chain, as a Merkle root (`ledger.anchored`,
+`composition/anchors.py`), and makes the ledger's monthly partitions ahead. With eight writers in
+one tenant, 1 414 commits per second against 171 with one
+(`tests/adapters/persistence/test_ledger_throughput.py`). The claims are the only locks on the
+chains; no lock of the process is held beside them. A lock of the process
 held while the store waits for the claim formed a cycle that neither side could see: two runs of
 one tenant whose commits recorded two entries each hung for good (#309, NTC-0201;
 `tests/integration/test_ledger_concurrency.py`). Every database connection also carries

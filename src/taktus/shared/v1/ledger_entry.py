@@ -86,6 +86,24 @@ class LedgerEntry(Value):
     rehearsal: Literal[True] | None = None
     """True on every entry of a rehearsal run, absent otherwise (ADR-0030): nothing outside
     was acted on, and no such entry is evidence that anything was."""
+    chain_seq: int | None = Field(default=None, ge=1)
+    """The entry's place in its chain: its run's chain when it references a run, the tenant's
+    otherwise (ADR-0164). Absent on an entry written before: the tenant's chain was the only
+    one, and the entry's place in it is its seq."""
+    chain: Literal["tenant"] | None = None
+    """`tenant` on an entry that references a run and is on the tenant's chain all the same,
+    because what it records must be ordered with the tenant's other such entries (ADR-0164)."""
+    through: int | None = Field(default=None, ge=0)
+    """On `ledger.anchored` only: the seq up to which the anchor covers the run chains' heads
+    (ADR-0164)."""
+
+    def chain_name(self) -> str:
+        """The chain the entry is on: its run's identifier, or "" for the tenant's chain — an
+        entry that references no run, one marked `tenant`, and every entry written before
+        ADR-0164, when the tenant's chain was the only one."""
+        if self.chain_seq is None or self.chain == "tenant" or self.refs.run_id is None:
+            return ""
+        return self.refs.run_id
 
     def document(self) -> dict[str, object]:
         # prev_hash is required by the schema and null for the first entry: keep it when None.

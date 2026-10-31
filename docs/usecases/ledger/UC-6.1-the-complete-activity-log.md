@@ -6,8 +6,8 @@ epic: E6
 serves: [P6, P11, P12]
 state: building
 version: 0.5.0
-tests: [tests/components/ledger/test_chain.py::test_entries_link_and_verify, tests/components/ledger/test_chain.py::test_an_altered_field_is_found, tests/components/ledger/test_chain.py::test_a_removed_entry_is_found, tests/components/ledger/test_chain.py::test_a_reordered_chain_is_found, tests/components/ledger/test_checkpoint_and_projection.py::test_an_alteration_before_the_checkpoint_needs_the_full_verification, tests/components/ledger/test_chain.py::test_a_fact_carries_no_text, tests/components/ledger/test_chain.py::test_the_hash_rule_is_the_documented_one, tests/components/run/test_engine.py::test_a_run_completes_and_every_state_change_is_in_the_ledger, tests/components/run/test_provenance.py::test_every_completed_step_has_one_record_bound_to_its_ledger_entry]
-adrs: {ADR-0006: 92211d7edd40, ADR-0007: 26804369941b, ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b}
+tests: [tests/components/ledger/test_chain.py::test_entries_link_and_verify, tests/components/ledger/test_chain.py::test_an_altered_field_is_found, tests/components/ledger/test_chain.py::test_a_removed_entry_is_found, tests/components/ledger/test_chain.py::test_a_reordered_chain_is_found, tests/components/ledger/test_checkpoint_and_projection.py::test_an_alteration_before_the_checkpoint_needs_the_full_verification, tests/components/ledger/test_chain.py::test_a_fact_carries_no_text, tests/components/ledger/test_chain.py::test_the_hash_rule_is_the_documented_one, tests/components/ledger/test_run_chains.py::test_a_rewrite_of_a_run_s_chain_is_found_against_its_anchor, tests/components/run/test_engine.py::test_a_run_completes_and_every_state_change_is_in_the_ledger, tests/components/run/test_provenance.py::test_every_completed_step_has_one_record_bound_to_its_ledger_entry]
+adrs: {ADR-0006: a5960785aee4, ADR-0007: 26804369941b, ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b}
 supersedes: null
 ---
 

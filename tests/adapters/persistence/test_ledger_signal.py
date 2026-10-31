@@ -110,11 +110,17 @@ async def test_a_consistent_read_sees_one_state_whatever_commits_meanwhile(
             await ledger.record(tenant, fact("run_2"))
         committed.set()
 
-    async with postgres.work.transaction(tenant, consistent=True):
+    async with postgres.work.transaction(tenant):
         first = await postgres.ledger_store.head(tenant)
+    async with postgres.work.transaction(tenant, consistent=True):
+        before = [e.seq for e in await postgres.ledger_store.after(tenant, 0, limit=5)]
         await asyncio.create_task(meanwhile(), context=contextvars.Context())
         assert committed.is_set()
-        assert await postgres.ledger_store.head(tenant) == first == 1
-        assert [e.seq for e in await postgres.ledger_store.after(tenant, 0, limit=5)] == [1]
+        assert [e.seq for e in await postgres.ledger_store.after(tenant, 0, limit=5)] == before
+        assert before == [first]
+        # A snapshot cannot tell which entries below its newest are still to commit: the stable
+        # head is read in a transaction of its own (ADR-0164).
+        with pytest.raises(RuntimeError, match="transaction of its own"):
+            await postgres.ledger_store.head(tenant)
     async with postgres.work.transaction(tenant):
-        assert await postgres.ledger_store.head(tenant) == 2
+        assert await postgres.ledger_store.head(tenant) > first

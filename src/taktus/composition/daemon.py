@@ -161,6 +161,7 @@ from taktus.composition.acting import ActingReads
 from taktus.composition.agent_surface import AgentSurface
 from taktus.composition.agents import SharedAgents
 from taktus.composition.alerts import alerts, alerts_tick, say_who_hears
+from taktus.composition.anchors import anchors_tick
 from taktus.composition.capacity import capacity_report, capacity_tick, rules_of
 from taktus.composition.catalogue_in_channel import CatalogueInChannel
 from taktus.composition.change_in_channel import ChangeInChannel
@@ -255,6 +256,7 @@ class Wired:
     work: UnitOfWork
     runs: Queried[Run]
     ledger: Ledger
+    ledger_store: PostgresLedgerStore
     provenance: ProvenanceQuery
     engine: RunEngine
     register_version: RegisterProcessVersionHandler
@@ -975,6 +977,7 @@ async def wire(
                 work=persistence,
                 runs=runs,
                 ledger=ledger,
+                ledger_store=ledger_store,
                 provenance=ProvenanceQuery(provenance_store, runs, ledger, persistence),
                 engine=engine,
                 register_version=register_version,
@@ -1410,6 +1413,15 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
         evaluate = evaluations_tick(wired.evaluations, wired.tenants, wired.clock)
         # And it erases every line of a trace whose tenant's retention ended (ADR-0135).
         erase_traces = traces_tick(wired.traces, wired.tenants, wired.clock)
+        # And it anchors every tenant's run chains in the tenant's chain, and makes the
+        # ledger's months ahead (ADR-0164).
+        anchor_chains = anchors_tick(
+            wired.ledger,
+            wired.work,
+            wired.tenants,
+            wired.clock,
+            partitions=wired.ledger_store.partitions,
+        )
         # And it looks at every tenant's stages: one that holds or stopped holding, and the
         # next one proposed for a person to open (ADR-0137).
         look_at_stages = stages_tick(wired.stages, wired.tenants, wired.clock)
@@ -1433,6 +1445,7 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
             await judge_signals()
             await evaluate()
             await erase_traces()
+            await anchor_chains()
             await look_at_stages()
             if look_at_skills is not None:
                 await look_at_skills()

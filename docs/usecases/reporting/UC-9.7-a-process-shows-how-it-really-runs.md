@@ -7,7 +7,7 @@ serves: [P8, P9, P10, P14]
 state: building
 version: 0.5.0
 tests: [tests/components/run/test_connector_steps.py::test_a_step_admitted_again_after_it_failed_is_recorded_as_a_retry, tests/components/reporting/test_variants.py::test_the_projection_equals_the_full_computation_and_reads_only_its_kinds, tests/components/reporting/test_variants.py::test_variants_are_ranked_with_their_share_and_the_designed_path_is_named, tests/components/reporting/test_variants.py::test_a_frequent_fallback_to_a_person_is_proposed_for_a_method_change, tests/components/reporting/test_variants.py::test_waiting_is_shown_by_step_and_cause_and_dominant_waits_on_a_person_propose_a_rule, tests/components/reporting/test_variants.py::test_a_role_s_waiting_is_shown_only_where_at_least_two_hold_it, tests/composition/test_acting.py::test_variants_read_the_projection_and_the_active_version, tests/adapters/rest/test_acting.py::test_variants_of_a_process_one_may_not_see_are_answered_as_none]
-adrs: {ADR-0015: 3a42705e5561, ADR-0043: 5bcc93809622, ADR-0105: 88e141c6cfa4, ADR-0146: 604d652a57a6, ADR-0147: c8a0fb9085c0}
+adrs: {ADR-0015: 3a42705e5561, ADR-0043: 5bcc93809622, ADR-0105: 011062779797, ADR-0146: 604d652a57a6, ADR-0147: c8a0fb9085c0}
 supersedes: null
 ---
 

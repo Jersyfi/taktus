@@ -129,6 +129,15 @@ async def seed(wired: Wired, tenant: str, *, corrections: bool = False) -> float
             text("SELECT set_config('taktus.tenant', :t, true)"), {"t": tenant}
         )
         await connection.execute(text(statement), {"t": tenant, "at": AT})
+        # The positions the ledger hands out lie above every seeded one, as above every entry
+        # a migration found (ADR-0164).
+        await connection.execute(
+            text(
+                "SELECT setval('ledger_entry_seq', greatest(:n, "
+                "(SELECT last_value FROM ledger_entry_seq)))"
+            ),
+            {"n": ENTRIES},
+        )
     async with wired.persistence.engine.begin() as connection:
         await connection.execute(text("ANALYZE ledger_entry"))
     return time.perf_counter() - started

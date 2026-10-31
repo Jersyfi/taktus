@@ -6950,6 +6950,9 @@ class RunEngine:
                 content_digest=digest,
                 rehearsal=True if run.rehearsal else None,  # ADR-0030
             ),
+            # An admission reads the runs in flight again after it is recorded: on the tenant's
+            # chain, its claim orders the admissions of every run (ADR-0132, ADR-0164).
+            in_order=kind == open_work.ADMITTED,
         )
 
 

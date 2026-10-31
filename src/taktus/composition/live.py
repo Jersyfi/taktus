@@ -82,9 +82,14 @@ class Records:
         self._runs = runs
 
     async def state(self, tenant: Tenant) -> TenantState:
+        # The stable head first, in a transaction of its own: one that reads a snapshot cannot
+        # tell which entries below its newest are still to commit (ADR-0164). Every entry at or
+        # below it is then in the snapshot; the runs may show a change after it as well, which
+        # the stream sends again, and a change sets a state, so it changes nothing twice.
+        async with self._work.transaction(tenant):
+            seq = await self._store.head(tenant)
         async with self._work.transaction(tenant, consistent=True):
             runs = await self._runs.list(tenant)
-            seq = await self._store.head(tenant)
             newest = await self._store.after(tenant, seq - 1, limit=1) if seq else []
         return TenantState(
             seq=seq,
@@ -101,8 +106,11 @@ class Records:
             return await self._store.position(tenant, hash)
 
     async def after(self, tenant: Tenant, seq: int, *, limit: int) -> Sequence[LedgerEntry]:
+        """Up to the stable head: a stream keeps its place, and above it an entry may still
+        commit below one it sent (ADR-0164)."""
         async with self._work.transaction(tenant):
-            return await self._store.after(tenant, seq, limit=limit)
+            head = await self._store.head(tenant)
+            return await self._store.after(tenant, seq, limit=limit, through=head)
 
     async def runs(self, tenant: Tenant, ids: Sequence[str]) -> Mapping[str, RunRef]:
         found: dict[str, RunRef] = {}

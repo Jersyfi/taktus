@@ -1,4 +1,5 @@
-"""The ledger store over PostgreSQL: one chain per tenant, appended and read in order."""
+"""The ledger store over PostgreSQL: a chain per run and the tenant's, appended and read in
+order."""
 
 from __future__ import annotations
 
@@ -22,17 +23,20 @@ RUN_ID: ColumnClause[str] = literal_column("(refs ->> 'run_id')")
 
 
 class PostgresLedgerStore:
-    """The ledger store port over `ledger_entry`. Append-only twice over: the application role
-    may not update or delete, and a trigger rejects it for everyone but a superuser
-    (`migrations/versions/0001_first_schema.py`).
+    """The ledger store port over `ledger_entry`, partitioned by month (migration 0091).
+    Append-only twice over: the application role may not update or delete, and a trigger
+    rejects it on every partition for everyone but a superuser.
 
-    Several instances share one chain per tenant. `last` claims the chain with a transaction
-    advisory lock before reading (namespace `_locks.LEDGER`, key the tenant's unique
-    `lock_key`, issue #317), so that a second instance's `last` waits until the first
-    has appended and committed, and then reads that entry: two instances append in sequence
-    rather than fail on the primary key. The key `(tenant, seq)` remains the backstop.
+    Several instances share a tenant's chains. `last` claims one chain with a transaction
+    advisory lock before reading: the tenant's own in namespace `_locks.LEDGER` under the
+    tenant's `lock_key` (issue #317), a run's in `_locks.RUN_CHAIN` under the hash of tenant and
+    run (ADR-0164). A second `last` of that chain waits until the first has appended and
+    committed, and then reads that entry. Writers of different chains do not wait for each
+    other: `allocate` hands each a reading position from the sequence `ledger_entry_seq`, and
+    marks the transaction as holding the stable head below it until it ends. `head` reads the
+    marks of the other transactions and never waits (ADR-0164 §3).
 
-    The claim is the only one, for two transactions of one process as for two instances: each
+    The claims are the only ones, for two transactions of one process as for two instances: each
     transaction has its own connection, and a second `last` in the transaction that holds the
     claim is granted at once. A wait for it ends after the persistence adapter's `lock_timeout`
     with an error that says so (issue #309)."""
@@ -59,28 +63,87 @@ class PostgresLedgerStore:
             duration_seconds=document.get("duration_seconds"),
             content_digest=document.get("content_digest"),
             rehearsal=document.get("rehearsal"),
+            chain_seq=entry.chain_seq,
+            chain=entry.chain,
+            through=entry.through,
+            on_chain=entry.chain_name(),
         )
         try:
             await connection.execute(statement)
         except IntegrityError as error:
-            # The primary key (tenant, seq) refused it. The transaction is spoilt from here;
-            # the unit of work rolls it back when the error leaves the block.
+            # The primary key refused it. The transaction is spoilt from here; the unit of
+            # work rolls it back when the error leaves the block.
             raise DuplicateSequence(tenant, entry.seq) from error
 
-    async def last(self, tenant: Tenant) -> LedgerEntry | None:
+    async def last(self, tenant: Tenant, chain: str = "") -> LedgerEntry | None:
         connection = self._persistence.connection(tenant)
-        # The tenant's own row is visible to its own transaction (policy `tenant_isolation`).
-        key = select(s.tenant.c.lock_key).where(s.tenant.c.id == tenant).scalar_subquery()
-        await connection.execute(select(func.pg_advisory_xact_lock(_locks.LEDGER, key)))
+        if chain == "":
+            # The tenant's own row is visible to its own transaction (policy `tenant_isolation`).
+            key = select(s.tenant.c.lock_key).where(s.tenant.c.id == tenant).scalar_subquery()
+            await connection.execute(select(func.pg_advisory_xact_lock(_locks.LEDGER, key)))
+        else:
+            await connection.execute(
+                select(
+                    func.pg_advisory_xact_lock(_locks.RUN_CHAIN, func.hashtext(f"{tenant}/{chain}"))
+                )
+            )
         row = (
             await connection.execute(
                 select(s.ledger_entry)
-                .where(s.ledger_entry.c.tenant == tenant)
+                .where((s.ledger_entry.c.tenant == tenant) & (s.ledger_entry.c.on_chain == chain))
                 .order_by(s.ledger_entry.c.seq.desc())
                 .limit(1)
             )
         ).first()
         return None if row is None else _entry(row)
+
+    async def partitions(self, months: int) -> int:
+        """Make the monthly partitions of `ledger_entry` up to `months` ahead, and say how many
+        were made (migration 0091). Instance-wide: it names no tenant and reads no entry."""
+        async with self._persistence.engine.begin() as connection:
+            made = await connection.scalar(select(func.ledger_partitions(months)))
+        return int(made or 0)
+
+    async def allocate(self, tenant: Tenant) -> int:
+        connection = self._persistence.connection(tenant)
+        allocated = await connection.scalar(select(func.ledger_allocate(tenant)))
+        if allocated is None:  # nextval never answers null
+            raise RuntimeError("ledger_allocate answered no position")
+        return int(allocated)
+
+    async def in_chain(self, tenant: Tenant, chain: str, place: int) -> LedgerEntry | None:
+        connection = self._persistence.connection(tenant)
+        entry = s.ledger_entry.c
+        row = (
+            await connection.execute(
+                select(s.ledger_entry).where(
+                    (entry.tenant == tenant)
+                    & (entry.on_chain == chain)
+                    & (
+                        (entry.chain_seq == place)
+                        | (entry.chain_seq.is_(None) & (entry.seq == place))
+                    )
+                )
+            )
+        ).first()
+        return None if row is None else _entry(row)
+
+    async def heads(self, tenant: Tenant, after: int, through: int) -> Sequence[LedgerEntry]:
+        """One statement: the newest entry per run chain in the range, by `ledger_entry_chain`."""
+        connection = self._persistence.connection(tenant)
+        entry = s.ledger_entry.c
+        rows = await connection.execute(
+            select(s.ledger_entry)
+            .where(
+                (entry.tenant == tenant)
+                & (entry.on_chain != "")
+                & (entry.seq > after)
+                & (entry.seq <= through)
+            )
+            .distinct(entry.on_chain)
+            .order_by(entry.on_chain, entry.seq.desc())
+        )
+        return [_entry(row) for row in rows]
 
     async def entries(self, tenant: Tenant) -> Sequence[LedgerEntry]:
         connection = self._persistence.connection(tenant)
@@ -194,11 +257,34 @@ class PostgresLedgerStore:
         return None if row is None else _entry(row)
 
     async def head(self, tenant: Tenant) -> int:
+        """Two statements, in this order. The first reads the newest committed entry. The
+        second reads the marks of the other open writers, and the newest entry at or below the
+        lower of the two bounds. A writer whose position lies below the first's entry was open
+        when it was read, and was either still open — its mark is found — or committed since,
+        and is then read by the second (ADR-0164 §3)."""
         connection = self._persistence.connection(tenant)
-        newest = await connection.scalar(
-            select(func.max(s.ledger_entry.c.seq)).where(s.ledger_entry.c.tenant == tenant)
+        isolation, newest = (
+            await connection.execute(
+                select(
+                    func.current_setting("transaction_isolation"),
+                    func.coalesce(func.max(s.ledger_entry.c.seq), 0),
+                ).where(s.ledger_entry.c.tenant == tenant)
+            )
+        ).one()
+        if isolation != "read committed":
+            raise RuntimeError(
+                "the stable head is read in a transaction that sees each committed entry, not "
+                f"in one at {isolation}: read it in a transaction of its own first"
+            )
+        if not newest:
+            return 0
+        bound = func.least(newest, func.coalesce(func.ledger_open_below(tenant), newest))
+        found = await connection.scalar(
+            select(func.coalesce(func.max(s.ledger_entry.c.seq), 0)).where(
+                (s.ledger_entry.c.tenant == tenant) & (s.ledger_entry.c.seq <= bound)
+            )
         )
-        return 0 if newest is None else int(newest)
+        return int(found or 0)
 
     async def after(
         self,
@@ -207,11 +293,14 @@ class PostgresLedgerStore:
         *,
         limit: int,
         kinds: Collection[str] | None = None,
+        through: int | None = None,
     ) -> Sequence[LedgerEntry]:
         """With `kinds`, read through `ledger_entry_kind` (migration 0054): a range of
         sequence numbers per kind."""
         connection = self._persistence.connection(tenant)
         condition = (s.ledger_entry.c.tenant == tenant) & (s.ledger_entry.c.seq > seq)
+        if through is not None:
+            condition &= s.ledger_entry.c.seq <= through
         if kinds is not None:
             condition &= s.ledger_entry.c.kind.in_(sorted(kinds))
         rows = await connection.execute(
@@ -265,6 +354,9 @@ def _entry(row: Row[Any]) -> LedgerEntry:
         "duration_seconds",
         "content_digest",
         "rehearsal",
+        "chain_seq",
+        "chain",
+        "through",
     ):
         value = getattr(row, name)
         if value is not None:

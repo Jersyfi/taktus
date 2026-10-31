@@ -1,7 +1,7 @@
 """Departments share the runners fairly, and may hold quotas (ADR-0166, UC-7.11, issue #343).
 
 Revision: 0092
-Revises: 0090
+Revises: 0091
 
 What this adds:
 
@@ -31,7 +31,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision = "0092"
-down_revision = "0090"
+down_revision = "0091"
 branch_labels = None
 depends_on = None
 
