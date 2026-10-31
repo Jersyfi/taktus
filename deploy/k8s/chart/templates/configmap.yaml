@@ -31,7 +31,7 @@ data:
   TAKTUS_WORKER: {{ . | quote }}
   {{- end }}
   {{- with $execution.image }}
-  TAKTUS_EXECUTION_UNIT: {{ include "taktus.imageRef" (dict "what" "execution.image" "ref" .) | quote }}
+  TAKTUS_EXECUTION_UNIT: {{ include "taktus.imageRef" (dict "root" $ "what" "execution.image" "ref" .) | quote }}
   {{- end }}
   TAKTUS_EXECUTION_UNIT_PORT: {{ $execution.unitPort | quote }}
   TAKTUS_EXECUTION_CPUS: {{ $execution.defaults.cpus | quote }}
@@ -41,7 +41,7 @@ data:
   TAKTUS_EXECUTION_START_TIMEOUT_SECONDS: {{ $execution.defaults.startTimeoutSeconds | quote }}
   TAKTUS_EXECUTION_SERVICE_HOSTS: {{ join "," ($execution.defaults.serviceHosts | default list) | quote }}
   TAKTUS_EXECUTION_UNIT_ENV: {{ include "taktus.unitEnv" (dict "what" "execution.defaults.unitEnv" "env" $execution.defaults.unitEnv) | quote }}
-  TAKTUS_EXECUTION_EGRESS_IMAGE: {{ include "taktus.imageRef" (dict "what" "execution.egress.proxyImage" "ref" $execution.egress.proxyImage) | quote }}
+  TAKTUS_EXECUTION_EGRESS_IMAGE: {{ include "taktus.imageRef" (dict "root" $ "what" "execution.egress.proxyImage" "ref" $execution.egress.proxyImage) | quote }}
   # Read by the cluster execution adapter (TAKTUS_EXECUTION=cluster): where its jobs go, the
   # account they run as, whether a frame's host list must be enforced, the egress gateway a
   # unit reaches its hosts through, and the claim the units' state lives on (README §6, §7).
@@ -80,7 +80,7 @@ data:
   {{- fail (printf "execution.workers %s: endpoint is required for kind endpoint" $name) }}
   {{- end }}
   {{- with .image }}
-  {{ $prefix }}EXECUTION_UNIT: {{ include "taktus.imageRef" (dict "what" (printf "execution.workers %s image" $name) "ref" .) | quote }}
+  {{ $prefix }}EXECUTION_UNIT: {{ include "taktus.imageRef" (dict "root" $ "what" (printf "execution.workers %s image" $name) "ref" .) | quote }}
   {{- end }}
   {{- with .unitPort }}
   {{ $prefix }}EXECUTION_UNIT_PORT: {{ . | quote }}

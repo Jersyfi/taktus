@@ -10,7 +10,7 @@ shared: each pod's state directory is its own.
 */ -}}
 {{- $root := . -}}
 {{- $files := include "taktus.secretFiles" . | fromJsonArray -}}
-{{- $image := include "taktus.image" (dict "what" "image" "image" .Values.image) -}}
+{{- $image := include "taktus.image" (dict "root" $ "what" "image" "image" .Values.image) -}}
 {{- $small := eq (include "taktus.profile" $root) "small" }}
 {{- $ha := eq (include "taktus.profile" $root) "ha" }}
 {{- $shared := eq (include "taktus.objectStore" $root) "filesystem" }}

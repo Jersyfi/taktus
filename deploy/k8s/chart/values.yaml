@@ -14,9 +14,19 @@ namespaces:
 
 image:
   repository: ""           # where the control plane image is pulled from
-  tag: ""                  # the released version, never `latest`; the install fails without one
+  tag: ""                  # the released version, never `latest`; the install fails without one.
+                           # An image of `main` carries the full commit hash (ADR-0173 §1)
+  digest: ""               # sha256:<64 hex>: pins the image; rendered as <repository>:<tag>@<digest>
   pullPolicy: IfNotPresent
   pullSecret: ""           # name of an existing pull secret; empty when the image is public
+
+# Every image by its digest (ADR-0173 §7). Each image value takes a digest beside its tag —
+# `image.digest`, `backup.image.digest`, `database.image.digest`, `connectors.digests.<name>` —
+# and an image given as one reference may end in `@sha256:<digest>`. The image workflow writes
+# the values that pin one release's images as `digests.values.yaml` (README §3).
+# `requireDigest: true` fails the render of any image without a digest.
+images:
+  requireDigest: false
 
 # The user the control plane's image runs as (deploy/docker/Dockerfile pins it).
 securityContext:
@@ -112,6 +122,7 @@ database:
   image:
     repository: postgres
     tag: "16-alpine"
+    digest: ""             # sha256:<64 hex>; required under images.requireDigest
   storageClass: ""
   size: 20Gi               # DEC-0033: cannot be enlarged on the target's storage class; watched from the first run
   resources:
@@ -132,6 +143,7 @@ backup:
   image:
     repository: ""         # the backup image (deploy/backup/Dockerfile), released with the instance
     tag: ""
+    digest: ""             # sha256:<64 hex>: pins it (ADR-0173 §7)
   schedule: "17 3 * * *"   # daily, 03:17 UTC
   expectedHours: 26        # how old the last successful backup may be before each owner hears it is missing (ADR-0106)
   retentionDays: 30        # a backup older than this is deleted; the newest never is
@@ -277,6 +289,7 @@ administration:
 # two secrets exist before the install and are mounted as files, like every other.
 connectors:
   imagePrefix: ""          # where the connectors' images are pulled from; empty: beside `image`
+  digests: {}              # <connector>: sha256:<64 hex>, each shipped connector's image pinned (ADR-0173 §7)
   repository:
     enabled: false
     repository: ""         # owner/name of the repository it serves

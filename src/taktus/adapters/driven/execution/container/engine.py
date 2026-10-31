@@ -61,11 +61,8 @@ class Engine:
         return None if response.status_code == 404 else self._json(response)
 
     async def pull(self, reference: str) -> None:
-        name, _, tag = reference.rpartition(":")
-        if not name or "/" in tag:
-            name, tag = reference, "latest"
         async with self._http.stream(
-            "POST", "/images/create", params={"fromImage": name, "tag": tag}, timeout=600.0
+            "POST", "/images/create", params=pull_parameters(reference), timeout=600.0
         ) as response:
             if response.status_code != 200:
                 raise EngineError(
@@ -229,6 +226,22 @@ def demultiplex(raw: bytes) -> bytes:
         out += raw[offset : offset + length]
         offset += length
     return bytes(out)
+
+
+def pull_parameters(reference: str) -> dict[str, str]:
+    """What the engine's pull takes for an image reference: the repository, and the tag or the
+    digest. `repo:tag@sha256:<hex>` pulls by its digest, which the tag beside it only names for
+    a reader (ADR-0173 §7); a reference without either pulls `latest`, as the engine does."""
+    name, at, digest = reference.partition("@")
+    if at:
+        repository, _, tag = name.rpartition(":")
+        if not repository or "/" in tag:
+            repository = name
+        return {"fromImage": repository, "tag": digest}
+    repository, _, tag = reference.rpartition(":")
+    if not repository or "/" in tag:
+        repository, tag = reference, "latest"
+    return {"fromImage": repository, "tag": tag}
 
 
 def config_of(image: Json) -> tuple[list[str], list[str]]:

@@ -229,7 +229,8 @@ own count of out-of-memory kills in the unit's cgroup. The engine's flag for suc
 from a separate event that may arrive late or never, so the adapter classifies a memory kill
 from either record (issue #29).
 
-**The container adapter's wall**, per job: a container from the unit's image with no
+**The container adapter's wall**, per job: a container from the unit's image — pulled by its
+digest where its reference ends in `@sha256:<digest>`, by its tag otherwise (ADR-0173 §7) — with no
 capability, no privilege escalation, a process limit, a memory limit without swap and a CPU
 limit — the engine kills on memory, the adapter on the wall clock; an engine that reports it
 cannot limit memory or swap is refused before anything is created; a network of its own,

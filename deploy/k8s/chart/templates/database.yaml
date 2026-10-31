@@ -60,7 +60,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: postgres
-          image: {{ include "taktus.image" (dict "what" "database.image" "image" .Values.database.image) }}
+          image: {{ include "taktus.image" (dict "root" $ "what" "database.image" "image" .Values.database.image) }}
           imagePullPolicy: IfNotPresent
           env:
             - name: POSTGRES_DB
