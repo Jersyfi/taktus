@@ -1,5 +1,5 @@
 """One writer process of the throughput test: it records into a tenant's ledger for a while, one
-entry and 2 ms of work in each transaction, and says how many transactions it committed."""
+entry and 10 ms of work in each transaction, and says how many transactions it committed."""
 
 from __future__ import annotations
 
@@ -11,8 +11,13 @@ from taktus.components.ledger.application.service import ChainedLedger
 from taktus.ports.ledger import Fact
 from taktus.shared.v1 import LedgerRefs
 
-WORK_SECONDS = 0.002
-"""The work inside each transaction, as measured on 2026-10-12 (devops review §L1)."""
+WORK_SECONDS = 0.010
+"""The work inside each transaction, a wait as a step's call to the outside is. The measurement of
+2026-10-12 used 2 ms (devops review §L1); on a host of four cores eight writers and their eight
+database sessions are then bound by the processors, and the test would measure the host, not
+whether the tenant serialises its writers. With 10 ms a serialised tenant still stays near one
+writer's rate, since the claim is held across the work, and a tenant that does not serialise
+reaches several times it on any host."""
 
 
 def commits(url: str, tenant: str, writer: int, start: float, seconds: float) -> int:

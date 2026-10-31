@@ -560,7 +560,7 @@ keeps its place reads up to the **stable head** only, the newest entry below eve
 writer's marker. Once a minute the scheduler anchors the heads of the run chains written since
 the last anchor in the tenant's chain, as a Merkle root (`ledger.anchored`,
 `composition/anchors.py`), and makes the ledger's monthly partitions ahead. With eight writers in
-one tenant, 1 414 commits per second against 171 with one
+one tenant, 492 commits per second against 48 with one, with 10 ms of work in each transaction
 (`tests/adapters/persistence/test_ledger_throughput.py`). The claims are the only locks on the
 chains; no lock of the process is held beside them. A lock of the process
 held while the store waits for the claim formed a cycle that neither side could see: two runs of

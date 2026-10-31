@@ -2,8 +2,8 @@
 ADR-0164).
 
 Each writer is a process of its own with one connection, as an instance's runner would be. Each
-transaction records one entry of its writer's run and does 2 ms of work, as the measurement of
-2026-10-12 did (docs/research/2026-10-12-devops-review.md §L1). Every run's chain is its
+transaction records one entry of its writer's run and does 10 ms of work (`_writer.WORK_SECONDS`
+says why not the 2 ms of docs/research/2026-10-12-devops-review.md §L1). Every run's chain is its
 writer's; three entries make a run, as a step makes about three commits. Before ADR-0164 the
 tenant's one chain held every writer behind the claim of the one in front: 142 commits per
 second with one writer, 205 with eight. The ledger then verifies, every chain and the anchor.

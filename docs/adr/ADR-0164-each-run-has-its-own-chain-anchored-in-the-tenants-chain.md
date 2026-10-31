@@ -185,8 +185,10 @@ starts after an archived month are left to the change that archives.
   longer.
 - **The marker's key holds 40 bits of position and 23 of tenant key.** A ledger handed out more
   than about 10^12 positions, or a registry past about 8 million tenants, needs a wider key.
-- **The throughput figure is a measurement on one machine**, with 2 ms of work in each
-  transaction and the database on the same host. It says that the tenant no longer serialises
+- **The throughput figure is a measurement on one machine**, with 10 ms of work in each
+  transaction and the database on the same host. With 2 ms, a host of four cores is bound by its
+  processors before the ledger (3.7 times one writer on the CI runner, 8.3 times on a larger
+  machine), so the test waits 10 ms, as a step's call to the outside does. It says that the tenant no longer serialises
   its writers. It is not a capacity promise for a given deployment.
 - **The tenant's own chain still serialises** what references no run and what is recorded in
   order. Only the run chains write side by side.
