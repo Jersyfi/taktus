@@ -64,7 +64,7 @@ CLAIMS: dict[str, tuple[str, ...]] = {
     # documentation freshness, decisions, use cases, ADRs, vision, status.
     "static": (r".*",),
     "decisions": (r".*",),
-    "contracts": (r"api/.*", r"tools/(validate_contracts|generate)\.py"),
+    "contracts": (r"api/.*", r"tools/(validate_contracts|contract_compat|generate)\.py"),
     "web": (r"web/.*",),
     "conformance": (
         r"src/taktus/(conformance|wire|ports|adapters)/.*",
@@ -135,7 +135,7 @@ COMMANDS: dict[str, tuple[str, ...]] = {
         "gate-usecases",
     ),
     "decisions": ("gate-adrs", "gate-vision", "gate-status"),
-    "contracts": ("gate-contracts",),
+    "contracts": ("gate-contracts", "gate-compat"),
     "web": ("gate-web",),
     "conformance": ("gate-conformance",),
     "test": ("test",),

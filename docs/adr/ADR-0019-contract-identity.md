@@ -1,6 +1,8 @@
 # ADR-0019 — Contract identity
 
-**Status:** accepted · decided by the owner, recorded as DEC-0001
+**Status:** accepted · decided by the owner, recorded as DEC-0001 · amended 2026-10-31
+(ADR-0171): rule 2 — between the first release and the freeze a released schema changes only
+compatibly, and from the freeze not at all
 
 ## Context
 The contracts under `contracts/` are JSON Schema documents. A JSON Schema may carry an `$id`: an
@@ -42,6 +44,17 @@ Three rules follow from the shape:
 The same rule names every other file under `contracts/`, such as `openapi.yaml`, even where the
 format has no `$id` field: its URL is its path.
 
+## Amendment — compatible until the freeze (2026-10-31)
+
+Rule 2 read as if no byte of a released `v1` schema could change. The roadmap and anchor M3.5
+say otherwise: `v1` stops moving at the freeze, the owner's deliberate act, and before it only
+a change that would *break* a published contract is the owner's. Rule 2 therefore now reads:
+**once a version of Taktus that uses a schema is released, the schema changes only compatibly,
+and from the freeze not at all. A breaking change becomes `v2` under a new `$id`.** What is
+compatible, the lane that checks it and the freeze record are ADR-0171's. Amended under M1.9:
+no principle, no requirement of ADR-0013 and no entry of mode 3 or 4 changes. A breaking change
+stays M3.5, and the freeze stays the owner's.
+
 ## Alternatives
 - **GitHub raw URLs** (`https://raw.githubusercontent.com/...`). They would have tied the identity
   of the contracts to one hosting provider — a contradiction of principle 13, freedom instead of
@@ -66,7 +79,8 @@ format has no `$id` field: its URL is its path.
 ## Where this promise ends
 
 The `$id` names the contract; it does not yet resolve, and nothing depends on it resolving
-until the contracts are served (no later than `1.0.0`). "A released v1 schema is immutable"
-begins with the first release that uses it; until then `v1` may move, and has moved twice. The
+until the contracts are served (no later than `1.0.0`). Rule 2 binds from the first release that uses a schema; until then `v1` may move, and has
+moved twice. From that release to the freeze it binds to compatible changes only (ADR-0171); only
+from the freeze is a schema immutable. The
 domain stays with the project for as long as the owner holds it; a domain is rented, and the
 commitment is the owner's, not the repository's.

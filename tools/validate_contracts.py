@@ -17,7 +17,10 @@ Checks, in order:
 4. every example under `examples/<target>/invalid/` fails by schema, and every conformance check
    — W-01..W-21 of the worker contract, C-01..C-11 of the connector contract, M-01..M-04 of the
    model contract — has at least one fixture named after it;
-5. every target has at least two valid examples.
+5. every target has at least two valid examples;
+6. if the freeze record `contracts/FREEZE.json` exists (M3.5, the owner's act), every schema and
+   OpenAPI document of a version it freezes is named in it, and the bytes of each match the
+   digest it records: a frozen contract changes not at all, compatibly or not (ADR-0171).
 
 The target of an examples directory is its name in kebab-case: for the shared kernel the schema
 file (`exactness-class` -> `ExactnessClass.json`), for a contract the definition
@@ -43,6 +46,7 @@ nothing from the suite, so that it stays runnable on its own.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sys
@@ -318,6 +322,67 @@ def check_examples(schemas: dict[Path, Json], registry: SchemaRegistry, report: 
         report.ok("every check " + ", ".join(CHECK_RANGES) + " has a must-fail example")
 
 
+# --- the freeze (ADR-0171) ---------------------------------------------------------------------
+
+FREEZE = "FREEZE.json"
+DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
+FROZEN_PATH = re.compile(r"([a-z][a-z0-9-]*/v[0-9]+)/([A-Za-z0-9]+\.json|openapi\.yaml)")
+
+
+def contract_files(contracts: Path) -> list[Path]:
+    return sorted([*contracts.glob("*/v*/*.json"), *contracts.glob("*/v*/openapi.yaml")])
+
+
+def check_freeze(report: Report, contracts: Path = CONTRACTS) -> None:
+    """Hold every frozen file to its recorded digest. Without a record nothing is frozen.
+
+    The record is `{"frozen": "YYYY-MM-DD", "decision": "DEC-NNNN", "files": {"worker/v1/
+    Worker.json": "sha256:<hex>", ...}}`, its paths relative to `contracts/`. A version is
+    frozen when the record names a file of it; every schema and OpenAPI document under that
+    version is then named, so that a file added to a frozen version fails as a change does.
+    """
+    path = contracts / FREEZE
+    if not path.exists():
+        return
+    what = f"{FREEZE}"
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        report.fail(what, f"not JSON: {error}")
+        return
+    files = record.get("files") if isinstance(record, dict) else None
+    if (
+        not isinstance(files, dict)
+        or not files
+        or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(record.get("frozen", "")))
+        or not re.fullmatch(r"DEC-\d{4}", str(record.get("decision", "")))
+    ):
+        report.fail(what, "needs `frozen` (a date), `decision` (DEC-NNNN) and `files`")
+        return
+    versions = set()
+    for name, digest in sorted(files.items()):
+        match = FROZEN_PATH.fullmatch(name)
+        if match is None or not isinstance(digest, str) or not DIGEST.fullmatch(digest):
+            report.fail(f"{what} {name}", "not `<family>/v<N>/<file>` with `sha256:<hex>`")
+            continue
+        versions.add(match.group(1))
+        frozen = contracts / name
+        if not frozen.is_file():
+            report.fail(f"frozen {name}", "the record names it and it is gone")
+        elif "sha256:" + hashlib.sha256(frozen.read_bytes()).hexdigest() != digest:
+            report.fail(
+                f"frozen {name}",
+                f"changed since the freeze of {record['frozen']} ({record['decision']}); a change "
+                "is a new major version under a new $id (ADR-0019)",
+            )
+        else:
+            report.ok(f"frozen {name}")
+    for file in contract_files(contracts):
+        name = file.relative_to(contracts).as_posix()
+        if name.rsplit("/", 1)[0] in versions and name not in files:
+            report.fail(f"frozen {name}", "added to a frozen version; the record does not name it")
+
+
 # --- main ----------------------------------------------------------------------------------------
 
 
@@ -331,6 +396,7 @@ def main() -> int:
     check_schemas(schemas, registry, report)
     check_openapi(registry, report)
     check_examples(schemas, registry, report)
+    check_freeze(report)
     print()
     if report.failures:
         print(f"{report.passed} passed, {len(report.failures)} failed")
