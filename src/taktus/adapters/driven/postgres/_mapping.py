@@ -1734,6 +1734,34 @@ class OrgUnitQuotaMapper:
         return [dict(row.quota) for row in rows]
 
 
+class CatalogueInstallationMapper:
+    """One row per entry a tenant installed from a catalogue (ADR-0175); the record stays a
+    document."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.catalogue_installation, tenant, id)
+        return None if row is None else dict(row.installation)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.catalogue_installation,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "installed_at": _at(document["installed_at"]),
+                "installation": document,
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(
+            connection, s.catalogue_installation, tenant, s.catalogue_installation.c.id
+        )
+        return [dict(row.installation) for row in rows]
+
+
 class CaseAnswerMapper:
     """One row per case of a process a person answered in; the answer stays a document."""
 
@@ -1925,6 +1953,7 @@ MAPPERS: dict[str, Mapper] = {
     "source_declaration": SourceDeclarationMapper(),
     "message_rules": MessageRulesMapper(),
     "org_unit_quota": OrgUnitQuotaMapper(),
+    "catalogue_installation": CatalogueInstallationMapper(),
     "case_answer": CaseAnswerMapper(),
     "skill_version": SkillVersionMapper(),
     "skill_ownership": SkillOwnershipMapper(),

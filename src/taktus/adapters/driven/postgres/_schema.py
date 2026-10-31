@@ -525,6 +525,17 @@ message_rules = Table(
 )
 """One row per tenant that configured its rules for outward messages (ADR-0142)."""
 
+catalogue_installation = Table(
+    "catalogue_installation",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),  # the adapter identifier, or process.<id> for a bundle
+    _at("installed_at"),
+    Column("installation", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per entry a tenant installed from a catalogue, with its origin (ADR-0175)."""
+
 org_unit_quota = Table(
     "org_unit_quota",
     metadata,
