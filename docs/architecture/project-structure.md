@@ -63,6 +63,7 @@ taktus/
 │
 ├── workers/                         # separate deployables behind the worker contract, each with its own image; none in the control plane image (DEC-0011)
 ├── connectors/                      # the connectors behind the connector contract, package `taktus_connectors`: each an image of its own, a stage of connectors/Dockerfile; none in the control plane image, none importing it (ADR-0158)
+│   ├── a2a/                         # an agent of the agent-to-agent protocol behind the contract, the binding of ADR-0172; it ships no capability of its own, its operator names one (composition/shipped.json)
 │   ├── script/                      # the reference worker: shell commands, no AI
 │   ├── claudecode/                  # the coding worker: a coding agent behind the contract, and the fake agent the gate runs it against
 │   ├── codex/                       # the second coding worker: a second vendor's coding agent behind the contract, and its fake agent
