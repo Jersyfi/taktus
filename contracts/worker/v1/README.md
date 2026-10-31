@@ -502,3 +502,24 @@ contract, the contract only serves coding — and method maturation
 ([ADR-0004](../../../docs/adr/ADR-0004-method-selection.md)) would have no path into execution.
 
 Both are part of the conformance suite from `0.1.0`. Both appear in `examples/transcript/valid/`.
+
+## 10. The A2A binding
+
+An agent of the open agent-to-agent protocol (A2A) is reached through a binding, not through a
+second contract (ADR-0172). The binding is a worker of this contract that speaks A2A to one
+agent: [`workers/a2a/`](../../../workers/a2a/README.md). The control plane speaks sections 1 to
+6 to it, unchanged; the agent needs to know nothing of them.
+
+| This contract | The protocol (A2A 0.3, JSON-RPC) |
+|---|---|
+| `capabilities` | the operator's capability and location; the agent card is read for its JSON-RPC address |
+| `estimate`, `limits` | the binding's own, from its operator: the protocol has neither |
+| an assignment | one `message/send`: the goal and acceptance as a text part, the inputs as a data part |
+| a step | one status change of the agent's task, read with `tasks/get` |
+| `consumption.reported` | the seconds the step lasted, as `compute_seconds` |
+| a steering message | a further `message/send` into the agent's task, at the boundary |
+| an artifact | an artifact of the agent's task, of kind `agent.output` |
+| `stop` | the observation pauses at the boundary; the agent's task is not canceled |
+
+The binding passes the suite against a reference agent (`tests/fakes/a2a_agent.py`). It declares
+`steering`, not `handover`, and offers no outbound binding.

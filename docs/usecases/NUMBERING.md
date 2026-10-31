@@ -81,6 +81,8 @@ Numbered for package B (DEC-0222), each the next free number of its area: `UC-4.
 steers a running worker step (#624, NTC-0244); `UC-4.22` a worker that only connects outbound
 serves the runs of every instance (#625, NTC-0245). Issue #402 had named its own future case
 `AF-03`; that case, if it is needed, is `UC-04`.
+`UC-14.5` a foreign agent becomes a worker through an A2A binding (#349, ADR-0172), the next
+free number of its area, built with package D in concept mode (DEC-0222).
 
 ## Numbers of the definition with no file of their own
 
