@@ -7,7 +7,7 @@ serves: [P8, P12, P14]
 state: built
 version: 0.7.0
 tests: [tests/components/run/test_org_units.py::test_a_unit_s_run_starts_within_two_polls_behind_another_unit_s_two_hundred, tests/components/run/test_org_units.py::test_a_run_carries_its_unit_and_its_job_does, tests/components/run/test_org_units.py::test_a_unit_s_concurrent_quota_holds_and_its_wait_is_booked_as_a_block, tests/components/run/test_org_units.py::test_a_unit_s_budget_quota_holds_and_its_refusal_is_booked_as_a_block, tests/components/run/test_org_units.py::test_a_run_without_an_amount_in_the_quota_s_currency_halts_for_a_person, tests/components/run/test_org_units.py::test_without_quotas_a_tenant_s_units_run_as_before, tests/components/run/test_org_units.py::test_a_rehearsal_commits_nothing_to_a_budget_quota, tests/adapters/queue/test_org_units.py::test_a_unit_that_holds_no_place_comes_before_one_with_much_queued, tests/adapters/queue/test_org_units.py::test_a_unit_at_its_limit_is_skipped_and_its_jobs_are_marked_held, tests/adapters/queue/test_org_units.py::test_a_limit_holds_against_runners_claiming_at_once, tests/adapters/queue/test_org_unit_spends.py::test_commits_at_once_never_cross_the_limit_together, tests/components/governance/test_org_units.py::test_a_quota_is_never_set_on_a_person, tests/components/governance/test_org_units.py::test_a_tenant_without_quotas_holds_none_and_the_run_sees_none]
-adrs: {ADR-0005: 0ea928e2016b, ADR-0020: e42a9501e3b5, ADR-0043: 5bcc93809622, ADR-0166: ae0b6e9dc6ae}
+adrs: {ADR-0005: 0ea928e2016b, ADR-0020: aaf943a7f2e5, ADR-0043: 5bcc93809622, ADR-0166: ae0b6e9dc6ae}
 supersedes: null
 ---
 
