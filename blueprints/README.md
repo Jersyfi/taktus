@@ -21,7 +21,8 @@ none of them.
 | [`self-operation`](self-operation/README.md) | what Taktus runs for itself, on itself | S-01 the removal test runs weekly |
 | [`it-operations`](it-operations/README.md) | systems operation, unattended — use case UC-02 — and its reference assistant, the IT service chat (UC-12.2) | a description; the roadmap's `0.7.0` |
 | [`gallery`](gallery/README.md) | first processes for a family, a club and a small business, which the web app's gallery offers — use case UC-10.4 | three blueprints, each one process that rehearses on a new instance |
-| [`finance`](finance/README.md) | the finance reference domain under legal anchors — UC-15.2 | a description; not on the roadmap |
+| [`finance`](finance/README.md) | the finance reference domain under legal anchors — UC-15.2 | a description; its first part runs as `invoice-to-payment` |
+| [`invoice-to-payment`](invoice-to-payment/README.md) | from an incoming invoice to its payment, released by a person — use case UC-04, the roadmap's second domain (`0.7.0`) | B-10.03 runs as a bundle; not to be used before the legal-anchor review (DEC-0029) |
 
 ## Example domains
 
@@ -33,7 +34,7 @@ expertise before a finance or personnel blueprint is used (DEC-0029).
 | Domain | Recurring work Taktus takes over (examples) | Stays with a person |
 |---|---|---|
 | **Technology and IT** (reference: `dev-orchestration`, `it-operations`) | refining tickets, implementing, reviewing, repository hygiene, handling vulnerabilities, the IT service chat (UC-12.2) | architecture, product decisions, merging into protected areas as the policy says |
-| **Finance and accounting** (reference: `finance`, UC-15.2) | capturing documents, proposing how to account for them, matching payments, preparing reminders, preparing tax pre-filings and closings, handing over to the tax adviser | releasing payments above a threshold, signatures, the tax return, the annual accounts |
+| **Finance and accounting** (reference: `finance`, UC-15.2; `invoice-to-payment`, UC-04) | capturing documents, proposing how to account for them, matching payments, preparing reminders, preparing tax pre-filings and closings, handing over to the tax adviser | releasing payments above a threshold, signatures, the tax return, the annual accounts |
 | **Sales and customer relations** | qualifying leads, drafting offers from price lists, follow-ups, keeping the pipeline current, a sales FAQ (UC-12.3) | price negotiation, concluding contracts, the customer relationship |
 | **Purchasing and procurement** | bundling demand, comparing offers, placing orders as the policy allows, rating suppliers on data, matching goods received | choosing a supplier where the choice is strategic, negotiating contracts |
 | **Partners and interfaces** (reference: UC-15.3) | importing and exporting orders, invoices, catalogues and master data; validation, mapping, replies to partners | the partnership, data contracts, disputes |

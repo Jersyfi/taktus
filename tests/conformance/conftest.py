@@ -1099,10 +1099,16 @@ class BusinessConnector:
 
 FAKES = ROOT / "tests" / "fakes"
 BUSINESS: dict[str, BusinessConnector] = {
+    "accounting": BusinessConnector(
+        "accounting", FAKES / "accounting_service.py", "ACCOUNTING_TOKEN"
+    ),
     "anthropic": BusinessConnector(
         "anthropic", FAKES / "cost_report_service.py", "MODEL_COSTS_TOKEN"
     ),
     "aws": BusinessConnector("aws", FAKES / "cloud_billing_service.py", "BILLING_KEY", pair=True),
+    "einvoice": BusinessConnector(
+        "einvoice", FAKES / "document_inbox_service.py", "DOCUMENTS_TOKEN"
+    ),
     "openai": BusinessConnector("openai", FAKES / "model_costs_service.py", "MODEL_COSTS_TOKEN"),
     "sentry": BusinessConnector(
         "sentry", FAKES / "error_tracking_service.py", "ERRORS_TOKEN", ("--organization", "example")

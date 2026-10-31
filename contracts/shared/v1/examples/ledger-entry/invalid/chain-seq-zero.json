@@ -1,0 +1,13 @@
+{
+  "seq": 4190,
+  "ts": "2026-11-02T09:30:00Z",
+  "kind": "step.started",
+  "prev_hash": "sha256:cf5d82f4e39457d64eeefeb66caf927bc3294e10837101580ff5084d2400cb14",
+  "hash": "sha256:ec197ee39a5e1c3ecb0bfcaf26fd9f3ae9e311a25ca84b2becccdc75fcbbdd68",
+  "refs": {
+    "tenant": "acme",
+    "run_id": "run_17342",
+    "step_id": "triage"
+  },
+  "chain_seq": 0
+}

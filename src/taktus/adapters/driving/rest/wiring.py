@@ -60,6 +60,7 @@ from taktus.components.reporting.domain.model.acting import (
     WrongResultView,
 )
 from taktus.components.reporting.domain.service.catalogue import Catalogue
+from taktus.components.reporting.domain.service.profiles import RoleIndex, RoleProfile
 from taktus.components.reporting.domain.service.streams import StreamLanes, StreamMap
 from taktus.components.reporting.domain.service.variants import VariantsView
 from taktus.components.run.application.service import HandBack, SteerStep, TakeOver
@@ -325,6 +326,27 @@ class StreamActs(Protocol):
         ...
 
 
+class ProfileReads(Protocol):
+    """A role's profile (ADR-0167 §3): the composition root's, because it gathers the process,
+    governance, decision, run and identity components' records."""
+
+    async def index(
+        self, tenant: Tenant, reader: str, held: frozenset[str], visible: frozenset[str], days: int
+    ) -> RoleIndex: ...
+
+    async def profile(
+        self,
+        tenant: Tenant,
+        role: str,
+        reader: str,
+        held: frozenset[str],
+        visible: frozenset[str],
+        days: int,
+    ) -> RoleProfile | None:
+        """None where neither the structure nor the processes know the role."""
+        ...
+
+
 class RestServices(Protocol):
     @property
     def roles(self) -> Sequence[str]:
@@ -490,6 +512,11 @@ class RestServices(Protocol):
     @property
     def streams(self) -> StreamActs:
         """The organisation as value streams, and their declaration (ADR-0159)."""
+        ...
+
+    @property
+    def profiles(self) -> ProfileReads:
+        """A role's profile, derived from the processes (ADR-0167)."""
         ...
 
     @property

@@ -7,7 +7,7 @@ serves: [P7, P8, P14]
 state: built
 version: 0.4.0
 tests: [tests/components/accounting/test_spend.py::test_the_meter_of_a_step_keeps_its_price_kinds_turns_and_compression_apart, tests/components/accounting/test_spend.py::test_a_run_shows_its_spend_per_step_at_its_own_table, tests/components/accounting/test_spend.py::test_two_runs_of_the_same_task_are_shown_side_by_side, tests/components/accounting/test_spend.py::test_a_process_shows_its_spend_per_step_over_a_window, tests/components/accounting/test_takt.py::test_the_takte_of_each_step_add_up_to_the_run_s, tests/adapters/rest/test_spend_and_trials.py::test_a_run_s_spend_is_read_by_step_and_another_set_beside_it, tests/adapters/rest/test_spend_and_trials.py::test_a_run_of_another_tenant_has_no_spend_to_show, tests/adapters/rest/test_spend_and_trials.py::test_a_process_s_spend_is_summed_per_step_over_a_window, tests/composition/test_spend_in_channel.py::test_a_run_s_spend_is_answered_step_by_step_with_its_link, tests/composition/test_spend_in_channel.py::test_two_runs_are_answered_side_by_side_with_whether_each_result_is_the_same, tests/composition/test_spend_in_channel.py::test_only_the_owner_and_whom_they_named_are_shown_runs_they_may_see]
-adrs: {ADR-0005: 0ea928e2016b, ADR-0010: e381de241d4a, ADR-0045: e1fcb1254c71, ADR-0055: 182c84e9cdbd, ADR-0148: 4ba172a497c9}
+adrs: {ADR-0005: 0ea928e2016b, ADR-0010: e381de241d4a, ADR-0045: e1fcb1254c71, ADR-0055: 6ea439834b2c, ADR-0148: 4ba172a497c9}
 supersedes: null
 ---
 

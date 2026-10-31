@@ -1,6 +1,6 @@
 # ADR-0105 — A read of the ledger costs what it returns
 
-**Status:** accepted · amends ADR-0006: a projection derived from the ledger is allowed · issue #321 · amended by #522 (§9: the four remaining readers) and #550 (§10: the correction figures and the alert sweep)
+**Status:** accepted · amends ADR-0006: a projection derived from the ledger is allowed · issue #321 · amended by #522 (§9: the four remaining readers) and #550 (§10: the correction figures and the alert sweep) · amended by ADR-0164: a projection is stored up to the stable head, and a checkpoint keeps its count and the newest anchor's bound (§6)
 
 ## Context
 
@@ -114,6 +114,15 @@ On 2026-10-12, with 500 000 entries in one tenant, a run start took 23.6 s and t
   and name. It is derived, so a backup without it loses nothing the ledger cannot give back.
 - The first read after this change, and the first read of a new projection, walks the whole
   ledger once.
+
+## Amendment — the stable head and the checkpoint (ADR-0164, 2026-10-31)
+
+A projection is stored with the stable head as its sequence number, not the newest entry: above
+it, an entry with a lower number may still commit. The value a reader receives also folds every
+entry committed beyond it. A checkpoint (§6) is the sequence number of the newest entry walked,
+as before. Since the numbers have gaps, it also keeps how many entries lie at or before it and
+the bound of the newest anchor walked. Instead of a hash, a chain whose predecessor lies before
+it is linked by one read of that entry.
 
 ## Where this promise ends
 

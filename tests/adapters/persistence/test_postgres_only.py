@@ -175,8 +175,23 @@ def test_the_migrated_schema_matches_the_adapter_s_metadata(sync_engine: Any) ->
     """The migrations are the history, `_schema.py` the current shape; a change to one without
     the other is a red test here."""
     with sync_engine.connect() as connection:
-        drift = compare_metadata(MigrationContext.configure(connection), metadata)
+        drift = compare_metadata(
+            MigrationContext.configure(connection, opts={"include_name": _not_a_partition}),
+            metadata,
+        )
     assert drift == [], drift
+
+
+def _not_a_partition(name: str | None, kind: str, parents: Any) -> bool:
+    """The ledger's partitions are the database's, not the metadata's: `_schema.py` names the
+    partitioned table, and migration 0091 the partitions (ADR-0164)."""
+    if kind == "table":
+        return name is None or not name.startswith("ledger_entry_")
+    if kind == "index":
+        return parents.get("table_name") is None or not str(parents["table_name"]).startswith(
+            "ledger_entry_"
+        )
+    return True
 
 
 async def test_the_revision_check_names_what_is_missing(
@@ -186,7 +201,7 @@ async def test_the_revision_check_names_what_is_missing(
     try:
         await check_schema(persistence.engine)
         head = head_revision()
-        assert await current_revision(persistence.engine) == head == "0090"
+        assert await current_revision(persistence.engine) == head == "0095"
         with sync_engine.begin() as connection:
             connection.execute(text("UPDATE alembic_version SET version_num = '0074'"))
         try:
@@ -267,8 +282,8 @@ def _created(run_id: str) -> Fact:
 
 
 async def test_a_wait_for_the_chain_fails_after_the_lock_timeout(postgres_url: str) -> None:
-    """A transaction that holds a tenant's chain and does not end makes a second one wait for
-    the claim; the wait ends after `lock_timeout` with the server's reason, not never
+    """A transaction that holds a run's chain and does not end makes a second one of that run
+    wait for the claim; the wait ends after `lock_timeout` with the server's reason, not never
     (issue #309)."""
     persistence = PostgresPersistence(postgres_url, pool_size=2, lock_timeout_seconds=0.3)
     ledger = ChainedLedger(PostgresLedgerStore(persistence), FakeClock())
@@ -287,7 +302,12 @@ async def test_a_wait_for_the_chain_fails_after_the_lock_timeout(postgres_url: s
         async with asyncio.timeout(10):
             with pytest.raises(DBAPIError, match="lock timeout"):
                 async with persistence.transaction(tenant):
-                    await ledger.record(tenant, _created("b"))
+                    await ledger.record(
+                        tenant, Fact(kind="run.started", refs=LedgerRefs(run_id="a"))
+                    )
+            # Another run's chain is not held: it is written at once (ADR-0164).
+            async with persistence.transaction(tenant):
+                await ledger.record(tenant, _created("b"))
         let_go.set()
         await holder
     finally:
@@ -308,8 +328,10 @@ async def test_a_transaction_left_idle_is_ended_with_its_reason(postgres_url: st
                 await asyncio.sleep(1)
                 await ledger.record(tenant, _created("b"))
         async with asyncio.timeout(10), persistence.transaction(tenant):
-            entry = await ledger.record(tenant, _created("c"))
-        assert entry.seq == 1, "the ended transaction's entry was never committed"
+            await ledger.record(tenant, _created("c"))
+        async with persistence.transaction(tenant):
+            runs = [e.refs.run_id for e in await ledger.entries(tenant)]
+        assert runs == ["c"], "the ended transaction's entry was never committed"
     finally:
         await persistence.close()
 

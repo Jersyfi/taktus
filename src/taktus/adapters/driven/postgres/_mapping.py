@@ -468,6 +468,8 @@ class RunMapper:
                 "bindings": document.get("bindings") or None,
                 "skills": document.get("skills") or None,
                 "profile": document.get("profile"),
+                "org_unit": document.get("org_unit"),
+                "org_unit_month": document.get("org_unit_month"),
                 "state": document["state"],
                 "cause": document.get("cause"),
                 "reason": document.get("reason"),
@@ -676,6 +678,8 @@ class RunMapper:
                 "bindings": row.bindings,
                 "skills": row.skills,
                 "profile": row.profile,
+                "org_unit": row.org_unit,
+                "org_unit_month": row.org_unit_month,
                 "state": row.state,
                 "cause": row.cause,
                 "reason": row.reason,
@@ -1064,7 +1068,7 @@ class RoleRightsMapper:
 
 
 class AnchorConfigurationMapper:
-    """One row per tenant; the anchors and the risk classes stay documents."""
+    """One row per tenant; the anchors, the risk classes and their levels stay documents."""
 
     async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
         row = await _one(connection, s.anchor_configuration, tenant, id)
@@ -1080,6 +1084,7 @@ class AnchorConfigurationMapper:
                 "id": document["id"],
                 "anchors": document["anchors"],
                 "risk_classes": document.get("risk_classes", {}),
+                "levels": document.get("levels", {}),
                 "configured_at": _at(document.get("configured_at")),
                 "configured_by": document.get("configured_by"),
             },
@@ -1097,6 +1102,7 @@ class AnchorConfigurationMapper:
                 "tenant": row.tenant,
                 "anchors": row.anchors,
                 "risk_classes": row.risk_classes,
+                "levels": row.levels or {},
                 "configured_at": _iso(row.configured_at),
                 "configured_by": row.configured_by,
             }
@@ -1703,6 +1709,31 @@ class MessageRulesMapper:
         return [dict(row.rules) for row in rows]
 
 
+class OrgUnitQuotaMapper:
+    """One row per unit a tenant set a quota for (ADR-0166); the quota stays a document."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.org_unit_quota, tenant, id)
+        return None if row is None else dict(row.quota)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.org_unit_quota,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "configured_at": _at(document["configured_at"]),
+                "quota": document,
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.org_unit_quota, tenant, s.org_unit_quota.c.id)
+        return [dict(row.quota) for row in rows]
+
+
 class CaseAnswerMapper:
     """One row per case of a process a person answered in; the answer stays a document."""
 
@@ -1893,6 +1924,7 @@ MAPPERS: dict[str, Mapper] = {
     "residency_rule": ResidencyRuleMapper(),
     "source_declaration": SourceDeclarationMapper(),
     "message_rules": MessageRulesMapper(),
+    "org_unit_quota": OrgUnitQuotaMapper(),
     "case_answer": CaseAnswerMapper(),
     "skill_version": SkillVersionMapper(),
     "skill_ownership": SkillOwnershipMapper(),

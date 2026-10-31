@@ -427,6 +427,12 @@ class Run(Value):
     """The role profile of a shared agent the run serves, `<agent>:<role>@<version>`, or
     `<agent>@<core>/<agent>:<role>@<version>` under a core not yet active: its brief is handed
     to every step on a model or a worker (ADR-0163 §5). None for every other run."""
+    org_unit: str | None = Field(default=None, min_length=1)
+    """The organisational unit the run runs for: the department below the tenant that the
+    command's structure names, never a person (ADR-0166). None for the tenant itself."""
+    org_unit_month: str | None = Field(default=None, pattern=r"^[0-9]{4}-[0-9]{2}$")
+    """The month in which the run committed its budget to its unit's budget quota; None while
+    it committed nothing (ADR-0166 §3)."""
     state: RunState = RunState.PLANNED
     cause: Cause | None = None
     reason: str | None = None

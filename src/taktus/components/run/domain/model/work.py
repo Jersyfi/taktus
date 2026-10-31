@@ -84,12 +84,17 @@ organisation that answers in its own channel: `participant`, the role; `channel`
 the answer arrives in; `thread`, the conversation it is expected in, usually a `$from` on the
 step that asked; `options`, the words the answer is read as, by rule, where it is not free text.
 
+**A person of the organisation** (ADR-0167 §1). Any other `human` step is performed by a person
+of the step's role: its work is empty or names the `task` in a sentence. The run waits for that
+person at every level, addressed to the role, and the step hands on no result of Taktus's.
+
 **How a step's checks are carried out** (ADR-0152). The checks a step declares from the
 catalogue (`Step.checks`, UC-4.13) run when its value is computed, before it counts:
 
-- `checking: {select?, reads?: {<capability>: {operation, input?, select?}}}` — `select` the
-  part of the result the checks judge; `reads` the operation through which a reconciliation
-  reads its total, or an agreement the second system's value, at the moment of the check.
+- `checking: {select?, reads?: {<capability>: {operation, input?, select?, credentials?}}}` —
+  `select` the part of the result the checks judge; `reads` the operation through which a
+  reconciliation reads its total, or an agreement the second system's value, at the moment of
+  the check, with the credentials it names.
 """
 
 from __future__ import annotations
@@ -411,6 +416,20 @@ class Expectation(Value):
     says: str | None = Field(default=None, min_length=1)
 
 
+class InvoiceRule(Value):
+    """An incoming invoice's amounts computed again by the calculation rules of EN 16931, and
+    the invoice matched against what was ordered (`domain.service.invoices`, ADR-0169).
+    `invoice` is a reading of the invoice's business terms, as the documents connector gives
+    it; `order` a reading of the order or contract it names, as the accounting connector gives
+    it; both usually references. Any difference fails the step and names itself; the result is
+    the amounts to book and to pay, each as decimal text, recomputed in decimal arithmetic. The
+    same readings always give the same result: admissible for `exact`."""
+
+    rule: Literal["invoice"]
+    invoice: Any
+    order: Any
+
+
 class ConnectorRule(Value):
     """The result is what one connector operation answered: its output, the effect it reported
     and what it consumed (`contracts/connector/v1` §5). The operation's capability — every
@@ -449,6 +468,7 @@ type RuleWork = Annotated[
     | TemplateRule
     | ExtractRule
     | CommitTitleRule
+    | InvoiceRule
     | ConnectorRule,
     Field(discriminator="rule"),
 ]
@@ -519,6 +539,15 @@ class ParticipantWork(Value):
         if len({o.casefold() for o in self.options}) != len(self.options):
             raise ValueError("the options differ from each other, case-blind")
         return self
+
+
+class HumanWork(Value):
+    """A `human` step a person of the organisation performs (ADR-0167 §1). The run waits for a
+    person of the step's role to perform it and report it performed, at every autonomy level;
+    the step hands on no result of Taktus's (ADR-0018). Names no person."""
+
+    task: str | None = Field(default=None, min_length=1)
+    """What the person does, in a sentence; None where the step's reason says it."""
 
 
 class WorkerWork(Value):
@@ -743,7 +772,16 @@ def threshold(step: Step) -> Threshold:
     return Threshold(value=float(matched.group(2)), inclusive=matched.group(1) == "<=")
 
 
-type Work = RuleWork | WaitWork | WorkerWork | MlWork | LlmWork | StatisticsWork | ParticipantWork
+type Work = (
+    RuleWork
+    | WaitWork
+    | WorkerWork
+    | MlWork
+    | LlmWork
+    | StatisticsWork
+    | ParticipantWork
+    | HumanWork
+)
 
 WHEN = "when"
 ASK = "ask"
@@ -826,12 +864,14 @@ class Message(Value):
 
 class CheckRead(Value):
     """How a check reads its source at the moment of the check (ADR-0152): the operation under
-    the check's `source` capability, its input with references, and the part of the output
-    that is the total or the second system's value."""
+    the check's `source` capability, its input with references, the part of the output that is
+    the total or the second system's value, and the credentials of the requesting identity the
+    read names, as any connector call names them (ADR-0169)."""
 
     operation: str = Field(pattern=r"^[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*){2,}$")
     input: dict[str, Any] = Field(default_factory=dict)
     select: str | None = Field(default=None, min_length=1)
+    credentials: tuple[CredentialReference, ...] = ()
 
     @property
     def capability(self) -> str:
@@ -1038,9 +1078,11 @@ def parse_work(
                 raise UnsupportedWork(step.id, "an llm step carries its prompt under `work`")
             return LlmWork.model_validate(given)
         if step.method is Method.HUMAN and given is not None and "participant" in given:
-            # A person of the organisation is asked through a decision request or a level;
-            # a participant outside it answers in its own channel (ADR-0155).
+            # A participant outside the organisation answers in its own channel (ADR-0155).
             return ParticipantWork.model_validate(given)
+        if step.method is Method.HUMAN:
+            # A person of the organisation performs it, in the step's role (ADR-0167 §1).
+            return HumanWork.model_validate(given or {})
     except ValidationError as error:
         first = error.errors()[0]
         where = ".".join(str(p) for p in first["loc"])

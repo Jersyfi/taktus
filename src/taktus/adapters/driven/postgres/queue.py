@@ -17,6 +17,12 @@ A take-over (ADR-0128, `0064_takeover.py`) is asked by one update that succeeds 
 take-over is asked or held, and only on a job a runner holds. Passing the claim moves it to the
 take-over's claimant as a new attempt, held until a time `claim_jobs` honours.
 
+A claim shares the places between organisational units, and holds a unit's concurrent limit
+where the runner names one (ADR-0166, `0092_org_units.py`): the five-argument `claim_jobs`.
+A claim with limits takes the tenant's claim lock first (`_locks.CLAIM`), so that two runners
+claiming at once count each other's claims; the claim itself is the next statement, which reads
+what the other committed.
+
 A person's message (ADR-0156, `0087_relay_and_steering.py`) is appended to the job's
 `messages` by one update that succeeds only on a job a runner holds; marking one handed rewrites
 the list under the row's lock.
@@ -24,7 +30,8 @@ the list under the row's lock.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import json
+from collections.abc import Mapping, Sequence
 from datetime import timedelta
 from typing import Any
 
@@ -32,6 +39,7 @@ from sqlalchemy import delete, func, insert, select, text, update
 from sqlalchemy.engine import Row
 from sqlalchemy.exc import IntegrityError
 
+from taktus.adapters.driven.postgres import _locks
 from taktus.adapters.driven.postgres import _schema as s
 from taktus.adapters.driven.postgres.persistence import PostgresPersistence
 from taktus.ports.persistence import PersistenceError, Tenant
@@ -62,24 +70,36 @@ class PostgresQueue:
                     payload=dict(job.payload),
                     available_at=func.now(),
                     attempts=job.attempts,
+                    org_unit=job.org_unit,
                     created_at=func.now(),
                 )
             )
         except IntegrityError as error:
             raise PersistenceError(f"tenant {tenant!r} already has a job {job.id!r}") from error
 
-    async def claim(self, tenant: Tenant, claimant: str, batch: int) -> Sequence[Job]:
+    async def claim(
+        self,
+        tenant: Tenant,
+        claimant: str,
+        batch: int,
+        per_unit: Mapping[str, int] | None = None,
+    ) -> Sequence[Job]:
         connection = self._persistence.connection(tenant)
+        if per_unit:
+            key = select(s.tenant.c.lock_key).where(s.tenant.c.id == tenant).scalar_subquery()
+            await connection.execute(select(func.pg_advisory_xact_lock(_locks.CLAIM, key)))
         rows = await connection.execute(
             text(
-                "SELECT id, kind, payload, attempts, deferrals FROM claim_jobs(:claimant, :batch, "
-                ":lease, :max_attempts) ORDER BY created_at, id"
+                "SELECT id, kind, payload, attempts, deferrals, org_unit, quota_held_since "
+                "FROM claim_jobs(:claimant, :batch, :lease, :max_attempts, "
+                "CAST(:per_unit AS jsonb)) ORDER BY created_at, id"
             ),
             {
                 "claimant": claimant,
                 "batch": batch,
                 "lease": self._lease,
                 "max_attempts": self._max_attempts,
+                "per_unit": json.dumps(dict(per_unit or {})),
             },
         )
         return [_job(row) for row in rows]
@@ -264,4 +284,6 @@ def _job(row: Row[Any]) -> Job:
         payload=row.payload,
         attempts=row.attempts,
         deferrals=row.deferrals,
+        org_unit=row.org_unit,
+        held_since=row.quota_held_since,
     )

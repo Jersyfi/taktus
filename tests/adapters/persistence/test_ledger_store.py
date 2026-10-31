@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 from datetime import UTC, datetime
 
 import pytest
@@ -118,7 +119,9 @@ async def test_a_chain_recorded_through_the_store_verifies_after_the_round_trip(
         verification = await ledger.verify(tenant)
         assert verification.intact, verification.findings
         assert verification.entries == 3
-        assert [e.seq for e in await ledger.entries(tenant, "r")] == [1, 2, 3]
+        run = await ledger.entries(tenant, "r")
+        assert [e.chain_seq for e in run] == [1, 2, 3], "one run, one chain, gapless"
+        assert [e.seq for e in run] == sorted(e.seq for e in run)
 
 
 async def test_a_sequence_number_is_used_once(backend: Backend) -> None:
@@ -223,7 +226,7 @@ async def test_a_reader_finds_the_head_the_entries_after_a_position_and_a_hash_a
         for seq, digest in enumerate(hashes, start=1):
             await store.append(tenant, entry(seq, prev, hash=digest))
             prev = digest
-    async with backend.work.transaction(tenant, consistent=True):
+    async with backend.work.transaction(tenant):
         assert await store.head(tenant) == 5
         assert [e.seq for e in await store.after(tenant, 2, limit=2)] == [3, 4]
         assert [e.seq for e in await store.after(tenant, 4, limit=10)] == [5]
@@ -353,3 +356,84 @@ async def test_a_ledger_claim_is_in_its_own_namespace_apart_from_leadership(
             )
             namespaces = set(result.scalars().all())
     assert _locks.LEDGER in namespaces and _locks.LEADERSHIP not in namespaces
+
+
+# --- a chain per run (issue #341, ADR-0164) ------------------------------------------------------
+
+
+async def test_the_heads_and_a_place_of_a_chain_are_found_in_either_store(backend: Backend) -> None:
+    """What an anchor covers and what a verification from its checkpoint links to: the newest
+    entry of every run chain in a range, and the entry at a place of a chain."""
+    tenant = await backend.tenant()
+    ledger = ChainedLedger(backend.ledger_store, FakeClock())
+    async with backend.work.transaction(tenant):
+        a1 = await ledger.record(tenant, Fact(kind="run.created", refs=LedgerRefs(run_id="a")))
+        b1 = await ledger.record(tenant, Fact(kind="run.created", refs=LedgerRefs(run_id="b")))
+        a2 = await ledger.record(tenant, Fact(kind="run.started", refs=LedgerRefs(run_id="a")))
+        t1 = await ledger.record(tenant, Fact(kind="budget.set", refs=LedgerRefs(tenant=tenant)))
+    store = backend.ledger_store
+    async with backend.work.transaction(tenant):
+        heads = await store.heads(tenant, 0, t1.seq)
+        assert [h.seq for h in heads] == [a2.seq, b1.seq], "per run, ordered by run"
+        assert [h.seq for h in await store.heads(tenant, b1.seq, t1.seq)] == [a2.seq]
+        assert await store.heads(tenant, a2.seq, t1.seq) == [], "the tenant's chain is no run's"
+        assert await store.in_chain(tenant, "a", 2) == a2
+        assert await store.in_chain(tenant, "a", 1) == a1
+        assert await store.in_chain(tenant, "", 1) == t1
+        assert await store.in_chain(tenant, "a", 3) is None
+        assert (await store.last(tenant, "b")) == b1
+        assert (await store.last(tenant)) == t1
+
+
+async def test_postgres_writers_of_two_runs_do_not_wait_and_the_head_stops_below_the_open_one(
+    postgres_backend: Backend,
+) -> None:
+    """A transaction that took a position and stays open holds the stable head below it. A
+    writer of another run is not held up, and commits a higher position; a reader neither waits
+    for the open one nor reads past it, until it commits (ADR-0164 §3)."""
+    backend = postgres_backend
+    tenant = await backend.tenant()
+    ledger = ChainedLedger(backend.ledger_store, FakeClock())
+    store = backend.ledger_store
+    async with backend.work.transaction(tenant):
+        first = await ledger.record(tenant, Fact(kind="run.created", refs=LedgerRefs(run_id="x")))
+    holding, release = asyncio.Event(), asyncio.Event()
+    held: list[LedgerEntry] = []
+
+    async def open_writer() -> None:
+        async with backend.work.transaction(tenant):
+            held.append(
+                await ledger.record(tenant, Fact(kind="run.created", refs=LedgerRefs(run_id="a")))
+            )
+            holding.set()
+            await release.wait()
+
+    task = asyncio.create_task(open_writer(), context=contextvars.Context())
+    try:
+        await asyncio.wait_for(holding.wait(), 10)
+
+        async def other_writer() -> LedgerEntry:
+            async with backend.work.transaction(tenant):
+                return await ledger.record(
+                    tenant, Fact(kind="run.created", refs=LedgerRefs(run_id="b"))
+                )
+
+        later = await asyncio.wait_for(
+            asyncio.create_task(other_writer(), context=contextvars.Context()), 3
+        )
+        assert later.seq > held[0].seq > first.seq
+
+        async def read() -> tuple[int, list[int]]:
+            async with backend.work.transaction(tenant):
+                head = await store.head(tenant)
+                return head, [e.seq for e in await store.after(tenant, 0, limit=10, through=head)]
+
+        head, seen = await asyncio.wait_for(
+            asyncio.create_task(read(), context=contextvars.Context()), 3
+        )
+        assert head == first.seq and seen == [first.seq], "not past the open writer"
+    finally:
+        release.set()
+        await task
+    async with backend.work.transaction(tenant):
+        assert await store.head(tenant) == later.seq

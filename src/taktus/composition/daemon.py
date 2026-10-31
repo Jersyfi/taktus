@@ -37,7 +37,6 @@ from taktus.adapters.driven.connectors.loopback import ADAPTER as LOOPBACK
 from taktus.adapters.driven.connectors.loopback import LoopbackConnector
 from taktus.adapters.driven.connectors.mcp import McpIntakeConnector
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
-from taktus.adapters.driven.memory import MemoryObjectStore
 from taktus.adapters.driven.models.pool import StaticModelPool
 from taktus.adapters.driven.platform import HostPlatform
 from taktus.adapters.driven.postgres import (
@@ -45,6 +44,7 @@ from taktus.adapters.driven.postgres import (
     PostgresLeadership,
     PostgresLedgerSignal,
     PostgresLedgerStore,
+    PostgresOrgUnitSpends,
     PostgresOutbox,
     PostgresPersistence,
     PostgresProjectionStore,
@@ -161,6 +161,7 @@ from taktus.composition.acting import ActingReads
 from taktus.composition.agent_surface import AgentSurface
 from taktus.composition.agents import SharedAgents
 from taktus.composition.alerts import alerts, alerts_tick, say_who_hears
+from taktus.composition.anchors import anchors_tick
 from taktus.composition.capacity import capacity_report, capacity_tick, rules_of
 from taktus.composition.catalogue_in_channel import CatalogueInChannel
 from taktus.composition.change_in_channel import ChangeInChannel
@@ -195,13 +196,16 @@ from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.maturation import InstanceMaturation, maturation_wiring
 from taktus.composition.maturity import CatalogMaturities, InstanceCatalogue
 from taktus.composition.moves import MethodMoves
+from taktus.composition.objects import object_store_of
 from taktus.composition.operation import OperationRecords
+from taktus.composition.org_units import OrgUnitsOfTheRun
 from taktus.composition.owner_channel import (
     OwnerChannelWiring,
     known_secrets,
     owner_channel_wiring,
 )
 from taktus.composition.participants import ParticipantAnswers
+from taktus.composition.profiles import RoleProfiles
 from taktus.composition.proposals import InstanceChanges, ProposalActs
 from taktus.composition.reactions import Reactions, capacity_condition
 from taktus.composition.replies import ConnectorReplies
@@ -252,6 +256,7 @@ class Wired:
     work: UnitOfWork
     runs: Queried[Run]
     ledger: Ledger
+    ledger_store: PostgresLedgerStore
     provenance: ProvenanceQuery
     engine: RunEngine
     register_version: RegisterProcessVersionHandler
@@ -329,6 +334,8 @@ class Wired:
     agent: AgentSurface
     streams: StreamReads
     """The organisation as value streams, and their declaration (ADR-0159)."""
+    profiles: RoleProfiles
+    """A role's profile, derived from the processes (ADR-0167)."""
     traces: StepTraces
     """The trace inside a worker's step, read and shared by role, and erased by the scheduler
     when its retention ends (ADR-0135)."""
@@ -500,14 +507,17 @@ async def wire(
             return PostgresRepository(persistence, kind)
 
         decisions = decision_wiring(stored, persistence, ledger, clock, identities)
+        org_units = OrgUnitsOfTheRun(decisions.org_units, PostgresOrgUnitSpends(persistence))
         async with open_workers(
             settings.workers, configuration, state_dir=settings.state_dir, relay=relay
         ) as opened:
             # The loopback connector is in the pool the engine resolves from and needs the
             # engine; it is created first and bound last (composition/loopback.py).
             loopback = LoopbackConnector()
-            objects = MemoryObjectStore(
-                settings.state_dir / "objects", cache_bytes=settings.object_cache_mb * 1024 * 1024
+            objects = object_store_of(
+                settings.object_store,
+                state_dir=settings.state_dir,
+                cache_bytes=settings.object_cache_mb * 1024 * 1024,
             )
             recordings = RecordedResponses(runs, persistence, objects)
             pools = Pools(
@@ -613,6 +623,7 @@ async def wire(
                         persistence, PostgresRepository(persistence, ProcessVersion)
                     ),
                     guidance=CatalogGuidance(skill_catalog, agent_catalog),
+                    org_units=org_units,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -966,6 +977,7 @@ async def wire(
                 work=persistence,
                 runs=runs,
                 ledger=ledger,
+                ledger_store=ledger_store,
                 provenance=ProvenanceQuery(provenance_store, runs, ledger, persistence),
                 engine=engine,
                 register_version=register_version,
@@ -1067,6 +1079,24 @@ async def wire(
                     ),
                     processes=PostgresRepository(persistence, Process),
                     versions=PostgresRepository(persistence, ProcessVersion),
+                    runs=runs,
+                    blocked=BlockedTime(ledger, objects, persistence, runs),
+                    identities=identities,
+                    work=persistence,
+                    clock=clock,
+                ),
+                profiles=RoleProfiles(
+                    processes=PostgresRepository(persistence, Process),
+                    versions=PostgresRepository(persistence, ProcessVersion),
+                    streams=ValueStreams(
+                        PostgresRepository(persistence, ValueStream),
+                        PostgresRepository(persistence, Process),
+                        persistence,
+                        ledger,
+                        clock,
+                    ),
+                    anchors=decisions.anchors,
+                    requests=PostgresRepository(persistence, Request),
                     runs=runs,
                     blocked=BlockedTime(ledger, objects, persistence, runs),
                     identities=identities,
@@ -1188,6 +1218,7 @@ async def wire(
                         # A waiting run is not tried again sooner than one poll (ADR-0037).
                         wait_first_seconds=settings.poll_seconds,
                         on_outcome=roles.said,
+                        org_units=org_units,
                     ),
                 )
             try:
@@ -1382,6 +1413,15 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
         evaluate = evaluations_tick(wired.evaluations, wired.tenants, wired.clock)
         # And it erases every line of a trace whose tenant's retention ended (ADR-0135).
         erase_traces = traces_tick(wired.traces, wired.tenants, wired.clock)
+        # And it anchors every tenant's run chains in the tenant's chain, and makes the
+        # ledger's months ahead (ADR-0164).
+        anchor_chains = anchors_tick(
+            wired.ledger,
+            wired.work,
+            wired.tenants,
+            wired.clock,
+            partitions=wired.ledger_store.partitions,
+        )
         # And it looks at every tenant's stages: one that holds or stopped holding, and the
         # next one proposed for a person to open (ADR-0137).
         look_at_stages = stages_tick(wired.stages, wired.tenants, wired.clock)
@@ -1405,6 +1445,7 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
             await judge_signals()
             await evaluate()
             await erase_traces()
+            await anchor_chains()
             await look_at_stages()
             if look_at_skills is not None:
                 await look_at_skills()

@@ -48,7 +48,14 @@ asked as any run is, and is not asked an adapter's maturity (ADR-0108). A level 
 version is registered: with a person's approval and the quality history — runs in a row without
 a failure or a result defect — that the replaced version names under `history`. A refusal is the
 ledger entry `autonomy.refused`; Taktus may propose a raise (`autonomy.proposed`) and never
-applies one. Levels per risk class are not built yet.
+applies one.
+
+**Levels per risk class** (ADR-0170). A tenant's risk class — a name for a set of tool actions
+in its anchor configuration — may carry a level. It is a ceiling: no step of any of the
+tenant's processes that uses an action of the class runs above it, and where something else is
+lower, the lower holds. A run takes the ceilings on when it is created, into `Run.actions`, so
+a capped step is held, and its proposals counted, as its action. A blueprint's bundle stays the
+same for every tenant; the tenant's own limits are its configuration.
 
 **How level 4 is enforced** (ADR-0160). Before a step starts, level 4 asks what level 3 asks.
 After a step failed, a failure an adapter classified as repeatable is healed by Taktus: the step

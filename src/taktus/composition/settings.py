@@ -306,6 +306,85 @@ def load_telemetry(configuration: Configuration) -> TelemetrySettings:
     )
 
 
+OBJECT_STORE_ACCESS_KEY_ID = "object.store.access.key.id"
+OBJECT_STORE_SECRET_KEY = "object.store.secret.key"  # noqa: S105 — a key, not a value
+
+
+@dataclass(frozen=True)
+class ObjectStoreSettings:
+    """Where artifact bytes live (ADR-0165 §1): `filesystem`, the default, under
+    `<TAKTUS_STATE_DIR>/objects`; or `s3`, keys `<prefix>/<hex>` in one bucket of an
+    S3-compatible store, its credential two files."""
+
+    kind: str
+    endpoint: str | None
+    bucket: str | None
+    prefix: str
+    region: str
+    access_key_id: Secret | None
+    secret_key: Secret | None
+    access_key_id_source: str | None
+    secret_key_source: str | None
+
+    def effective(self) -> list[tuple[str, str]]:
+        lines = [("TAKTUS_OBJECT_STORE", self.kind)]
+        if self.kind == "s3":
+            lines += [
+                ("TAKTUS_OBJECT_STORE_ENDPOINT", self.endpoint or ""),
+                ("TAKTUS_OBJECT_STORE_BUCKET", self.bucket or ""),
+                ("TAKTUS_OBJECT_STORE_PREFIX", self.prefix),
+                ("TAKTUS_OBJECT_STORE_REGION", self.region),
+                (
+                    "TAKTUS_OBJECT_STORE_ACCESS_KEY_ID",
+                    f"{self.access_key_id} (from {self.access_key_id_source})",
+                ),
+                (
+                    "TAKTUS_OBJECT_STORE_SECRET_KEY",
+                    f"{self.secret_key} (from {self.secret_key_source})",
+                ),
+            ]
+        return lines
+
+
+def load_object_store(configuration: Configuration) -> ObjectStoreSettings:
+    """The object store's settings; `s3` without its endpoint, bucket or credential refuses
+    the start, naming what is missing."""
+    reader = _Reader(configuration)
+    kind = reader.choice("object.store", "filesystem", ("filesystem", "s3"))
+    endpoint = reader.text("object.store.endpoint", "").strip() or None
+    bucket = reader.text("object.store.bucket", "").strip() or None
+    access = configuration.secret(OBJECT_STORE_ACCESS_KEY_ID)
+    secret = configuration.secret(OBJECT_STORE_SECRET_KEY)
+    if kind == "s3":
+        if endpoint is None or not endpoint.startswith(("http://", "https://")):
+            raise ConfigurationError(
+                configuration.name("object.store.endpoint"),
+                "must be the store's http(s) address with TAKTUS_OBJECT_STORE=s3",
+            )
+        if bucket is None:
+            raise ConfigurationError(
+                configuration.name("object.store.bucket"), "is required with TAKTUS_OBJECT_STORE=s3"
+            )
+        for key, value in ((OBJECT_STORE_ACCESS_KEY_ID, access), (OBJECT_STORE_SECRET_KEY, secret)):
+            if value is None:
+                raise ConfigurationError(
+                    configuration.name(key) + "_FILE",
+                    "is required with TAKTUS_OBJECT_STORE=s3: a file that holds the store's "
+                    "credential (CREDENTIALS.md)",
+                )
+    return ObjectStoreSettings(
+        kind=kind,
+        endpoint=endpoint,
+        bucket=bucket,
+        prefix=reader.text("object.store.prefix", "").strip().strip("/"),
+        region=reader.text("object.store.region", "").strip() or "us-east-1",
+        access_key_id=access,
+        secret_key=secret,
+        access_key_id_source=configuration.source(OBJECT_STORE_ACCESS_KEY_ID),
+        secret_key_source=configuration.source(OBJECT_STORE_SECRET_KEY),
+    )
+
+
 MODEL_CREDENTIAL = "credential.model_api_key"
 
 
@@ -1079,10 +1158,12 @@ class Settings:
     is taken, and a person hands over the changed bundle. Which process does it is a tenant's
     bundle, never a default of the product (ADR-0092)."""
     state_dir: Path
-    """Where artifact bytes are written."""
+    """Where artifact bytes are written with the object store `filesystem`."""
+    object_store: ObjectStoreSettings
+    """Which adapter holds artifact bytes, and where (ADR-0165)."""
     object_cache_mb: int
     """How many MiB of artifact bytes the object store keeps in memory at most: the objects used
-    most recently. Every object stays readable from `state_dir`. 0 keeps none (#311)."""
+    most recently. Every object stays readable from the store. 0 keeps none (#311)."""
     administration_key: Secret | None
     """`TAKTUS_ADMINISTRATION_KEY_FILE`: the key that admits a request to the administration of
     tenants on the HTTP surface (ADR-0104 §4). None: those routes answer 404."""
@@ -1153,6 +1234,7 @@ class Settings:
                 ),
             ),
             ("TAKTUS_STATE_DIR", str(self.state_dir)),
+            *self.object_store.effective(),
             ("TAKTUS_OBJECT_CACHE_MB", str(self.object_cache_mb)),
             (
                 "TAKTUS_ADMINISTRATION_KEY",
@@ -1216,6 +1298,7 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         backup_expected_hours=load_backup_expected_hours(configuration),
         change_process=reader.text("change.process", "").strip() or None,
         state_dir=Path(reader.text("state.dir", "~/.cache/taktus/taktusd")).expanduser(),
+        object_store=load_object_store(configuration),
         object_cache_mb=reader.integer("object.cache.mb", 64, low=0),
         administration_key=configuration.secret("administration.key"),
         administration_key_source=configuration.source("administration.key"),

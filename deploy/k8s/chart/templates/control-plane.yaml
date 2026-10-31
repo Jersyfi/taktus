@@ -4,11 +4,16 @@ TAKTUS_ROLES. Every secret is a file mounted read-only from an existing Secret; 
 the TAKTUS_<KEY>_FILE variable, and no secret is ever an environment variable (CREDENTIALS.md).
 The runner alone mounts Taktus's service-account token: it is the role that creates jobs.
 With `profile: small` one deployment runs every role (`TAKTUS_ROLES=all`) and so mounts it too.
+With `profile: ha` every role runs at least `ha.replicas` pods that keep apart by node, and has a
+disruption budget (disruption-budgets.yaml, ADR-0165). With `objectStore.kind: s3` no volume is
+shared: each pod's state directory is its own.
 */ -}}
 {{- $root := . -}}
 {{- $files := include "taktus.secretFiles" . | fromJsonArray -}}
 {{- $image := include "taktus.image" (dict "what" "image" "image" .Values.image) -}}
 {{- $small := eq (include "taktus.profile" $root) "small" }}
+{{- $ha := eq (include "taktus.profile" $root) "ha" }}
+{{- $shared := eq (include "taktus.objectStore" $root) "filesystem" }}
 {{- range $role := (ternary (list "all") (list "api" "runner" "scheduler" "automation") $small) }}
 {{- $spec := ternary $root.Values.small (index $root.Values.roles $role) $small }}
 ---
@@ -22,7 +27,7 @@ metadata:
     app.kubernetes.io/component: control-plane
     taktus-role: {{ $role }}
 spec:
-  replicas: {{ $spec.replicas }}
+  replicas: {{ include "taktus.replicas" (dict "root" $root "spec" $spec) }}
   selector:
     matchLabels:
       {{- include "taktus.selector" (dict "root" $root "component" "control-plane") | nindent 6 }}
@@ -42,6 +47,18 @@ spec:
       {{- with $root.Values.image.pullSecret }}
       imagePullSecrets:
         - name: {{ . }}
+      {{- end }}
+      {{- if $ha }}
+      affinity:
+        podAntiAffinity:
+          {{- $term := dict "topologyKey" "kubernetes.io/hostname" "labelSelector" (dict "matchLabels" (dict "app.kubernetes.io/instance" $root.Release.Name "app.kubernetes.io/component" "control-plane" "taktus-role" $role)) }}
+          {{- if eq $root.Values.ha.antiAffinity "required" }}
+          requiredDuringSchedulingIgnoredDuringExecution:
+            {{- toYaml (list $term) | nindent 12 }}
+          {{- else }}
+          preferredDuringSchedulingIgnoredDuringExecution:
+            {{- toYaml (list (dict "weight" 100 "podAffinityTerm" $term)) | nindent 12 }}
+          {{- end }}
       {{- end }}
       securityContext:
         runAsNonRoot: true
@@ -102,8 +119,12 @@ spec:
             {{- end }}
       volumes:
         - name: state
+          {{- if $shared }}
           persistentVolumeClaim:
             claimName: {{ include "taktus.fullname" $root }}-state
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
         - name: tmp
           emptyDir: {}
         {{- if $root.Values.configFiles }}
@@ -138,6 +159,7 @@ spec:
     - name: http
       port: 8080
       targetPort: http
+{{- if eq (include "taktus.objectStore" .) "filesystem" }}
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -157,3 +179,4 @@ spec:
   resources:
     requests:
       storage: {{ .Values.state.size }}
+{{- end }}

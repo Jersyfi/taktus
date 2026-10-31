@@ -15,6 +15,7 @@ from taktus.adapters.driven.memory.backup_log import MemoryBackupLog
 from taktus.adapters.driven.memory.leadership import MemoryLeadership
 from taktus.adapters.driven.memory.ledger_store import MemoryLedgerStore
 from taktus.adapters.driven.memory.object_store import MemoryObjectStore
+from taktus.adapters.driven.memory.org_units import MemoryOrgUnitSpends
 from taktus.adapters.driven.memory.outbox import MemoryOutbox
 from taktus.adapters.driven.memory.persistence import MemoryPersistence
 from taktus.adapters.driven.memory.projection_store import MemoryProjectionStore
@@ -30,6 +31,7 @@ __all__ = [
     "MemoryLeadership",
     "MemoryLedgerStore",
     "MemoryObjectStore",
+    "MemoryOrgUnitSpends",
     "MemoryOutbox",
     "MemoryPersistence",
     "MemoryProjectionStore",

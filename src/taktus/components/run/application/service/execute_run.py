@@ -23,6 +23,11 @@ step fails without its act, and the run escalates. A rehearsal from the tenant's
 acts on nothing outside and is asked no anchor (NTC-0079); a replay of a recorded run is
 (ADR-0108). A step confirmed with `confirm` is never an anchored one.
 
+A `human` step of the organisation is performed by a person of its role (ADR-0167): after the
+anchors, it waits at every level, its block addressed to the step's role, until a person reports
+it performed — it hands on no result of Taktus's — or rejects it, and the run halts with cause
+`declined`. A fallback to a person is addressed to the fallback's role.
+
 A process may hold a step itself (ADR-0088). A step whose `when` does not hold is skipped:
 it succeeds with a result that says so, performs nothing and asks nobody. A step that
 declares `ask` raises its own decision request beside any anchor's, at every level; with
@@ -199,6 +204,8 @@ from taktus.components.run.domain.model import (
     DeviationStatistic,
     Ended,
     ExtractRule,
+    HumanWork,
+    InvoiceRule,
     LlmWork,
     Message,
     MessageRefused,
@@ -250,6 +257,7 @@ from taktus.components.run.domain.service import (
     frame,
     healing,
     interfaces,
+    invoices,
     messages,
     open_work,
     participants,
@@ -286,6 +294,7 @@ from taktus.components.run.ports import (
     ModelPool,
     NotRaised,
     OpenWork,
+    OrgUnits,
     ProposalDecided,
     Repeated,
     Repetition,
@@ -466,6 +475,10 @@ class StartRun:
     pinned at its version in production."""
     profile: str | None = None
     """The role profile of the shared agent the run serves (ADR-0163 §5)."""
+    org_unit: str | None = None
+    """The organisational unit the run runs for: `Command.org_unit` of the command that
+    started it, never derived from a person (ADR-0166). Its job carries it, and its unit's
+    quotas hold it. None runs for the tenant itself."""
 
     @property
     def identity(self) -> str:
@@ -506,6 +519,10 @@ class ResumeRun:
     """The claim is the last its job is given: the queue claims the job no more after it. A
     step that raises then fails with what it raised, and the run escalates for it, instead of
     the exception leaving the engine and the run staying `running` for nobody (#591)."""
+    held_since: datetime | None = None
+    """Since when the queue held the run's job because its organisational unit held its
+    concurrent runs (`Job.held_since`). The stretch until now is booked as a block on the
+    step the run goes on with (ADR-0166 §4)."""
 
 
 @dataclass(frozen=True)
@@ -762,7 +779,14 @@ class RunEngine:
         messages: Messages | None = None,
         statements: Statements | None = None,
         guidance: Guidance | None = None,
+        org_units: OrgUnits | None = None,
     ) -> None:
+        self._org_units = org_units
+        """The tenant's quotas per organisational unit and what each unit's runs committed
+        (ADR-0166). None: no run commits to a unit's budget quota."""
+        self._held_since: ContextVar[datetime | None] = ContextVar("held_since", default=None)
+        """Since when the queue held the job of the run executing in this task for its unit's
+        concurrent runs; booked once as a block, then None (ADR-0166 §4)."""
         self._guidance = guidance
         """Where a run finds the skills its steps name and the profile it serves (ADR-0162,
         ADR-0163). None: nothing is pinned and nothing is handed over."""
@@ -907,6 +931,7 @@ class RunEngine:
 
     async def resume(self, command: ResumeRun) -> Run:
         last = self._last_attempt.set(command.last_attempt)
+        held = self._held_since.set(command.held_since)
         try:
             if command.claim is None:
                 return await self._resume(command)
@@ -924,6 +949,7 @@ class RunEngine:
             finally:
                 self._claim.reset(token)
         finally:
+            self._held_since.reset(held)
             self._last_attempt.reset(last)
 
     async def _resume(self, command: ResumeRun) -> Run:
@@ -985,10 +1011,12 @@ class RunEngine:
             bindings=dict(command.bindings),
             skills=await self._pinned(command),
             profile=command.profile,
+            org_unit=command.org_unit,
             created_at=now,
             updated_at=now,
         )
         self._check_executable(run)
+        run = await self._under_ceilings(run)
         job = None
         if enqueue:
             # A derived run gets a derived job: two creators of the same run collide on the
@@ -998,7 +1026,9 @@ class RunEngine:
                 if command.run_id is None
                 else "job_" + command.run_id.removeprefix("run_")
             )
-            job = Job(id=job_id, kind=RUN_EXECUTE, payload={"run_id": run.id})
+            job = Job(
+                id=job_id, kind=RUN_EXECUTE, payload={"run_id": run.id}, org_unit=run.org_unit
+            )
         try:
             run = await self._commit(
                 run,
@@ -1250,7 +1280,12 @@ class RunEngine:
             for index, (kind, step_run) in enumerate(answered):
                 job = None
                 if command.enqueue and index == len(answered) - 1 and not command.rejected:
-                    job = Job(id=self._ids.new("job"), kind=RUN_EXECUTE, payload={"run_id": run.id})
+                    job = Job(
+                        id=self._ids.new("job"),
+                        kind=RUN_EXECUTE,
+                        payload={"run_id": run.id},
+                        org_unit=run.org_unit,
+                    )
                 decision = decisions.get(step_run.step_id)
                 proposal = None if decision is None else await self._decision_record(run, decision)
                 run = await self._commit(
@@ -1305,6 +1340,9 @@ class RunEngine:
                     "performed"
                 )
             kind, performed = self._performed_after_fallback(step_run, command)
+            return kind, performed, None
+        if step_run.block is not None and step_run.block.cause == block.AWAITING_ROLE:
+            kind, performed = self._performed_in_role(step_run, command)
             return kind, performed, None
         held = self._held(run, run.step(step_id))
         level = held.level
@@ -1483,7 +1521,12 @@ class RunEngine:
             if run is before or run.runnable() is None:
                 return run
             if command.enqueue:
-                job = Job(id=self._ids.new("job"), kind=RUN_EXECUTE, payload={"run_id": run.id})
+                job = Job(
+                    id=self._ids.new("job"),
+                    kind=RUN_EXECUTE,
+                    payload={"run_id": run.id},
+                    org_unit=run.org_unit,
+                )
                 return await self._commit(run, enqueue=job)
             run = await self._commit(run.to(RunState.RUNNING), "run.resumed", actor=command.actor)
             return await self._execute(run, command.stop_after, span)
@@ -2325,6 +2368,11 @@ class RunEngine:
                 )
                 run = run.with_step_run(held_up)
             return await self._end(run, RunState.HALTED, Cause.LIMIT, refused, span)
+        run = await self._held_for_unit(run)
+        budgeted = await self._unit_budget(run)
+        if isinstance(budgeted, tuple):
+            return await self._end(budgeted[0], RunState.HALTED, budgeted[1], budgeted[2], span)
+        run = budgeted
         capped = await self._capped(run, span)
         if isinstance(capped, tuple):
             return await self._end(capped[0], RunState.HALTED, Cause.PARKED, capped[1], span)
@@ -2671,6 +2719,10 @@ class RunEngine:
                 # Asked of a participant outside the organisation, who answers in its own
                 # channel; no level asks a person of the tenant about it (ADR-0155).
                 return await self._participant(run, step, step_run, work, span)
+            if isinstance(work, HumanWork) and step_run.state is StepState.PLANNED:
+                # Performed by a person of the step's role, at every level: the wait is
+                # addressed to the role (ADR-0167 §1).
+                return await self._for_the_role(run, step, step_run, work)
             if asks and step_run.state is StepState.PLANNED:
                 # The step boundary: what the level asks of a person, before anything starts.
                 acting = held.level == 1 and autonomy.acts(work, await self._outward(run, work))
@@ -2693,6 +2745,28 @@ class RunEngine:
             if isinstance(work, WorkerWork):
                 return await self._worker_step(run, step, step_run, work, span, held)
             return await self._local_step(run, step, step_run, work, span, held)
+
+    async def _under_ceilings(self, run: Run) -> Run:
+        """The run with the ceilings the tenant's risk classes set on the tool actions its steps
+        use, where they are lower than the run's own levels (ADR-0170). A ceiling is taken on
+        when the run is created, as its levels are; a rehearsal is asked no level."""
+        if self._anchors is None or run.rehearsal:
+            return run
+        used: list[str] = []
+        for step in run.steps:
+            try:
+                work = parse_work(step, run.work.get(step.id), run.inputs)
+            except (UnsupportedWork, ValueError):
+                continue  # refused where the step runs, with the reason
+            used.extend(autonomy.actions_of(step, work))
+        ceilings = await self._anchors.ceilings(run.tenant, tuple(dict.fromkeys(used)))
+        actions = dict(run.actions)
+        for action, ceiling in sorted(ceilings.items()):
+            if ceiling < min(actions.get(action, run.autonomy_level), run.autonomy_level):
+                actions[action] = ceiling  # type: ignore[assignment]
+        if actions == dict(run.actions):
+            return run
+        return run.model_copy(update={"actions": actions})
 
     async def _take_lowered(self, run: Run) -> Run:
         """The run with the levels its version was lowered to by rule, where they are lower
@@ -3214,6 +3288,92 @@ class RunEngine:
         )
         return run, step_run
 
+    # --- a person of the step's role (ADR-0167 §1) ----------------------------------------------
+
+    async def _for_the_role(
+        self, run: Run, step: Step, step_run: StepRun, work: HumanWork
+    ) -> tuple[Run, StepRun]:
+        """The step waits for a person of its role to perform it and report it performed. What
+        the person is asked to do is put down as a document, and `step.awaiting` names it by
+        digest. A step that names no role is addressed to nobody in particular, as before the
+        tenant had a structure. A rehearsal asks nobody: the step ends rehearsed."""
+        if run.rehearsal:
+            return await self._settle(
+                run, step_run, {"role": step.role, "rehearsed": True}, REHEARSED
+            )
+        asked = {
+            "run_id": run.id,
+            "step_id": step.id,
+            "method": str(step.method),
+            "role": step.role,
+            "expertise": list(step.expertise or ()),
+            "task": work.task or step.reason,
+        }
+        digest = await self._objects.put(_canonical(asked))
+        run, step_run = await self._open_block(
+            run, step_run, "wait.human", block.AWAITING_ROLE, role=step.role
+        )
+        addressed = (
+            f"a person of the role {step.role}"
+            if step.role is not None
+            else "a person; the step names no role"
+        )
+        step_run = step_run.to(
+            StepState.WAITING_HUMAN,
+            reason=f"waits for {addressed} to perform it and report it performed (ADR-0167)",
+        )
+        run = await self._commit(
+            self._hold_back(run.with_step_run(step_run), step.id),
+            "step.awaiting",
+            step=step_run,
+            outcome=block.AWAITING_ROLE,
+            digest=digest,
+        )
+        return run, step_run
+
+    def _performed_in_role(self, step_run: StepRun, command: ConfirmSteps) -> tuple[str, StepRun]:
+        """A person's answer to a `human` step: performed, and the step succeeds with no result
+        of Taktus's; or rejected, and nothing of it is done. Nothing is confirmed, because
+        Taktus proposed no act to confirm (ADR-0167 §1)."""
+        step_id = step_run.step_id
+        if step_id in command.corrected:
+            raise RunError(
+                f"step {step_id!r} is a person's own step: Taktus proposed nothing to correct. "
+                "Perform it and report it performed, or reject it"
+            )
+        if command.rejected:
+            return "step.declined", step_run.to(
+                StepState.PLANNED,
+                confirmed_by=None,
+                reason=f"rejected by {command.actor}: not performed; resuming the run asks for "
+                "it again",
+            )
+        if not command.performed:
+            raise RunError(
+                f"step {step_id!r} is performed by a person of its role, at every level: perform "
+                "it and report it performed"
+            )
+        now = self._clock.now()
+        role = step_run.block.role if step_run.block is not None else None
+        return "step.performed", step_run.to(
+            StepState.SUCCEEDED,
+            method=Method.HUMAN,
+            adapter=None,
+            confirmed_by=command.actor,
+            reason=f"performed by {command.actor}"
+            + (f", in the role {role}" if role is not None else "")
+            + " (ADR-0167)",
+            started_at=step_run.started_at or now,
+            finished_at=now,
+            checkpoint=Checkpoint(
+                ref=f"ckpt/{command.run_id}/{step_id}",
+                step_id=step_id,
+                taken_at=now,
+                artifact_ids=(),
+                result_digest=_digest(NO_RESULT),
+            ),
+        )
+
     # --- an outside participant (ADR-0155) -------------------------------------------------------
 
     async def _participant(
@@ -3404,7 +3564,12 @@ class RunEngine:
             ),
         )
         job = (
-            Job(id=self._ids.new("job"), kind=RUN_EXECUTE, payload={"run_id": run.id})
+            Job(
+                id=self._ids.new("job"),
+                kind=RUN_EXECUTE,
+                payload={"run_id": run.id},
+                org_unit=run.org_unit,
+            )
             if command.enqueue
             else None
         )
@@ -3624,6 +3789,123 @@ class RunEngine:
             + f". It counts again at {check_at.isoformat()} (ADR-0132)"
         )
         return run, reason
+
+    # --- quotas per organisational unit (ADR-0166) ---------------------------------------------
+
+    async def _held_for_unit(self, run: Run) -> Run:
+        """Book the stretch in which the queue held the run's job for its unit's concurrent
+        runs: a block on the step the run goes on with, from when the hold began to now,
+        account `limit.quota`. A step already blocked keeps its block, so that no time is
+        counted twice (ADR-0166 §4)."""
+        since = self._held_since.get()
+        if since is None:
+            return run
+        self._held_since.set(None)
+        step_run = run.runnable()
+        if step_run is None or step_run.block is not None:
+            return run
+        run, step_run = await self._open_block(
+            run, step_run, "limit.quota", block.AT_UNIT_QUOTA, since=min(since, self._clock.now())
+        )
+        run, _ = await self._close_block(run.with_step_run(step_run), step_run)
+        return run
+
+    async def _unit_budget(self, run: Run) -> Run | tuple[Run, Cause, str]:
+        """Before a run's first step: commit its budget to its unit's budget quota for the
+        month, once, or hold it (ADR-0166 §3, §4). A run whose amounts do not fit what is left
+        waits, parked, until the quota's next check or the next month; one whose budget names
+        no amount in a currency of the quota halts at the limit, for a person. A rule over
+        stored sums; a rehearsal commits nothing."""
+        unit = run.org_unit
+        if (
+            self._org_units is None
+            or unit is None
+            or run.rehearsal
+            or run.org_unit_month is not None
+            or any(s.state is not StepState.PLANNED for s in run.step_runs)
+        ):
+            return run
+        held_up = run.runnable()
+        if held_up is None:
+            return run
+        quota = await self._org_units.budget(run.tenant, unit)
+        if quota is None:
+            return await self._unit_budget_ends(run, held_up)
+        now = self._clock.now()
+        month = f"{now:%Y-%m}"
+        money = run.budget.currency or {}
+        amounts = {c: money[c] for c in quota.amounts if c in money}
+        missing = sorted(set(quota.amounts) - set(amounts))
+        facts = {
+            "org_unit": unit,
+            "month": month,
+            "amounts": amounts,
+            "limits": dict(quota.amounts),
+        }
+        if missing:
+            facts["missing"] = missing
+            digest = await self._objects.put(_canonical(facts))
+            run = await self._wait_at_unit(run, held_up, "no_amount", digest, None)
+            return (
+                run,
+                Cause.LIMIT,
+                f"the run's budget names no amount in {', '.join(missing)}, the currency of its "
+                f"unit's budget quota; give it one, and resume it (ADR-0166)",
+            )
+        digest = await self._objects.put(_canonical(facts))
+        quotas = self._org_units
+
+        async def commit() -> None:
+            if not await quotas.commit(run.tenant, unit, month, amounts, quota.amounts):
+                raise _OverUnitBudget
+
+        try:
+            run = await self._commit(
+                run.model_copy(update={"org_unit_month": month}),
+                ORG_UNIT_ADMITTED,
+                outcome="admitted",
+                digest=digest,
+                inside=commit,
+            )
+        except _OverUnitBudget:
+            following = _next_month(now)
+            check_at = min(now + timedelta(seconds=quota.check_every_seconds), following)
+            run = await self._wait_at_unit(run, held_up, "budget", digest, check_at)
+            return (
+                run,
+                Cause.PARKED,
+                f"the run's budget does not fit what is left of its unit's budget quota for "
+                f"{month}; it is tried again at {check_at.isoformat()} (ADR-0166)",
+            )
+        return await self._unit_budget_ends(run, run.step_run(held_up.step_id))
+
+    async def _unit_budget_ends(self, run: Run, step_run: StepRun) -> Run:
+        if step_run.block is None or step_run.block.cause != block.AT_UNIT_BUDGET:
+            return run
+        run, _ = await self._close_block(run, step_run)
+        return run
+
+    async def _wait_at_unit(
+        self,
+        run: Run,
+        held_up: StepRun,
+        outcome: str,
+        digest: Digest,
+        check_at: datetime | None,
+    ) -> Run:
+        """The run waits at its first step for its unit's budget quota; the facts are booked."""
+        run, held_up = await self._open_block(run, held_up, "limit.budget", block.AT_UNIT_BUDGET)
+        if held_up.block is not None:
+            held_up = held_up.model_copy(
+                update={"block": held_up.block.model_copy(update={"next_check_at": check_at})}
+            )
+        return await self._commit(
+            run.with_step_run(held_up),
+            ORG_UNIT_HELD,
+            step=held_up,
+            outcome=outcome,
+            digest=digest,
+        )
 
     # --- a stop to repetition (ADR-0132 §5) ----------------------------------------------------
 
@@ -4333,7 +4615,12 @@ class RunEngine:
         document, done, _, _ = await self._connector_call(
             run,
             step_run,
-            ConnectorRule(rule="connector", operation=read.operation, input=read.input),
+            ConnectorRule(
+                rule="connector",
+                operation=read.operation,
+                input=read.input,
+                credentials=read.credentials,
+            ),
             span,
         )
         try:
@@ -4480,6 +4767,9 @@ class RunEngine:
             )
             titled = rules.commit_title(work, title, number, labels, files, proposal)
             return titled, Trace(inputs=read), None, None
+        if isinstance(work, InvoiceRule):
+            (invoice, order), read = await self._resolved(run, [work.invoice, work.order])
+            return invoices.invoice(invoice, order), Trace(inputs=read), None, None
         if isinstance(work, DeviationStatistic):
             (days,), read = await self._resolved(run, [work.days])
             return statistics.deviation(work, days), Trace(inputs=read), None, None
@@ -6233,7 +6523,14 @@ class RunEngine:
                 "predictions": produced.digest,
             }
             digest = await self._objects.put(_canonical(fallback))
-            run, step_run = await self._open_block(run, step_run, "wait.human", block.FELL_BACK)
+            # Addressed to the role the fallback names (ADR-0167 §1).
+            run, step_run = await self._open_block(
+                run,
+                step_run,
+                "wait.human",
+                block.FELL_BACK,
+                role=None if step.fallback is None else step.fallback.role,
+            )
             step_run = step_run.to(
                 StepState.WAITING_HUMAN,
                 artifacts=artifacts,
@@ -6653,6 +6950,9 @@ class RunEngine:
                 content_digest=digest,
                 rehearsal=True if run.rehearsal else None,  # ADR-0030
             ),
+            # An admission reads the runs in flight again after it is recorded: on the tenant's
+            # chain, its claim orders the admissions of every run (ADR-0132, ADR-0164).
+            in_order=kind == open_work.ADMITTED,
         )
 
 
@@ -6692,6 +6992,23 @@ CHECK_FAILED = "check_failed"
 """The outcome of `step.finished` for a step whose value a check refused."""
 SAMPLED = "check.sampled"
 """The ledger entry of a result a sampling check put to a person after the fact."""
+
+
+ORG_UNIT_ADMITTED = "org_unit.admitted"
+"""A run committed its budget to its organisational unit's budget quota (ADR-0166)."""
+ORG_UNIT_HELD = "org_unit.held"
+"""A run held before its first step by its unit's budget quota, outcome `budget` or
+`no_amount` (ADR-0166)."""
+
+
+class _OverUnitBudget(Exception):
+    """The run's amounts do not fit what is left of its unit's month (ADR-0166 §3)."""
+
+
+def _next_month(now: datetime) -> datetime:
+    """The first instant of the calendar month after `now`, in its zone."""
+    first = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    return (first + timedelta(days=32)).replace(day=1)
 
 
 class _Recount(Exception):

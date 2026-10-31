@@ -13,6 +13,11 @@ A tenant that configured nothing holds the **shipped default** (`SHIPPED_DEFAULT
 and one correction anchor, decided by the role `owner`. Its legal anchor is the project's own
 list and is not legally reviewed for any jurisdiction (DEC-0029); the catalogue per domain and
 jurisdiction is UC-15.5.
+
+A risk class may also carry a **level** (`levels`): the highest autonomy level any step of any
+of the tenant's processes runs at when it uses a tool action of that class (ADR-0170). It is a
+ceiling, never a floor: where the process, its action or a lowering by rule is lower, the lower
+one holds. A level for a risk class the configuration does not define is refused.
 """
 
 from __future__ import annotations
@@ -22,7 +27,7 @@ from datetime import datetime
 
 from pydantic import Field, model_validator
 
-from taktus.shared.v1 import Anchor, AnchorClass, CapabilityPattern, Value
+from taktus.shared.v1 import Anchor, AnchorClass, AutonomyLevel, CapabilityPattern, Value
 
 NEVER_EMPTIED: tuple[AnchorClass, ...] = (AnchorClass.LEGAL, AnchorClass.CORRECTION)
 """The classes a configuration may narrow but never leave empty (ADR-0008, ADR-0022 §3)."""
@@ -40,13 +45,16 @@ class AnchorConfiguration(Value):
     anchors: tuple[Anchor, ...] = Field(min_length=1)
     risk_classes: Mapping[str, tuple[CapabilityPattern, ...]] = Field(default_factory=dict)
     """A risk class by name, as the tool actions it covers."""
+    levels: Mapping[str, AutonomyLevel] = Field(default_factory=dict)
+    """The ceiling of a risk class: no step that uses one of its tool actions runs above it,
+    in any process of the tenant (ADR-0170). A class without one sets no ceiling."""
     configured_at: datetime | None = None
     """When it was configured; None for the shipped default, which nobody configured."""
     configured_by: str | None = Field(default=None, min_length=1)
 
     @model_validator(mode="after")
     def _never_emptied(self) -> AnchorConfiguration:
-        problems = refusals(self.tenant, self.anchors, self.risk_classes)
+        problems = refusals(self.tenant, self.anchors, self.risk_classes, self.levels)
         if self.id != self.tenant:
             problems.insert(0, f"a configuration is stored under its tenant {self.tenant!r}")
         if problems:
@@ -65,6 +73,7 @@ def refusals(
     tenant: str,
     anchors: tuple[Anchor, ...],
     risk_classes: Mapping[str, tuple[str, ...]],
+    levels: Mapping[str, int] | None = None,
 ) -> list[str]:
     """Why a configuration is refused, in words; empty when it is not."""
     problems: list[str] = []
@@ -80,6 +89,12 @@ def refusals(
     for name, patterns in risk_classes.items():
         if not name or not patterns:
             problems.append(f"risk class {name!r} names no tool action")
+    for name in sorted(levels or {}):
+        if name not in risk_classes:
+            problems.append(
+                f"a level is set for the risk class {name!r}, which the configuration does not "
+                "define: it would never hold"
+            )
     for anchor in anchors:
         if anchor.scope is not None and anchor.scope.tenant not in (None, tenant):
             problems.append(

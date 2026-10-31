@@ -50,6 +50,7 @@ from taktus.components.governance.application.service import (
     Repetitions,
     RepetitionSeen,
     TenantMessages,
+    TenantOrgUnits,
     TenantResidency,
     TenantSources,
 )
@@ -59,6 +60,7 @@ from taktus.components.governance.domain.model import (
     CorrectionLimits,
     Incident,
     MessageRules,
+    OrgUnitQuota,
     ResidencyRule,
     SourceDeclaration,
     WatchConfiguration,
@@ -393,6 +395,9 @@ class DecisionWiring:
     messages: MessagesOfTheRun
     """A tenant's rules for outward messages and the cases a person answered in, and the run's
     port over them (ADR-0142)."""
+    org_units: TenantOrgUnits
+    """A tenant's quotas per organisational unit (ADR-0166); the run's port over them is
+    joined with the store of what was committed where the persistence is known."""
 
 
 def decision_wiring(
@@ -438,4 +443,12 @@ def decision_wiring(
         messages=MessagesOfTheRun(
             TenantMessages(of(MessageRules), of(CaseAnswer), ledger, work, clock)
         ),
+        org_units=TenantOrgUnits(
+            of(OrgUnitQuota), ledger, work, clock, lambda t, n: _is_identity(directory, t, n)
+        ),
     )
+
+
+async def _is_identity(directory: IdentityDirectory, tenant: Tenant, name: str) -> bool:
+    """Whether a name is an identity of the tenant: a quota never limits one (principle 14)."""
+    return await directory.identity(tenant, name) is not None

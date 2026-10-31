@@ -1,10 +1,33 @@
 from taktus.components.ledger.domain.model.chain import (
+    ANCHORED,
+    TENANT_CHAIN,
+    Head,
     Link,
+    Walk,
     canonical,
+    chain_for,
+    chain_of,
     hash_of,
     link,
+    merkle_root,
+    position,
     verify,
     walk,
 )
 
-__all__ = ["Link", "canonical", "hash_of", "link", "verify", "walk"]
+__all__ = [
+    "ANCHORED",
+    "TENANT_CHAIN",
+    "Head",
+    "Link",
+    "Walk",
+    "canonical",
+    "chain_for",
+    "chain_of",
+    "hash_of",
+    "link",
+    "merkle_root",
+    "position",
+    "verify",
+    "walk",
+]

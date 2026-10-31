@@ -80,7 +80,7 @@ connectors/taktus_connectors/ that run as a module. tests/governance/test_chart.
 list to that directory.
 */}}
 {{- define "taktus.shippedConnectors" -}}
-anthropic aws bookstack github httpcheck mail openai prometheus sentry slack stripe vendor
+accounting anthropic aws bookstack einvoice github httpcheck mail openai prometheus sentry slack stripe vendor
 {{- end -}}
 
 {{/*
@@ -166,6 +166,12 @@ the pairs. Which names are refused is the daemon's to say, at its start. */}}
 {{- if include "taktus.clusterExecution" . -}}
 {{- $g := .Values.execution.gateway -}}
 {{- $files = append $files (dict "volume" "gateway-key" "secret" (include "taktus.gatewayKeySecret" .) "key" (include "taktus.gatewayKeyKey" .) "dir" "/run/secrets/taktus/gateway-key" "variable" "TAKTUS_EXECUTION_GATEWAY_KEY_FILE") -}}
+{{- end -}}
+{{- if eq (include "taktus.objectStore" .) "s3" -}}
+{{- $o := .Values.objectStore -}}
+{{- $secret := required "objectStore.secret is required with objectStore.kind: s3: the Secret holding the store's credential" $o.secret -}}
+{{- $files = append $files (dict "volume" "object-store-id" "secret" $secret "key" (required "objectStore.accessKeyIdKey is required" $o.accessKeyIdKey) "dir" "/run/secrets/taktus/object-store-id" "variable" "TAKTUS_OBJECT_STORE_ACCESS_KEY_ID_FILE") -}}
+{{- $files = append $files (dict "volume" "object-store-key" "secret" $secret "key" (required "objectStore.secretKeyKey is required" $o.secretKeyKey) "dir" "/run/secrets/taktus/object-store-key" "variable" "TAKTUS_OBJECT_STORE_SECRET_KEY_FILE") -}}
 {{- end -}}
 {{- range .Values.credentials -}}
 {{- $parameter := required "credentials[].parameter is required" .parameter -}}
@@ -278,13 +284,63 @@ capability its label in TAKTUS_CONNECTORS: each is unique, and neither repeats a
 {{- printf "%s=http://%s-connector-%s:%v/mcp" .c.capability (include "taktus.fullname" .root) .c.name .c.port -}}
 {{- end -}}
 
-{{- /* The profile: `standard` or `small`; anything else fails the render. */ -}}
+{{- /* The profile: `standard`, `small` or `ha`; anything else fails the render. */ -}}
 {{- define "taktus.profile" -}}
 {{- $p := .Values.profile | default "standard" -}}
-{{- if not (has $p (list "standard" "small")) -}}
-{{- fail (printf "profile must be standard or small, not %q" $p) -}}
+{{- if not (has $p (list "standard" "small" "ha")) -}}
+{{- fail (printf "profile must be standard, small or ha, not %q" $p) -}}
 {{- end -}}
 {{- $p -}}
+{{- end -}}
+
+{{- /* The object store's adapter: `filesystem` or `s3` (ADR-0165). */ -}}
+{{- define "taktus.objectStore" -}}
+{{- $k := .Values.objectStore.kind | default "filesystem" -}}
+{{- if not (has $k (list "filesystem" "s3")) -}}
+{{- fail (printf "objectStore.kind must be filesystem or s3, not %q" $k) -}}
+{{- end -}}
+{{- $k -}}
+{{- end -}}
+
+{{- /*
+What the profile `ha` and the S3-compatible store require (ADR-0165 §3, §4); rendered nowhere,
+included where the configuration is rendered so that a wrong combination fails the render.
+*/ -}}
+{{- define "taktus.checkProfile" -}}
+{{- $s3 := eq (include "taktus.objectStore" .) "s3" -}}
+{{- if eq (include "taktus.profile" .) "ha" -}}
+{{- if not $s3 -}}
+{{- fail "profile ha requires objectStore.kind: s3: the filesystem store is one ReadWriteOnce volume, which pins every role to one node" -}}
+{{- end -}}
+{{- if .Values.database.deploy -}}
+{{- fail "profile ha requires database.deploy: false: the chart's own database is one replica. Give an external server with a standby replica and write-ahead log archiving (README §2)" -}}
+{{- end -}}
+{{- if not (has .Values.ha.antiAffinity (list "preferred" "required")) -}}
+{{- fail (printf "ha.antiAffinity must be preferred or required, not %q" .Values.ha.antiAffinity) -}}
+{{- end -}}
+{{- if lt (int .Values.ha.replicas) 2 -}}
+{{- fail "ha.replicas must be at least 2" -}}
+{{- end -}}
+{{- end -}}
+{{- if $s3 -}}
+{{- $o := .Values.objectStore -}}
+{{- if not (regexMatch "^https?://" ($o.endpoint | default "")) -}}
+{{- fail "objectStore.endpoint is required with objectStore.kind: s3: the store's http(s) address" -}}
+{{- end -}}
+{{- $_ := required "objectStore.bucket is required with objectStore.kind: s3" $o.bucket -}}
+{{- if and .Values.backup.enabled .Values.backup.objects -}}
+{{- fail "backup.objects must be false with objectStore.kind: s3: there is no state volume to archive, and the bucket is off the node already" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{- /* How many replicas a role runs: its own, and in the profile ha at least ha.replicas. */ -}}
+{{- define "taktus.replicas" -}}
+{{- if eq (include "taktus.profile" .root) "ha" -}}
+{{- max (int .spec.replicas) (int .root.Values.ha.replicas) -}}
+{{- else -}}
+{{- .spec.replicas -}}
+{{- end -}}
 {{- end -}}
 
 {{- /* The role label of the pod that serves the API. */ -}}

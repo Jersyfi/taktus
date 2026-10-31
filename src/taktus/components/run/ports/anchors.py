@@ -10,7 +10,7 @@ import each other.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from typing import Protocol
@@ -28,6 +28,12 @@ class Anchors(Protocol):
         """The tenant's anchors that name the act of a step of `process` using `actions` —
         its capabilities, the connector operation it calls or waits on, that operation's
         capability."""
+        ...
+
+    async def ceilings(self, tenant: Tenant, actions: Sequence[str]) -> Mapping[str, int]:
+        """The ceiling a risk class of the tenant sets on each of `actions` it covers: no step
+        that uses the action runs above it (ADR-0170). An action no class with a level covers
+        is absent."""
         ...
 
 

@@ -26,7 +26,18 @@ securityContext:
 # `standard`: one deployment per role, as `roles` below. `small`: one deployment running every
 # role in one process (TAKTUS_ROLES=all), sized by `small`, beside the database. Not highly
 # available: a restart of the one pod stops every role until it is back (README §2).
+# `ha`: as `standard`, highly available (ADR-0165): at least `ha.replicas` of every role, a
+# disruption budget and anti-affinity per role, no volume shared by roles. It requires
+# `objectStore.kind: s3` and an external database (`database.deploy: false`) that runs with a
+# standby replica and archives its write-ahead log; the render fails otherwise.
 profile: standard
+
+ha:
+  replicas: 2              # the least replicas of every role; `roles.<role>.replicas` may give more
+  minAvailable: 1          # each role's disruption budget: pods that stay up while a node drains
+  # `preferred`: two replicas of a role prefer two nodes. `required`: never on one node; then a
+  # rolling update needs one node more than the role has replicas.
+  antiAffinity: preferred
 
 small:
   resources:
@@ -74,11 +85,27 @@ env: {}
 # Never a secret: a secret goes into `credentials`. Empty: none.
 configFiles: {}
 
-# Where artifact bytes are written (TAKTUS_STATE_DIR): one volume, shared by every role. The
-# volume binds to one node on a node-local storage class, as the database's does (README §9).
+# Where artifact bytes are written (TAKTUS_STATE_DIR) with `objectStore.kind: filesystem`: one
+# volume, shared by every role. The volume binds to one node on a node-local storage class, as
+# the database's does (README §9). With `s3` it is not rendered: each pod's state directory is
+# its own.
 state:
   storageClass: ""
   size: 5Gi
+
+# Where artifact bytes live (TAKTUS_OBJECT_STORE, ADR-0165). `filesystem`: the state volume
+# above. `s3`: keys `<prefix>/<hex>` in one bucket of an S3-compatible store, reached path-style
+# at `endpoint`; the roles reach it through `networkPolicy.controlPlaneEgress`. Its credential is
+# two keys of one existing Secret, mounted as files (CREDENTIALS.md, object store credential).
+objectStore:
+  kind: filesystem
+  endpoint: ""             # the store's http(s) address
+  bucket: ""
+  prefix: ""               # a path inside the bucket; empty: its top
+  region: ""               # empty: us-east-1, which compatible stores accept
+  secret: ""               # the Secret holding the credential
+  accessKeyIdKey: ""       # the key of the credential's identifier in it
+  secretKeyKey: ""         # the key of the credential's secret in it
 
 database:
   deploy: true             # a PostgreSQL of its own, deployed with the instance (DEC-0032); false: an existing server
@@ -109,7 +136,8 @@ backup:
   expectedHours: 26        # how old the last successful backup may be before each owner hears it is missing (ADR-0106)
   retentionDays: 30        # a backup older than this is deleted; the newest never is
   recipient: ""            # an age public key (age1…); empty: not encrypted. The private key stays off the instance
-  objects: true            # archive the object store beside the dump (#322); its pod runs on the control plane's node
+  objects: true            # archive the object store beside the dump (#322); its pod runs on the control plane's node.
+                           # Must be false with `objectStore.kind: s3`: the bucket is off the node already
   store:
     endpoint: ""           # the object store's address
     region: ""

@@ -10,13 +10,17 @@ adapter runs.
 The fence (`fence`, #107) holds the job for the open transaction, the way the row lock does in
 the database: until the transaction ends, a claim skips the job.
 
+A claim shares the places between organisational units, and holds a unit's concurrent limit,
+by the same order and the same count as `claim_jobs` (ADR-0166).
+
 A take-over (ADR-0128) is asked on the row, passed on as a claim held until a time, and released
 by the hand-back, as in the database (`migrations/versions/0064_takeover.py`).
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections import Counter
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -49,6 +53,10 @@ class JobRow(Value):
     takeover_step: str | None = None
     messages: tuple[AskedMessage, ...] = ()
     """The persons' messages asked on the job (ADR-0156 §7)."""
+    org_unit: str | None = None
+    """The organisational unit the job's run runs for (ADR-0166)."""
+    quota_held_since: datetime | None = None
+    """When a claim first skipped the job for its unit's concurrent limit."""
 
     def job(self) -> Job:
         return Job(
@@ -57,6 +65,8 @@ class JobRow(Value):
             payload=self.payload,
             attempts=self.attempts,
             deferrals=self.deferrals,
+            org_unit=self.org_unit,
+            held_since=self.quota_held_since,
         )
 
 
@@ -93,31 +103,38 @@ class MemoryQueue:
             kind=job.kind,
             payload=dict(job.payload),
             attempts=job.attempts,
+            org_unit=job.org_unit,
             created_at=self._clock.now(),
         )
 
-    async def claim(self, tenant: Tenant, claimant: str, batch: int) -> Sequence[Job]:
+    async def claim(
+        self,
+        tenant: Tenant,
+        claimant: str,
+        batch: int,
+        per_unit: Mapping[str, int] | None = None,
+    ) -> Sequence[Job]:
         self._persistence.current(tenant)
         now = self._clock.now()
+        limits = dict(per_unit or {})
         table = self._persistence.table(KIND, tenant)
+        held = Counter(row.org_unit for row in table.values() if self._live(row, now))
+        due = [
+            row
+            for row in sorted(table.values(), key=lambda r: (r.created_at, r.id))
+            if self._due(tenant, row, now)
+        ]
+        placed: list[tuple[int, JobRow]] = []
+        ahead: Counter[str | None] = Counter()
+        for row in due:
+            ahead[row.org_unit] += 1
+            place = held[row.org_unit] + ahead[row.org_unit]
+            limit = None if row.org_unit is None else limits.get(row.org_unit)
+            if limit is None or place <= limit:
+                placed.append((place, row))
+        placed.sort(key=lambda pair: (pair[0], pair[1].created_at, pair[1].id))
         claimed: list[Job] = []
-        for row in sorted(table.values(), key=lambda r: (r.created_at, r.id)):
-            if len(claimed) >= batch:
-                break
-            if (
-                row.attempts - row.deferrals >= self._max_attempts
-                or (tenant, row.id) in self._fenced
-                or (row.available_at is not None and row.available_at > now)
-            ):
-                continue
-            if row.held_until is not None:
-                held = row.held_until > now  # a take-over's claim: until its time (ADR-0128)
-            else:
-                held = row.claimed_at is not None and (now - row.claimed_at).total_seconds() < (
-                    self._lease
-                )
-            if held:
-                continue
+        for _, row in placed[:batch]:
             updated = row.model_copy(
                 update={
                     "claimed_at": now,
@@ -126,9 +143,40 @@ class MemoryQueue:
                     "held_until": None,
                 }
             )
-            table[row.id] = updated
             claimed.append(updated.job())
-        return claimed
+            table[row.id] = updated.model_copy(update={"quota_held_since": None})
+            held[row.org_unit] += 1
+        for row in due:
+            unit = row.org_unit
+            if (
+                unit is not None
+                and unit in limits
+                and row.quota_held_since is None
+                and table[row.id].claimed_by is None
+                and held[unit] >= limits[unit]
+            ):
+                table[row.id] = table[row.id].model_copy(update={"quota_held_since": now})
+        return sorted(claimed, key=lambda job: (table[job.id].created_at, job.id))
+
+    def _due(self, tenant: Tenant, row: JobRow, now: datetime) -> bool:
+        if (
+            row.attempts - row.deferrals >= self._max_attempts
+            or (tenant, row.id) in self._fenced
+            or (row.available_at is not None and row.available_at > now)
+        ):
+            return False
+        if row.held_until is not None:
+            return row.held_until <= now  # a take-over's claim: until its time (ADR-0128)
+        return row.claimed_at is None or (now - row.claimed_at).total_seconds() >= self._lease
+
+    def _live(self, row: JobRow, now: datetime) -> bool:
+        """A claim a runner holds now: a take-over's holds no runner place (ADR-0166 §3)."""
+        return (
+            row.claimed_by is not None
+            and row.held_until is None
+            and row.claimed_at is not None
+            and (now - row.claimed_at).total_seconds() < self._lease
+        )
 
     async def extend(self, tenant: Tenant, job_id: str, claimant: str) -> bool:
         self._persistence.current(tenant)

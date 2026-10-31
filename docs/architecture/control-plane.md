@@ -140,7 +140,8 @@ process is shown; a bundle with a bare level does not register. A registered ver
 - a **role**, on a `human` step and on a fallback to a person: the role of the tenant's
   structure that acts there, never a named person, with the **expertise** the work needs.
   Registration requires it once an identity of the tenant holds a role, and refuses a role no
-  identity holds (ADR-0146)
+  identity holds (ADR-0146). A run addresses the wait at such a step to the role
+  (ADR-0167)
 
 See [methods.md](methods.md). The choice is measured continuously and Taktus proposes changes.
 A step of method `ml` registers only with its model's evaluation on held-out cases, for the
@@ -194,6 +195,12 @@ by the run. `examples/README.md` is the reference for that shape.
 `taktusctl bundle check` holds a bundle to the rules registration holds it to, with the same
 code and without an instance, a database or a login, so that a repository holding bundles checks
 them in its own CI (ADR-0113 §4, `examples/README.md`).
+
+BPMN is a second projection of a version, and a description to start one from (ADR-0168,
+UC-4.23). `taktusctl bpmn export` writes a bundle's version as BPMN 2.0. `taktusctl bpmn draft`
+reads a BPMN model into a plan draft: its tasks as proposed steps with no method chosen, and
+the questions to be answered. `taktusctl bpmn complete` turns the filled draft into a bundle.
+A draft is never a version; the bundle it becomes is proposed as any bundle is.
 
 A **skill** in a bundle is a directory in the open `SKILL.md` format, under
 `skills/<name>/SKILL.md`: YAML front matter with `name` and `description`, then the instructions.
@@ -353,7 +360,8 @@ planned → admitted → running → [waiting_human] → running → finished
 A run reaches `waiting_human` when every step it can still run waits for a person: a step at
 autonomy level 2 for a confirmation, a step that acts at level 1 for the person to perform it
 (ADR-0039), a step whose act an anchor names for the decision its request asks for, at every
-level (ADR-0042). Such a step is in the step state `waiting_human`; the steps that do not depend
+level (ADR-0042), and a person's own `human` step for a person of its role to perform it, at
+every level (ADR-0167). Such a step is in the step state `waiting_human`; the steps that do not depend
 on it run on before the run waits. A person's answer continues the run; a stop halts it at once.
 A declined anchored act halts the run with cause `declined`, and a resume asks again.
 
@@ -522,8 +530,10 @@ the figures took 3 ms, the raises 4 ms and the sweep 14 ms
 (`tests/integration/test_ledger_at_scale.py`).
 
 **A chain is verified from its last verified checkpoint.** The checkpoint is the sequence number
-and hash of the newest entry a verification found intact, stored as a projection. A verification
-walks the entries after it and moves it when it finds nothing. `GET /runs/{id}/ledger` answers
+of the newest entry a verification found intact, with the count of entries up to it and the bound
+of the newest anchor, stored as a projection. A verification walks the entries after it, every
+chain at once, links a chain whose predecessor lies before it by one read, compares every anchor
+with the heads it covers, and moves the checkpoint when it finds nothing (ADR-0164 §6). `GET /runs/{id}/ledger` answers
 where its walk started, as `chain.checkpoint`. A full verification walks from the first entry
 and trusts no checkpoint: `taktusctl ledger verify --full`. When it finds a fault, the checkpoint
 goes back to the start, so every later verification finds the fault again. A change to an entry
@@ -537,12 +547,22 @@ application role may insert and read, and a trigger rejects every update, delete
 for everyone but a superuser (`migrations/`). A hash chain whose rows can be edited proves
 nothing.
 
-**One chain per tenant, one claim on it.** Each entry carries the next sequence number and the
-hash of the entry before it, so two transactions must not append to one chain at once. The
-ledger store claims the tenant's chain when it reads the newest entry, and holds the claim until
-the transaction ends: in the database a transaction advisory lock, in memory a lock released at
-the transaction's end. A second transaction waits, then reads the first one's entries. The claim
-is the only lock on the chain; no lock of the process is held beside it. A lock of the process
+**A chain per run, one claim on each** (ADR-0164, #341). An entry that references a run goes on
+its run's chain; what references no run, what is recorded `in_order` (`open_work.admitted`) and
+the anchors go on the tenant's chain. Each entry carries its place in its chain, `chain_seq`, and
+the hash of the entry before it there, so two transactions must not append to one chain at once.
+The ledger store claims a chain when it reads its newest entry, and holds the claim until the
+transaction ends: in the database a transaction advisory lock, a run's in namespace `RUN_CHAIN`,
+the tenant's in `LEDGER`; in memory one lock per tenant, released at the transaction's end.
+Writers of different runs do not wait for each other. Each takes its reading position, `seq`,
+from the sequence `ledger_entry_seq`; a position may commit after a higher one, so a reader that
+keeps its place reads up to the **stable head** only, the newest entry below every open
+writer's marker. Once a minute the scheduler anchors the heads of the run chains written since
+the last anchor in the tenant's chain, as a Merkle root (`ledger.anchored`,
+`composition/anchors.py`), and makes the ledger's monthly partitions ahead. With eight writers in
+one tenant, 492 commits per second against 48 with one, with 10 ms of work in each transaction
+(`tests/adapters/persistence/test_ledger_throughput.py`). The claims are the only locks on the
+chains; no lock of the process is held beside them. A lock of the process
 held while the store waits for the claim formed a cycle that neither side could see: two runs of
 one tenant whose commits recorded two entries each hung for good (#309, NTC-0201;
 `tests/integration/test_ledger_concurrency.py`). Every database connection also carries

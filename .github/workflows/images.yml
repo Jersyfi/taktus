@@ -77,6 +77,9 @@ jobs:
             dockerfile: deploy/backup/Dockerfile
           # Every connector, an image of its own (ADR-0158): its stage of connectors/Dockerfile,
           # named taktus-connector-<its directory under connectors/>, as the chart pulls it.
+          - name: taktus-connector-accounting
+            dockerfile: connectors/Dockerfile
+            target: accounting
           - name: taktus-connector-anthropic
             dockerfile: connectors/Dockerfile
             target: anthropic
@@ -86,6 +89,9 @@ jobs:
           - name: taktus-connector-bookstack
             dockerfile: connectors/Dockerfile
             target: bookstack
+          - name: taktus-connector-einvoice
+            dockerfile: connectors/Dockerfile
+            target: einvoice
           - name: taktus-connector-github
             dockerfile: connectors/Dockerfile
             target: github

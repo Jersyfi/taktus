@@ -37,6 +37,7 @@ from sqlalchemy import (
     Integer,
     LargeBinary,
     MetaData,
+    Numeric,
     PrimaryKeyConstraint,
     Table,
     Text,
@@ -181,6 +182,7 @@ anchor_configuration = Table(
     Column("id", Text, nullable=False),  # the tenant: one configuration each
     Column("anchors", JSONB, nullable=False),
     Column("risk_classes", JSONB, nullable=False),
+    Column("levels", JSONB),  # the ceiling of each risk class (ADR-0170); NULL: none
     _at("configured_at", nullable=True),
     Column("configured_by", Text),
     PrimaryKeyConstraint("tenant", "id"),
@@ -523,6 +525,29 @@ message_rules = Table(
 )
 """One row per tenant that configured its rules for outward messages (ADR-0142)."""
 
+org_unit_quota = Table(
+    "org_unit_quota",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),  # the unit
+    _at("configured_at"),
+    Column("quota", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per unit a tenant set a quota for (ADR-0166)."""
+
+org_unit_spend = Table(
+    "org_unit_spend",
+    metadata,
+    _tenant(),
+    Column("org_unit", Text, nullable=False),
+    Column("month", Text, nullable=False),
+    Column("currency", Text, nullable=False),
+    Column("committed", Numeric, nullable=False),
+    PrimaryKeyConstraint("tenant", "org_unit", "month", "currency"),
+)
+"""What a unit's runs committed in a month, per currency (ADR-0166)."""
+
 case_answer = Table(
     "case_answer",
     metadata,
@@ -710,6 +735,8 @@ run = Table(
     Column("bindings", JSONB),  # purposes bound to one model for this run alone (ADR-0149)
     Column("skills", JSONB),  # the skill versions the run pinned (ADR-0162)
     Column("profile", Text),  # the role profile of a shared agent it serves (ADR-0163)
+    Column("org_unit", Text),  # the unit it runs for (ADR-0166)
+    Column("org_unit_month", Text),  # the month it committed its budget to its unit's quota
     Column("state", Text, nullable=False),
     Column("cause", Text),
     Column("reason", Text),
@@ -817,7 +844,14 @@ ledger_entry = Table(
     Column("duration_seconds", Float),  # how long a run took, on run.ended (ADR-0107)
     Column("content_digest", Text),
     Column("rehearsal", Boolean),  # true on every entry of a rehearsal run (ADR-0030)
-    PrimaryKeyConstraint("tenant", "seq"),
+    # The entry's place in its chain, `tenant` on a run's entry on the tenant's chain, an
+    # anchor's bound, and the chain's name: the run, or "" for the tenant's (ADR-0164).
+    Column("chain_seq", BigInteger),
+    Column("chain", Text),
+    Column("through", BigInteger),
+    Column("on_chain", Text, nullable=False, server_default=text("''")),
+    # Partitioned by month of `ts` (migration 0091), so the key carries it.
+    PrimaryKeyConstraint("tenant", "seq", "ts"),
     Index("ledger_entry_run", "tenant", text("(refs ->> 'run_id')")),
     # A process's entries of a kind, by time: what the watcher of expected runs reads
     # (ADR-0107).
@@ -833,6 +867,8 @@ ledger_entry = Table(
     # The entries of some kinds, in sequence order, without the others (ADR-0105).
     Index("ledger_entry_kind", "tenant", "kind", "seq"),
     Index("ledger_entry_kind_ts", "tenant", "kind", "ts"),
+    # The newest entry of a chain (ADR-0164).
+    Index("ledger_entry_chain", "tenant", "on_chain", "seq"),
 )
 
 ledger_projection = Table(
@@ -896,6 +932,8 @@ job = Table(
     Column("takeover_step", Text),
     _at("held_until", nullable=True),
     Column("messages", JSONB),  # ADR-0156
+    Column("org_unit", Text),  # the unit the run runs for (ADR-0166)
+    _at("quota_held_since", nullable=True),  # first skipped for its unit's quota
     PrimaryKeyConstraint("tenant", "id"),
     Index(
         "job_available",

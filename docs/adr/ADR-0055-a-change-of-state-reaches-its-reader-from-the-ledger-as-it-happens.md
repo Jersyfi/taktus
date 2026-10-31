@@ -1,6 +1,6 @@
 # ADR-0055 — A change of state reaches its reader from the ledger, as it happens
 
-**Status:** accepted · makes UC-6.10's condition *live* buildable (issue #103, DEC-0055) · amended by ADR-0119: the web app's session cookie is accepted beside the key (§1)
+**Status:** accepted · makes UC-6.10's condition *live* buildable (issue #103, DEC-0055) · amended by ADR-0119: the web app's session cookie is accepted beside the key (§1) · amended by ADR-0164: the order of the reading positions is not the order of commit; a reader reads up to the stable head (§6)
 
 ## Context
 UC-6.10 requires that a change of a run's state reaches every open representation of that run
@@ -199,6 +199,15 @@ Each replica holds a configurable maximum of open streams. A request beyond it i
 - The run component publishes which state each ledger kind and outcome lead to.
 - The web app subscribes before it draws, and draws from the snapshot and the changes.
 - The time from record to reader becomes a telemetry figure of every replica.
+
+## Amendment — the stable head (ADR-0164, 2026-10-31)
+
+The Context says the order of the sequence numbers is the order of commit. Since ADR-0164 it is
+not: writers of different runs take their positions without waiting, and a position may commit
+after a higher one. §6 holds all the same, because a stream reads only up to the stable head,
+below which no entry can still commit. A snapshot reads the stable head in a transaction of its
+own and then its state; the state may already show a change after that position, which the
+stream then sends again. A change sets a state, so sending it twice changes nothing.
 
 ## Where this promise ends
 The 5 seconds hold from the commit of an entry to its hand-over at the replica, and across a

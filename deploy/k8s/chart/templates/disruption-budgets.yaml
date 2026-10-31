@@ -1,0 +1,25 @@
+{{- /*
+One disruption budget per role in the profile `ha` (ADR-0165 §3): while a node drains, at least
+`ha.minAvailable` pods of each role stay up. The profiles `small` and `standard` render none.
+*/ -}}
+{{- $root := . -}}
+{{- if eq (include "taktus.profile" .) "ha" }}
+{{- range $role := list "api" "runner" "scheduler" "automation" }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "taktus.fullname" $root }}-{{ $role }}
+  namespace: {{ include "taktus.controlPlaneNamespace" $root }}
+  labels:
+    {{- include "taktus.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: control-plane
+    taktus-role: {{ $role }}
+spec:
+  minAvailable: {{ $root.Values.ha.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "taktus.selector" (dict "root" $root "component" "control-plane") | nindent 6 }}
+      taktus-role: {{ $role }}
+{{- end }}
+{{- end }}
