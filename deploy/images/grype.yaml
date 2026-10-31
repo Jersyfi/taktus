@@ -1,0 +1,16 @@
+# The vulnerability scanner's configuration for every image Taktus publishes (ADR-0173 §2, §3).
+# tools/scan_image.sh passes it; the severity it fails on is in that script.
+#
+# `ignore` is the one place a finding may be set aside. Each entry names one vulnerability and a
+# `reason`: why it does not reach Taktus, or until when it waits for a fix, with the notice that
+# records it (a `gate-weakened` notice, CLAUDE.md §9). tests/governance/test_image_workflow.py
+# fails an entry without either. Example:
+#
+#   - vulnerability: CVE-0000-00000
+#     reason: "NTC-NNNN: the affected function is never called; until 2027-01-31"
+ignore: []
+
+# Read the database once per run; a stale database is refused rather than trusted.
+db:
+  auto-update: true
+  validate-age: true

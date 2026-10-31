@@ -103,6 +103,13 @@ gate-conformance: env ## Contract conformance suite, both contracts: starts the 
 helm: ## Install the pinned helm into .tools/bin, for the chart's tests (deploy/k8s/chart)
 	tools/install_helm.sh
 
+# The image workflow scans and signs with the pinned grype and cosign (ADR-0173);
+# `make image-tools` installs the same versions into .tools/bin, to scan an image by hand:
+# tools/scan_image.sh <image>@sha256:<digest>.
+.PHONY: image-tools
+image-tools: ## Install the pinned vulnerability scanner and signing tool into .tools/bin (ADR-0173)
+	tools/install_image_tools.sh
+
 .PHONY: gate-governance
 gate-governance: env ## Anchors hold, limits never breach, least privilege; the chart, rendered with helm (`make helm`), and the image workflow
 	$(UV) run tools/gate.py governance tests/governance
