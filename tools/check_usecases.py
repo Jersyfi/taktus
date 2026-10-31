@@ -420,6 +420,17 @@ def check_adrs(root: Path, case: UseCase) -> list[str]:
     return problems
 
 
+SPREAD_FROM = 8
+"""A use case naming this many tests or more has them run in four processes. Starting the
+processes costs about a second, which a handful of tests does not repay; a suite such as the
+worker conformance one, run once per fault, takes minutes alone and is run again by every case
+of the gate's self-test (`tools/gate_selftest.py`)."""
+
+
+def _spread(refs: list[str]) -> list[str]:
+    return ["-n", "4"] if len(refs) >= SPREAD_FROM else []
+
+
 def run_tests(root: Path, refs: list[str]) -> tuple[bool, str]:
     """Run the named tests; green only if every one ran and passed."""
     try:
@@ -438,6 +449,7 @@ def run_tests(root: Path, refs: list[str]) -> tuple[bool, str]:
                 "-p",
                 "no:cacheprovider",
                 f"--junitxml={report}",
+                *_spread(refs),
                 *refs,
             ],
             cwd=root,
