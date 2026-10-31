@@ -57,7 +57,7 @@ taktus/
 │   ├── adapters/
 │   │   ├── driving/                 # cli/ (taktusctl) · rest/ (the HTTP surface)
 │   │   └── driven/                  # every technology and product, each behind a port (ADR-0003); memory/ for development and tests only
-│   ├── wire/                        # wire formats (SSE) shared by conformance and driven adapters
+│   ├── wire/                        # wire formats: SSE for conformance and adapters; BPMN for process
 │   ├── conformance/                 # the contract suite — a client of adapters, no part of the core
 │   └── composition/                 # composition root: wires and runs `taktusd` and `taktusctl`
 │
@@ -109,7 +109,7 @@ conformance          → contracts, wire                   — nothing else in s
 wire                 → nothing                           — stdlib only
 workers/*            → contracts only                    — NEVER src/taktus
 taktus_connectors    → nothing of taktus                 — and src/taktus never imports it (ADR-0158)
-components.X         → components.X, ports, shared
+components.X         → components.X, ports, shared, wire
 ports                → shared
 shared               → nothing
 ```
@@ -125,6 +125,10 @@ wiring: it calls a pure function of the component and touches no port.
 `wire` holds what two readers of one wire format share — today the Server-Sent Events reader,
 used by the conformance suite and by the HTTP worker adapter. Neither may import the other, so
 what they share lives in a package that imports nothing from either and no technology.
+It also holds BPMN 2.0 (`wire/bpmn.py`, ADR-0168): an open standard's XML read, defused, into a
+neutral graph and written from one. The process component gives the graph its meaning — a plan
+draft in, a projection of a version out — and `taktusctl bpmn` (a driving adapter) calls it as a
+pure function, needing no wiring, as `taktusctl prices import` does.
 
 `conformance` is the executable reading of a contract, run against a live adapter. It is a
 client, as a foreign control plane would be, and therefore imports nothing from the control
