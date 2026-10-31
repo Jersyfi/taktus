@@ -7,7 +7,7 @@ serves: [P6, P7, P14]
 state: verified
 version: 0.5.0
 tests: [tests/components/process/test_roles.py::test_without_a_structure_a_human_step_registers_without_a_role, tests/components/process/test_roles.py::test_with_a_structure_a_human_step_without_a_role_is_refused_naming_the_roles, tests/components/process/test_roles.py::test_a_fallback_to_a_person_without_a_role_is_refused_once_there_is_a_structure, tests/components/process/test_roles.py::test_a_role_no_identity_holds_is_refused, tests/components/process/test_roles.py::test_a_human_step_and_a_fallback_naming_held_roles_register, tests/components/process/test_roles.py::test_a_role_belongs_only_to_where_a_person_acts, tests/components/reporting/test_process_level.py::test_the_process_level_shows_each_persons_role_and_never_the_person, tests/components/run/test_roles_at_run_time.py::test_a_human_step_waits_for_its_role_and_ends_once_performed, tests/components/run/test_roles_at_run_time.py::test_a_human_step_naming_no_role_waits_addressed_to_no_role, tests/components/run/test_roles_at_run_time.py::test_a_human_step_rejected_halts_and_is_asked_again_on_resume, tests/components/run/test_roles_at_run_time.py::test_a_fallback_to_a_person_is_addressed_to_the_fallbacks_role]
-adrs: {ADR-0004: ffdb1f1537f5, ADR-0008: e6a4e033abd4, ADR-0015: 3a42705e5561, ADR-0018: 17c99e0eaa3c, ADR-0146: 604d652a57a6, ADR-0167: 58bc0288385f}
+adrs: {ADR-0004: ffdb1f1537f5, ADR-0008: e6a4e033abd4, ADR-0015: 3a42705e5561, ADR-0018: 17c99e0eaa3c, ADR-0146: 604d652a57a6, ADR-0167: 4de145994ac2}
 supersedes: null
 ---
 

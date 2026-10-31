@@ -132,5 +132,8 @@ profile read carries the same statement in `review`.
   the labour-law review that DEC-0029 names has covered it, for the tenant's jurisdiction.
 - **Only active versions.** The profile reads each process's active version. A version that is
   not active contributes nothing.
+- **A fallback performed by hand counts as Taktus's.** A step that a person performed after its
+  model was unsure keeps the model's method on its step run. The load if Taktus stopped counts
+  it as Taktus's run. The figure errs towards what would come to the role.
 - **No web page.** The profile is read on the HTTP surface. A page in the web app is later work.
 - **No person's file, ever.** Nothing here joins a profile to the identities that hold the role.
