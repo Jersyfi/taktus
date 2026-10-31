@@ -34,6 +34,7 @@ from taktus.components.governance.application.service import (
     ReportCapacityHandler,
     ResultDefects,
     Stages,
+    SubjectRequests,
     TenantMessages,
     TenantOrgUnits,
     TenantResidency,
@@ -229,9 +230,22 @@ class Services:
     skills: SkillActs | None = None
     """The skill lifecycle: registered, evaluated, approved and shown (`taktusctl skill`,
     ADR-0162)."""
+    subjects: SubjectRequests | None = None
+    """Data-protection requests, prepared, carried out by a person and withdrawn
+    (`taktusctl subject`, ADR-0176)."""
+    evidence: Evidence | None = None
+    """The evidence of what is processed, generated from configuration and the ledger
+    (`taktusctl evidence`, ADR-0176)."""
     agents: AgentActs | None = None
     """Shared agents with role profiles: called, their core evaluated (`taktusctl agent`,
     ADR-0163)."""
+
+
+class Evidence(Protocol):
+    async def evidence(self, tenant: Tenant) -> dict[str, Any]:
+        """What is processed for the tenant, where, by which adapter and kept how long, as
+        one JSON document (ADR-0176 §8)."""
+        ...
 
 
 class SkillActs(Protocol):

@@ -59,6 +59,11 @@ from taktus.components.governance.application.service.stages import (
     Stages,
     StagesRefused,
 )
+from taktus.components.governance.application.service.subjects import (
+    Confirmed,
+    PrepareRequest,
+    SubjectRequests,
+)
 
 __all__ = [
     "AnchorsInForce",
@@ -72,6 +77,7 @@ __all__ = [
     "ConfigureMessages",
     "ConfigureResidency",
     "ConfigureWatch",
+    "Confirmed",
     "Corrections",
     "DatabaseStore",
     "DecisionMade",
@@ -81,6 +87,7 @@ __all__ = [
     "ExpectedRuns",
     "Looked",
     "OrgUnitQuotaRefused",
+    "PrepareRequest",
     "RaiseRed",
     "RepetitionSeen",
     "Repetitions",
@@ -92,6 +99,7 @@ __all__ = [
     "SignalIncidents",
     "Stages",
     "StagesRefused",
+    "SubjectRequests",
     "TenantMessages",
     "TenantOrgUnits",
     "TenantResidency",
