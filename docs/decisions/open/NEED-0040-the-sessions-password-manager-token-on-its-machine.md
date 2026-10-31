@@ -18,7 +18,7 @@ random value straight into the vault instead of asking you to.
 DEC-0224: secrets are kept in 1Password, and the session reads them through its own service
 account. Without the token the session can only ask you for every value, file by file, as
 before. With it, two open needs shrink to granting access: the connect key (NEED-0037) and the
-catalogue's signing seed (NEED-0039) are random values the session can generate into the vault.
+catalogue's signing seed (#658) are random values the session can generate into the vault.
 
 ## 3. By when
 
@@ -54,7 +54,7 @@ secret; the token is, and it never goes into a chat, an issue or this repository
 
 Write in the issue: **"NEED-0040 is provided."** The next session records it first and checks the
 access without printing a value: `op whoami` and `op vault list`, with the token handed to `op`
-from the file. Then it rewrites the steps of NEED-0037 and NEED-0039 to what the session can now
+from the file. Then it rewrites the steps of NEED-0037 and of the signing seed of #658 to what the session can now
 do itself.
 
 ## 7. How to confirm
