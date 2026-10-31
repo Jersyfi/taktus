@@ -1,6 +1,6 @@
 # ADR-0020 — Tenants and instances are different boundaries
 
-**Status:** accepted
+**Status:** accepted · amended 2026-10-31 (ADR-0164): §4's one chain per tenant becomes a chain per run and the tenant's
 
 ## Context
 Two words are used for "keeping things apart" and they are easy to confuse. Confusing them leads
@@ -85,6 +85,13 @@ it. `default` is still created by migration 0001. Every other tenant is created 
 administrator with `taktusctl tenant create` or on the HTTP surface, and Taktus generates its
 identifier. Every role reads the registry on every round, so an instance learns of a new tenant
 without a restart. Nothing narrows the registry: `TAKTUS_TENANTS` is removed (ADR-0104 §7).
+
+## Amendment — a chain per run (2026-10-31)
+
+ADR-0164 sets aside one sentence of §4: the hash chain of the ledger is no longer one chain per
+tenant. Within a tenant each run has a chain of its own, and the tenant's chain holds the rest
+and the anchors of the run chains. The boundary of §4 stands: every chain belongs to one tenant,
+and a tenant verifies its own chains without seeing another tenant's entries.
 
 ## Where this promise ends
 

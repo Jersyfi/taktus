@@ -1,6 +1,6 @@
 # ADR-0132 — A process caps its open work, and a repeated call stops its step by rule
 
-**Status:** accepted · extends ADR-0005 (admission control), ADR-0023 (a rule decides a stop) and ADR-0043 (every block is booked to an account) · issue #433, UC-8.12
+**Status:** accepted · extends ADR-0005 (admission control), ADR-0023 (a rule decides a stop) and ADR-0043 (every block is booked to an account) · issue #433, UC-8.12 · amended by ADR-0164: `open_work.admitted` is recorded in order, on the tenant's chain
 
 ## Context
 
@@ -192,6 +192,13 @@ admits a rule (ADR-0014, ADR-0023 §4). The facts and the threshold of each are 
 - `WatchConfiguration.repeated_calls` and `repeated_model_calls`, and the options
   `--repeated-calls` and `--repeated-model-calls` of `taktusctl incident configure`.
 - UC-8.12 is `building`.
+
+## Amendment — the admission is recorded in order (ADR-0164, 2026-10-31)
+
+Since ADR-0164 an entry of a run goes on its run's chain, and writers of different runs no longer
+wait for each other. The admission's check rested on the tenant's ledger lock. It is therefore
+recorded `in_order`: on the tenant's chain, under its claim, whatever run it names. The check of
+the runs in flight that follows reads every admission an earlier transaction committed.
 
 ## Where this promise ends
 
