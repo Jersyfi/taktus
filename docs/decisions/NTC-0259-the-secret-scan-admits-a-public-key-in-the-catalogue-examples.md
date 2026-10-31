@@ -41,8 +41,19 @@ M2.3 of `docs/decisions/anchors.taktus.md`: weakening a gate only where it is de
 the gate has no value. An exception narrows what the gate looks at, so it is this entry, and
 section 5 is the demonstration.
 
-## 5. Why the gate had no value there
+## 5. Why the gate had no value
 
-On a value of a public key's length inside the catalogue's examples, the generic rule could only
-ever find a public key: the contract puts nothing else of that shape there. Everywhere else the
-scan looks exactly as before.
+The gate is the secret scan, `make gate-secrets` locally and `tools/scan_secrets.sh` in CI's
+lane `static`. Its rule `generic-api-key` looks at every value beside a word such as `key`,
+`token` or `secret`, and reports one whose entropy is high. It would have caught a seed or a
+token written into the catalogue's examples.
+
+On one kind of value it can catch nothing but a public key: a value of exactly 43 characters of
+base64url inside `contracts/catalogue/v1/examples/`. The contract puts nothing else of that shape
+there. A seed is 32 bytes as well, but the catalogue never writes a seed to a file of its own:
+`taktusctl catalogue sign` and `key` read it from the file `--seed-file` names, outside the
+repository. All seven findings of the pull request were that kind of value, and each was a public
+key, one of the test keys the examples are signed with.
+
+Everywhere else the scan looks exactly as before. The trial of section 2 shows it: the same value
+in another file was found, and a longer value in the examples was found.

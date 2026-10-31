@@ -87,6 +87,7 @@ CLAIMS: dict[str, tuple[str, ...]] = {
         r"\.importlinter",
         r"\.dockerignore",
         r"\.env\.example",
+        r"\.gitleaks\.toml",
     ),
     # The replay of the self-development bundles (ADR-0108): the bundles, the recordings and
     # what replays them. It reaches the core through the composition root, whose import graph
