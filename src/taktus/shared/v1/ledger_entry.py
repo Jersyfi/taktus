@@ -50,6 +50,9 @@ class LedgerRefs(Value):
     agent_id: str | None = Field(default=None, min_length=1)
     """The shared agent the entry is about: a core, `<agent>@<version>`, or a role profile,
     `<agent>:<role>@<version>` (ADR-0163). It names a role, never a person."""
+    subject_request_id: str | None = Field(default=None, min_length=1)
+    """The data-protection request the entry is about (ADR-0176). It names the request, never
+    its subject."""
     artifact_ids: tuple[str, ...] | None = None
     actor: str | None = Field(default=None, min_length=1)
     trace_id: str | None = Field(default=None, pattern=TRACE_ID_PATTERN)

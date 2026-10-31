@@ -346,6 +346,12 @@ class ProvenanceStore(Protocol):
         """Every record of one run, in the order of the ledger entries they belong to."""
         ...
 
+    async def of_subject(self, tenant: Tenant, subject: str) -> Sequence[Provenance]:
+        """Every record whose case scope names the subject, in the order of the ledger entries
+        they belong to: the steps that served the subject's cases (ADR-0130 §7, ADR-0176 §2).
+        One query, through an index."""
+        ...
+
     async def chain(self, tenant: Tenant, run_id: str, artifact_id: str) -> Sequence[Provenance]:
         """The record that produced the artifact in that run, followed by every record its
         inputs lead to, transitively, across runs of the tenant. Empty when no record of the

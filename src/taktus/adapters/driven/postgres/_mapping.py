@@ -1684,6 +1684,40 @@ class SourceDeclarationMapper:
         return [dict(row.declaration) for row in rows]
 
 
+class SubjectRequestMapper:
+    """One row per data-protection request (ADR-0176): the request as a document, and beside
+    it its kind and state. A row is never deleted: its state moves on."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.subject_request, tenant, id)
+        return None if row is None else dict(row.request)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.subject_request,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "kind": document["kind"],
+                "state": document["state"],
+                "created_at": _at(document["created_at"]),
+                "request": document,
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(
+            connection,
+            s.subject_request,
+            tenant,
+            s.subject_request.c.created_at,
+            s.subject_request.c.id,
+        )
+        return [dict(row.request) for row in rows]
+
+
 class MessageRulesMapper:
     """One row per tenant that configured its message rules; the rules stay a document."""
 
@@ -1923,6 +1957,7 @@ MAPPERS: dict[str, Mapper] = {
     "correction_limits": CorrectionLimitsMapper(),
     "residency_rule": ResidencyRuleMapper(),
     "source_declaration": SourceDeclarationMapper(),
+    "subject_request": SubjectRequestMapper(),
     "message_rules": MessageRulesMapper(),
     "org_unit_quota": OrgUnitQuotaMapper(),
     "case_answer": CaseAnswerMapper(),

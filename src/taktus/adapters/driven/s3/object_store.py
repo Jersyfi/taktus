@@ -2,8 +2,8 @@
 
 An object is the key `<prefix>/<hex>`, addressed path-style: `<endpoint>/<bucket>/<key>`. Every
 request is signed with the interface's signature version 4, written here on the HTTP client the
-control plane already has, so that the store adds no library (ADR-0002). Two requests are used:
-put and get of one key. Neither the credential's secret nor a signature is ever logged; an
+control plane already has, so that the store adds no library (ADR-0002). Three requests are used:
+put, get and delete of one key. Neither the credential's secret nor a signature is ever logged; an
 error names the status and the store's error code alone.
 """
 
@@ -186,3 +186,22 @@ class S3ObjectStore:
         if found is not None:
             self._cache.keep(digest, found)
         return found
+
+    async def remove(self, digest: Digest) -> bool:
+        """A `DELETE` of the key. The interface answers 204 whether or not the key was there,
+        so the key is asked for first: False when it is absent (ADR-0176 §3)."""
+        self._cache.drop(digest)
+        if not _DIGEST.fullmatch(digest):
+            return False
+        url = self._url(digest)
+        head = await self._send("HEAD", url, b"")
+        if head.status_code == 404:
+            return False
+        if head.status_code != 200:
+            raise ObjectStoreUnavailable(f"the object store refused the read: {_error(head)}")
+        response = await self._send("DELETE", url, b"")
+        if response.status_code not in (200, 204):
+            raise ObjectStoreUnavailable(
+                f"the object store refused the removal: {_error(response)}"
+            )
+        return True

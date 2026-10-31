@@ -7,11 +7,13 @@ from taktus.components.governance.ports.stages import (
     StageReports,
     TakeoverInstructions,
 )
+from taktus.components.governance.ports.subjects import SubjectHoldings
 
 __all__ = [
     "Identities",
     "ProcessLevels",
     "RunningLevel",
     "StageReports",
+    "SubjectHoldings",
     "TakeoverInstructions",
 ]
