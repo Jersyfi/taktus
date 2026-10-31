@@ -817,7 +817,14 @@ ledger_entry = Table(
     Column("duration_seconds", Float),  # how long a run took, on run.ended (ADR-0107)
     Column("content_digest", Text),
     Column("rehearsal", Boolean),  # true on every entry of a rehearsal run (ADR-0030)
-    PrimaryKeyConstraint("tenant", "seq"),
+    # The entry's place in its chain, `tenant` on a run's entry on the tenant's chain, an
+    # anchor's bound, and the chain's name: the run, or "" for the tenant's (ADR-0164).
+    Column("chain_seq", BigInteger),
+    Column("chain", Text),
+    Column("through", BigInteger),
+    Column("on_chain", Text, nullable=False, server_default=text("''")),
+    # Partitioned by month of `ts` (migration 0091), so the key carries it.
+    PrimaryKeyConstraint("tenant", "seq", "ts"),
     Index("ledger_entry_run", "tenant", text("(refs ->> 'run_id')")),
     # A process's entries of a kind, by time: what the watcher of expected runs reads
     # (ADR-0107).
@@ -833,6 +840,8 @@ ledger_entry = Table(
     # The entries of some kinds, in sequence order, without the others (ADR-0105).
     Index("ledger_entry_kind", "tenant", "kind", "seq"),
     Index("ledger_entry_kind_ts", "tenant", "kind", "ts"),
+    # The newest entry of a chain (ADR-0164).
+    Index("ledger_entry_chain", "tenant", "on_chain", "seq"),
 )
 
 ledger_projection = Table(

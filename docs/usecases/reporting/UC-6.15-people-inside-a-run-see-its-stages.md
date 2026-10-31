@@ -7,7 +7,7 @@ serves: [P7, P14]
 state: built
 version: 0.5.0
 tests: [tests/components/reporting/test_stage_view.py::test_each_stage_is_done_current_or_ahead, tests/components/reporting/test_stage_view.py::test_a_stage_changes_with_the_run_and_nothing_else, tests/components/reporting/test_stage_view.py::test_a_waiting_stage_names_its_role_and_the_owner_where_none_is_named, tests/components/reporting/test_stage_view.py::test_a_finished_run_shows_every_stage_done, tests/components/reporting/test_stage_view.py::test_a_stopped_run_shows_the_stage_it_stopped_at, tests/components/reporting/test_stage_view.py::test_a_halted_run_without_a_step_under_way_stops_at_the_next_stage, tests/components/reporting/test_stage_view.py::test_the_view_shows_nothing_of_the_step_graph, tests/components/reporting/test_stage_view.py::test_every_run_state_has_words, tests/adapters/rest/test_levels.py::test_the_stage_view_answers_a_run_as_stages_and_an_unseen_run_as_absent]
-adrs: {ADR-0015: 3a42705e5561, ADR-0029: 37c061ef032a, ADR-0055: 182c84e9cdbd}
+adrs: {ADR-0015: 3a42705e5561, ADR-0029: 37c061ef032a, ADR-0055: 6ea439834b2c}
 supersedes: null
 ---
 

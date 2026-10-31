@@ -12,7 +12,16 @@ LEADERSHIP = 1
 """Namespace of `try_lead`; the key within it is the hash of the role, roles being few and
 named by the code."""
 LEDGER = 2
-"""Namespace of the ledger chain claim; the key is the tenant's `lock_key`."""
+"""Namespace of the claim on a tenant's own chain; the key is the tenant's `lock_key`."""
+RUN_CHAIN = 3
+"""Namespace of the claim on a run's chain (ADR-0164); the key is the hash of the tenant and
+the run. Two runs whose keys collide only wait for each other: the claim is a mutual exclusion,
+and the chain's places are checked by the verification all the same."""
+
+# A writing transaction's marker (ADR-0164 §3) is one bigint in the one-key form, always
+# negative: the bitwise complement of the tenant's `lock_key` in bits 40 and up and a bound
+# below the transaction's first reading position in the low 40. No other key of either form is
+# negative below -2^31, so the marker meets no other lock (migration 0091).
 
 # A projection's claim (projection_store.py) is one bigint in the one-key form, a key space apart
 # from the two-key form above: the tenant's `lock_key` in the high 32 bits, the hash of the

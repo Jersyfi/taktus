@@ -79,7 +79,7 @@ class UnreadableState(PersistenceError):
 
 
 class DuplicateSequence(PersistenceError):
-    """An entry was appended under a sequence number the tenant's chain already has."""
+    """An entry was appended under a sequence number the tenant already has."""
 
     def __init__(self, tenant: Tenant, seq: int) -> None:
         super().__init__(f"the chain of tenant {tenant!r} already has an entry with seq {seq}")
@@ -162,21 +162,45 @@ class NotQueryable(PersistenceError):
 
 
 class LedgerStore(Protocol):
-    """Where the chain lives, one chain per tenant. Append-only: an entry, once stored, is never
-    changed or removed. The chain's rules — sequence, links, hashes — belong to the ledger
-    component; the store keeps order, and it keeps two writers of one chain apart."""
+    """Where a tenant's entries live: a chain per run and the tenant's own (ADR-0164).
+    Append-only: an entry, once stored, is never changed or removed. The chains' rules —
+    places, links, hashes — belong to the ledger component; the store hands out the reading
+    positions, keeps two writers of one chain apart, and tells a reader how far every entry is
+    final.
+
+    A **reading position** is an entry's `seq`: unique in the tenant, rising in the order the
+    positions were handed out, with gaps where a transaction rolled back. Two transactions that
+    write different chains do not wait for each other, so a position may commit after a
+    higher one. The **stable head** is the position up to which that can no longer happen:
+    every entry at or below it that will ever be committed is committed."""
 
     async def append(self, tenant: Tenant, entry: LedgerEntry) -> None:
-        """Raises `DuplicateSequence` when the chain already has the entry's seq."""
+        """Raises `DuplicateSequence` when the tenant already has the entry's seq."""
         ...
 
-    async def last(self, tenant: Tenant) -> LedgerEntry | None:
-        """The newest entry of the tenant's chain. Inside a transaction that then appends, the
-        store makes sure no other transaction appends in between."""
+    async def last(self, tenant: Tenant, chain: str = "") -> LedgerEntry | None:
+        """The newest entry of a chain: a run's, named by its identifier, or the tenant's,
+        named "". Inside a transaction that then appends to the chain, the store makes sure no
+        other transaction appends to it in between."""
+        ...
+
+    async def allocate(self, tenant: Tenant) -> int:
+        """The next reading position, handed out without waiting for any other writer. The
+        transaction that takes it holds the stable head below it until it ends."""
+        ...
+
+    async def in_chain(self, tenant: Tenant, chain: str, place: int) -> LedgerEntry | None:
+        """The entry at a place of a chain, or None: what a verification starting in the
+        middle links the first entry of a chain to."""
+        ...
+
+    async def heads(self, tenant: Tenant, after: int, through: int) -> Sequence[LedgerEntry]:
+        """For every run chain with an entry whose seq lies above `after` and at or below
+        `through`, the newest such entry: the heads an anchor covers (ADR-0164)."""
         ...
 
     async def entries(self, tenant: Tenant) -> Sequence[LedgerEntry]:
-        """Every entry of the tenant's chain, in sequence order."""
+        """Every entry of the tenant, in sequence order."""
         ...
 
     async def of_run(self, tenant: Tenant, run_id: str) -> Sequence[LedgerEntry]:
@@ -227,8 +251,10 @@ class LedgerStore(Protocol):
         ...
 
     async def head(self, tenant: Tenant) -> int:
-        """The sequence number of the newest entry of the tenant's chain, 0 when it has none.
-        Unlike `last`, it claims nothing: a reader asks it without waiting for a writer."""
+        """The stable head: the seq of the newest entry at or below which every entry is
+        final, 0 when there is none. It claims nothing and waits for nobody. A transaction that
+        reads one snapshot throughout cannot ask it: what committed after its snapshot is
+        invisible to it, and the database adapter refuses (ADR-0164)."""
         ...
 
     async def after(
@@ -238,11 +264,14 @@ class LedgerStore(Protocol):
         *,
         limit: int,
         kinds: Collection[str] | None = None,
+        through: int | None = None,
     ) -> Sequence[LedgerEntry]:
-        """At most `limit` entries of the tenant's chain whose sequence number is above `seq`,
-        in sequence order: what a reader resumes from (ADR-0055). With `kinds`, only entries of
-        those kinds, read without reading the others: the database reads them through the
-        index `ledger_entry_kind` (ADR-0105)."""
+        """At most `limit` committed entries of the tenant whose sequence number is above
+        `seq`, and at or below `through` when it is given, in sequence order: what a reader
+        resumes from (ADR-0055). A reader that keeps its place passes the stable head as
+        `through`; above it, an entry may still appear below one it read (ADR-0164). With
+        `kinds`, only entries of those kinds, read without reading the others: the database
+        reads them through the index `ledger_entry_kind` (ADR-0105)."""
         ...
 
     async def position(self, tenant: Tenant, hash: str) -> int | None:
