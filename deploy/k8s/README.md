@@ -82,7 +82,8 @@ operator's. The parts that carry a decision:
 | Keys | What they decide |
 |---|---|
 | `namespaces.create` | `false` by default: both namespaces exist before the install, created by whoever may create namespaces, with the labels of section 4. The control plane renders into the release's namespace (`helm --namespace`), the execution units' objects into `execution.namespace`. `true` renders both Namespace objects with those labels, for a cluster where the installing identity may (DEC-0060) |
-| `image.repository`, `image.tag`, `image.pullSecret` | the control plane image; the tag is a version, and `latest` or an empty tag fails the render |
+| `image.repository`, `image.tag`, `image.digest`, `image.pullSecret` | the control plane image; the tag is a version, or the full commit hash of an image of `main`, and `latest` or an empty tag fails the render; `digest` pins it (§3, ADR-0173) |
+| `images.requireDigest` | `true` fails the render of any image without a digest: every image by the one name that cannot move (§3). Off by default |
 | `profile` | `standard` (default): one deployment per role. `small`: one deployment running every role in one process (`TAKTUS_ROLES=all`), sized by `small.resources`, beside the database. `ha`: highly available (ADR-0165), with `ha.replicas`, `ha.minAvailable` and `ha.antiAffinity`. See "Which profile" below |
 | `roles.<role>.replicas`, `.resources` | one deployment per role (ADR-0002), for the `standard` profile; the scheduler is elected, more than one is allowed and idle |
 | `database.deploy`, `.size`, `.storageClass`, `.passwordSecret`/`.passwordKey`, `.urlSecret`/`.urlKey` | a PostgreSQL of its own (DEC-0032) on a volume of 20 Gi (DEC-0033); its password and the instance's connection URL are existing Secrets |
@@ -91,6 +92,7 @@ operator's. The parts that carry a decision:
 | `execution.*` | `kind` (`cluster` for the cluster adapter of section 7, `endpoint` by default), the execution namespace, the jobs' account, the unit's image, the per-job defaults (`defaults.cpuRequestShare` the share of the CPU limit a unit requests, section 7; `defaults.serviceHosts` the hosts a worker's own service needs, section 6; `defaults.unitEnv` the variables a worker's own program needs to start, section 7 — configuration, never a secret), the claim the units' state lives on (`stateClaim`, rendered and kept on uninstall), the egress gateway (`gateway.replicas`, and optionally `gateway.keySecret` with `gateway.keyKey`, an existing Secret in both namespaces that holds its key; without them the chart makes the key and keeps it; section 6), and the egress port, allowed ports and excluded ranges, with `egress.proxyImage` the container adapter's gateway image. `workers[]` names several workers in the order a step is resolved in (`TAKTUS_WORKERS`, ADR-0078): each entry a `name` and what it sets itself — `kind`, `endpoint` (required for kind `endpoint`), `image`, `unitPort`, `cpus`, `cpuRequestShare`, `memoryMb`, `wallSeconds`, `startTimeoutSeconds`, an existing `stateClaim`, `serviceHosts` (`[]` for none), `unitEnv` (`{}` for none) — and the settings above for the rest. A name that is not lowercase words joined by hyphens, a name twice, or an endpoint worker without its endpoint fails the render |
 | `credentials[]` | one entry per parameter of `CREDENTIALS.md`: `parameter`, `secret`, `key`, optional `mountPath`; mounted as a file, its path in `TAKTUS_<PARAMETER>_FILE`. A credential of one of several workers has the parameter `worker.<worker>.credential.<name>`, and only that worker receives it |
 | `administration.platform`, `.administers` | the platform this instance runs on and, per credential parameter, the platforms it administers or `none` — `TAKTUS_PLATFORM`, `TAKTUS_ADMINISTERS` (ADR-0052). A process naming a credential that administers this platform, or one declared about nothing, is refused; with no platform nothing is checked |
+| `connectors.digests` | `<connector>: sha256:<digest>`, each shipped connector's image pinned (§3) |
 | `connectors.imagePrefix` | where the connectors' images are pulled from: each is `<imagePrefix>-<name>` at `image.tag`. Empty, the default: beside the control plane's image, `<image.repository>-connector-<name>` — `taktus-connector-github` beside `taktus`. Every connector the release ships runs from its own image, never from the control plane's (ADR-0158) |
 | `connectors.repository.*` | the repository channel's connector as a deployment of its own, from its own image, acting as Taktus's own app (ADR-0033): the repository it serves, the app's identifier, the Secrets holding the app's key and the webhook secret — mounted as files — and `findings`, which makes it the connector product findings go through. Enabled, it sets `TAKTUS_CONNECTORS` (`channel.repo`) and, with `findings`, `TAKTUS_FINDINGS_CONNECTOR`; it is reached from the roles alone and reaches the name service and the service's API outside the cluster (#66) |
 | `connectors.chat.*` | the chat channel's connector as a deployment of its own, from its own image, as Taktus's own app in the owner's chat workspace (NEED-0018): the Secret holding its bot token and signing secret, mounted as files. Enabled, it adds `channel.chat` to `TAKTUS_CONNECTORS`; it is reached from the roles alone and reaches the name service and the chat service's API outside the cluster (#239) |
@@ -195,13 +197,32 @@ worker code (DEC-0011); and an image for each connector it ships (`connectors/`)
 carries no connector either (ADR-0158). Multi-stage build from `deploy/docker/Dockerfile`, which already
 exists and is what `make up` uses.
 
-- `.github/workflows/images.yml` runs on a tag `v<version>` and on nothing else. It builds
-  `taktus`, `taktus-worker-script`, `taktus-worker-coding`, `taktus-worker-mlbench`, the backup's
-  image and one `taktus-connector-<name>` per connector, tags each with the version and
-  pushes them to the registry the repository variable `IMAGE_REGISTRY` names. Without the
-  variable it builds nothing, pushes nothing and says so. It has no deploy step, and a test
-  holds it to all three. The variable, and a push credential where the registry is not the
-  repository service's own, are NEED-0014.
+- `.github/workflows/images.yml` runs on a tag `v<version>` and on a push to `main`
+  (ADR-0173). It builds `taktus`, `taktus-worker-script`, `taktus-worker-coding`,
+  `taktus-worker-mlbench`, the backup's image and one `taktus-connector-<name>` per connector,
+  and pushes them to the registry the repository variable `IMAGE_REGISTRY` names. A tag
+  publishes them under the version; `main` under the full commit hash, the images the
+  development instance runs (ADR-0020). Without the variable it builds nothing, pushes nothing
+  and says so. It has no deploy step, and a test holds it to all of this. The variable, and a
+  push credential where the registry is not the repository service's own, are NEED-0014.
+- **Scanned before it is tagged.** Each image is pushed by its digest alone and scanned from the
+  registry, once per platform; a vulnerability of severity `high` or above with a fixed version
+  fails it, and it never gets its tag (`deploy/images/README.md`). Before anything is built, the
+  job `proof` scans a known-vulnerable image and fails unless that scan fails.
+- **Signed without a key.** A passing image is signed with cosign through the workflow's own
+  identity; no key exists and no secret is stored. `deploy/images/README.md` gives the
+  `cosign verify` an operator runs. The chart does not verify signatures.
+- **Recorded by digest.** The run's artefact `images` holds `images.json` and
+  `digests.values.yaml`, the values that pin every image the chart derives from the release:
+
+  ```
+  helm upgrade --install taktus deploy/k8s/chart -f <your values> -f digests.values.yaml
+  ```
+
+  Every image value takes a digest: `image.digest`, `backup.image.digest`,
+  `database.image.digest`, `connectors.digests.<name>`, and `@sha256:<digest>` at the end of an
+  image given as one reference. A pinned image renders as `<repository>:<tag>@<digest>`.
+  `images.requireDigest: true` fails the render of any image without one.
 - The registry is named only by the values key `image.repository`. Which registry, and whether
   the package is public, is the operator's.
 - **Push-based, not pulled.** There is no GitOps controller in the target cluster, so the

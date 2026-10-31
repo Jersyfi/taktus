@@ -1,5 +1,7 @@
-"""The image workflow builds on a version tag only, pushes only where a registry is named, and
-never deploys (issue #64; ADR-0013 D: Taktus does not put itself into production)."""
+"""The image workflow publishes on a version tag and on `main` only, pushes only where a
+registry is named, scans every image before it carries a tag, signs it without a key, records
+its digest, and never deploys (issue #64, issue #347; ADR-0173; ADR-0013 D: Taktus does not put
+itself into production)."""
 
 from __future__ import annotations
 
@@ -12,7 +14,9 @@ from images import connector_names
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "images.yml"
+SCANNER_CONFIG = ROOT / "deploy" / "images" / "grype.yaml"
 DEPLOYING = re.compile(r"\b(helm|kubectl|kustomize|kubeconfig|ssh|scp)\b", re.IGNORECASE)
+ENABLED = "needs.registry.outputs.enabled == 'true'"
 
 
 def workflow() -> dict[str, Any]:
@@ -22,10 +26,37 @@ def workflow() -> dict[str, Any]:
     return document
 
 
-def test_it_runs_on_a_tag_and_on_nothing_else() -> None:
+def steps(job: str) -> list[dict[str, Any]]:
+    found: list[dict[str, Any]] = workflow()["jobs"][job]["steps"]
+    return found
+
+
+def step(job: str, name: str) -> dict[str, Any]:
+    [found] = [s for s in steps(job) if s.get("name") == name or s.get("id") == name]
+    return found
+
+
+def position(job: str, name: str) -> int:
+    return next(i for i, s in enumerate(steps(job)) if s.get("name") == name or s.get("id") == name)
+
+
+def test_it_runs_on_a_version_tag_and_on_main_and_on_nothing_else() -> None:
     triggers = workflow()["on"]
     assert list(triggers) == ["push"], triggers
-    assert set(triggers["push"]) == {"tags"}, triggers["push"]
+    assert triggers["push"] == {"tags": ["v*"], "branches": ["main"]}, triggers["push"]
+
+
+def test_a_newer_push_to_main_cancels_the_older_build_and_a_tag_is_never_cancelled() -> None:
+    concurrency = workflow()["concurrency"]
+    assert concurrency["group"] == "images-${{ github.ref }}"
+    assert concurrency["cancel-in-progress"] == "${{ github.ref == 'refs/heads/main' }}"
+
+
+def test_main_is_tagged_with_its_commit_and_a_tag_with_its_version() -> None:
+    check = workflow()["jobs"]["registry"]["steps"][0]
+    assert check["env"]["COMMIT"] == "${{ github.sha }}"
+    assert 'if [ "$REF" = "refs/heads/main" ]; then\n  tag="$COMMIT"' in check["run"]
+    assert 'tag="${TAG#v}"' in check["run"]
 
 
 def test_nothing_is_built_or_pushed_without_the_registry_variable() -> None:
@@ -33,21 +64,23 @@ def test_nothing_is_built_or_pushed_without_the_registry_variable() -> None:
     check = jobs["registry"]["steps"][0]
     assert check["env"]["REGISTRY"] == "${{ vars.IMAGE_REGISTRY }}"
     assert 'if [ -z "$REGISTRY" ]' in check["run"]
-    for name, job in jobs.items():
-        if name != "registry":
-            assert job["if"] == "needs.registry.outputs.enabled == 'true'", name
+    assert jobs["build"]["if"] == ENABLED
+    assert jobs["record"]["if"] == "${{ !cancelled() && " + ENABLED + " }}"
+    # The proof publishes nothing, so it needs no registry.
+    assert "if" not in jobs["proof"]
+    assert "packages" not in jobs["proof"].get("permissions", {})
 
 
 def test_it_has_no_deploy_step() -> None:
     for name, job in workflow()["jobs"].items():
         assert "environment" not in job, f"{name}: an environment is where a deployment goes"
-        for step in job["steps"]:
-            assert not DEPLOYING.search(step.get("run", "")), f"{name}: {step}"
-            uses = step.get("uses", "")
+        for each in job["steps"]:
+            assert not DEPLOYING.search(each.get("run", "")), f"{name}: {each}"
+            uses = each.get("uses", "")
             assert not re.search(r"deploy|k8s|helm|kube", uses, re.IGNORECASE), f"{name}: {uses}"
 
 
-def test_the_control_plane_the_backup_and_each_worker_get_an_image_tagged_with_a_version() -> None:
+def test_the_control_plane_the_backup_and_each_worker_get_an_image() -> None:
     build = workflow()["jobs"]["build"]
     dockerfiles = {entry["dockerfile"] for entry in build["strategy"]["matrix"]["include"]}
     shipped = {str(p.relative_to(ROOT)) for p in (ROOT / "workers").glob("*/Dockerfile")}
@@ -57,9 +90,6 @@ def test_the_control_plane_the_backup_and_each_worker_get_an_image_tagged_with_a
         "connectors/Dockerfile",
         *shipped,
     }
-    push = next(s for s in build["steps"] if s.get("uses", "").startswith("docker/build-push"))
-    assert push["with"]["tags"].endswith(":${{ needs.registry.outputs.version }}")
-    assert "latest" not in push["with"]["tags"]
 
 
 def test_each_connector_gets_an_image_of_its_own_named_as_the_chart_pulls_it() -> None:
@@ -71,8 +101,82 @@ def test_each_connector_gets_an_image_of_its_own_named_as_the_chart_pulls_it() -
     assert {e["target"]: e["name"] for e in imaged} == {
         name: f"taktus-connector-{name}" for name in connector_names()
     }
-    push = next(s for s in build["steps"] if s.get("uses", "").startswith("docker/build-push"))
-    assert push["with"]["target"] == "${{ matrix.target }}"
+    assert step("build", "build")["with"]["target"] == "${{ matrix.target }}"
+
+
+def test_an_image_is_pushed_by_its_digest_alone_and_tagged_only_after_its_scan() -> None:
+    """ADR-0173 §2: an image that fails its scan carries no tag and no signature."""
+    build = step("build", "build")["with"]
+    assert "tags" not in build, "a tag before the scan names an image nobody scanned"
+    assert build["outputs"] == (
+        "type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true"
+    )
+    assert build["pull"] is True, "a fix published in the base image reaches the next build"
+    env = workflow()["jobs"]["build"]["env"]
+    assert env["IMAGE"] == "${{ vars.IMAGE_REGISTRY }}/${{ matrix.name }}"
+    assert env["TAG"] == "${{ needs.registry.outputs.tag }}"
+    assert "latest" not in str(env)
+    for name in ("scan", "tag", "sign", "record"):
+        assert step("build", name)["env"]["DIGEST"] == "${{ steps.build.outputs.digest }}"
+    assert step("build", "scan")["run"] == 'tools/scan_image.sh "$IMAGE@$DIGEST" "$PLATFORMS"'
+    assert step("build", "tag")["run"] == (
+        'docker buildx imagetools create --tag "$IMAGE:$TAG" "$IMAGE@$DIGEST"'
+    )
+    order = [position("build", n) for n in ("build", "scan", "tag", "sign", "record")]
+    assert order == sorted(order), "build, scan, tag, sign, record: in that order"
+
+
+def test_the_scan_and_the_signature_use_the_pinned_tools_and_no_third_party_action() -> None:
+    for job in ("proof", "build"):
+        runs = [s.get("run", "") for s in steps(job)]
+        assert "tools/install_image_tools.sh" in runs, job
+        uses = [s.get("uses", "") for s in steps(job)]
+        assert not [u for u in uses if re.search(r"grype|anchore|trivy|cosign|sigstore", u)]
+
+
+def test_the_signature_is_keyless_through_the_workflows_own_identity() -> None:
+    """ADR-0173 §5: no key, no secret; the build job alone may ask for an identity token."""
+    sign = step("build", "sign")
+    assert sign["run"] == '.tools/bin/cosign sign --yes "$IMAGE@$DIGEST"'
+    assert "--key" not in sign["run"]
+    assert set(sign["env"]) == {"DIGEST"}
+    jobs = workflow()["jobs"]
+    assert jobs["build"]["permissions"]["id-token"] == "write"
+    for name, job in jobs.items():
+        if name != "build":
+            assert "id-token" not in job.get("permissions", {}), name
+    assert workflow()["permissions"] == {"contents": "read"}
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert not re.search(r"COSIGN_(KEY|PASSWORD|PRIVATE)", text)
+
+
+def test_a_known_vulnerable_image_must_fail_the_scan_before_anything_is_built() -> None:
+    """ADR-0173 §4: the proof runs first, publishes nothing, and passes only on findings."""
+    document = workflow()
+    assert document["jobs"]["build"]["needs"] == ["registry", "proof"]
+    proof = document["jobs"]["proof"]["steps"]
+    assert proof[-1]["run"] == 'tools/scan_image.sh --expect-findings "$PROOF_IMAGE"'
+    image = document["env"]["PROOF_IMAGE"]
+    assert re.fullmatch(r"alpine:3\.10\.0@sha256:[0-9a-f]{64}", image), "pinned by its digest"
+
+
+def test_the_digests_are_recorded_with_the_charts_values() -> None:
+    record = step("build", "record")
+    assert set(record["env"]) == {"NAME", "DIGEST"}
+    runs = " ".join(s.get("run", "") for s in steps("record"))
+    assert "python3 tools/image_digests.py --in digests --out images" in runs
+    assert "GITHUB_STEP_SUMMARY" in runs
+    assert workflow()["jobs"]["record"]["needs"] == ["registry", "build"]
+
+
+def test_every_exception_to_the_scan_names_its_vulnerability_and_a_reason() -> None:
+    """ADR-0173 §3: a finding set aside is written down, with why."""
+    config = yaml.safe_load(SCANNER_CONFIG.read_text(encoding="utf-8"))
+    assert isinstance(config["ignore"], list)
+    for entry in config["ignore"]:
+        assert re.fullmatch(r"(CVE|GHSA|GO)-[0-9A-Za-z-]+", str(entry.get("vulnerability", "")))
+        assert re.search(r"NTC-\d{4}", str(entry.get("reason", ""))), entry
+    assert config["db"]["validate-age"] is True
 
 
 # --- the coding worker's agent, pinned (#116) ---------------------------------------------------
@@ -109,7 +213,7 @@ def test_the_release_build_passes_no_other_agent_version() -> None:
     build = workflow()["jobs"]["build"]
     coding = [e for e in build["strategy"]["matrix"]["include"] if "claudecode" in e["dockerfile"]]
     assert coding, "the coding worker's image is built on a release"
-    push = next(s for s in build["steps"] if s.get("uses", "").startswith("docker/build-push"))
+    push = step("build", "build")
     assert push["with"]["context"] == ".", "the build context holds the version file"
     assert "build-args" not in push["with"], "a build argument would override the pin"
 
