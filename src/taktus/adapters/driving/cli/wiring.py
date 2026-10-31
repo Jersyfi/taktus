@@ -123,6 +123,32 @@ class Catalogue(Protocol):
         ...
 
 
+class CatalogueIndexActs(Protocol):
+    """What `taktusctl catalogue` asks of the catalogue the composition root wires (ADR-0175).
+    The rows and results are the composition's; the command prints their fields."""
+
+    async def listed(self, tenant: Tenant) -> tuple[list[Any], list[Any]]: ...
+
+    async def install(
+        self,
+        tenant: Tenant,
+        catalogue: str,
+        entry_id: str,
+        *,
+        actor: str,
+        adapter: str | None = None,
+    ) -> Any: ...
+
+
+class CatalogueAuthor(Protocol):
+    """What an author signs an index with (`taktusctl catalogue sign`, `key`). The seed is
+    read from a file by the command and never printed."""
+
+    def key(self, seed: bytes) -> str: ...
+
+    def sign(self, index: Path, seed: bytes) -> list[str]: ...
+
+
 @dataclass(frozen=True)
 class Services:
     identities: IdentityDirectory
@@ -176,6 +202,8 @@ class Services:
     conformance record`, ADR-0044)."""
     catalogue: Catalogue | None = None
     """Every configured adapter with its maturity (`taktusctl conformance list`, ADR-0117)."""
+    catalogue_index: CatalogueIndexActs | None = None
+    """The catalogue's entries, verified and installed (`taktusctl catalogue`, ADR-0175)."""
     deactivate: DeactivateProcessHandler | None = None
     """A process is switched off: its triggers no longer start runs (`taktusctl deactivate`)."""
     measures: StepMeasures | None = None
@@ -323,6 +351,10 @@ class Wiring(Protocol):
         """Open the capacity report against the state where it is configured — no worker, no
         connector: looking at the platform starts nothing. Raises `NotOperable` as
         `services` does."""
+        ...
+
+    def catalogue_author(self) -> CatalogueAuthor:
+        """What an author signs a catalogue's index with: no state, no database."""
         ...
 
     def guides(self, *, directory: Path) -> AbstractAsyncContextManager[GuidesServices]:

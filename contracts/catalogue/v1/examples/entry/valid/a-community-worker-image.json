@@ -1,0 +1,19 @@
+{
+  "id": "worker-shell",
+  "kind": "image",
+  "tier": "community",
+  "version": "0.1.0",
+  "summary": "Runs a shell script as a worker step.",
+  "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "family": "worker",
+  "contract": "worker/v1",
+  "capabilities": [
+    "shell.script"
+  ],
+  "image": "registry.example/acme/worker-shell",
+  "signature": {
+    "scheme": "ed25519",
+    "key": "bu9-kevuCRsZJXZAYvU_6poEN1BjT6a0bw25hPGsXZ0",
+    "value": "k4mhdCCmb0ub1gku7eBt1pVZddN4wbwXP9hPGkOLQV1Gk2iP6h1XPJSVfZYdom6QbT7M91jNkZIi6bwyaBVNAw"
+  }
+}

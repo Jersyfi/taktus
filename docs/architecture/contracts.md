@@ -296,6 +296,17 @@ connector, which act on nothing outside, are not held to it (NTC-0079). An integ
 *verified* once the instance has recorded both halves for the configuration that resolves it now;
 until then a real run at level 3 halts at its first step that needs it.
 
+**The catalogue** (ADR-0175, UC-14.6, contract `contracts/catalogue/v1`) is an index over
+signed images and bundles in which an operator finds adapters and process bundles. Its tiers
+follow the table above: an entry states *reference* or *community*; *verified* is never stated
+and is derived from the records above. An instance installs only an entry signed with Ed25519 by
+a key its operator trusts for the entry's tier (`TAKTUS_CATALOGUE_KEYS`), and records it with its
+origin in the ledger as `catalogue.installed` (`taktusctl catalogue install`). For an adapter
+installed from it, a half taken before the installation does not count, so a community adapter
+stays below level 3 until it is verified here. A community bundle becomes a proposal at level 2
+or below. The catalogue runs nothing: the deployment pulls an image by the digest it prints.
+Not the list of processes a person may ask for (`GET /catalogue`, UC-1.13).
+
 The conformance suite is the real asset here — not the adapter code, but the ability to check.
 Without it, "interchangeable" is an assertion.
 

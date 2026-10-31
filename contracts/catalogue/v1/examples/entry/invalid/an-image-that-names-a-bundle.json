@@ -1,0 +1,21 @@
+{
+  "id": "connector-mail",
+  "kind": "image",
+  "tier": "reference",
+  "version": "1.0.0",
+  "summary": "Sends and reads mail over the mail capability.",
+  "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "family": "connector",
+  "contract": "connector/v1",
+  "capabilities": [
+    "mail.send",
+    "mail.read"
+  ],
+  "image": "registry.example/taktus-connector-mail",
+  "signature": {
+    "scheme": "ed25519",
+    "key": "SQ8vOf_x7GIZMEDiaKJap6MHOB5MuwrkitqfdK0UF3E",
+    "value": "YD_EVPgFC5_-mthAo8e4xI0Udwm2FtB8BALSM951Bi9JumAvPdlBZH4mBUG_fp7SCuaPHDif3-01X7OaNLcTBw"
+  },
+  "bundle": "bundles/x.yaml"
+}

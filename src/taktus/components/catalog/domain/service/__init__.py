@@ -1,3 +1,3 @@
-from taktus.components.catalog.domain.service import agents, removal, skills
+from taktus.components.catalog.domain.service import agents, catalogue, removal, skills
 
-__all__ = ["agents", "removal", "skills"]
+__all__ = ["agents", "catalogue", "removal", "skills"]

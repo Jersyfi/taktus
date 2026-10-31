@@ -1,7 +1,7 @@
 """Data-protection requests, prepared and carried out by a person (ADR-0176, UC-11.2).
 
 Revision: 0097
-Revises: 0095
+Revises: 0096
 
 What this adds: `subject_request`, one row per data-protection request — access,
 rectification, erasure or portability — with its kind, its state and the request as a
@@ -25,7 +25,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision = "0097"
-down_revision = "0095"
+down_revision = "0096"
 branch_labels = None
 depends_on = None
 

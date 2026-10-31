@@ -1,0 +1,15 @@
+{
+  "id": "invoice-reminder",
+  "kind": "bundle",
+  "tier": "community",
+  "version": "0.3.0",
+  "summary": "Reminds a customer of an open invoice, at level 2.",
+  "digest": "sha256:85ec862354ca4ceeb3d8a76853ceb273e153f24439770c2bb6cfbe14463c570d",
+  "process": "invoice-reminder",
+  "bundle": "../outside.yaml",
+  "signature": {
+    "scheme": "ed25519",
+    "key": "bu9-kevuCRsZJXZAYvU_6poEN1BjT6a0bw25hPGsXZ0",
+    "value": "tLbjn281IekVbiF0EhupCelBA4U6P-daX9qz2LoCyAz572exTjx3puTdj8WNsp6Z_ZZltlQuGNC-5oG-2ghPDw"
+  }
+}
