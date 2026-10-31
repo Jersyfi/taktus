@@ -197,8 +197,17 @@ def work_dir(tmp_path: Path) -> Path:
     return work
 
 
-def segments(source: Source) -> list[str]:
-    return sorted(p.name for p in source.store.glob("wal/*/*"))
+def segments(source: Source, image: str) -> list[str]:
+    """The archived segments, listed as the store's own user lists them.
+
+    PostgreSQL runs `archive_command` under the umask 0077, so a segment's directory belongs to
+    the database's user alone. On a Linux host the test's own user cannot list it; Docker
+    Desktop's file sharing hides that, which is why this reads through a container."""
+    done = docker(
+        "run", "--rm", "--user=70:70", f"--volume={source.store}:/backups:ro",
+        "--entrypoint=sh", image, "-c", "ls -1 /backups/wal/*/ 2>/dev/null || true",
+    )  # fmt: skip
+    return sorted(line for line in done.stdout.splitlines() if line and not line.endswith(":"))
 
 
 async def test_the_drill_restores_to_a_chosen_moment_and_every_chain_ends_at_the_heads_noted(
@@ -221,10 +230,10 @@ async def test_the_drill_restores_to_a_chosen_moment_and_every_chain_ends_at_the
     await record(persistence, "third", 2)
     later = await heads(source.host_url)
     await archived(persistence)
-    assert segments(source), "the log was archived into the store"
+    assert segments(source, backup_image), "the log was archived into the store"
     work = work_dir(tmp_path)
     (work / "heads.json").write_text(json.dumps(noted), encoding="utf-8")
-    archive = segments(source)
+    archive = segments(source, backup_image)
 
     done, report = run_drill(
         backup_image, source, work, "--to", moment, "--heads", "/work/heads.json"
@@ -240,7 +249,7 @@ async def test_the_drill_restores_to_a_chosen_moment_and_every_chain_ends_at_the
         assert tenants[tenant]["head"] == noted[tenant] != later[tenant]
         assert tenants[tenant]["entries"] == 7, "the third batch is not in it"
     assert isinstance(report["restore_seconds"], float)
-    assert segments(source) == archive, "the drill archived nothing"
+    assert segments(source, backup_image) == archive, "the drill archived nothing"
 
     # To the latest moment the archive reaches: the third batch is there.
     done, report = run_drill(backup_image, source, work, "--to", "latest")
