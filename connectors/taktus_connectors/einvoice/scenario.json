@@ -1,0 +1,19 @@
+{
+  "credentials": {
+    "actions": "DOCUMENTS_TOKEN"
+  },
+  "read": {
+    "operation": "documents.invoices.read",
+    "input": {
+      "document": "invoice-ubl.xml"
+    }
+  },
+  "writes": [],
+  "invalid": {
+    "operation": "documents.invoices.read",
+    "input": {
+      "document": "not-an-invoice.xml"
+    },
+    "expected_cause": "invalid"
+  }
+}

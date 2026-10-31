@@ -40,6 +40,11 @@ EXPOSE 9100
 # The chart and deploy/docker/connectors.py pass `--host 0.0.0.0 --port <port>` and the
 # connector's own arguments; without them it listens on 0.0.0.0:9100.
 
+FROM base AS accounting
+COPY --chown=connector:connector connectors/taktus_connectors/accounting /app/taktus_connectors/accounting
+ENTRYPOINT ["python", "-m", "taktus_connectors.accounting"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
 FROM base AS anthropic
 COPY --chown=connector:connector connectors/taktus_connectors/anthropic /app/taktus_connectors/anthropic
 ENTRYPOINT ["python", "-m", "taktus_connectors.anthropic"]
@@ -53,6 +58,11 @@ CMD ["--host", "0.0.0.0", "--port", "9100"]
 FROM base AS bookstack
 COPY --chown=connector:connector connectors/taktus_connectors/bookstack /app/taktus_connectors/bookstack
 ENTRYPOINT ["python", "-m", "taktus_connectors.bookstack"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
+FROM base AS einvoice
+COPY --chown=connector:connector connectors/taktus_connectors/einvoice /app/taktus_connectors/einvoice
+ENTRYPOINT ["python", "-m", "taktus_connectors.einvoice"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
 FROM base AS github

@@ -2,10 +2,12 @@
 fails where it should (ADR-0150, issue #447).
 
 Each connector runs as a process of its own against a fake of its product's API in a process
-of its own: cloud billing, a model provider's costs, error tracking and a payment provider.
-Every one only reads, so C-05 passes as not applicable, and none has an intake, so C-07 and
-C-08 pass as not applicable too. C-10 stays pending. Then, for every fault a connector can
-inject, the suite must fail on exactly the check the fault breaks (README §8).
+of its own: cloud billing, a model provider's costs, error tracking, a payment provider, a
+document inbox and an accounting system (ADR-0169). Every one but the accounting connector only
+reads, so C-05 passes as not applicable; the accounting connector's two writes are marked, and
+C-05 runs on both. None has an intake, so C-07 and C-08 pass as not applicable. C-10 stays
+pending. Then, for every fault a connector can inject, the suite must fail on exactly the check
+the fault breaks (README §8).
 """
 
 from __future__ import annotations
@@ -22,6 +24,8 @@ from .conftest import BUSINESS, CONNECTORS, RunningConnector, open_standard_faul
 type Start = Callable[..., RunningConnector]
 SCOPED = frozenset({"stripe"})
 """The business connectors that declare a scoped capability (C-11)."""
+WRITERS = frozenset({"accounting"})
+"""The business connectors with an operation that leaves the system (C-05)."""
 FAULTS = [
     (module, fault, check)
     for module in sorted(BUSINESS)
@@ -39,7 +43,8 @@ async def test_a_business_connector_passes(module: str, start_business_connector
     assert statuses.pop("C-10") is Status.PENDING, report.render()
     assert set(statuses.values()) == {Status.PASSED}, report.render()
     c05 = next(c for c in report.checks if c.id == "C-05")
-    assert "not applicable" in c05.observed + " ".join(c05.details), report.render()
+    applicable = "not applicable" not in c05.observed + " ".join(c05.details)
+    assert applicable is (module in WRITERS), report.render()
     text = report.to_json() + connector.log.read_text()
     for value in connector.credential_values.values():
         assert value not in text
@@ -50,8 +55,9 @@ async def test_a_business_connector_passes(module: str, start_business_connector
 @pytest.mark.parametrize("module", sorted(BUSINESS))
 def test_every_runtime_check_has_a_fault(module: str) -> None:
     unscoped = set() if module in SCOPED else {"C-11"}
+    reading = set() if module in WRITERS else {"C-05"}
     assert {check for _, check in open_standard_faults(module)} == set(CHECKS) - {
-        "C-05",
+        *reading,
         "C-07",
         "C-08",
         "C-10",
