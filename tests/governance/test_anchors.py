@@ -738,3 +738,72 @@ async def test_an_anchor_s_halt_is_booked_to_wait_human_and_read_as_the_decider_
     assert await accounts.own(TENANT, STARTER) == ()
     (own,) = await accounts.own(TENANT, DECIDER)
     assert own == decided
+
+
+# --- a risk class carries a level: a ceiling across the tenant's processes (ADR-0170) ----------
+
+
+CEILED = {
+    "anchors": [LEGAL_WRITE, CORRECTION],
+    "risk_classes": {"records": ["fake.records.*"], "everything": ["fake.*"]},
+    "levels": {"records": 2, "everything": 3},
+}
+
+
+async def test_a_step_using_an_action_of_a_risk_class_runs_at_most_at_its_level() -> None:
+    """UC-7.1 §2: a level per risk class, the lowest holding. The process runs at level 4; a
+    read of the class `records`, set to level 2 by the tenant, waits for a person while the
+    rest of the run continues."""
+    w = await World(
+        rule("prep"), call("read", READ), rule("report"), level=4, configuration=CEILED
+    ).setup()
+    run = await w.start()
+    assert run.state is RunState.WAITING_HUMAN and run.cause is Cause.PERSON
+    assert states(run) == {
+        "prep": StepState.SUCCEEDED,
+        "read": StepState.WAITING_HUMAN,
+        "report": StepState.SUCCEEDED,
+    }
+    # `fake.records.*` covers what lies below the capability, `fake.*` the capability itself;
+    # the lowest ceiling that covers an action holds it.
+    assert run.actions == {"fake.records": 3, READ: 2}
+    read = run.step_run("read")
+    assert read.reason is not None and f"level 2, held by the action {READ}" in read.reason
+    assert "step.awaiting:read:confirmation" in await w.kinds(run)
+    run = await w.engine.confirm(
+        ConfirmSteps(run_id=run.id, steps=("read",), actor=DECIDER, tenant=TENANT)
+    )
+    assert run.state is RunState.FINISHED
+
+
+async def test_a_ceiling_never_raises_a_level_and_a_rehearsal_takes_on_none() -> None:
+    w = await World(call("read", READ), level=1, configuration=CEILED).setup()
+    run = await w.start()
+    assert run.actions == {}, "a ceiling above the run's own level holds nothing"
+    w = await World(call("read", READ), level=4, configuration=CEILED).setup()
+    rehearsed = await w.start(rehearsal=True)
+    assert rehearsed.actions == {}
+
+
+def test_a_level_for_a_risk_class_the_configuration_does_not_define_is_refused() -> None:
+    with pytest.raises(ValidationError, match="never hold"):
+        AnchorConfiguration.model_validate(
+            {
+                "id": TENANT,
+                "tenant": TENANT,
+                "anchors": [LEGAL_WRITE, CORRECTION],
+                "levels": {"money": 2},
+            }
+        )
+
+
+async def test_the_tenant_s_levels_are_stored_and_read_back_with_its_anchors() -> None:
+    w = await World(configuration=None).setup()
+    stored = await w.decisions.configure.execute(
+        ConfigureAnchors(tenant=TENANT, document=CEILED, actor=STARTER)
+    )
+    assert stored.levels == {"records": 2, "everything": 3}
+    assert await w.decisions.anchors.ceilings(TENANT, (READ, "fake.other.read", "x.y")) == {
+        READ: 2,
+        "fake.other.read": 3,
+    }
