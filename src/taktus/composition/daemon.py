@@ -76,6 +76,7 @@ from taktus.components.catalog.application.service import (
 from taktus.components.catalog.domain.model import (
     AdapterMaturity,
     AgentCore,
+    CatalogueInstallation,
     RoleProfile,
     SkillOwnership,
     SkillPolicy,
@@ -605,6 +606,7 @@ async def wire(
                         PostgresRepository(persistence, AdapterMaturity),
                         persistence,
                         Pools(workers, connectors, models),
+                        PostgresRepository(persistence, CatalogueInstallation),
                     ),
                     anchors=decisions.anchors,
                     administration=settings.administration,
@@ -1055,7 +1057,10 @@ async def wire(
                     catalogue=InstanceCatalogue(
                         pools,
                         CatalogMaturities(
-                            PostgresRepository(persistence, AdapterMaturity), persistence, pools
+                            PostgresRepository(persistence, AdapterMaturity),
+                            persistence,
+                            pools,
+                            PostgresRepository(persistence, CatalogueInstallation),
                         ),
                     ),
                     pools=pools,

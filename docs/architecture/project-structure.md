@@ -461,6 +461,18 @@ role it would tie the core to a model stack and the removal test would be lost.
   built. `ProposalActs` rehearses such a proposal on its trigger's inputs and commissions it as
   the first version. `taktusctl first start` and `first rehearsal`
   (`adapters/driving/cli/first_command.py`) are what `make start`'s script calls.
+- **The catalogue of signed adapters and bundles** (ADR-0175) is the catalog component's
+  `domain/model/catalogue.py` (the index, the entry, the trusted key, the installation),
+  `domain/service/catalogue.py` (the signed payload, the admission, the count after the
+  installation) and `application/service/catalogue.py` (`CatalogueInstalls`, the one writer of
+  the installation and of `catalogue.installed`), over the port `Signatures` the Ed25519 adapter
+  serves. `composition/catalogue.py` reads the index files and the trusted keys that
+  `TAKTUS_CATALOGUE_DIRECTORY` and `TAKTUS_CATALOGUE_KEYS` name (`load_catalogue` of
+  `composition/settings.py`) and turns a bundle into a proposal; `CatalogMaturities` of
+  `composition/maturity.py` counts only the halves taken after an installation, in the daemon and
+  on the command line alike. `taktusctl catalogue` (`adapters/driving/cli/catalogue_command.py`)
+  reaches it through `catalogue_index` and `catalogue_author` of the command line's wiring; the
+  table `catalogue_installation` is migration 0096.
 - **A halted run raised and resumed** is `taktusctl resume` (`adapters/driving/cli/resume_command.py`, #458): it reads no bundle, so the process's active version stays; it raises a run's money or its quota (DEC-0208).
 - **Memory once started.** Once wired, the daemon collects and freezes what its start left
   alive — the modules, the wiring — so that a full garbage collection, which stops every thread

@@ -30,6 +30,7 @@ different milestones never edit the same paragraph (#392):
 | `0.5.0` — value and dependency measurable | `docs/status/0.5.0.md` |
 | `0.6.0` — level 4 | `docs/status/0.6.0.md` |
 | `0.7.0` — second domain | `docs/status/0.7.0.md` |
+| `1.0.0` — contracts, licence, opening | `docs/status/1.0.0.md` |
 
 How the project itself is run — how the owner is asked, the register, the gates, the vision
 layer, the reviews — is `docs/status/project.md`.
