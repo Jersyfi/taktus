@@ -83,9 +83,9 @@ level shows the person who holds a role.
 
 ## Where this promise ends
 
-- **No resolution at run time yet.** A run that waits on a human step does not yet address the
-  wait to the step's role. The wait is shown to whoever may see the run, as before. Addressing
-  it to the role follows the decision request's resolution (ADR-0042) and is a later change.
+- **Resolution at run time is ADR-0167's.** This record ends at registration. A run addresses
+  the wait at a person's step, and at a fallback to a person, to the role under ADR-0167 §1
+  and §2. The person is resolved when one answers.
 - **No check of expertise.** Nothing checks that a person of the role has the expertise. It is
   a statement for the reader, never a filter on people.
 - **No role for other methods.** A `worker`, `llm` or any other step names no role. An

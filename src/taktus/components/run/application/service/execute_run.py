@@ -23,6 +23,11 @@ step fails without its act, and the run escalates. A rehearsal from the tenant's
 acts on nothing outside and is asked no anchor (NTC-0079); a replay of a recorded run is
 (ADR-0108). A step confirmed with `confirm` is never an anchored one.
 
+A `human` step of the organisation is performed by a person of its role (ADR-0167): after the
+anchors, it waits at every level, its block addressed to the step's role, until a person reports
+it performed — it hands on no result of Taktus's — or rejects it, and the run halts with cause
+`declined`. A fallback to a person is addressed to the fallback's role.
+
 A process may hold a step itself (ADR-0088). A step whose `when` does not hold is skipped:
 it succeeds with a result that says so, performs nothing and asks nobody. A step that
 declares `ask` raises its own decision request beside any anchor's, at every level; with
@@ -199,6 +204,7 @@ from taktus.components.run.domain.model import (
     DeviationStatistic,
     Ended,
     ExtractRule,
+    HumanWork,
     LlmWork,
     Message,
     MessageRefused,
@@ -1305,6 +1311,9 @@ class RunEngine:
                     "performed"
                 )
             kind, performed = self._performed_after_fallback(step_run, command)
+            return kind, performed, None
+        if step_run.block is not None and step_run.block.cause == block.AWAITING_ROLE:
+            kind, performed = self._performed_in_role(step_run, command)
             return kind, performed, None
         held = self._held(run, run.step(step_id))
         level = held.level
@@ -2671,6 +2680,10 @@ class RunEngine:
                 # Asked of a participant outside the organisation, who answers in its own
                 # channel; no level asks a person of the tenant about it (ADR-0155).
                 return await self._participant(run, step, step_run, work, span)
+            if isinstance(work, HumanWork) and step_run.state is StepState.PLANNED:
+                # Performed by a person of the step's role, at every level: the wait is
+                # addressed to the role (ADR-0167 §1).
+                return await self._for_the_role(run, step, step_run, work)
             if asks and step_run.state is StepState.PLANNED:
                 # The step boundary: what the level asks of a person, before anything starts.
                 acting = held.level == 1 and autonomy.acts(work, await self._outward(run, work))
@@ -3213,6 +3226,92 @@ class RunEngine:
             digest=digest,
         )
         return run, step_run
+
+    # --- a person of the step's role (ADR-0167 §1) ----------------------------------------------
+
+    async def _for_the_role(
+        self, run: Run, step: Step, step_run: StepRun, work: HumanWork
+    ) -> tuple[Run, StepRun]:
+        """The step waits for a person of its role to perform it and report it performed. What
+        the person is asked to do is put down as a document, and `step.awaiting` names it by
+        digest. A step that names no role is addressed to nobody in particular, as before the
+        tenant had a structure. A rehearsal asks nobody: the step ends rehearsed."""
+        if run.rehearsal:
+            return await self._settle(
+                run, step_run, {"role": step.role, "rehearsed": True}, REHEARSED
+            )
+        asked = {
+            "run_id": run.id,
+            "step_id": step.id,
+            "method": str(step.method),
+            "role": step.role,
+            "expertise": list(step.expertise or ()),
+            "task": work.task or step.reason,
+        }
+        digest = await self._objects.put(_canonical(asked))
+        run, step_run = await self._open_block(
+            run, step_run, "wait.human", block.AWAITING_ROLE, role=step.role
+        )
+        addressed = (
+            f"a person of the role {step.role}"
+            if step.role is not None
+            else "a person; the step names no role"
+        )
+        step_run = step_run.to(
+            StepState.WAITING_HUMAN,
+            reason=f"waits for {addressed} to perform it and report it performed (ADR-0167)",
+        )
+        run = await self._commit(
+            self._hold_back(run.with_step_run(step_run), step.id),
+            "step.awaiting",
+            step=step_run,
+            outcome=block.AWAITING_ROLE,
+            digest=digest,
+        )
+        return run, step_run
+
+    def _performed_in_role(self, step_run: StepRun, command: ConfirmSteps) -> tuple[str, StepRun]:
+        """A person's answer to a `human` step: performed, and the step succeeds with no result
+        of Taktus's; or rejected, and nothing of it is done. Nothing is confirmed, because
+        Taktus proposed no act to confirm (ADR-0167 §1)."""
+        step_id = step_run.step_id
+        if step_id in command.corrected:
+            raise RunError(
+                f"step {step_id!r} is a person's own step: Taktus proposed nothing to correct. "
+                "Perform it and report it performed, or reject it"
+            )
+        if command.rejected:
+            return "step.declined", step_run.to(
+                StepState.PLANNED,
+                confirmed_by=None,
+                reason=f"rejected by {command.actor}: not performed; resuming the run asks for "
+                "it again",
+            )
+        if not command.performed:
+            raise RunError(
+                f"step {step_id!r} is performed by a person of its role, at every level: perform "
+                "it and report it performed"
+            )
+        now = self._clock.now()
+        role = step_run.block.role if step_run.block is not None else None
+        return "step.performed", step_run.to(
+            StepState.SUCCEEDED,
+            method=Method.HUMAN,
+            adapter=None,
+            confirmed_by=command.actor,
+            reason=f"performed by {command.actor}"
+            + (f", in the role {role}" if role is not None else "")
+            + " (ADR-0167)",
+            started_at=step_run.started_at or now,
+            finished_at=now,
+            checkpoint=Checkpoint(
+                ref=f"ckpt/{command.run_id}/{step_id}",
+                step_id=step_id,
+                taken_at=now,
+                artifact_ids=(),
+                result_digest=_digest(NO_RESULT),
+            ),
+        )
 
     # --- an outside participant (ADR-0155) -------------------------------------------------------
 
@@ -6233,7 +6332,14 @@ class RunEngine:
                 "predictions": produced.digest,
             }
             digest = await self._objects.put(_canonical(fallback))
-            run, step_run = await self._open_block(run, step_run, "wait.human", block.FELL_BACK)
+            # Addressed to the role the fallback names (ADR-0167 §1).
+            run, step_run = await self._open_block(
+                run,
+                step_run,
+                "wait.human",
+                block.FELL_BACK,
+                role=None if step.fallback is None else step.fallback.role,
+            )
             step_run = step_run.to(
                 StepState.WAITING_HUMAN,
                 artifacts=artifacts,

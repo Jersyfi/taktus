@@ -151,7 +151,7 @@ def test_llm_work() -> None:
         (Method.STATISTICS, None, "names its statistic"),
         (Method.STATISTICS, {"statistic": "forecast", "days": []}, "work.statistic"),
         (Method.STATISTICS, {"statistic": "deviation", "days": [], "window": 0}, "work.window"),
-        (Method.HUMAN, {}, "no executor for method human"),
+        (Method.HUMAN, {"task": ""}, r"work\.task"),
         (Method.RULE, {"rule": "constant", "value": {"$input": "nope"}}, "no input 'nope'"),
     ],
 )

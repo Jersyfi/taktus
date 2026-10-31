@@ -4,10 +4,10 @@ title: A human step and a fallback to a person name a role
 component: process
 epic: E4
 serves: [P6, P7, P14]
-state: building
+state: verified
 version: 0.5.0
-tests: [tests/components/process/test_roles.py::test_without_a_structure_a_human_step_registers_without_a_role, tests/components/process/test_roles.py::test_with_a_structure_a_human_step_without_a_role_is_refused_naming_the_roles, tests/components/process/test_roles.py::test_a_fallback_to_a_person_without_a_role_is_refused_once_there_is_a_structure, tests/components/process/test_roles.py::test_a_role_no_identity_holds_is_refused, tests/components/process/test_roles.py::test_a_human_step_and_a_fallback_naming_held_roles_register, tests/components/process/test_roles.py::test_a_role_belongs_only_to_where_a_person_acts]
-adrs: {ADR-0004: ffdb1f1537f5, ADR-0008: e6a4e033abd4, ADR-0015: 3a42705e5561, ADR-0018: 17c99e0eaa3c, ADR-0146: 75a7f7402f7b}
+tests: [tests/components/process/test_roles.py::test_without_a_structure_a_human_step_registers_without_a_role, tests/components/process/test_roles.py::test_with_a_structure_a_human_step_without_a_role_is_refused_naming_the_roles, tests/components/process/test_roles.py::test_a_fallback_to_a_person_without_a_role_is_refused_once_there_is_a_structure, tests/components/process/test_roles.py::test_a_role_no_identity_holds_is_refused, tests/components/process/test_roles.py::test_a_human_step_and_a_fallback_naming_held_roles_register, tests/components/process/test_roles.py::test_a_role_belongs_only_to_where_a_person_acts, tests/components/reporting/test_process_level.py::test_the_process_level_shows_each_persons_role_and_never_the_person, tests/components/run/test_roles_at_run_time.py::test_a_human_step_waits_for_its_role_and_ends_once_performed, tests/components/run/test_roles_at_run_time.py::test_a_human_step_naming_no_role_waits_addressed_to_no_role, tests/components/run/test_roles_at_run_time.py::test_a_human_step_rejected_halts_and_is_asked_again_on_resume, tests/components/run/test_roles_at_run_time.py::test_a_fallback_to_a_person_is_addressed_to_the_fallbacks_role]
+adrs: {ADR-0004: ffdb1f1537f5, ADR-0008: e6a4e033abd4, ADR-0015: 3a42705e5561, ADR-0018: 17c99e0eaa3c, ADR-0146: 604d652a57a6, ADR-0167: 58bc0288385f}
 supersedes: null
 ---
 
@@ -44,7 +44,7 @@ read the role and are use cases of their own.
 
 The method choice and the fallback of ADR-0004; anchors that name a role (ADR-0008); the rule
 that no figure assesses a named person (ADR-0015, principle 14); wait and human produce no
-result (ADR-0018); the decision of ADR-0146. The bus-factor index (UC-6.7) and the value balance
+result (ADR-0018); the decision of ADR-0146, and ADR-0167 for the run. The bus-factor index (UC-6.7) and the value balance
 (UC-9.3) read the role. The owner accepted it as F2 of DEC-0190 (Zenkit idea B,
 `docs/research/2026-10-12-market-review.md`). Issue #331 carries it.
 
@@ -52,5 +52,8 @@ result (ADR-0018); the decision of ADR-0146. The bus-factor index (UC-6.7) and t
 
 The kernel's rules on where a role belongs, the refusal once the tenant has a structure, the
 registration without one, and a version naming held roles — by the named tests. The process
-level carries the roles; the web app's process page shows them. A run does not yet address the
-wait at a human step to its role (ADR-0146, where the promise ends).
+level shows each step's role, the fallback's role and the expertise, in words too, and no
+person; the web app's process page shows them. A run addresses the wait at a person's own step
+to the step's role, at every level, and the wait at a fallback to a person to the fallback's
+role (ADR-0167 §1 and §2). Who may answer such a wait is not locked to the role yet (UC-7.3,
+ADR-0167, *Where this promise ends*).

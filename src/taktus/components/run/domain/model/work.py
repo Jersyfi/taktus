@@ -84,6 +84,10 @@ organisation that answers in its own channel: `participant`, the role; `channel`
 the answer arrives in; `thread`, the conversation it is expected in, usually a `$from` on the
 step that asked; `options`, the words the answer is read as, by rule, where it is not free text.
 
+**A person of the organisation** (ADR-0167 §1). Any other `human` step is performed by a person
+of the step's role: its work is empty or names the `task` in a sentence. The run waits for that
+person at every level, addressed to the role, and the step hands on no result of Taktus's.
+
 **How a step's checks are carried out** (ADR-0152). The checks a step declares from the
 catalogue (`Step.checks`, UC-4.13) run when its value is computed, before it counts:
 
@@ -521,6 +525,15 @@ class ParticipantWork(Value):
         return self
 
 
+class HumanWork(Value):
+    """A `human` step a person of the organisation performs (ADR-0167 §1). The run waits for a
+    person of the step's role to perform it and report it performed, at every autonomy level;
+    the step hands on no result of Taktus's (ADR-0018). Names no person."""
+
+    task: str | None = Field(default=None, min_length=1)
+    """What the person does, in a sentence; None where the step's reason says it."""
+
+
 class WorkerWork(Value):
     task: Task
     max_steps: int = Field(default=100, ge=1)
@@ -743,7 +756,16 @@ def threshold(step: Step) -> Threshold:
     return Threshold(value=float(matched.group(2)), inclusive=matched.group(1) == "<=")
 
 
-type Work = RuleWork | WaitWork | WorkerWork | MlWork | LlmWork | StatisticsWork | ParticipantWork
+type Work = (
+    RuleWork
+    | WaitWork
+    | WorkerWork
+    | MlWork
+    | LlmWork
+    | StatisticsWork
+    | ParticipantWork
+    | HumanWork
+)
 
 WHEN = "when"
 ASK = "ask"
@@ -1038,9 +1060,11 @@ def parse_work(
                 raise UnsupportedWork(step.id, "an llm step carries its prompt under `work`")
             return LlmWork.model_validate(given)
         if step.method is Method.HUMAN and given is not None and "participant" in given:
-            # A person of the organisation is asked through a decision request or a level;
-            # a participant outside it answers in its own channel (ADR-0155).
+            # A participant outside the organisation answers in its own channel (ADR-0155).
             return ParticipantWork.model_validate(given)
+        if step.method is Method.HUMAN:
+            # A person of the organisation performs it, in the step's role (ADR-0167 §1).
+            return HumanWork.model_validate(given or {})
     except ValidationError as error:
         first = error.errors()[0]
         where = ".".join(str(p) for p in first["loc"])

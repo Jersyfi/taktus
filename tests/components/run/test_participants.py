@@ -25,6 +25,7 @@ from taktus.components.run.application.service import (
     StartRun,
 )
 from taktus.components.run.domain.model import (
+    HumanWork,
     Run,
     RunError,
     RunState,
@@ -336,9 +337,13 @@ async def test_a_thread_that_does_not_resolve_to_a_text_fails_the_step() -> None
     assert "not a text" in (run.step_run("answer").reason or "")
 
 
-def test_a_human_step_without_a_participant_still_has_no_executor() -> None:
+def test_a_human_step_without_a_participant_is_performed_inside_the_organisation() -> None:
+    """ADR-0167 §1: a person of the step's role performs it; its work names the task at most."""
     definition, _ = answer()
-    with pytest.raises(UnsupportedWork, match="no executor"):
+    assert parse_work(definition, {"task": "a person does it"}) == HumanWork(
+        task="a person does it"
+    )
+    with pytest.raises(UnsupportedWork, match=r"work\.note"):
         parse_work(definition, {"note": "a person does it"})
 
 
