@@ -14,10 +14,12 @@ from __future__ import annotations
 
 import base64
 import ipaddress
+import json
 import os
 import re
 import shutil
 import subprocess
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -29,6 +31,10 @@ from images import connector_names
 from taktus.adapters.driven.execution.kubernetes.api import PERMITTED
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools"))
+
+import image_digests  # noqa: E402 — a script under tools/, found through the line above
+
 CHART = ROOT / "deploy" / "k8s" / "chart"
 EXAMPLE = ROOT / "deploy" / "k8s" / "values.example.yaml"
 RELEASE_NAMESPACE = "taktus"
@@ -284,7 +290,7 @@ def test_every_image_tag_is_a_version(rendered: list[dict[str, Any]]) -> None:
         config["data"]["TAKTUS_EXECUTION_EGRESS_IMAGE"],
     ]
     for image in images:
-        repository, _, tag = image.rpartition(":")
+        repository, _, tag = image.partition("@")[0].rpartition(":")
         assert repository and "/" not in tag, f"{image} names no tag"
         assert VERSION_TAG.match(tag) and tag != "latest", f"{image}: not a version"
 
@@ -300,6 +306,100 @@ def test_every_image_tag_is_a_version(rendered: list[dict[str, Any]]) -> None:
 )
 def test_a_tag_that_is_not_a_version_is_refused(setting: str) -> None:
     assert "tag" in render_fails(setting)
+
+
+# --- every image by its digest (ADR-0173 §7) ------------------------------------------------
+
+DIGEST = "sha256:" + "0123456789abcdef" * 4
+COMMIT = "0123456789abcdef0123456789abcdef01234567"
+PINNED = (
+    f"image.digest={DIGEST}",
+    f"backup.image.digest={DIGEST}",
+    f"database.image.digest={DIGEST}",
+    f"connectors.digests.github={DIGEST}",
+    f"connectors.digests.slack={DIGEST}",
+    f"execution.image=taktus-worker-coding:0.1.0@{DIGEST}",
+    f"execution.egress.proxyImage=python@{DIGEST}",
+)
+
+
+def every_image(documents: list[dict[str, Any]]) -> list[str]:
+    images = [c["image"] for _, spec in pod_specs(documents) for c in containers(spec)]
+    [config] = of_kind(documents, "ConfigMap")
+    return [
+        *images,
+        config["data"]["TAKTUS_EXECUTION_UNIT"],
+        config["data"]["TAKTUS_EXECUTION_EGRESS_IMAGE"],
+    ]
+
+
+def test_every_image_is_referred_to_by_its_digest_when_the_values_give_one() -> None:
+    images = every_image(render(*PINNED, "images.requireDigest=true"))
+    assert images
+    for image in images:
+        assert image.endswith(f"@{DIGEST}"), f"{image} is not pinned"
+    assert "taktus:0.1.0@" + DIGEST in images, "the tag stays beside the digest, for a reader"
+    assert f"python@{DIGEST}" in images, "a reference by digest alone needs no tag"
+
+
+def test_without_a_digest_an_image_is_referred_to_by_its_tag_as_before(
+    rendered: list[dict[str, Any]],
+) -> None:
+    assert not [image for image in every_image(rendered) if "@" in image]
+
+
+@pytest.mark.parametrize("left_out", range(len(PINNED)))
+def test_require_digest_refuses_any_image_without_one(left_out: int) -> None:
+    sets = [s for i, s in enumerate(PINNED) if i != left_out]
+    message = render_fails(*sets, "images.requireDigest=true")
+    assert "requireDigest" in message, message
+
+
+@pytest.mark.parametrize(
+    "setting",
+    [
+        "image.digest=sha256:short",
+        "image.digest=md5:" + "0" * 32,
+        f"image.digest={DIGEST.upper()}",
+        "connectors.digests.github=latest",
+        "execution.image=taktus-worker-coding:0.1.0@sha256:short",
+        "execution.image=taktus-worker-coding@latest",
+    ],
+)
+def test_a_digest_of_another_form_is_refused(setting: str) -> None:
+    assert "not a digest" in render_fails(setting)
+
+
+def test_an_image_of_main_is_tagged_with_its_commit() -> None:
+    """The development instance runs `main` (ADR-0020); its images carry the full commit hash,
+    which names one commit and is never pushed twice (ADR-0173 §1). A short hash is refused."""
+    images = every_image(render(f"image.tag={COMMIT}"))
+    assert f"taktus:{COMMIT}" in images
+    assert "is not a version" in render_fails(f"image.tag={COMMIT[:12]}x")
+
+
+def test_the_digests_the_image_workflow_records_pin_the_chart(tmp_path: Path) -> None:
+    """`digests.values.yaml`, as tools/image_digests.py writes it from one run, pins every image
+    the chart derives from the release (ADR-0173 §6)."""
+    source = tmp_path / "in"
+    source.mkdir()
+    names = ["taktus", "taktus-backup", *(f"taktus-connector-{n}" for n in connector_names())]
+    for number, name in enumerate(names):
+        digest = f"sha256:{number:064x}"
+        entry = {"name": name, "repository": f"r/{name}", "tag": "0.1.0", "digest": digest}
+        (source / name).write_text(json.dumps(entry), encoding="utf-8")
+    image_digests.record(source, tmp_path / "out")
+    args = ["template", "taktus", str(CHART), "--namespace", RELEASE_NAMESPACE, "-f", str(EXAMPLE)]
+    args += ["-f", str(tmp_path / "out" / "digests.values.yaml")]
+    completed = run_helm(*args)
+    assert completed.returncode == 0, completed.stderr
+    documents = [d for d in yaml.safe_load_all(completed.stdout) if d]
+    images = [c["image"] for _, spec in pod_specs(documents) for c in containers(spec)]
+    derived = [
+        i for i in images if i.startswith(("taktus:", "taktus-backup:", "taktus-connector-"))
+    ]
+    assert derived
+    assert all(re.search(r"@sha256:[0-9a-f]{64}$", i) for i in derived), derived
 
 
 def test_one_deployment_per_role_and_migrations_with_the_same_image(

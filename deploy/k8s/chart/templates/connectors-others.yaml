@@ -67,7 +67,7 @@ spec:
             - {{ . | quote }}
             {{- end }}
           {{- else }}
-          image: {{ include "taktus.imageRef" (dict "what" (printf "connectors.others %s image" $c.name) "ref" $c.image) }}
+          image: {{ include "taktus.imageRef" (dict "root" $ "what" (printf "connectors.others %s image" $c.name) "ref" $c.image) }}
           imagePullPolicy: {{ $root.Values.image.pullPolicy }}
           {{- with $c.command }}
           command:
