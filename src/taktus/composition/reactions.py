@@ -393,6 +393,7 @@ class Reactions:
         )
         await self._engine.submit(
             StartRun(
+                org_unit=command.org_unit,
                 plan=plan,
                 work=version.work,
                 budget=budget,
@@ -442,6 +443,7 @@ class Reactions:
         )
         await self._engine.submit(
             StartRun(
+                org_unit=command.org_unit,
                 plan=plan,
                 work=version.work,
                 budget=budget,

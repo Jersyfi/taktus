@@ -37,6 +37,7 @@ from taktus.components.governance.domain.model.messages import (
     case_key,
     shipped_rules,
 )
+from taktus.components.governance.domain.model.org_units import OrgUnitQuota
 from taktus.components.governance.domain.model.residency import ResidencyRule, shipped_rule
 from taktus.components.governance.domain.model.sources import (
     SourceDeclaration,
@@ -72,6 +73,7 @@ __all__ = [
     "IncidentState",
     "Lowered",
     "MessageRules",
+    "OrgUnitQuota",
     "Outcome",
     "Proposed",
     "Rate",

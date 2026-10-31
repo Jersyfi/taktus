@@ -286,6 +286,7 @@ from taktus.components.run.ports import (
     ModelPool,
     NotRaised,
     OpenWork,
+    OrgUnits,
     ProposalDecided,
     Repeated,
     Repetition,
@@ -466,6 +467,10 @@ class StartRun:
     pinned at its version in production."""
     profile: str | None = None
     """The role profile of the shared agent the run serves (ADR-0163 §5)."""
+    org_unit: str | None = None
+    """The organisational unit the run runs for: `Command.org_unit` of the command that
+    started it, never derived from a person (ADR-0166). Its job carries it, and its unit's
+    quotas hold it. None runs for the tenant itself."""
 
     @property
     def identity(self) -> str:
@@ -506,6 +511,10 @@ class ResumeRun:
     """The claim is the last its job is given: the queue claims the job no more after it. A
     step that raises then fails with what it raised, and the run escalates for it, instead of
     the exception leaving the engine and the run staying `running` for nobody (#591)."""
+    held_since: datetime | None = None
+    """Since when the queue held the run's job because its organisational unit held its
+    concurrent runs (`Job.held_since`). The stretch until now is booked as a block on the
+    step the run goes on with (ADR-0166 §4)."""
 
 
 @dataclass(frozen=True)
@@ -762,7 +771,14 @@ class RunEngine:
         messages: Messages | None = None,
         statements: Statements | None = None,
         guidance: Guidance | None = None,
+        org_units: OrgUnits | None = None,
     ) -> None:
+        self._org_units = org_units
+        """The tenant's quotas per organisational unit and what each unit's runs committed
+        (ADR-0166). None: no run commits to a unit's budget quota."""
+        self._held_since: ContextVar[datetime | None] = ContextVar("held_since", default=None)
+        """Since when the queue held the job of the run executing in this task for its unit's
+        concurrent runs; booked once as a block, then None (ADR-0166 §4)."""
         self._guidance = guidance
         """Where a run finds the skills its steps name and the profile it serves (ADR-0162,
         ADR-0163). None: nothing is pinned and nothing is handed over."""
@@ -907,6 +923,7 @@ class RunEngine:
 
     async def resume(self, command: ResumeRun) -> Run:
         last = self._last_attempt.set(command.last_attempt)
+        held = self._held_since.set(command.held_since)
         try:
             if command.claim is None:
                 return await self._resume(command)
@@ -924,6 +941,7 @@ class RunEngine:
             finally:
                 self._claim.reset(token)
         finally:
+            self._held_since.reset(held)
             self._last_attempt.reset(last)
 
     async def _resume(self, command: ResumeRun) -> Run:
@@ -985,6 +1003,7 @@ class RunEngine:
             bindings=dict(command.bindings),
             skills=await self._pinned(command),
             profile=command.profile,
+            org_unit=command.org_unit,
             created_at=now,
             updated_at=now,
         )
@@ -998,7 +1017,9 @@ class RunEngine:
                 if command.run_id is None
                 else "job_" + command.run_id.removeprefix("run_")
             )
-            job = Job(id=job_id, kind=RUN_EXECUTE, payload={"run_id": run.id})
+            job = Job(
+                id=job_id, kind=RUN_EXECUTE, payload={"run_id": run.id}, org_unit=run.org_unit
+            )
         try:
             run = await self._commit(
                 run,
@@ -1250,7 +1271,12 @@ class RunEngine:
             for index, (kind, step_run) in enumerate(answered):
                 job = None
                 if command.enqueue and index == len(answered) - 1 and not command.rejected:
-                    job = Job(id=self._ids.new("job"), kind=RUN_EXECUTE, payload={"run_id": run.id})
+                    job = Job(
+                        id=self._ids.new("job"),
+                        kind=RUN_EXECUTE,
+                        payload={"run_id": run.id},
+                        org_unit=run.org_unit,
+                    )
                 decision = decisions.get(step_run.step_id)
                 proposal = None if decision is None else await self._decision_record(run, decision)
                 run = await self._commit(
@@ -1483,7 +1509,12 @@ class RunEngine:
             if run is before or run.runnable() is None:
                 return run
             if command.enqueue:
-                job = Job(id=self._ids.new("job"), kind=RUN_EXECUTE, payload={"run_id": run.id})
+                job = Job(
+                    id=self._ids.new("job"),
+                    kind=RUN_EXECUTE,
+                    payload={"run_id": run.id},
+                    org_unit=run.org_unit,
+                )
                 return await self._commit(run, enqueue=job)
             run = await self._commit(run.to(RunState.RUNNING), "run.resumed", actor=command.actor)
             return await self._execute(run, command.stop_after, span)
@@ -2325,6 +2356,11 @@ class RunEngine:
                 )
                 run = run.with_step_run(held_up)
             return await self._end(run, RunState.HALTED, Cause.LIMIT, refused, span)
+        run = await self._held_for_unit(run)
+        budgeted = await self._unit_budget(run)
+        if isinstance(budgeted, tuple):
+            return await self._end(budgeted[0], RunState.HALTED, budgeted[1], budgeted[2], span)
+        run = budgeted
         capped = await self._capped(run, span)
         if isinstance(capped, tuple):
             return await self._end(capped[0], RunState.HALTED, Cause.PARKED, capped[1], span)
@@ -3404,7 +3440,12 @@ class RunEngine:
             ),
         )
         job = (
-            Job(id=self._ids.new("job"), kind=RUN_EXECUTE, payload={"run_id": run.id})
+            Job(
+                id=self._ids.new("job"),
+                kind=RUN_EXECUTE,
+                payload={"run_id": run.id},
+                org_unit=run.org_unit,
+            )
             if command.enqueue
             else None
         )
@@ -3624,6 +3665,123 @@ class RunEngine:
             + f". It counts again at {check_at.isoformat()} (ADR-0132)"
         )
         return run, reason
+
+    # --- quotas per organisational unit (ADR-0166) ---------------------------------------------
+
+    async def _held_for_unit(self, run: Run) -> Run:
+        """Book the stretch in which the queue held the run's job for its unit's concurrent
+        runs: a block on the step the run goes on with, from when the hold began to now,
+        account `limit.quota`. A step already blocked keeps its block, so that no time is
+        counted twice (ADR-0166 §4)."""
+        since = self._held_since.get()
+        if since is None:
+            return run
+        self._held_since.set(None)
+        step_run = run.runnable()
+        if step_run is None or step_run.block is not None:
+            return run
+        run, step_run = await self._open_block(
+            run, step_run, "limit.quota", block.AT_UNIT_QUOTA, since=min(since, self._clock.now())
+        )
+        run, _ = await self._close_block(run.with_step_run(step_run), step_run)
+        return run
+
+    async def _unit_budget(self, run: Run) -> Run | tuple[Run, Cause, str]:
+        """Before a run's first step: commit its budget to its unit's budget quota for the
+        month, once, or hold it (ADR-0166 §3, §4). A run whose amounts do not fit what is left
+        waits, parked, until the quota's next check or the next month; one whose budget names
+        no amount in a currency of the quota halts at the limit, for a person. A rule over
+        stored sums; a rehearsal commits nothing."""
+        unit = run.org_unit
+        if (
+            self._org_units is None
+            or unit is None
+            or run.rehearsal
+            or run.org_unit_month is not None
+            or any(s.state is not StepState.PLANNED for s in run.step_runs)
+        ):
+            return run
+        held_up = run.runnable()
+        if held_up is None:
+            return run
+        quota = await self._org_units.budget(run.tenant, unit)
+        if quota is None:
+            return await self._unit_budget_ends(run, held_up)
+        now = self._clock.now()
+        month = f"{now:%Y-%m}"
+        money = run.budget.currency or {}
+        amounts = {c: money[c] for c in quota.amounts if c in money}
+        missing = sorted(set(quota.amounts) - set(amounts))
+        facts = {
+            "org_unit": unit,
+            "month": month,
+            "amounts": amounts,
+            "limits": dict(quota.amounts),
+        }
+        if missing:
+            facts["missing"] = missing
+            digest = await self._objects.put(_canonical(facts))
+            run = await self._wait_at_unit(run, held_up, "no_amount", digest, None)
+            return (
+                run,
+                Cause.LIMIT,
+                f"the run's budget names no amount in {', '.join(missing)}, the currency of its "
+                f"unit's budget quota; give it one, and resume it (ADR-0166)",
+            )
+        digest = await self._objects.put(_canonical(facts))
+        quotas = self._org_units
+
+        async def commit() -> None:
+            if not await quotas.commit(run.tenant, unit, month, amounts, quota.amounts):
+                raise _OverUnitBudget
+
+        try:
+            run = await self._commit(
+                run.model_copy(update={"org_unit_month": month}),
+                ORG_UNIT_ADMITTED,
+                outcome="admitted",
+                digest=digest,
+                inside=commit,
+            )
+        except _OverUnitBudget:
+            following = _next_month(now)
+            check_at = min(now + timedelta(seconds=quota.check_every_seconds), following)
+            run = await self._wait_at_unit(run, held_up, "budget", digest, check_at)
+            return (
+                run,
+                Cause.PARKED,
+                f"the run's budget does not fit what is left of its unit's budget quota for "
+                f"{month}; it is tried again at {check_at.isoformat()} (ADR-0166)",
+            )
+        return await self._unit_budget_ends(run, run.step_run(held_up.step_id))
+
+    async def _unit_budget_ends(self, run: Run, step_run: StepRun) -> Run:
+        if step_run.block is None or step_run.block.cause != block.AT_UNIT_BUDGET:
+            return run
+        run, _ = await self._close_block(run, step_run)
+        return run
+
+    async def _wait_at_unit(
+        self,
+        run: Run,
+        held_up: StepRun,
+        outcome: str,
+        digest: Digest,
+        check_at: datetime | None,
+    ) -> Run:
+        """The run waits at its first step for its unit's budget quota; the facts are booked."""
+        run, held_up = await self._open_block(run, held_up, "limit.budget", block.AT_UNIT_BUDGET)
+        if held_up.block is not None:
+            held_up = held_up.model_copy(
+                update={"block": held_up.block.model_copy(update={"next_check_at": check_at})}
+            )
+        return await self._commit(
+            run.with_step_run(held_up),
+            ORG_UNIT_HELD,
+            step=held_up,
+            outcome=outcome,
+            digest=digest,
+        )
 
     # --- a stop to repetition (ADR-0132 §5) ----------------------------------------------------
 
@@ -6692,6 +6850,23 @@ CHECK_FAILED = "check_failed"
 """The outcome of `step.finished` for a step whose value a check refused."""
 SAMPLED = "check.sampled"
 """The ledger entry of a result a sampling check put to a person after the fact."""
+
+
+ORG_UNIT_ADMITTED = "org_unit.admitted"
+"""A run committed its budget to its organisational unit's budget quota (ADR-0166)."""
+ORG_UNIT_HELD = "org_unit.held"
+"""A run held before its first step by its unit's budget quota, outcome `budget` or
+`no_amount` (ADR-0166)."""
+
+
+class _OverUnitBudget(Exception):
+    """The run's amounts do not fit what is left of its unit's month (ADR-0166 §3)."""
+
+
+def _next_month(now: datetime) -> datetime:
+    """The first instant of the calendar month after `now`, in its zone."""
+    first = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    return (first + timedelta(days=32)).replace(day=1)
 
 
 class _Recount(Exception):

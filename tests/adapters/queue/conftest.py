@@ -16,13 +16,20 @@ import pytest
 from sqlalchemy import text
 
 from taktus.adapters.driven.clock import SystemClock
-from taktus.adapters.driven.memory import MemoryLeadership, MemoryPersistence, MemoryQueue
+from taktus.adapters.driven.memory import (
+    MemoryLeadership,
+    MemoryOrgUnitSpends,
+    MemoryPersistence,
+    MemoryQueue,
+)
 from taktus.adapters.driven.postgres import (
     PostgresLeadership,
+    PostgresOrgUnitSpends,
     PostgresPersistence,
     PostgresQueue,
 )
 from taktus.ports.leadership import Lead, Leadership
+from taktus.ports.org_units import OrgUnitSpends
 from taktus.ports.persistence import UnitOfWork
 from taktus.ports.queue import Queue
 
@@ -41,6 +48,8 @@ class Backend:
     _new_tenant: Callable[[str], Awaitable[None]]
     _expire: Callable[[str, str], Awaitable[None]]
     _sever: Callable[[Lead], Awaitable[None]]
+    spends: OrgUnitSpends
+    """What organisational units committed (ADR-0166), in the same persistence."""
 
     async def tenant(self) -> str:
         tenant = f"t_{os.urandom(6).hex()}"
@@ -78,7 +87,16 @@ async def memory_backend() -> Backend:
     async def sever(lead: Lead) -> None:
         lead.drop()  # type: ignore[attr-defined]
 
-    return Backend("memory", memory, queue, MemoryLeadership(), nothing, expire, sever)
+    return Backend(
+        "memory",
+        memory,
+        queue,
+        MemoryLeadership(),
+        nothing,
+        expire,
+        sever,
+        MemoryOrgUnitSpends(memory),
+    )
 
 
 @pytest.fixture
@@ -121,6 +139,7 @@ async def postgres_backend(postgres_url: str) -> AsyncIterator[Backend]:
             create_tenant,
             expire,
             sever,
+            PostgresOrgUnitSpends(postgres),
         )
     finally:
         await postgres.close()

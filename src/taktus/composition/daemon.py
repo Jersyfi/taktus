@@ -45,6 +45,7 @@ from taktus.adapters.driven.postgres import (
     PostgresLeadership,
     PostgresLedgerSignal,
     PostgresLedgerStore,
+    PostgresOrgUnitSpends,
     PostgresOutbox,
     PostgresPersistence,
     PostgresProjectionStore,
@@ -196,6 +197,7 @@ from taktus.composition.maturation import InstanceMaturation, maturation_wiring
 from taktus.composition.maturity import CatalogMaturities, InstanceCatalogue
 from taktus.composition.moves import MethodMoves
 from taktus.composition.operation import OperationRecords
+from taktus.composition.org_units import OrgUnitsOfTheRun
 from taktus.composition.owner_channel import (
     OwnerChannelWiring,
     known_secrets,
@@ -500,6 +502,7 @@ async def wire(
             return PostgresRepository(persistence, kind)
 
         decisions = decision_wiring(stored, persistence, ledger, clock, identities)
+        org_units = OrgUnitsOfTheRun(decisions.org_units, PostgresOrgUnitSpends(persistence))
         async with open_workers(
             settings.workers, configuration, state_dir=settings.state_dir, relay=relay
         ) as opened:
@@ -613,6 +616,7 @@ async def wire(
                         persistence, PostgresRepository(persistence, ProcessVersion)
                     ),
                     guidance=CatalogGuidance(skill_catalog, agent_catalog),
+                    org_units=org_units,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -1188,6 +1192,7 @@ async def wire(
                         # A waiting run is not tried again sooner than one poll (ADR-0037).
                         wait_first_seconds=settings.poll_seconds,
                         on_outcome=roles.said,
+                        org_units=org_units,
                     ),
                 )
             try:

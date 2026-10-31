@@ -33,3 +33,10 @@ class Command(Value):
     context: dict[str, Any] | None = None
     reply_to: ReplyTo
     received_at: datetime
+
+    @property
+    def org_unit(self) -> str | None:
+        """The organisational unit the command was given in: the department or group below the
+        tenant in its `org_path`, None where the path names the tenant alone (ADR-0166). A run
+        the command starts runs for it."""
+        return self.org_path[1] if len(self.org_path) > 1 else None

@@ -200,6 +200,7 @@ async def _submit(
         )
         run = await services.engine.submit(
             StartRun(
+                org_unit=command.org_unit,
                 plan=plan,
                 work=version.work,
                 budget=budget,

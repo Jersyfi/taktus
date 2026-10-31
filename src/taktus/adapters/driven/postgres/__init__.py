@@ -12,6 +12,7 @@ from taktus.adapters.driven.postgres.backup_log import PostgresBackupLog
 from taktus.adapters.driven.postgres.leadership import PostgresLeadership
 from taktus.adapters.driven.postgres.ledger_store import PostgresLedgerStore
 from taktus.adapters.driven.postgres.migrate import SchemaOutOfDate, check_schema, upgrade
+from taktus.adapters.driven.postgres.org_units import PostgresOrgUnitSpends
 from taktus.adapters.driven.postgres.outbox import PostgresOutbox
 from taktus.adapters.driven.postgres.persistence import PostgresPersistence
 from taktus.adapters.driven.postgres.projection_store import PostgresProjectionStore
@@ -28,6 +29,7 @@ __all__ = [
     "PostgresLeadership",
     "PostgresLedgerSignal",
     "PostgresLedgerStore",
+    "PostgresOrgUnitSpends",
     "PostgresOutbox",
     "PostgresPersistence",
     "PostgresProjectionStore",

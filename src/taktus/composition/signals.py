@@ -243,6 +243,7 @@ class CommandInterventions:
         )
         run = await self._engine.submit(
             StartRun(
+                org_unit=command.org_unit,
                 plan=plan,
                 work=version.work,
                 budget=Limits.model_validate(dict(version.limits)),

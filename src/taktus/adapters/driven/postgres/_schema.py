@@ -37,6 +37,7 @@ from sqlalchemy import (
     Integer,
     LargeBinary,
     MetaData,
+    Numeric,
     PrimaryKeyConstraint,
     Table,
     Text,
@@ -523,6 +524,29 @@ message_rules = Table(
 )
 """One row per tenant that configured its rules for outward messages (ADR-0142)."""
 
+org_unit_quota = Table(
+    "org_unit_quota",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),  # the unit
+    _at("configured_at"),
+    Column("quota", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per unit a tenant set a quota for (ADR-0166)."""
+
+org_unit_spend = Table(
+    "org_unit_spend",
+    metadata,
+    _tenant(),
+    Column("org_unit", Text, nullable=False),
+    Column("month", Text, nullable=False),
+    Column("currency", Text, nullable=False),
+    Column("committed", Numeric, nullable=False),
+    PrimaryKeyConstraint("tenant", "org_unit", "month", "currency"),
+)
+"""What a unit's runs committed in a month, per currency (ADR-0166)."""
+
 case_answer = Table(
     "case_answer",
     metadata,
@@ -710,6 +734,8 @@ run = Table(
     Column("bindings", JSONB),  # purposes bound to one model for this run alone (ADR-0149)
     Column("skills", JSONB),  # the skill versions the run pinned (ADR-0162)
     Column("profile", Text),  # the role profile of a shared agent it serves (ADR-0163)
+    Column("org_unit", Text),  # the unit it runs for (ADR-0166)
+    Column("org_unit_month", Text),  # the month it committed its budget to its unit's quota
     Column("state", Text, nullable=False),
     Column("cause", Text),
     Column("reason", Text),
@@ -896,6 +922,8 @@ job = Table(
     Column("takeover_step", Text),
     _at("held_until", nullable=True),
     Column("messages", JSONB),  # ADR-0156
+    Column("org_unit", Text),  # the unit the run runs for (ADR-0166)
+    _at("quota_held_since", nullable=True),  # first skipped for its unit's quota
     PrimaryKeyConstraint("tenant", "id"),
     Index(
         "job_available",

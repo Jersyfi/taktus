@@ -248,6 +248,7 @@ async def replay(bundle: Mapping[str, Any] | Path, directory: Path, store: Store
     )
     run = await engine.start(
         StartRun(
+            org_unit=command.org_unit,
             plan=plan,
             work=version.work,
             budget=Limits.model_validate(recording.budget),

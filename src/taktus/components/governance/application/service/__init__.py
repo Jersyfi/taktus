@@ -23,6 +23,11 @@ from taktus.components.governance.application.service.messages import (
     ConfigureMessages,
     TenantMessages,
 )
+from taktus.components.governance.application.service.org_units import (
+    OrgUnitQuotaRefused,
+    SetOrgUnitQuota,
+    TenantOrgUnits,
+)
 from taktus.components.governance.application.service.repetition import (
     Repetitions,
     RepetitionSeen,
@@ -75,6 +80,7 @@ __all__ = [
     "Drifts",
     "ExpectedRuns",
     "Looked",
+    "OrgUnitQuotaRefused",
     "RaiseRed",
     "RepetitionSeen",
     "Repetitions",
@@ -82,10 +88,12 @@ __all__ = [
     "ReportCapacityHandler",
     "ReportDefect",
     "ResultDefects",
+    "SetOrgUnitQuota",
     "SignalIncidents",
     "Stages",
     "StagesRefused",
     "TenantMessages",
+    "TenantOrgUnits",
     "TenantResidency",
     "TenantSources",
     "UnknownIncident",

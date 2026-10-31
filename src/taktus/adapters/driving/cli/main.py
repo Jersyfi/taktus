@@ -41,7 +41,8 @@ the tenant's limits (ADR-0110). `residency` shows and sets where the tenant's da
 processed, narrowed per data class (ADR-0116). `sources` shows and declares which capabilities
 serve data free of personal fields and which serve personal data (ADR-0130). `messages` shows
 and sets the tenant's rules for outward messages, and `case answered` records that a person
-answered in a case, which then gets no more messages (ADR-0142). `deadline` lists
+answered in a case, which then gets no more messages (ADR-0142). `units` shows and sets the
+tenant's quotas per organisational unit (ADR-0166). `deadline` lists
 a tenant's open deadlines, ordered by when they fall due, and shows and sets its working time
 (ADR-0133). `trace retention` shows and sets how long the tenant keeps the trace inside a step
 (ADR-0135). `stop` stops every step an adapter serves and prints the confirmation once it
@@ -101,6 +102,7 @@ from taktus.adapters.driving.cli import (
     submit_command,
     tenant_command,
     trace_command,
+    units_command,
 )
 from taktus.conformance import (
     ConnectorSuiteOptions,
@@ -147,6 +149,7 @@ app.add_typer(residency_command.residency, name="residency")
 app.add_typer(sources_command.sources, name="sources")
 app.add_typer(messages_command.messages, name="messages")
 app.add_typer(messages_command.case, name="case")
+app.add_typer(units_command.units, name="units")
 app.add_typer(deadline_command.deadline, name="deadline")
 app.add_typer(stop_command.stop, name="stop")
 app.add_typer(trace_command.trace, name="trace")
