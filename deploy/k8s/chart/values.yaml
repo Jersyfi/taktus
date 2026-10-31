@@ -154,6 +154,27 @@ backup:
   resources:
     requests: { cpu: 50m, memory: 128Mi }
     limits: { memory: 512Mi }
+  # Point-in-time recovery (ADR-0174, README §11): the database archives its write-ahead log into
+  # the store as it writes it, and each backup run takes a base backup beside the dump. Off by
+  # default; needs `enabled` and `database.deploy`. The database then runs from the backup image
+  # and holds the store's credential.
+  pointInTime:
+    enabled: false
+    archiveTimeoutSeconds: 300   # a segment is archived at least this often: the recovery point objective
+  # The restore drill, S-03 (ADR-0174 §3): the newest backup restored into a server of the drill's
+  # own pod, every tenant's chain verified against the heads taken before; never the instance's
+  # database. With pointInTime, to the latest moment the archive reaches.
+  drill:
+    enabled: false
+    schedule: "47 4 * * 0"       # weekly, Sundays 04:47 UTC
+    restoreMinutes: 60           # the machine's part of the recovery time objective; a slower drill fails
+    identitySecret: ""           # with `recipient`: the Secret holding the age private key — see README §11
+    identityKey: ""
+    workSize: 40Gi               # the restored database lives here while the drill runs
+    activeDeadlineSeconds: 7200
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { memory: 1Gi }
 
 # The migrations: a Job with the control plane's own image, run by the install and by every
 # upgrade before the new version starts. With `database.deploy: true` the first install runs it

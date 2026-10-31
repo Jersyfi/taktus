@@ -8,22 +8,17 @@ from the state volume mounted read-only (#322). That volume is ReadWriteOnce, so
 runs on the node of the control plane's pods. It reaches the name service, the database and the store, nothing else;
 the database admits it.
 
+With `backup.pointInTime.enabled`, each run takes a base backup beside the dump, and the database
+archives its write-ahead log into the same store (ADR-0174); this file renders the database's
+connection rules for the base backup and its egress to the store.
+
 A run that fails leaves its Job and pod, so that its log can be read; the next run does not wait
 for it. Two runs never overlap.
 */ -}}
 {{- $b := .Values.backup -}}
 {{- if $b.enabled }}
 {{- $name := printf "%s-backup" (include "taktus.fullname" .) -}}
-{{- $store := $b.store -}}
-{{- $secret := required "backup.store.secret is required: the Secret holding the store's credential" $store.secret -}}
-{{- $idKey := required "backup.store.accessKeyIdKey is required" $store.accessKeyIdKey -}}
-{{- $secretKey := required "backup.store.secretKey is required" $store.secretKey -}}
 {{- $url := index (include "taktus.secretFiles" . | fromJsonArray) 0 -}}
-{{- $v4 := list -}}
-{{- $v6 := list -}}
-{{- range .Values.execution.egress.exceptCidrs -}}
-{{- if contains ":" . -}}{{- $v6 = append $v6 . -}}{{- else -}}{{- $v4 = append $v4 . -}}{{- end -}}
-{{- end }}
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -76,22 +71,11 @@ spec:
                   value: /tmp
                 - name: {{ $url.variable }}
                   value: {{ printf "%s/%s" $url.dir $url.key | quote }}
-                - name: TAKTUS_BACKUP_STORE_ENDPOINT
-                  value: {{ required "backup.store.endpoint is required" $store.endpoint | quote }}
-                - name: TAKTUS_BACKUP_STORE_REGION
-                  value: {{ $store.region | quote }}
-                - name: TAKTUS_BACKUP_STORE_BUCKET
-                  value: {{ required "backup.store.bucket is required" $store.bucket | quote }}
-                - name: TAKTUS_BACKUP_STORE_PREFIX
-                  value: {{ $store.prefix | quote }}
-                - name: TAKTUS_CREDENTIAL_BACKUP_STORE_ACCESS_KEY_ID_FILE
-                  value: {{ printf "/run/secrets/taktus/backup-store/%s" $idKey | quote }}
-                - name: TAKTUS_CREDENTIAL_BACKUP_STORE_FILE
-                  value: {{ printf "/run/secrets/taktus/backup-store/%s" $secretKey | quote }}
-                - name: TAKTUS_BACKUP_RETENTION_DAYS
-                  value: {{ $b.retentionDays | quote }}
-                - name: TAKTUS_BACKUP_RECIPIENT
-                  value: {{ $b.recipient | quote }}
+                {{- include "taktus.backupStoreEnv" . | nindent 16 }}
+                {{- if include "taktus.pointInTime" . }}
+                - name: TAKTUS_BACKUP_POINT_IN_TIME
+                  value: "true"
+                {{- end }}
                 - name: TAKTUS_BACKUP_WORK_DIR
                   value: /work
                 {{- if $b.objects }}
@@ -148,15 +132,7 @@ spec:
                 claimName: {{ include "taktus.fullname" . }}-state
                 readOnly: true
             {{- end }}
-            - name: backup-store
-              secret:
-                secretName: {{ $secret }}
-                defaultMode: 0440
-                items:
-                  - key: {{ $idKey }}
-                    path: {{ $idKey }}
-                  - key: {{ $secretKey }}
-                    path: {{ $secretKey }}
+            {{- include "taktus.backupStoreVolume" . | nindent 12 }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -185,19 +161,37 @@ spec:
     {{- toYaml . | nindent 4 }}
     {{- end }}
     {{- end }}
-    - to:
-        - ipBlock:
-            cidr: 0.0.0.0/0
-            {{- with $v4 }}
-            except: {{ toJson . }}
-            {{- end }}
-        - ipBlock:
-            cidr: ::/0
-            {{- with $v6 }}
-            except: {{ toJson . }}
-            {{- end }}
-      ports:
-        {{- range $b.egressPorts }}
-        - { protocol: TCP, port: {{ . }} }
-        {{- end }}
+    {{- include "taktus.backupStoreEgress" . | nindent 4 }}
+{{- if include "taktus.pointInTime" . }}
+---
+# The database's connection rules with point-in-time recovery (ADR-0174 §1): the image's own and a
+# replication connection with a password, for the base backup.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "taktus.fullname" . }}-database-hba
+  namespace: {{ include "taktus.controlPlaneNamespace" . }}
+  labels:
+    {{- include "taktus.labels" . | nindent 4 }}
+data:
+  pg_hba.conf: |
+    {{- include "taktus.databaseHba" . | nindent 4 }}
+---
+# The database writes its archived log to the store: the name service and the store, nothing else.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "taktus.fullname" . }}-database-archive
+  namespace: {{ include "taktus.controlPlaneNamespace" . }}
+  labels:
+    {{- include "taktus.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "taktus.selector" (dict "root" . "component" "database") | nindent 6 }}
+  policyTypes: [Egress]
+  egress:
+    {{- include "taktus.dnsPeer" .Values.networkPolicy | nindent 4 }}
+    {{- include "taktus.backupStoreEgress" . | nindent 4 }}
+{{- end }}
 {{- end }}

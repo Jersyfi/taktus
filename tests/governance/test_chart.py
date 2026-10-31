@@ -1090,6 +1090,133 @@ def test_a_backup_without_its_store_or_its_version_is_refused(setting: str) -> N
     assert "backup." in render_fails(setting)
 
 
+# --- point-in-time recovery and the restore drill (ADR-0174, #346) -------------------------------
+
+PITR = ("backup.pointInTime.enabled=true",)
+
+
+def _database(documents: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]]:
+    [database] = [
+        d for d in of_kind(documents, "StatefulSet") if d["metadata"]["name"].endswith("-database")
+    ]
+    pod = database["spec"]["template"]["spec"]
+    [container] = pod["containers"]
+    return pod, container
+
+
+def test_point_in_time_recovery_is_off_unless_the_operator_enables_it(
+    rendered: list[dict[str, Any]],
+) -> None:
+    pod, container = _database(rendered)
+    assert container["image"].startswith("postgres:") and "args" not in container
+    assert "backup-store" not in {v["name"] for v in pod["volumes"]}
+    [cron] = of_kind(rendered, "CronJob")
+    [backup] = cron["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"]
+    assert "TAKTUS_BACKUP_POINT_IN_TIME" not in {v["name"] for v in backup["env"]}
+    names = {p["metadata"]["name"] for p in of_kind(rendered, "NetworkPolicy")}
+    assert "taktus-database-archive" not in names
+
+
+def test_with_point_in_time_the_database_archives_its_log_to_the_store_and_reads_files() -> None:
+    documents = render(*PITR, "backup.pointInTime.archiveTimeoutSeconds=120")
+    _, container = _database(documents)
+    assert container["image"] == "taktus-backup:0.1.0", "the database's own image with the tools"
+    assert container["command"] == ["docker-entrypoint.sh"]
+    args = container["args"]
+    assert args[0] == "postgres"
+    assert "archive_mode=on" in args and "archive_timeout=120" in args
+    assert "archive_command=python3 /usr/local/bin/taktus-backup archive-wal %p %f" in args
+    assert "hba_file=/etc/taktus/database/pg_hba.conf" in args
+    env = {v["name"]: v.get("value") for v in container["env"]}
+    assert (
+        env["TAKTUS_CREDENTIAL_BACKUP_STORE_FILE"] == "/run/secrets/taktus/backup-store/secret_key"
+    )
+    assert not any("valueFrom" in v for v in container["env"]), "a secret is a file, never a value"
+    mounts = {m["name"]: m for m in container["volumeMounts"]}
+    assert mounts["backup-store"]["readOnly"] and mounts["database-hba"]["readOnly"]
+    [hba] = [
+        c for c in of_kind(documents, "ConfigMap") if c["metadata"]["name"] == "taktus-database-hba"
+    ]
+    rules = hba["data"]["pg_hba.conf"].splitlines()
+    assert rules[-1].split() == ["host", "replication", "all", "all", "scram-sha-256"]
+    assert not any(
+        r.split()[-1] == "trust" and r.split()[0] == "host" and r.split()[3] == "all" for r in rules
+    )
+    [cron] = of_kind(documents, "CronJob")
+    [backup] = cron["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"]
+    assert {v["name"]: v["value"] for v in backup["env"]}["TAKTUS_BACKUP_POINT_IN_TIME"] == "true"
+    policies = {p["metadata"]["name"]: p["spec"] for p in of_kind(documents, "NetworkPolicy")}
+    archive = policies["taktus-database-archive"]
+    assert archive["policyTypes"] == ["Egress"]
+    _, outside = archive["egress"]
+    assert [p["port"] for p in outside["ports"]] == [443]
+
+
+@pytest.mark.parametrize(
+    ("setting", "message"),
+    [
+        ("backup.enabled=false", "needs backup.enabled"),
+        ("database.deploy=false", "needs database.deploy"),
+    ],
+)
+def test_point_in_time_where_it_cannot_hold_is_refused(setting: str, message: str) -> None:
+    assert message in render_fails(*PITR, setting)
+
+
+def test_the_drill_is_off_by_default_and_a_weekly_job_that_reaches_the_store_alone() -> None:
+    assert [c["metadata"]["name"] for c in of_kind(render(), "CronJob")] == ["taktus-backup"]
+    documents = render("backup.drill.enabled=true")
+    [drill] = [c for c in of_kind(documents, "CronJob") if c["metadata"]["name"] == "taktus-drill"]
+    assert drill["spec"]["schedule"] == "47 4 * * 0"
+    assert drill["spec"]["concurrencyPolicy"] == "Forbid"
+    pod = drill["spec"]["jobTemplate"]["spec"]["template"]["spec"]
+    assert pod["automountServiceAccountToken"] is False
+    [container] = pod["containers"]
+    assert container["image"] == "taktus-backup:0.1.0" and container["args"] == ["drill"]
+    env = {v["name"]: v["value"] for v in container["env"]}
+    assert env["TAKTUS_DRILL_RESTORE_SECONDS"] == "3600"
+    assert "TAKTUS_DATABASE_URL_FILE" not in env, (
+        "the drill never connects to the instance's database"
+    )
+    assert "TAKTUS_CREDENTIAL_BACKUP_IDENTITY_FILE" not in env
+    policies = {p["metadata"]["name"]: p["spec"] for p in of_kind(documents, "NetworkPolicy")}
+    policy = policies["taktus-drill"]
+    assert policy["policyTypes"] == ["Ingress", "Egress"] and "ingress" not in policy
+    dns, outside = policy["egress"]
+    assert {p["port"] for p in dns["ports"]} == {53} and "podSelector" not in str(outside)
+    admitted = [
+        peer["podSelector"]["matchLabels"]["app.kubernetes.io/component"]
+        for peer in policies["taktus-database"]["ingress"][0]["from"]
+    ]
+    assert "drill" not in admitted
+
+
+def test_with_point_in_time_the_drill_restores_to_the_latest_moment() -> None:
+    [drill] = [
+        c for c in of_kind(render(*PITR, "backup.drill.enabled=true"), "CronJob")
+        if c["metadata"]["name"] == "taktus-drill"
+    ]  # fmt: skip
+    [container] = drill["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"]
+    assert container["args"] == ["drill", "--to", "latest"]
+
+
+def test_an_encrypted_backup_s_drill_names_the_private_key_s_secret_or_is_refused() -> None:
+    encrypted = ("backup.drill.enabled=true", "backup.recipient=age1example")
+    assert "backup.drill.identitySecret is required" in render_fails(*encrypted)
+    documents = render(
+        *encrypted, "backup.drill.identitySecret=taktus-backup-key", "backup.drill.identityKey=key"
+    )
+    [drill] = [c for c in of_kind(documents, "CronJob") if c["metadata"]["name"] == "taktus-drill"]
+    pod = drill["spec"]["jobTemplate"]["spec"]["template"]["spec"]
+    [container] = pod["containers"]
+    env = {v["name"]: v["value"] for v in container["env"]}
+    assert (
+        env["TAKTUS_CREDENTIAL_BACKUP_IDENTITY_FILE"] == "/run/secrets/taktus/backup-identity/key"
+    )
+    volumes = {v["name"]: v for v in pod["volumes"]}
+    assert volumes["backup-identity"]["secret"]["secretName"] == "taktus-backup-key"
+
+
 # The highly available profile (ADR-0165, #342): an S3-compatible store and an external database.
 S3 = (
     "objectStore.kind=s3",
