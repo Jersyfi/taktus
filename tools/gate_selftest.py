@@ -291,7 +291,9 @@ GATES: dict[str, tuple[tuple[str, ...], ...]] = {
     "gate-adrs": (("{python}", "tools/check_adrs.py"),),
     "gate-status": (("{python}", "tools/check_status.py", "--base", "{base}"),),
     "gate-vision": (("{python}", "tools/check_vision.py"),),
-    "gate-usecases": (("{python}", "tools/check_usecases.py", "--base", "{base}"),),
+    "gate-usecases": (
+        ("{python}", "tools/check_usecases.py", "--base", "{base}", "--tests", "changed"),
+    ),
 }
 
 # A pull request description with the sections every description carries (ADR-0017 §7).

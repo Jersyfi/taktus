@@ -627,6 +627,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--base", help="commit or branch to compare with (default origin/main)")
     parser.add_argument("--print", dest="show", action="store_true", help="print every use case")
     parser.add_argument("--digest", metavar="ADR-NNNN", help="print the digest of one ADR")
+    parser.add_argument(
+        "--tests",
+        choices=("all", "changed"),
+        default="all",
+        help="whose named tests run: every verified use case's (default), or only those of a "
+        "use case the change touches, as the gate's self-test runs it",
+    )
     args = parser.parse_args(argv)
     root: Path = args.root.resolve()
 
@@ -676,6 +683,15 @@ def main(argv: list[str] | None = None) -> int:
         report.ok("no use case yet")
 
     verified = [c for c in cases if c.state == "verified" and c.tests]
+    if args.tests == "changed":
+        # The self-test plants one violation per case and runs this gate for each. The named
+        # tests of every other use case are the same code each time, and the lane `static`
+        # runs them all on the very commit; run here, they only made the self-test outrun its
+        # limit (UC-14.5's worker suite, once per fault). The case of a red test touches its
+        # use case, so it still runs.
+        resolved = resolve_base(root, args.base)
+        touched = changed_files(root, resolved) if resolved else set()
+        verified = [c for c in verified if c.path.as_posix() in touched]
     if verified:
         print("verified means green")
     for case in verified:
