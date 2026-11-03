@@ -70,4 +70,13 @@ ist erlaubt. Ich möchte Tempo in der Umsetzung."
    design that serves each role of `docs/vision/personas.md` without losing the vision's idea of
    transparency fitted to the role (principle 7) and people at the centre (principle 14).
 4. **Security:** the open Dependabot alerts are fixed by upgrades.
+5. **The introduction stages are the customer's, their product is the project's.** The owner,
+   later the same day: "Die Absprache mit dem Kunden mache ich und deine Aufgabe ist es die
+   Features bereitzustellen. Was der Kunde meldet kommt dann sicherlich als Issue in oder über
+   mich als Umweg hier in das Repo." The issues #400, #401 and #437 to #440 asked that the
+   business run each stage for weeks, which the project can neither do nor verify (DEC-0225).
+   They are rewritten to what the project delivers for each stage: the processes UC-03 names
+   for it, as bundles of the `software-operations` blueprint by capability, rehearsed against
+   fakes, with the stage's gate rule (UC-9.6). An issue whose product is complete is closed.
+   What the business finds when it runs a stage reaches the repository as a new issue.
 **Recorded in:** this pull request
