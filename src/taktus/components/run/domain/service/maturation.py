@@ -17,7 +17,7 @@ Three questions are answered here, each by a rule:
    on at least 95 % of the cases held out from its training, its measured cost per case is lower
    than the language model's, and two trainings on the same cases gave the same model.
 
-The numbers are DEC-0164's provisional answer, Option A. They change with the owner's answer.
+The numbers are DEC-0164's answer, Option A, as UC-4.24 states them.
 
 Pure: cases in, measures and findings out.
 """

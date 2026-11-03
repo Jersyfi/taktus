@@ -1,5 +1,5 @@
 """Use case: Taktus proposes moving a step from a language model to a trained model, on
-evidence (ADR-0084, issue #217, DEC-0164 provisionally Option A).
+evidence (ADR-0084, issue #217, DEC-0164 Option A, UC-4.24).
 
 For every step on a language model whose cases reach the floor (`domain.service.maturation`),
 Taktus makes the evidence before it proposes anything:

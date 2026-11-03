@@ -1,5 +1,5 @@
 """An accepted proposal moves the step to the trained model, and the move is measured (issue
-#218, ADR-0114, DEC-0164 provisionally Option A), over the memory stores.
+#218, ADR-0114, DEC-0164 Option A, UC-4.24), over the memory stores.
 
 The run history, the scripted language model and the scripted bench are
 `tests/components/run/test_maturation.py`'s. Here the process is registered, the proposal is

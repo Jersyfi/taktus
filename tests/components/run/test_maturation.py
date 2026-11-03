@@ -1,6 +1,6 @@
 """Method maturation against fakes: a step measured from the run history it left, the evidence
 floor, and a proposal raised to a person, never applied (ADR-0084, issue #217, DEC-0164
-provisionally Option A).
+Option A, UC-4.24).
 
 The run history is written by the run engine itself: a step on a scripted language model, run
 once per case. The trainings and the trials run on scripted workers; what the ML bench itself

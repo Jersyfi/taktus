@@ -75,7 +75,7 @@ CATALOGUE: dict[CheckKind, Row] = {
         "its provenance record names",
         does_not_cover="inputs that were themselves wrong; a rule that computes the wrong thing "
         "the same way every time",
-        needs="a step on rule or statistics, and its provenance record (provisional, DEC-0173)",
+        needs="a step on rule or statistics, and its provenance record (DEC-0173)",
     ),
 }
 """Every kind of the shared kernel has its row; `tests/exactness` holds the two together."""
