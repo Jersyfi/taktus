@@ -10,6 +10,7 @@
       "name": "accounting",
       "operations": [
         "accounting.bookings.propose",
+        "accounting.orders.list",
         "accounting.orders.read",
         "payment.release.submit"
       ]

@@ -195,7 +195,9 @@ class Triggers:
             credentials=(),
         )
         try:
-            result = await resolved.connector.call(each.operation, context, {})
+            result = await resolved.connector.call(
+                each.operation, context, dict(each.arguments or {})
+            )
             listed = select(result.output, each.select)
         except (CallFailed, ConnectorError, KeyError) as error:
             raise TriggerFailed(f"{each.operation}: {type(error).__name__}: {error}") from error

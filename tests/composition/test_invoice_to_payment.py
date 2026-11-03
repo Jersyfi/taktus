@@ -30,6 +30,7 @@ import pytest
 import yaml
 from fakes import FakeIdentifiers, FakeWorker, accounting_service, document_inbox_service
 from fakes.maturity import VERIFIED
+from fakes.model import FakeModel
 from fakes.owner_channel import OWNER, TENANT, owner_channel, people
 from taktus_connectors.accounting.operations import Config as AccountingConfig
 from taktus_connectors.accounting.server import build_server as accounting_server
@@ -44,6 +45,7 @@ from taktus.adapters.driven.memory import (
     MemoryQueue,
     MemoryRepository,
 )
+from taktus.adapters.driven.models import StaticModelPool
 from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.components.decision.application.service import AnswerRequest, ConfirmRequest
@@ -66,7 +68,9 @@ from taktus.ports.worker import Limits
 from taktus.shared.v1 import Commissioned, Plan, PlanResult, PlanStatus
 
 ROOT = Path(__file__).resolve().parents[2]
-BUNDLE = ROOT / "blueprints" / "invoice-to-payment" / "processes" / "B-10.03-incoming-invoice.yaml"
+PROCESSES = ROOT / "blueprints" / "invoice-to-payment" / "processes"
+BUNDLE = PROCESSES / "B-10.03-incoming-invoice.yaml"
+UNREFERENCED = PROCESSES / "B-10.03-unreferenced-invoice.yaml"
 TOKEN = "tok-" + secrets.token_hex(12)
 
 
@@ -97,8 +101,12 @@ def books() -> Iterator[str]:
 
 
 class World:
-    def __init__(self, inbox: str, books: str) -> None:
+    def __init__(
+        self, inbox: str, books: str, *, bundle: Path = BUNDLE, model: FakeModel | None = None
+    ) -> None:
         self.books = books
+        self.bundle = bundle
+        self.model = model
         self.given = owner_channel()
         self.persistence = self.given.persistence
         self.clock = self.given.clock
@@ -128,6 +136,9 @@ class World:
             anchors=self.decisions.anchors,
             decisions=self.decisions.requests,
             levels=self.decisions.levels,
+            models=StaticModelPool([("model.fake", ["triage"], model, "fake-model@1")])
+            if model is not None
+            else None,
         )
         self.register = RegisterProcessVersionHandler(
             self.of(ProcessVersion), self.persistence, self.of(Process), ledger=self.ledger,
@@ -140,7 +151,7 @@ class World:
 
     async def ready(self) -> World:
         await people(self.given)
-        bundle = yaml.safe_load(BUNDLE.read_text(encoding="utf-8"))
+        bundle = yaml.safe_load(self.bundle.read_text(encoding="utf-8"))
         self.version = await self.register.execute(RegisterProcessVersion(bundle, tenant=TENANT))
         return self
 
@@ -276,3 +287,77 @@ async def test_a_tenant_caps_the_booking_without_editing_the_bundle(inbox: str, 
     assert booking.state is StepState.WAITING_HUMAN
     assert booking.reason is not None and "level 1" in booking.reason
     assert w.held()["bookings"] == [], "at level 1 Taktus proposes and a person acts"
+
+
+# --- an invoice that names no order is classified (UC-04 §4, ADR-0188) ------------------------
+
+
+async def _orders_with_a_second_one_open() -> dict[str, Any]:
+    """PO-7 and a second open order of the same supplier, so that the choice is a choice."""
+    orders = accounting_service.default_orders()
+    orders["PO-9"] = {
+        **orders["PO-7"],
+        "lines": [{"id": "1", "item": "Backup space", "price": "5.00", "received": "4"}],
+        "net_total": "20.00",
+        "account": "4931",
+    }
+    return orders
+
+
+async def test_an_unreferenced_invoice_is_classified_then_checked_against_the_order_chosen(
+    inbox: str, books: str
+) -> None:
+    """The model proposes PO-7 among the supplier's two open orders; the rule holds the invoice
+    against PO-7 and it holds; the booking, under the order chosen, waits for a person, and the
+    payment for a person's release."""
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        orders = await _orders_with_a_second_one_open()
+        await client.post(f"{books}/_fake/orders", content=json.dumps(orders))
+    model = FakeModel(answer="PO-7\n")
+    w = await World(inbox, books, bundle=UNREFERENCED, model=model).ready()
+    run = await w.start("invoice-unreferenced-ubl.xml")
+    assert run.state is RunState.WAITING_HUMAN, [(s.step_id, s.reason) for s in run.step_runs]
+    (prompt,) = model.prompts
+    assert "PO-7" in prompt.user and "PO-9" in prompt.user, "the model chooses among the open"
+    assert "INV-2026-0051" in prompt.user
+    assert (await w.result(run, "choose"))["extracted"] == ["PO-7"]
+    checked = await w.result(run, "check")
+    assert checked["order"] == "PO-7" and checked["payable"] == "119.00"
+    assert states(run)["propose-booking"] is StepState.WAITING_HUMAN
+    assert w.held()["bookings"] == [], "a person confirms the proposal, and so the order chosen"
+    run = await w.confirm(run, "propose-booking")
+    assert [b["order"] for b in w.held()["bookings"]] == ["PO-7"]
+    run = await w.release(run, "release-payment")
+    assert run.state is RunState.FINISHED
+    (payment,) = w.held()["payments"]
+    assert payment["amount"] == "119.00"
+
+
+async def test_a_wrong_classification_fails_the_rule_and_goes_to_a_person(
+    inbox: str, books: str
+) -> None:
+    """The model names PO-9, whose lines the invoice does not match: the `invoice` rule names
+    every difference, and nothing is booked or paid."""
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        orders = await _orders_with_a_second_one_open()
+        await client.post(f"{books}/_fake/orders", content=json.dumps(orders))
+    w = await World(inbox, books, bundle=UNREFERENCED, model=FakeModel(answer="PO-9")).ready()
+    run = await w.start("invoice-unreferenced-ubl.xml")
+    assert run.state is RunState.ESCALATED
+    check = run.step_run("check")
+    assert check.state is StepState.FAILED
+    assert check.reason is not None and "line" in check.reason
+    assert w.held()["bookings"] == [] and w.held()["payments"] == []
+
+
+async def test_an_answer_that_is_not_one_reference_never_reaches_the_books(
+    inbox: str, books: str
+) -> None:
+    w = await World(
+        inbox, books, bundle=UNREFERENCED, model=FakeModel(answer="It is probably PO-7.")
+    ).ready()
+    run = await w.start("invoice-unreferenced-ubl.xml")
+    assert run.state is RunState.ESCALATED
+    assert states(run)["classify"] is StepState.FAILED
+    assert states(run)["read-order"] is StepState.PLANNED
+    assert w.held()["bookings"] == []

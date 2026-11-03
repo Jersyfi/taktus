@@ -91,9 +91,38 @@ async def test_the_inbox_is_listed_by_document_name(inbox: str) -> None:
     result = await documents(inbox).call("documents.invoices.list", context("DOCUMENTS_TOKEN"), {})
     assert result.effect.kind.value == "read"
     names = [d["document"] for d in result.output["documents"]]
-    assert set(names) == {"invoice-cii.xml", "invoice-ubl.xml", "not-an-invoice.xml"}
+    assert set(names) == {
+        "invoice-cii.xml",
+        "invoice-ubl.xml",
+        "invoice-unreferenced-ubl.xml",
+        "not-an-invoice.xml",
+    }
     assert all(d["size"] > 0 and d["etag"] for d in result.output["documents"])
     assert result.output["complete"] is True
+
+
+async def test_the_inbox_is_listed_by_whether_a_document_names_an_order(inbox: str) -> None:
+    """The daily collection hands each document to the process that fits it (ADR-0188): one
+    that names an order, or is no invoice — which a person then sees — to B-10.03; one that names
+    none to its classification. Each document is read once to tell."""
+    connector = documents(inbox)
+    named = await connector.call(
+        "documents.invoices.list", context("DOCUMENTS_TOKEN"), {"referenced": True}
+    )
+    unnamed = await connector.call(
+        "documents.invoices.list", context("DOCUMENTS_TOKEN"), {"referenced": False}
+    )
+    assert {d["document"] for d in named.output["documents"]} == {
+        "invoice-cii.xml",
+        "invoice-ubl.xml",
+        "not-an-invoice.xml",
+    }
+    assert [d["document"] for d in unnamed.output["documents"]] == ["invoice-unreferenced-ubl.xml"]
+    assert unnamed.consumption.quota_units == 5, "the listing and one read per document"
+    with pytest.raises(CallFailed):
+        await connector.call(
+            "documents.invoices.list", context("DOCUMENTS_TOKEN"), {"referenced": "no"}
+        )
 
 
 async def test_a_ubl_invoice_is_read_as_its_business_terms_amounts_as_given(inbox: str) -> None:
@@ -194,6 +223,24 @@ async def test_an_order_is_read_with_what_was_received(books: str) -> None:
     with pytest.raises(CallFailed) as failed:
         await accounting(books).call(
             "accounting.orders.read", context("ACCOUNTING_TOKEN"), {"reference": "PO-0"}
+        )
+    assert failed.value.error.cause.value == "invalid"
+
+
+async def test_a_suppliers_open_orders_are_listed_for_a_classification(books: str) -> None:
+    """What an invoice that names no order is classified against (ADR-0188): the supplier's
+    orders still open, each with its reference, and none of another supplier."""
+    connector = accounting(books)
+    result = await connector.call(
+        "accounting.orders.list", context("ACCOUNTING_TOKEN"), {"supplier": "DE123456789"}
+    )
+    assert result.effect.kind.value == "read"
+    assert [o["reference"] for o in result.output["orders"]] == ["PO-7"]
+    assert result.output["orders"][0]["lines"][0]["price"] == "33.33"
+    assert result.output["complete"] is True
+    with pytest.raises(CallFailed) as failed:
+        await connector.call(
+            "accounting.orders.list", context("ACCOUNTING_TOKEN"), {"supplier": "nobody"}
         )
     assert failed.value.error.cause.value == "invalid"
 

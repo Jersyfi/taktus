@@ -268,7 +268,11 @@ role it would tie the core to a model stack and the removal test would be lost.
   and a submitted run, which a runner executes. A slot starts its runs once — whoever leads,
   across a restart of the leader — because the run's identifier is derived from the trigger
   and the slot and the engine refuses a run that exists; slots missed while nobody led start
-  one run (`tests/integration/test_time_triggers.py`). The tick also makes the capacity
+  one run (`tests/integration/test_time_triggers.py`). An `each` that says `once` derives the
+  identifier from the trigger and the item alone, so an item listed again by a later slot —
+  a document still in an inbox — starts no second run; its read takes the trigger's fixed
+  `arguments` (ADR-0188). The release's list of what it ships (`composition/shipped.json`)
+  names the operations every connector declares. The tick also makes the capacity
   report, and once a minute it watches that every expected run happened: one that did not
   raises an incident (`composition/expected_runs.py`, ADR-0107,
   `tests/integration/test_expected_runs.py`), and judges every signal against its corridor,

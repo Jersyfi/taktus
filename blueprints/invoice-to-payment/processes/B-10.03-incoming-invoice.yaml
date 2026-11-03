@@ -18,7 +18,8 @@
 # Not to be used for a tenant before its legal-anchor catalogue is reviewed for its
 # jurisdiction by a tax adviser, the review recorded with its date (DEC-0029).
 #
-# By hand, for one document of the inbox:
+# Daily, by its trigger, for every document of the inbox that names an order. By hand, for one
+# document:
 #
 #     uv run taktusctl run --process blueprints/invoice-to-payment/processes/B-10.03-incoming-invoice.yaml \
 #         --input document=<the document's file name in the inbox>
@@ -55,6 +56,20 @@ autonomy:
   history: 20
 author: the repository
 reason: an incoming invoice checked and proposed for booking without a person reading it, and paid only on a person's release (UC-03 B-10.03, UC-04)
+
+# The inbox is collected daily (UC-04 §4, B-6.06's incoming half, ADR-0188): every document
+# that names an order — or is no invoice, which a person then sees — starts one run, on the
+# first day it is listed and never again. A document that names no order is the classification's,
+# B-10.03-unreferenced-invoice.yaml.
+triggers:
+  - schedule: daily
+    each:
+      input: document
+      operation: documents.invoices.list
+      arguments: { referenced: true, limit: 1000 }
+      select: documents
+      field: document
+      once: true
 
 inputs:
   document:
