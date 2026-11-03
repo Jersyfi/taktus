@@ -99,3 +99,11 @@ Nothing in the repository. Switching the triage on for this repository waits for
 "DEC-0181: Option A.", "DEC-0181: Option B." with your text, or "DEC-0181: Option C." — in issue
 [#261](https://github.com/Jersyfi/taktus/issues/261). A free-text answer is read back as an interpretation and confirmed
 before it is acted on.
+
+## Outcome
+
+**Decided:** 2026-11-03
+**Answer:** Option A. "DEC-0181: Option A." (the owner's words, in the issue).
+**Reasoning given:** none beyond the recommendation.
+**What it changes:** The drafted notice goes into `CONTRIBUTING.md` as written. The triage may then be switched on for this repository (`TAKTUS_TRIAGE` on the instance), which is the operator's act.
+**Recorded in:** this pull request

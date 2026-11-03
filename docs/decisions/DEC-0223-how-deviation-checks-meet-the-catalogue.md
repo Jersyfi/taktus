@@ -105,3 +105,11 @@ C the provisional work stands as it is.
 
 "DEC-0223: Option A." or "DEC-0223: Option B." or "DEC-0223: Option C." — in issue [#639](https://github.com/Jersyfi/taktus/issues/639). A
 free-text answer is read back as an interpretation and confirmed before it is acted on.
+
+## Outcome
+
+**Decided:** 2026-11-03
+**Answer:** Option A. "DEC-0223: Option A." (the owner's words, in the issue).
+**Reasoning given:** none beyond the recommendation.
+**What it changes:** One catalogue with two new rows. ADR-0153 §1 and `docs/status/0.5.0.md` no longer call it provisional; a `sourced` step without a check stays admitted, as the provisional answer had it.
+**Recorded in:** this pull request

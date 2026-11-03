@@ -103,3 +103,11 @@ built, because that task adds the bench's second family of models and with it a 
 ## 7. How to answer
 
 "DEC-0161: Option A." or "DEC-0161: Option B." or "DEC-0161: Option C."
+
+## Outcome
+
+**Decided:** 2026-11-03
+**Answer:** Option A. "DEC-0161: Option A." (the owner's words, in the issue).
+**Reasoning given:** none beyond the recommendation.
+**What it changes:** The ML bench trains with scikit-learn and NumPy, as built in `workers/mlbench/`; the provisional mark in its README goes.
+**Recorded in:** this pull request

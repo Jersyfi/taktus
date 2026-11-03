@@ -142,3 +142,11 @@ change their source; if the answer changes a number, the issue's test changes wi
 
 "DEC-0164: Option A." or "DEC-0164: Option B." or "DEC-0164: Option C." A number changed in
 Option A can be written into the answer: "DEC-0164: Option A, with at least 1,000 cases."
+
+## Outcome
+
+**Decided:** 2026-11-03
+**Answer:** Option A. "DEC-0164: Option A." (the owner's words, in the issue).
+**Reasoning given:** none beyond the recommendation.
+**What it changes:** Method maturation gets a use case of its own, with the five requirements of Option A and their numbers, filed under `process`. ADR-0084, ADR-0114 and `docs/architecture/methods.md` no longer call the numbers provisional. #217 and #218 are built against the use case.
+**Recorded in:** this pull request

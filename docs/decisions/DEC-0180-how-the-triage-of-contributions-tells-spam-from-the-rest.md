@@ -100,3 +100,11 @@ screen step is removed; on Option C the model step is. Either is one change of i
 "DEC-0180: Option A.", "DEC-0180: Option B." or "DEC-0180: Option C." — in issue
 [#260](https://github.com/Jersyfi/taktus/issues/260). A free-text answer is read back as an interpretation and confirmed before it is acted
 on.
+
+## Outcome
+
+**Decided:** 2026-11-03
+**Answer:** Option A. "DEC-0180: Option A." (the owner's words, in the issue).
+**Reasoning given:** none beyond the recommendation.
+**What it changes:** The triage screens with fixed patterns first, asks a language model only where none matched, and a person classifies where the answer fails (P-05). The provisional marks go from the bundle, its README and the status.
+**Recorded in:** this pull request
