@@ -75,7 +75,7 @@ step on a language model is a candidate when its labels fall into at most 50 cla
 least 500 cases and at least 20 in every class. Taktus trains a classifier on the ML bench twice,
 tries it on a fifth of the cases held out, and proposes the move only at 95 % agreement, a lower
 cost per case and the same model from both trainings. The proposal is a decision request; Taktus
-never applies it. The numbers are DEC-0164's provisional answer.
+never applies it. The numbers are UC-4.24's (DEC-0164).
 
 **Once a person accepts (ADR-0114).** The process gains a new version, and the version it
 replaces stays registered and unchanged. In the new version the step runs on the trained model,
