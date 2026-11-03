@@ -183,6 +183,14 @@ credential is declared about nothing it administers: `administration.administers
 (NEED-0021); installing the release is the operator's act (DEC-0179).
 `tests/governance/test_chart.py` renders both cases.
 
+**Secrets may come from a store the operator chooses** (ADR-0187). The chart mounts every
+Secret it names as files, none by `subPath`, so the kubelet replaces a file when its Secret
+changes; connectors and workers read the new value at their next call, the roles their own at
+the next start. Whatever fills those Secrets from a store — an operator that syncs a store into
+Secrets, or `deploy/docker/secret_store.py` writing files from which the operator's pipeline
+applies them — keeps them current. The chart does not change, and without a store the Secrets
+are what the operator created.
+
 **Tenants are created after the install, not configured** (ADR-0104). The migration creates
 `default`. Every other tenant is created with `taktusctl tenant create NAME`, run in a pod of
 the control plane, which prints the identifier Taktus generated. Every role serves the new

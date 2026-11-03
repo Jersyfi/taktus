@@ -32,6 +32,12 @@ under `deploy/docker/secrets/` (`deploy/docker/README.md`, *Connectors*). One
 credential has one variable. A second name for the same credential was a defect, corrected in
 DEC-0018.
 
+**Where the file's value comes from is the operator's.** It is written by hand, or filled from a
+secret store the operator chooses, so that a rotation in the store reaches the file without a
+person (ADR-0187). On one server `deploy/docker/secret_store.py` reads each file's value with the
+store's own command (`deploy/docker/README.md`, *Secrets from a store*). On a cluster whatever
+fills the Secrets the chart names does it. Taktus itself reads only files and knows no store.
+
 ## The parameters
 
 | Parameter | What it is for | Permissions it needs | Rotation | How an operator supplies it | Needs request |

@@ -38,4 +38,5 @@ deploy/docker/taktus.env
 deploy/docker/first-process.json
 # the operator's further connectors and the compose file written from them (deploy/docker/connectors.py)
 deploy/docker/connectors.json
+deploy/docker/secret-store.json
 deploy/docker/compose.connectors.yml

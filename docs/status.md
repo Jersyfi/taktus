@@ -100,7 +100,9 @@ service exist (NEED-0007 to NEED-0010, NEED-0013); the connector acts as the app
 **Secrets** are kept in 1Password since DEC-0224. The session reads and writes them through a
 service account of its own since 2026-11-03 (NEED-0040), only into a file or a process. It
 generated the catalogue's signing seed (NEED-0039) and the connect key of NEED-0037 into the
-vault itself. Taktus's instance gets a read-only account of its own (NEED-0041, #660).
+vault itself. Taktus's instance gets a read-only account of its own (NEED-0041, #660). Since #660
+an install fills its secret files from a store the operator chooses (ADR-0187); wiring the
+instance's store into the Secrets of its cluster is the owner's act under NEED-0041.
 
 Nothing else is blocked. Everything not listed here can be built by a session without the
 owner.
