@@ -43,7 +43,8 @@ entries and changes nothing, at any level (ADR-0022 §1):
    it is done. A delivered message cannot be taken back, and the plan says that the receiver
    then holds two values for a while.
 
-Provisionally, under DEC-0223, a `sourced` step without a check is not refused.
+Under DEC-0223, Option A, a `sourced` step without a check is not refused until the blueprints
+carry a check on every `sourced` step; from the version after that, it declares at least one.
 
 ### 2. The rules are the tenant's, and never empty
 

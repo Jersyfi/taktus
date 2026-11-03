@@ -7,8 +7,7 @@ checks) and ADR-0042 (the decision request at a step boundary) · serves UC-4.13
 
 A step classed `exact` declares at least one check from the catalogue (ADR-0082, UC-4.13). The
 catalogue has six rows: reconciliation against a total, agreement with a second system,
-plausibility bounds, approval above a threshold, sampling, and recomputation (provisional,
-DEC-0173). Until now the declaration was read only to write the exactness statement. No check
+plausibility bounds, approval above a threshold, sampling, and recomputation (DEC-0173). Until now the declaration was read only to write the exactness statement. No check
 ran. A step whose value broke its own bounds finished, and the steps after it read the value.
 
 ADR-0014 says what must happen instead. A value counts only when a rule checked it against its

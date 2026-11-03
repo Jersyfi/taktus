@@ -39,7 +39,7 @@ steps:
       - method: llm
         why: a fixed list needs no language model
     exactness: exact
-    checks:   # provisional: DEC-0173
+    checks:   # recomputation: DEC-0173
       - { kind: recomputation, subject: the list of commands }
     work:
       rule: constant

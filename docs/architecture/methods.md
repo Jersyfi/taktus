@@ -161,7 +161,7 @@ catalogue in the shared kernel (`contracts/shared/v1/Check.json`). A bundle whos
 declares none does not register, and the finding names the catalogue. The statement is generated
 from the process version whenever it is read, and `taktusctl exactness --process <bundle>` prints
 it. A sixth row, *recomputation* — the value is computed again from its recorded inputs — is
-provisional under DEC-0173. The checks are declared, not yet run (#223), and the statement is not
+part of the catalogue since DEC-0173. The checks are declared, not yet run (#223), and the statement is not
 yet shown in the web app or a report (#224).
 
 ---

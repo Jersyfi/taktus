@@ -81,7 +81,7 @@ step's fallback. Otherwise the result is the amounts to book and to pay, as deci
 same readings always give the same result. The step is `exact`. Two checks of the catalogue
 hold it beyond the rule (ADR-0152): a `reconciliation` — the net and the tax it computed sum to
 the total with tax the document states, read again through `documents.invoices` at the moment
-of the check — and a `recomputation` (provisional, DEC-0173).
+of the check — and a `recomputation` (DEC-0173).
 
 A check that reads through a connector reaches a system that needs the requesting identity's
 credential, as the read of the step itself does. `checking.reads` therefore names

@@ -113,7 +113,7 @@ steps:
       - method: llm
         why: which headings a text carries is a fact of the text, not a judgement
     exactness: exact
-    checks:   # provisional: DEC-0173
+    checks:   # recomputation: DEC-0173
       - { kind: recomputation, subject: the versions the roadmap names }
     depends_on: [read-roadmap]
     work:
@@ -133,7 +133,7 @@ steps:
       - method: ml
         why: no labelled corpus of this repository's contributions exists yet
     exactness: exact
-    checks:   # provisional: DEC-0173
+    checks:   # recomputation: DEC-0173
       - { kind: recomputation, subject: the spam verdict over the contribution's title and body }
     depends_on: [read-contribution]
     work:

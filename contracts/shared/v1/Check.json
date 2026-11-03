@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://taktus.eu/contracts/shared/v1/Check.json",
   "title": "Check",
-  "description": "A machine check a step declares on its result, taken from a fixed catalogue (UC-4.13, ADR-0082). The class `exact` is a claim that a check makes the value right; the check names how. Each kind is one row of the catalogue and takes exactly the parameters that row needs: reconciliation against a total (`total`, `source`), agreement with a second system (`source`, `reference`), plausibility bounds (`minimum`, `maximum`, `pattern`, at least one), approval above a threshold (`threshold`, `role`), sampling (`share`, `role`), and recomputation (none; provisional under DEC-0173). A kind outside the catalogue is a change of the catalogue, not a choice of whoever writes the process.",
+  "description": "A machine check a step declares on its result, taken from a fixed catalogue (UC-4.13, ADR-0082). The class `exact` is a claim that a check makes the value right; the check names how. Each kind is one row of the catalogue and takes exactly the parameters that row needs: reconciliation against a total (`total`, `source`), agreement with a second system (`source`, `reference`), plausibility bounds (`minimum`, `maximum`, `pattern`, at least one), approval above a threshold (`threshold`, `role`), sampling (`share`, `role`), and recomputation (none; DEC-0173). A kind outside the catalogue is a change of the catalogue, not a choice of whoever writes the process.",
   "type": "object",
   "properties": {
     "kind": {

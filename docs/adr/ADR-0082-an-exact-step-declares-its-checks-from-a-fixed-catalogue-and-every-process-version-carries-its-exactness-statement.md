@@ -1,7 +1,7 @@
 # ADR-0082 — An exact step declares its checks from a fixed catalogue, and every process version carries its exactness statement
 
 **Status:** accepted · builds the first part of UC-4.13 and UC-6.9 (issue #91, roadmap `0.5.0`)
-on ADR-0014 and ADR-0018 · one row of the catalogue provisional under DEC-0173
+on ADR-0014 and ADR-0018 · one row of the catalogue decided in DEC-0173
 
 ## Context
 ADR-0014 says that a step classed `exact` is "provably correct and machine-checkable", and that
@@ -30,11 +30,11 @@ is the `reference`; bounds name a `minimum`, a `maximum` or a `pattern`; an appr
 A parameter of another row is refused. A role is a role, never a named person (principle 14).
 An optional `subject` names what the check applies to in the reader's words.
 
-A sixth row, `recomputation`, is provisional under DEC-0173: the result is what the step's rule or
+A sixth row, `recomputation`, is part of the catalogue since DEC-0173: the result is what the step's rule or
 statistic gives again over the inputs its provenance record names. It exists because fifteen of the
 sixteen `exact` steps of this repository's own processes compute a value from their inputs alone —
 a verdict, an order, a branch name — and none of the five rows fits them. UC-4.13 says such a
-step is then not `exact`; DEC-0173 asks the owner whether it is.
+step would then not be `exact`; the owner decided in DEC-0173, Option A, that it is, with this row.
 
 ### 2. A step declares its checks beside its class
 `Step.json` gains `checks`: a list of at least one check. A `wait` or `human` step declares none,

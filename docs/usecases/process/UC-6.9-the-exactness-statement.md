@@ -7,7 +7,7 @@ serves: [P7, P8, P12]
 state: building
 version: 0.5.0
 tests: [tests/exactness/test_exactness_statement.py::test_the_statement_of_every_bundle_renders_with_all_four_parts, tests/exactness/test_exactness_statement.py::test_a_statement_without_what_it_does_not_cover_does_not_render, tests/exactness/test_exactness_statement.py::test_a_changed_check_changes_the_statement, tests/exactness/test_exactness_statement.py::test_a_bundle_whose_statement_would_say_guaranteed_is_refused, tests/exactness/test_exactness_statement.py::test_no_model_writes_the_statement, tests/exactness/test_statement_in_reports.py::test_a_report_carries_the_statement_of_the_process_that_produced_it_unchanged, tests/exactness/test_statement_in_reports.py::test_the_statement_a_run_reads_is_the_one_its_version_generates, tests/adapters/rest/test_exactness_statement.py::test_the_process_level_carries_the_statement_of_its_version_unchanged, tests/adapters/rest/test_exactness_statement.py::test_a_run_carries_the_statement_of_the_version_it_executes, tests/adapters/rest/test_exactness_statement.py::test_the_overview_carries_the_statement_per_process]
-adrs: {ADR-0014: 6611f7833deb, ADR-0023: 949c6f4e13af, ADR-0029: 37c061ef032a, ADR-0082: c64fba9bd04a, ADR-0152: b3f4df1be26f}
+adrs: {ADR-0014: 6611f7833deb, ADR-0023: 949c6f4e13af, ADR-0029: 37c061ef032a, ADR-0082: ec9f585ee911, ADR-0152: c193d1fbb4ed}
 supersedes: null
 ---
 
