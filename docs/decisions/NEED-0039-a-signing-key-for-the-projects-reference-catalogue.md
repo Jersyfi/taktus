@@ -62,3 +62,18 @@ the reference index.
 
 `taktusctl catalogue list` on an instance that trusts the published key for *reference* shows
 the project's entries as admitted.
+
+## Outcome
+
+**Provided:** 2026-11-03
+**Provided by:** the session under NEED-0040 (DEC-0224), not by the owner.
+**Confirmed by:** the session generated the 32-byte seed into the vault `Development` as the item
+`taktus-catalogue-signing-seed`, through a file only its user could read, which it removed. No value
+was printed. `taktusctl catalogue key` gives its public key:
+
+`9cXIHtNI9qUd7lBL1ZSM1Nmca5A8yuocJnpQ5YYmn30`
+
+The public key is not a secret. An operator trusts it for the tier *reference* once the project
+publishes its reference index. The release step that signs the index reads the seed from the vault
+and is built with it (M3.6).
+**Recorded in:** this pull request

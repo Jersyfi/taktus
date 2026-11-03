@@ -95,8 +95,10 @@ fallback:
 Its result says which method answered. The version registers only with the model's evaluation
 on the held-out cases, for the very file it pins; one without it is refused (UC-8.4 §2). Over
 the first 100 cases on the new version, Taktus reports the cost per case and the share that fell
-back, beside the replaced version's cost per case. A move that did not make the step cheaper is
-proposed for rolling back. Rolling back is one act: the replaced version becomes current again,
+back, beside the replaced version's cost per case. Where the process's evaluation cases score
+the step, its score on them is read in both versions; a proposal names the language model's
+(ADR-0141). A move whose score fell by more than the tenant's tolerance, or that did not make the
+step cheaper, is proposed for rolling back. Rolling back is one act: the replaced version becomes current again,
 as a new version.
 
 **Operating time becomes an asset.** The organisation collects the training data for its own models

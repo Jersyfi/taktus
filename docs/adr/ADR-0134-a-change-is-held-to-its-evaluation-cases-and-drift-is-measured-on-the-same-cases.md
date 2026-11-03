@@ -218,7 +218,20 @@ Under the reader's account key (ADR-0063 §4):
 - `POST …/proposals/{proposal}/commission` takes `override`, the reason for commissioning
   against the verdict.
 
-A proposal names its evaluation, and its view carries the evaluation's verdict and scores.
+A proposal names its evaluation, and its view carries the evaluation under `evaluated`: its
+state, verdict and tolerance, the score of each side, the scorers by step, method and rule, and
+every case with the active version and the proposal beside each other. Each side of a case
+names its score, its run, its duration, its tokens and the models that answered; the case names
+the proposal's score less the active version's. An override shows its reason and when. Who
+overrode is the actor of `evaluation.overridden`, never a field of the view (principle 14).
+
+The web app's change page shows that comparison, case by case, with the verdict. It offers
+commissioning once the verdict passed. Against `regressed` or `incomplete` it offers it only
+with the person's reason. A version commissioned that way is listed with its verdict and the
+reason. The owner's conversation reads a commissioning back with the verdict, the cases, both
+scores and the tolerance (ADR-0091 §6). While the cases run, and against a verdict that did not
+pass, it says the verdict instead of a reading and links the page, which takes the reason. A
+phrasebook without the verdict's four sentences reads back as before.
 
 ### 10. Method and exactness
 
@@ -307,5 +320,6 @@ A drift raises an incident only where the process sends outward, as UC-4.18 asks
 process it is recorded in the ledger and on the evaluation, and read on the surface. It does
 not reach the owner's channel by itself.
 
-The web app and the owner's conversation do not show the comparison yet, and maturation does not
-read the scores as evidence. Both remain in issue #408.
+An override is given on the HTTP surface and in the web app, never in the owner's conversation:
+a reason written there would need a reading of its own. Maturation reads the scores as evidence
+since ADR-0141.

@@ -6,7 +6,7 @@ import { render } from 'svelte/server';
 import { describe, expect, it } from 'vitest';
 import ChangeView from './ChangeView.svelte';
 import fixtures from './generated/fixtures.json';
-import type { ProcessLevel, Proposal, RunLevel } from './types';
+import type { Evaluated, EvaluatedSide, ProcessLevel, Proposal, RunLevel } from './types';
 
 const LEVEL = fixtures.process_level as unknown as ProcessLevel;
 const nothing = () => {};
@@ -121,5 +121,127 @@ describe('a change in dialogue', () => {
 		}
 		expect(html).not.toContain('data-proposal=');
 		expect(html).toContain('Say what should change.');
+	});
+});
+
+function evaluated(
+	verdict: Evaluated['verdict'],
+	state: Evaluated['state'] = 'scored',
+	override: Evaluated['override'] = null
+): Record<string, Evaluated> {
+	const side = (score: number | null, run: string): EvaluatedSide => ({
+		score,
+		run_id: run,
+		run_state: 'finished',
+		seconds: 2,
+		tokens: 40,
+		models: { draft: 'model-a-2026-10' },
+		left_out: null,
+		scores: [{ step: 'draft', method: 'rule', score, how: 'rule' }]
+	});
+	return {
+		prp_1: {
+			id: 'evl_1',
+			purpose: 'change',
+			state,
+			verdict: state === 'scored' ? verdict : null,
+			tolerance: 0.05,
+			sides: [
+				{ side: 'active', version: 'daily@1', score: 0.9, cases: 2, unscored: 0 },
+				{ side: 'proposed', version: 'daily@proposal-prp_1', score: 0.6, cases: 2, unscored: 0 }
+			],
+			override,
+			started_at: '2026-10-23T09:00:00Z',
+			scored_at: state === 'scored' ? '2026-10-23T09:05:00Z' : null,
+			scorers: [{ step: 'draft', method: 'rule', exactness: 'exact', rule: 'overlap' }],
+			cases: [
+				{ case: 'late-refund', active: side(1, 'run_a1'), proposed: side(0.6, 'run_p1'), change: -0.4 },
+				{ case: 'lost-parcel', active: side(0.8, 'run_a2'), proposed: side(0.6, 'run_p2'), change: -0.2 }
+			]
+		}
+	};
+}
+
+const held = (state: Proposal['state']): Proposal => ({ ...proposal(state), evaluation: 'evl_1' });
+const finishedRehearsal = () => rehearsal('finished', 'Done.');
+
+describe('a proposal held to its evaluation cases (UC-4.18, ADR-0134 §9)', () => {
+	it('shows each case with the active version and the proposal beside each other, and the verdict', () => {
+		const html = render(ChangeView, {
+			props: {
+				level: LEVEL,
+				proposals: [held('rehearsed')],
+				rehearsals: finishedRehearsal(),
+				evaluations: evaluated('regressed'),
+				...handlers
+			}
+		}).body;
+		expect(html).toContain('Held to 2 evaluation cases');
+		expect(html).toMatch(/data-verdict="regressed"/);
+		expect(html).toMatch(/data-case="late-refund"/);
+		expect(html).toContain('0.90');
+		expect(html).toContain('0.60');
+		expect(html).toContain('−0.40');
+		expect(html).toContain('overlap');
+		expect(html).toContain('#/runs/run_p1');
+	});
+
+	it('offers commissioning once the verdict passed, and against a regression only with a reason', () => {
+		const passed = render(ChangeView, {
+			props: {
+				level: LEVEL,
+				proposals: [held('rehearsed')],
+				rehearsals: finishedRehearsal(),
+				evaluations: evaluated('passed'),
+				...handlers
+			}
+		}).body;
+		expect(passed).toContain('Commission version 9</button>');
+		expect(passed).not.toContain('against the verdict');
+		const regressed = render(ChangeView, {
+			props: {
+				level: LEVEL,
+				proposals: [held('rehearsed')],
+				rehearsals: finishedRehearsal(),
+				evaluations: evaluated('regressed'),
+				...handlers
+			}
+		}).body;
+		expect(regressed).not.toContain('Commission version 9</button>');
+		expect(regressed).toContain('Commission version 9 against the verdict');
+		expect(regressed).toContain('give your reason');
+	});
+
+	it('does not offer commissioning while the cases are being run', () => {
+		const html = render(ChangeView, {
+			props: {
+				level: LEVEL,
+				proposals: [held('rehearsed')],
+				rehearsals: finishedRehearsal(),
+				evaluations: evaluated(null, 'running'),
+				...handlers
+			}
+		}).body;
+		expect(html).toContain('being run');
+		expect(html).toContain('waits until every case is scored');
+		expect(html).not.toContain('Commission version 9');
+	});
+
+	it('shows a version commissioned against the verdict with the reason, never who gave it', () => {
+		const html = render(ChangeView, {
+			props: {
+				level: LEVEL,
+				proposals: [held('commissioned')],
+				evaluations: evaluated('regressed', 'scored', {
+					reason: 'the shorter reply is what customers asked for',
+					at: '2026-10-23T09:10:00Z'
+				}),
+				...handlers
+			}
+		}).body;
+		expect(html).toContain('Commissioned against the verdict');
+		expect(html).toContain('the shorter reply is what customers asked for');
+		expect(html).toContain('0.90 → 0.60');
+		expect(html).not.toContain('idn_');
 	});
 });

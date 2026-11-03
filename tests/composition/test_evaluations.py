@@ -54,6 +54,7 @@ from taktus.components.process.domain.model import (
     Proposal,
 )
 from taktus.components.process.domain.model.evaluation import EvaluationState, Side, Verdict
+from taktus.components.process.domain.service import scoring
 from taktus.components.run.application.service import (
     CorrectResult,
     CorrectResultHandler,
@@ -63,6 +64,7 @@ from taktus.components.run.application.service import (
 )
 from taktus.components.run.domain.model import Run
 from taktus.composition.evaluations import Evaluations
+from taktus.composition.maturation import RepositoryScores
 from taktus.composition.proposals import ProposalActs
 from taktus.ports.model import Completion, Prompt
 from taktus.ports.worker import Limits
@@ -536,6 +538,32 @@ async def test_drift_is_measured_on_the_schedule_and_raises_an_incident_where_it
         "evaluation.scored:first",
         "evaluation.scored:drift",
     ]
+
+
+async def test_maturation_reads_a_step_s_newest_score_on_the_cases_as_evidence() -> None:
+    world = await World().setup(schedule="hourly")
+    scores = RepositoryScores(
+        world.versions,
+        MemoryRepository(world.persistence, Evaluation),
+        MemoryRepository(world.persistence, WatchConfiguration),
+        world.persistence,
+    )
+    (unscored,) = await scores.scores(TENANT)
+    assert (unscored.process_version, unscored.step_id) == ("replies@1", "draft")
+    assert unscored.score is None and unscored.scheduled
+    await world.evaluations.look(TENANT)
+    await world.drain()
+    await world.evaluations.look(TENANT)
+    world.model.kind_answer = "Parcels are sometimes late."
+    world.clock.current += timedelta(hours=1)
+    await world.evaluations.look(TENANT)
+    await world.drain()
+    (second,) = await world.evaluations.look(TENANT)
+    (scored,) = await scores.scores(TENANT)
+    assert scored.evaluation == second.id, "the newest scored evaluation counts"
+    assert scored.score == scoring.step_score(second, "draft") and scored.score is not None
+    assert scored.score < 1.0 and scored.cases == 1
+    assert await scores.tolerance(TENANT) == 0.05, "the shipped tolerance (NTC-0228)"
 
 
 async def test_a_drift_of_a_process_that_sends_nothing_outward_raises_no_incident() -> None:

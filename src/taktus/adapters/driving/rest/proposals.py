@@ -23,6 +23,8 @@ from taktus.adapters.driving.rest.problems import MEDIA_TYPE, problem
 from taktus.adapters.driving.rest.wiring import RestServices
 from taktus.components.process.application.service.proposals import ProposalError, Propose
 from taktus.components.process.domain.model import InvalidProcess, Proposal
+from taktus.components.process.domain.model.evaluation import Evaluation
+from taktus.components.process.domain.service import scoring
 from taktus.ports.identity import Resolution
 
 type Authenticated = Callable[[RestServices, str | None], Awaitable[Resolution | None]]
@@ -45,6 +47,38 @@ class ProposeBody(BaseModel):
 
 def _view(proposal: Proposal) -> dict[str, Any]:
     return proposal.document()
+
+
+def evaluated_view(evaluation: Evaluation) -> dict[str, Any]:
+    """An evaluation as the change page and the owner's conversation read it: its verdict and
+    sides, and every case compared (ADR-0134 §9). An override carries its reason and when; the
+    person is the actor of `evaluation.overridden`, never a field here (principle 14)."""
+    document = evaluation.document()
+    view = {
+        key: document.get(key)
+        for key in (
+            "id",
+            "purpose",
+            "state",
+            "verdict",
+            "tolerance",
+            "sides",
+            "override",
+            "started_at",
+            "scored_at",
+        )
+    }
+    view["scorers"] = [
+        {
+            "step": s.step,
+            "method": s.method.value,
+            "exactness": s.exactness.value,
+            "rule": None if s.rule is None else s.rule.kind,
+        }
+        for s in evaluation.scorers
+    ]
+    view["cases"] = list(scoring.comparison(evaluation))
+    return view
 
 
 def _refused(error: ProposalError) -> JSONResponse:
@@ -123,8 +157,10 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         "/processes/{process_id}/proposals/{proposal_id}",
         summary="One proposal, with its difference",
         description="The proposal, and where it was rehearsed beside the active version on the "
-        "process's evaluation cases, that evaluation's state, verdict and scores under "
-        "`evaluated` (ADR-0134).",
+        "process's evaluation cases, that evaluation under `evaluated`: its state, verdict, "
+        "tolerance and the score of each side, every case with its sides beside each other, "
+        "and an override's reason. Who overrode is the ledger's, never the view's (ADR-0134 §9, "
+        "principle 14).",
         responses={200: {"description": "The proposal."}, **common},
     )
     async def one(
@@ -143,11 +179,7 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
                 evaluated = await services.evaluations.get(who.tenant, process_id, found.evaluation)
             except ProposalError:
                 return JSONResponse(view)
-            view["evaluated"] = {
-                key: value
-                for key, value in evaluated.document().items()
-                if key in ("id", "state", "verdict", "tolerance", "sides", "override")
-            }
+            view["evaluated"] = evaluated_view(evaluated)
         return JSONResponse(view)
 
     @routes.post(

@@ -7,7 +7,7 @@ serves: [P2, P3, P8, P13]
 state: built
 version: 0.4.0
 tests: [tests/components/run/test_model_routing.py::test_a_run_that_binds_its_purpose_routes_it_to_that_model_alone, tests/components/run/test_model_routing.py::test_a_bound_model_that_does_not_fit_fails_the_step_and_moves_nowhere, tests/composition/test_trials.py::test_a_trial_runs_each_case_once_per_candidate_and_sets_them_side_by_side, tests/composition/test_trials.py::test_a_trial_binds_nothing_beyond_its_own_runs, tests/composition/test_trials.py::test_a_trial_is_offered_when_a_purpose_s_model_has_answered_nothing_yet, tests/composition/test_trials.py::test_a_trial_is_offered_when_taktus_proposes_another_model, tests/composition/test_trials.py::test_a_trial_is_offered_when_the_model_a_member_answers_as_changes_version, tests/adapters/rest/test_spend_and_trials.py::test_a_trial_is_started_for_the_key_s_identity_read_and_offered, tests/components/accounting/test_trials.py::test_each_candidate_is_reported_per_case_and_in_total]
-adrs: {ADR-0030: 232318604b2d, ADR-0116: fdaf116b5e47, ADR-0134: 326ba91bbdcb, ADR-0148: 4ba172a497c9, ADR-0149: 6019b024ced9}
+adrs: {ADR-0030: 232318604b2d, ADR-0116: fdaf116b5e47, ADR-0134: 49496fd840aa, ADR-0148: 4ba172a497c9, ADR-0149: 6019b024ced9}
 supersedes: null
 ---
 
