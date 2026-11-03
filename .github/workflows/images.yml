@@ -109,6 +109,10 @@ jobs:
           # Dockerfile from this checkout: the tag fixes the agent too (#116).
           - name: taktus-worker-coding
             dockerfile: workers/claudecode/Dockerfile
+          # The second coding worker, its agent at the exact version workers/codex/agent-version
+          # names, read the same way (#208).
+          - name: taktus-worker-codex
+            dockerfile: workers/codex/Dockerfile
           # Its libraries at the exact versions workers/mlbench/requirements.txt names.
           - name: taktus-worker-mlbench
             dockerfile: workers/mlbench/Dockerfile
