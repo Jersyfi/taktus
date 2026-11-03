@@ -11,7 +11,7 @@
 
 Sessions raised needs requests that asked the owner for accounts at services the project does
 not use: a cloud bill (NEED-0035), and then, on the session's own proposal, the model costs at
-OpenAI (NEED-0042). The connectors behind them were built for a customer, under DEC-0201.
+OpenAI, whose request was withdrawn before it merged (#668). The connectors behind them were built for a customer, under DEC-0201.
 
 ## 2. Why you are being asked
 
@@ -63,8 +63,8 @@ itself, because the customer has to do it.)
    (DEC-0201), and the first live run is the tenant's. What it finds reaches the project as a
    product finding (UC-6.12).
 3. **Closed by this answer:** NEED-0035 (cloud bill), NEED-0036 (the Anthropic Admin key, which an
-   account for an individual cannot have), NEED-0042 (OpenAI costs, raised by the session's own
-   mistake and withdrawn), and NEED-0022 (the second coding agent's key, at a vendor the project
+   account for an individual cannot have), the request for the OpenAI costs (#668, raised by the
+   session's own mistake and withdrawn before it merged), and NEED-0022 (the second coding agent's key, at a vendor the project
    does not use). The second coding worker stays proven against its stand-in.
 4. **What the roadmap asks of the project's own instance** against outside systems is put to the
    owner in DEC-0226, because the roadmap is the owner's.
