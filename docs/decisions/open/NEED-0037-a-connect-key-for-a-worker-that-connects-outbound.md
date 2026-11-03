@@ -40,7 +40,8 @@ holds the vault, because `op` otherwise asks which of your accounts to use:
 op read --account "<your 1Password account>" "op://Development/taktus-connect-key-connected-reference/password" | ssh "<host that runs kubectl>" "kubectl --namespace <control-plane namespace> create secret generic taktus-connect-connected-reference --from-file=key=/dev/stdin"
 ```
 
-Then tell the session in the issue. It adds the worker to the instance's configuration and asks
+Done by the owner on 2026-11-03: the Secret `taktus-connect-connected-reference` exists in the
+control plane's namespace. Then tell the session in the issue. It adds the worker to the instance's configuration and asks
 you to apply the private values in the same way as an install.
 
 **Step 3 — the worker.** The session starts the reference worker with `TAKTUS_CONNECT_KEY_FILE`
