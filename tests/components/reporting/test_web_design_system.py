@@ -36,7 +36,12 @@ def _resolved(tree: dict[str, Any], value: Any) -> Any:
 
 
 def _colour(mode: str, group: str, *names: str) -> str:
-    tree = {**FOUNDATION, "semantic": {m: {**FOUNDATION["semantic"][m], **TAKTUS["semantic"][m]} for m in ("light", "dark")}}
+    tree = {
+        **FOUNDATION,
+        "semantic": {
+            m: {**FOUNDATION["semantic"][m], **TAKTUS["semantic"][m]} for m in ("light", "dark")
+        },
+    }
     node = tree["semantic"][mode][group]
     for name in names:
         node = node[name]
@@ -59,7 +64,9 @@ def _contrast(a: str, b: str) -> float:
 
 
 PLANES = [("bg", "canvas"), ("bg", "surface"), ("bg", "raised"), ("bg", "surface-sunken")]
-TEXTS = [("text", n) for n in ("primary", "secondary", "subtle", "brand", "danger", "success", "warning")]
+TEXTS = [
+    ("text", n) for n in ("primary", "secondary", "subtle", "brand", "danger", "success", "warning")
+]
 FAMILIES = ("reproducible", "variable", "person", "waiting", "alert")
 
 
@@ -92,7 +99,9 @@ def test_taktus_s_layer_takes_every_value_from_a_primitive_and_never_the_signatu
     for value in found:
         assert re.fullmatch(r"\{primitive\.color\.[a-z]+\.\d+\}", value), value
         assert "raspberry" not in value
-    assert FOUNDATION["$source"].startswith("Copied unchanged from https://github.com/Jersyfi/hubtask")
+    assert FOUNDATION["$source"].startswith(
+        "Copied unchanged from https://github.com/Jersyfi/hubtask"
+    )
 
 
 LITERAL = re.compile(r"#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|oklch|oklab|lab|lch)\(")
@@ -106,7 +115,11 @@ def test_no_page_writes_a_colour_of_its_own() -> None:
         if "generated" in path.parts:
             continue
         text = path.read_text(encoding="utf-8")
-        styles = [text] if path.suffix == ".css" else re.findall(r"<style[^>]*>(.*?)</style>", text, re.DOTALL)
+        styles = (
+            [text]
+            if path.suffix == ".css"
+            else re.findall(r"<style[^>]*>(.*?)</style>", text, re.DOTALL)
+        )
         styles += re.findall(r'\sstyle(?::[\w-]+)?="([^"]*)"', text)
         for style in styles:
             for line in COMMENT.sub("", style).splitlines():
@@ -117,7 +130,9 @@ def test_no_page_writes_a_colour_of_its_own() -> None:
 
 def test_every_page_belongs_to_one_destination_of_the_navigation() -> None:
     navigation = (WEB / "src" / "lib" / "navigation.ts").read_text(encoding="utf-8")
-    prefixes = re.findall(r"'(/[a-z/]*)'", " ".join(re.findall(r"routes: \[([^\]]*)\]", navigation)))
+    prefixes = re.findall(
+        r"'(/[a-z/]*)'", " ".join(re.findall(r"routes: \[([^\]]*)\]", navigation))
+    )
     assert prefixes
     routes = WEB / "src" / "routes"
     lost = []
