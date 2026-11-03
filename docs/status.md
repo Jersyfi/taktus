@@ -97,10 +97,10 @@ service exist (NEED-0007 to NEED-0010, NEED-0013); the connector acts as the app
 2026-10-11 (NEED-0016). Its backup runs there since 2026-10-12 (NEED-0025, ADR-0087), and the restore was exercised by hand twice: once on a development deployment and once from the instance's own backup (`docs/runs/2026-10-11-the-first-restore.md`). It is treated as production
 (DEC-0057).
 
-**Secrets** are kept in 1Password since DEC-0224: the session reads them through a service
-account of its own (NEED-0040), and Taktus's instance gets a read-only one of its own (NEED-0041,
-#660). Until NEED-0040 is provided, every credential reaches the session as a file written by
-hand, as before.
+**Secrets** are kept in 1Password since DEC-0224. The session reads and writes them through a
+service account of its own since 2026-11-03 (NEED-0040), only into a file or a process. It
+generated the catalogue's signing seed (NEED-0039) and the connect key of NEED-0037 into the
+vault itself. Taktus's instance gets a read-only account of its own (NEED-0041, #660).
 
 Nothing else is blocked. Everything not listed here can be built by a session without the
 owner.

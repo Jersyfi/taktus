@@ -61,3 +61,12 @@ do itself.
 
 The session reports that `op vault list` through the service account names the vault
 `Development`, and nothing more of the vault's contents.
+
+## Outcome
+
+**Provided:** 2026-11-03
+**Confirmed by:** section 7, run by the session on 2026-11-03 with the token handed to `op` from the
+file. `op whoami` names a service account, and `op vault list` names the vault `Development` and no
+other. Writing works: the session created two items there the same day (NEED-0037, NEED-0039). No
+value was printed.
+**Recorded in:** this pull request
