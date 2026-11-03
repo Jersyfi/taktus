@@ -89,3 +89,10 @@ usage yet and shows the budget you set. In *Settings → Environments → live*,
 `SECOND_CODING_AGENT_API_KEY` is listed beside `CODING_AGENT_API_KEY`, and the branch rule reads
 `main` and nothing else. After the first run, the project shows that run's usage and nothing
 else.
+
+## Outcome
+
+**Superseded by:** DEC-0225
+**Provided:** 2026-11-03
+**Confirmed by:** the owner in conversation: the project uses only Anthropic for its own development, and a feature for a customer is tested by the customer. The second coding worker stays proven against its stand-in.
+**Recorded in:** this pull request

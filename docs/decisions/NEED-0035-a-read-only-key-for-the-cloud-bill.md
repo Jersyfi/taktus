@@ -103,7 +103,7 @@ It prints `1`. The same profile running `aws iam list-users` is refused with `Ac
 
 ## Outcome
 
-**Superseded by:** NEED-0042
+**Superseded by:** DEC-0225
 **Provided:** 2026-11-03
 **Confirmed by:** the owner in conversation: the cloud bill is a requirement of a customer, which Taktus supports, but the project never runs it for itself ("ich führe es nie selbst bei Taktus ein"). The connector stays product support, proven against its fake.
 **Recorded in:** this pull request
