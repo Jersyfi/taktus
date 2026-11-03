@@ -100,7 +100,9 @@ catalogue (`Step.checks`, UC-4.13) run when its value is computed, before it cou
 from __future__ import annotations
 
 import binascii
+import csv
 import hashlib
+import io
 import json
 import math
 import re
@@ -694,12 +696,16 @@ def column(name: str) -> str:
     return f"{name}_" if name == LABEL else name
 
 
-def row_of(values: Any, features: Any) -> str:
+def row_of(values: Any, features: Any, texts: Any = ()) -> str:
     """One case as the rows an `ml` step predicts: a CSV with a header row and one row, a
-    number in every feature column (ADR-0114 §3). `features` are dotted paths into `values`,
-    the values a step on a language model rendered its prompt from. A feature that is not
-    there, or not a finite number, is a ValueError naming it: the case cannot be predicted."""
-    if not isinstance(features, list | tuple) or not features:
+    number in every feature column (ADR-0114 §3), then every text column, which the worker
+    embeds with the encoder its model file carries (ADR-0183). `features` and `texts` are dotted
+    paths into `values`, the values a step on a language model rendered its prompt from. A
+    feature that is not there, or not a finite number, or a text that is not there or empty, is
+    a ValueError naming it: the case cannot be predicted."""
+    if not isinstance(features, list | tuple) or not isinstance(texts, list | tuple):
+        raise ValueError("dataset.features and dataset.texts are lists of paths")
+    if not features and not texts:
         raise ValueError("dataset.features names the numbers to predict from")
     cells: list[str] = []
     for path in features:
@@ -714,8 +720,19 @@ def row_of(values: Any, features: Any) -> str:
         ):
             raise ValueError(f"the feature {path!r} is not a finite number: {value!r}")
         cells.append(repr(float(value)))
-    header = ",".join(column(str(path)) for path in features)
-    return f"{header}\n{','.join(cells)}\n"
+    for path in texts:
+        try:
+            value = select(values, str(path))
+        except (KeyError, IndexError, TypeError):
+            raise ValueError(f"the case gives no value for the text {path!r}") from None
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"the text {path!r} is not a text: {value!r}")
+        cells.append(value)
+    out = io.StringIO()
+    writer = csv.writer(out, lineterminator="\n")
+    writer.writerow([column(str(path)) for path in (*features, *texts)])
+    writer.writerow(cells)
+    return out.getvalue()
 
 
 class MlWork(WorkerWork):
@@ -764,15 +781,18 @@ class MlWork(WorkerWork):
 
     @model_validator(mode="after")
     def _rows_in_one_place(self) -> MlWork:
-        if set(self.dataset) == {"values", "features"}:
+        if set(self.dataset) in ({"values", "features"}, {"values", "features", "texts"}):
             features = self.dataset["features"]
-            if not isinstance(features, list | tuple) or not features:
+            texts = self.dataset.get("texts", [])
+            if not isinstance(features, list | tuple) or not isinstance(texts, list | tuple):
+                raise ValueError("dataset.features and dataset.texts are lists of paths")
+            if not features and not texts:
                 raise ValueError("dataset.features names the numbers to predict from")
             return self
         if self.fallback is not None:
             raise ValueError(
                 "a step that falls back to a language model predicts its one case, given as "
-                "dataset {values, features}"
+                "dataset {values, features} or {values, features, texts}"
             )
         places = {"csv", "uri", "base64"} & set(self.dataset)
         if len(places) != 1 or not set(self.dataset) <= {"csv", "uri", "base64", "digest"}:
@@ -788,8 +808,11 @@ class MlWork(WorkerWork):
         worker as the bytes of that text, and one case given as values and features as the
         bytes of its one row. A case without one of its features is a ValueError naming it."""
         dataset = inputs.get("dataset")
-        if isinstance(dataset, Mapping) and set(dataset) == {"values", "features"}:
-            text = row_of(dataset["values"], dataset["features"])
+        if isinstance(dataset, Mapping) and set(dataset) in (
+            {"values", "features"},
+            {"values", "features", "texts"},
+        ):
+            text = row_of(dataset["values"], dataset["features"], dataset.get("texts", ()))
             rows = {"base64": b64encode(text.encode("utf-8")).decode("ascii")}
             return {**inputs, "dataset": rows}
         if not isinstance(dataset, Mapping) or "csv" not in dataset:

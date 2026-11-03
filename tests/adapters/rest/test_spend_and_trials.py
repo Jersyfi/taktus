@@ -9,6 +9,7 @@ A key is needed for all of it.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -100,6 +101,8 @@ async def test_a_process_s_spend_is_summed_per_step_over_a_window(client: Client
 class Trials:
     def __init__(self) -> None:
         self.started: list[tuple[Any, ...]] = []
+        self.own: list[Any] = []
+        self.declined: list[tuple[Any, ...]] = []
 
     def trial(self) -> Trial:
         return Trial(
@@ -112,14 +115,28 @@ class Trials:
         )
 
     async def start(
-        self, tenant: str, purpose: str, candidates: list[str], by: str, occasion: str = "asked"
+        self,
+        tenant: str,
+        purpose: str,
+        candidates: list[str],
+        by: str,
+        occasion: str = "asked",
+        own: Sequence[Any] = (),
     ) -> Trial:
         if purpose == "summarising":
             raise TrialError("empty", "no process asks for summarising")
         if "model.absent" in candidates:
             raise TrialError("invalid", "'model.absent' is no model of this instance")
         self.started.append((tenant, purpose, tuple(candidates), by, occasion))
+        self.own.extend(own)
         return self.trial()
+
+    async def decline(
+        self, tenant: str, purpose: str, occasion: str, model: str, by: str, reason: str
+    ) -> None:
+        if model == "model.absent":
+            raise TrialError("unknown", "no such offer")
+        self.declined.append((tenant, purpose, occasion, model, by, reason))
 
     async def of_tenant(self, tenant: str) -> list[Trial]:
         return [self.trial()]
@@ -192,3 +209,42 @@ async def test_a_trial_that_cannot_start_says_why(client: Client) -> None:
         f"{base}/trials", json={"purpose": "drafting", "candidates": []}, headers=bearer(key)
     )
     assert none.status_code == 422
+
+
+async def test_a_person_names_cases_and_declines_an_offer(client: Client) -> None:
+    http, given, base = client
+    given.tried = Trials()
+    key = await given.linked()
+    started = await http.post(
+        f"{base}/trials",
+        json={
+            "purpose": "drafting",
+            "candidates": ["model.fake"],
+            "cases": [{"process": "replies", "inputs": {"message": "where is it"}}],
+        },
+        headers=bearer(key),
+    )
+    assert started.status_code == 201
+    (own,) = given.tried.own
+    assert (own.process, own.inputs) == ("replies", {"message": "where is it"})
+    declined = await http.post(
+        f"{base}/trials/offers/decline",
+        json={"purpose": "drafting", "occasion": "introduced", "model": "model.fake"},
+        headers=bearer(key),
+    )
+    assert declined.status_code == 200 and declined.json()["model"] == "model.fake"
+    ((tenant, purpose, occasion, model, by, reason),) = given.tried.declined
+    assert (tenant, purpose, occasion, model, reason) == (
+        TENANT,
+        "drafting",
+        "introduced",
+        "model.fake",
+        "",
+    )
+    assert by.startswith("idn_")
+    gone = await http.post(
+        f"{base}/trials/offers/decline",
+        json={"purpose": "drafting", "occasion": "introduced", "model": "model.absent"},
+        headers=bearer(key),
+    )
+    assert gone.status_code == 404

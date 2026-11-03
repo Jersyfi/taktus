@@ -150,6 +150,19 @@ def _applies(check: Check) -> str:
             return f"{row} — {_share(check)} of results, by the role `{check.role}`"
         case CheckKind.RECOMPUTATION:
             return f"{row} — over the inputs the provenance record names"
+        case CheckKind.COMPLETENESS:
+            return f"{row} — {check.count}, read through `{check.source}`"
+        case CheckKind.SOURCE_SHAPE:
+            return f"{row} — {_shape(check)}"
+
+
+def _shape(check: Check) -> str:
+    said: list[str] = []
+    if check.columns:
+        said.append("the columns " + ", ".join(f"`{c}`" for c in check.columns) + ", in order")
+    if check.pattern is not None:
+        said.append(f"text matching `{check.pattern}`")
+    return " and ".join(said)
 
 
 def _reference(check: Check) -> str:
@@ -190,6 +203,13 @@ def _covers(step: Step, check: Check) -> str:
                 "provenance record names: a result that does not follow from its recorded "
                 "inputs is found."
             )
+        case CheckKind.COMPLETENESS:
+            return (
+                f"{subject} has as many parts as {check.count}, read through `{check.source}` "
+                "at the moment of the check: a part missing or one too many is found."
+            )
+        case CheckKind.SOURCE_SHAPE:
+            return f"{subject} counts only where what the step read has {_shape(check)}."
 
 
 def _does_not_cover(step: Step, check: Check) -> str:
@@ -223,6 +243,13 @@ def _does_not_cover(step: Step, check: Check) -> str:
                 f"and so does a {step.method} that computes the wrong thing the same way every "
                 "time."
             )
+        case CheckKind.COMPLETENESS:
+            return (
+                f"A part of {subject} that is present but wrong passes, and so does "
+                f"{check.count} where it is itself wrong."
+            )
+        case CheckKind.SOURCE_SHAPE:
+            return f"A wrong value of {subject} read from a source of the right shape passes."
 
 
 def _slips(step: Step, check: Check) -> str:
@@ -242,3 +269,7 @@ def _slips(step: Step, check: Check) -> str:
             return "a wrong value outside the sample"
         case CheckKind.RECOMPUTATION:
             return f"wrong inputs, or a {step.method} that computes the wrong thing"
+        case CheckKind.COMPLETENESS:
+            return f"a part present but wrong, or {check.count} itself wrong"
+        case CheckKind.SOURCE_SHAPE:
+            return "a wrong value in a source of the right shape"

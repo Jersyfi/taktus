@@ -75,7 +75,22 @@ CATALOGUE: dict[CheckKind, Row] = {
         "its provenance record names",
         does_not_cover="inputs that were themselves wrong; a rule that computes the wrong thing "
         "the same way every time",
-        needs="a step on rule or statistics, and its provenance record (provisional, DEC-0173)",
+        needs="a step on rule or statistics, and its provenance record (DEC-0173)",
+    ),
+    CheckKind.COMPLETENESS: Row(
+        name="completeness against a count",
+        covers="the result has as many parts as another source holds: the rows of a file, the "
+        "records of an export, the lines of a statement",
+        does_not_cover="a part that is present but wrong; a count that is itself wrong",
+        needs="a source for the count, read through a connector at the moment of the check "
+        "(DEC-0223)",
+    ),
+    CheckKind.SOURCE_SHAPE: Row(
+        name="shape of the source",
+        covers="what the step read has the columns it was written for, in their order, or "
+        "matches a pattern: a partner file whose column order changed is found",
+        does_not_cover="a value wrong inside a source of the right shape",
+        needs="the columns or the pattern the step was written for (DEC-0223)",
     ),
 }
 """Every kind of the shared kernel has its row; `tests/exactness` holds the two together."""

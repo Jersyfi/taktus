@@ -16,6 +16,15 @@ over the model file as it was written, the same function a prediction assignment
 by the in-memory classifier. A file that would predict differently than it was measured cannot
 leave the bench.
 
+**Text becomes numbers through a neural embedding** (ADR-0183). A column the task names as
+text is embedded before the classifier sees it: its character n-grams are hashed into a fixed
+number of buckets, and a one-layer neural encoder, trained as an autoencoder on the training
+rows' text from the seed, maps them to a short vector. The encoder's weights travel in the model
+file, so that a prediction embeds a row exactly as the training did. The `embed` operation
+returns the encoder and the vectors on their own. The encoder learns from the dataset alone: it
+is no pretrained language model (`docs/vision/non-goals.md`), and it knows no word it has not
+seen.
+
 The model file holds numbers only. Loading it runs no code: it is never a pickle.
 """
 
@@ -25,7 +34,7 @@ import csv
 import hashlib
 import io
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
@@ -39,6 +48,14 @@ from sklearn.model_selection import train_test_split
 type Json = dict[str, Any]
 
 MODEL_FORMAT = "taktus.mlbench.linear/1"
+EMBEDDER_FORMAT = "taktus.mlbench.embedder/1"
+EMBEDDER_FAMILY = "char-ngram-autoencoder"
+BUCKETS = 512  # the hashed character n-grams a text is counted in
+WIDTH = 32  # the length of an embedding
+NGRAMS = (2, 4)  # the shortest and the longest n-gram counted
+ITERATIONS = 800  # full passes of gradient descent over the training rows' text
+RATE = 0.3  # the step size of each pass
+DECIMALS = 8  # the encoder's weights are rounded to this, so that its bytes are its digest
 FAMILY = "logistic-regression-sgd"
 ALPHA = 1e-4  # the regularisation strength; part of the family, not of the task
 
@@ -68,6 +85,8 @@ class Table:
     label: str | None
     y: np.ndarray | None
     digest: str
+    texts: dict[str, list[str]] = field(default_factory=dict)
+    """The text columns by name, each a list of its rows' text, kept apart from `x`."""
 
 
 def synthetic(spec: Json, seed: int) -> tuple[bytes, Table]:
@@ -99,14 +118,17 @@ def synthetic(spec: Json, seed: int) -> tuple[bytes, Table]:
     return data, parse_csv(data, "label", require_label=True)
 
 
-def parse_csv(data: bytes, label: str | None, *, require_label: bool) -> Table:
+def parse_csv(
+    data: bytes, label: str | None, *, require_label: bool, text: tuple[str, ...] = ()
+) -> Table:
     """A CSV with a header row and numbers in every feature column. `label` names the label
-    column; None means the last column when a label is required, and no label otherwise."""
+    column; None means the last column when a label is required, and no label otherwise. The
+    columns `text` names hold text, kept as read for the embedding."""
     try:
-        text = data.decode("utf-8")
+        decoded = data.decode("utf-8")
     except UnicodeDecodeError as error:
         raise BenchError("the dataset is not UTF-8 text") from error
-    rows = list(csv.reader(io.StringIO(text)))
+    rows = list(csv.reader(io.StringIO(decoded)))
     if len(rows) < 2:
         raise BenchError("the dataset has no rows under its header")
     header = [h.strip() for h in rows[0]]
@@ -119,27 +141,150 @@ def parse_csv(data: bytes, label: str | None, *, require_label: bool) -> Table:
             raise BenchError(f"the dataset has no label column {label!r}")
         label = None
     where = header.index(label) if label is not None else -1
-    names = tuple(h for k, h in enumerate(header) if k != where)
-    if not names:
+    missing = [name for name in text if name not in header]
+    if missing:
+        raise BenchError(f"the dataset has no text column {missing[0]!r}")
+    if label is not None and label in text:
+        raise BenchError(f"the column {label!r} cannot be the label and a text at once")
+    texts_at = [header.index(name) for name in text]
+    numeric_at = [k for k in range(len(header)) if k != where and k not in texts_at]
+    names = tuple(header[k] for k in numeric_at)
+    if not names and not text:
         raise BenchError("the dataset has no feature column")
     values: list[list[float]] = []
     labels: list[str] = []
+    texts: dict[str, list[str]] = {name: [] for name in text}
     for number, row in enumerate(rows[1:], start=2):
         if not row:
             continue
         if len(row) != len(header):
             raise BenchError(f"line {number} has {len(row)} fields, the header {len(header)}")
         try:
-            values.append([float(v) for k, v in enumerate(row) if k != where])
+            values.append([float(row[k]) for k in numeric_at])
         except ValueError as error:
             raise BenchError(f"line {number} holds a feature that is not a number") from error
+        for name, k in zip(text, texts_at, strict=True):
+            texts[name].append(row[k])
         if where >= 0:
             labels.append(row[where].strip())
-    x = np.asarray(values, dtype=np.float64)
+    x = np.asarray(values, dtype=np.float64).reshape(len(values), len(numeric_at))
     if not np.isfinite(x).all():
         raise BenchError("the dataset holds a feature that is not finite")
     y = np.asarray(labels) if where >= 0 else None
-    return Table(names, x, label, y, sha256(data))
+    return Table(names, x, label, y, sha256(data), texts)
+
+
+# --- text, embedded ----------------------------------------------------------------------------
+
+
+def grams(text: str) -> list[str]:
+    """The character n-grams of a text, lower-cased, its white space folded to one blank and a
+    blank at either end, so that a word's start and end are n-grams of their own."""
+    folded = " " + " ".join(text.lower().split()) + " "
+    low, high = NGRAMS
+    return [folded[k : k + n] for n in range(low, high + 1) for k in range(len(folded) - n + 1)]
+
+
+def _bucket(gram: str) -> int:
+    """A stable hash, the same on every machine and in every process: never Python's `hash`."""
+    return int.from_bytes(hashlib.blake2b(gram.encode(), digest_size=8).digest(), "big") % BUCKETS
+
+
+def hashed(texts: list[str]) -> np.ndarray:
+    """Every text as the counts of its n-grams per bucket, scaled to length one."""
+    counts = np.zeros((len(texts), BUCKETS), dtype=np.float64)
+    for row, text in enumerate(texts):
+        for gram in grams(text):
+            counts[row, _bucket(gram)] += 1.0
+    norms = np.linalg.norm(counts, axis=1, keepdims=True)
+    norms[norms == 0.0] = 1.0
+    return counts / norms
+
+
+def fit_embedder(texts: list[str], seed: int) -> Json:
+    """A one-layer neural encoder, trained as an autoencoder on these texts from the seed: the
+    hashed n-grams in, a `WIDTH`-long tanh layer, the n-grams again out, the squared error
+    reduced by full-batch gradient descent for `ITERATIONS` passes. Its weights are rounded,
+    so that the same texts and seed give the same bytes."""
+    if not texts:
+        raise BenchError("an embedding needs at least one row of text")
+    x = hashed(texts)
+    rows = x.shape[0]
+    rng = np.random.default_rng(seed)
+    w = rng.normal(0.0, 1.0 / np.sqrt(BUCKETS), (BUCKETS, WIDTH))
+    b = np.zeros(WIDTH)
+    v = rng.normal(0.0, 1.0 / np.sqrt(BUCKETS), (WIDTH, BUCKETS))
+    c = np.zeros(BUCKETS)
+    loss = 0.0
+    for _ in range(ITERATIONS):
+        h = np.tanh(x @ w + b)
+        error = h @ v + c - x
+        loss = float((error**2).sum() / rows)
+        grad_out = 2.0 * error / rows
+        grad_hidden = (grad_out @ v.T) * (1.0 - h * h)
+        v -= RATE * (h.T @ grad_out)
+        c -= RATE * grad_out.sum(axis=0)
+        w -= RATE * (x.T @ grad_hidden)
+        b -= RATE * grad_hidden.sum(axis=0)
+    if not np.isfinite(loss) or not np.isfinite(w).all():
+        raise BenchError("the embedding did not converge on this text: its error is not finite")
+    return {
+        "format": EMBEDDER_FORMAT,
+        "family": EMBEDDER_FAMILY,
+        "buckets": BUCKETS,
+        "ngrams": list(NGRAMS),
+        "width": WIDTH,
+        "seed": seed,
+        "iterations": ITERATIONS,
+        "rows": rows,
+        "loss": round(loss, 9),
+        "w": np.round(w, DECIMALS).tolist(),
+        "b": np.round(b, DECIMALS).tolist(),
+    }
+
+
+def check_embedder(document: Any) -> Json:
+    """An encoder document as read, or a BenchError naming what is wrong with it."""
+    if not isinstance(document, dict) or document.get("format") != EMBEDDER_FORMAT:
+        raise BenchError(f"the embedder is not of the format {EMBEDDER_FORMAT}")
+    if document.get("buckets") != BUCKETS or document.get("ngrams") != list(NGRAMS):
+        raise BenchError("the embedder counts its n-grams otherwise than this bench does")
+    try:
+        w = np.asarray(document["w"], dtype=np.float64)
+        b = np.asarray(document["b"], dtype=np.float64)
+    except (KeyError, TypeError, ValueError) as error:
+        raise BenchError("the embedder is incomplete") from error
+    width = int(document.get("width", 0))
+    if w.shape != (BUCKETS, width) or b.shape != (width,):
+        raise BenchError("the embedder's weights do not fit its width")
+    return document
+
+
+def embed(document: Json, texts: list[str]) -> np.ndarray:
+    """The texts as vectors, through the encoder's rounded weights alone."""
+    w = np.asarray(document["w"], dtype=np.float64)
+    b = np.asarray(document["b"], dtype=np.float64)
+    return np.tanh(hashed(texts) @ w + b)
+
+
+def embedded_names(column: str, width: int) -> list[str]:
+    return [f"{column}#{k}" for k in range(1, width + 1)]
+
+
+def embeddings_csv(vectors: np.ndarray) -> bytes:
+    """The vectors as a dataset: one row per text, in the order read, each value to 9 places."""
+    out = io.StringIO()
+    writer = csv.writer(out, lineterminator="\n")
+    writer.writerow(["row", *(f"e{k}" for k in range(1, vectors.shape[1] + 1))])
+    for row, vector in enumerate(vectors.tolist(), 1):
+        writer.writerow([row, *(f"{value:.9f}" for value in vector)])
+    return out.getvalue().encode()
+
+
+def with_text(x: np.ndarray, texts: dict[str, list[str]], embedders: dict[str, Json]) -> np.ndarray:
+    """The numeric columns, then each text column's embedding in the order of its name."""
+    parts = [x] + [embed(embedders[name], texts[name]) for name in sorted(embedders)]
+    return np.hstack(parts) if len(parts) > 1 else x
 
 
 # --- training -----------------------------------------------------------------------------------
@@ -161,6 +306,8 @@ class Prepared:
     y_holdout: np.ndarray
     digest: str
     rows: int
+    embedders: dict[str, Json] = field(default_factory=dict)
+    """The encoder of every text column, trained on the training rows' text alone."""
 
 
 def prepare(table: Table, seed: int, holdout: float) -> Prepared:
@@ -173,14 +320,25 @@ def prepare(table: Table, seed: int, holdout: float) -> Prepared:
         raise BenchError("a training needs at least two classes")
     counts = [int((table.y == c).sum()) for c in classes]
     stratify = table.y if min(counts) >= 2 else None
-    x_train, x_holdout, y_train, y_holdout = train_test_split(
-        table.x, table.y, test_size=holdout, random_state=seed, stratify=stratify
+    index = np.arange(table.y.shape[0])
+    train_at, holdout_at = train_test_split(
+        index, test_size=holdout, random_state=seed, stratify=stratify
     )
+    embedders = {
+        name: fit_embedder([rows[k] for k in train_at.tolist()], seed)
+        for name, rows in sorted(table.texts.items())
+    }
+    x = with_text(table.x, table.texts, embedders)
+    features = table.features + tuple(
+        n for name in sorted(embedders) for n in embedded_names(name, WIDTH)
+    )
+    x_train, x_holdout = x[train_at], x[holdout_at]
+    y_train, y_holdout = table.y[train_at], table.y[holdout_at]
     mean = x_train.mean(axis=0)
     scale = x_train.std(axis=0)
     scale[scale == 0.0] = 1.0
     return Prepared(
-        table.features,
+        features,
         table.label,
         classes,
         mean,
@@ -191,6 +349,7 @@ def prepare(table: Table, seed: int, holdout: float) -> Prepared:
         y_holdout,
         table.digest,
         int(table.x.shape[0]),
+        embedders,
     )
 
 
@@ -237,6 +396,8 @@ def model_file(
         "coef": state["coef"],
         "intercept": state["intercept"],
     }
+    if data.embedders:
+        document["text"] = data.embedders
     if metrics is not None:
         document["evaluation"] = metrics
     return (json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n").encode()
@@ -254,6 +415,14 @@ class Model:
     scale: np.ndarray
     coef: np.ndarray
     intercept: np.ndarray
+    text: dict[str, Json] = field(default_factory=dict)
+    """The encoder of every text column the model reads, by the column's name."""
+
+    @property
+    def numeric(self) -> tuple[str, ...]:
+        """The features read as numbers: every feature no text column's embedding gives."""
+        embedded = {n for name, e in self.text.items() for n in embedded_names(name, e["width"])}
+        return tuple(name for name in self.features if name not in embedded)
 
 
 def load_model(data: bytes) -> Model:
@@ -272,8 +441,12 @@ def load_model(data: bytes) -> Model:
             np.asarray(document["scaler"]["scale"], dtype=np.float64),
             np.asarray(document["coef"], dtype=np.float64),
             np.asarray(document["intercept"], dtype=np.float64),
+            {
+                str(name): check_embedder(embedder)
+                for name, embedder in (document.get("text") or {}).items()
+            },
         )
-    except (KeyError, TypeError, ValueError) as error:
+    except (KeyError, TypeError, ValueError, AttributeError) as error:
         raise BenchError("the model file is incomplete") from error
     width = len(model.features)
     rows = 1 if len(model.classes) == 2 else len(model.classes)
@@ -283,12 +456,14 @@ def load_model(data: bytes) -> Model:
 
 
 def columns(model: Model, table: Table) -> np.ndarray:
-    """The table's feature columns in the order the model was trained on."""
-    missing = [name for name in model.features if name not in table.features]
+    """The table's feature columns in the order the model was trained on, each text column
+    embedded by the model's own encoder."""
+    missing = [name for name in model.numeric if name not in table.features]
+    missing += [name for name in sorted(model.text) if name not in table.texts]
     if missing:
         raise BenchError(f"the dataset lacks the model's feature {missing[0]!r}")
-    order = [table.features.index(name) for name in model.features]
-    return table.x[:, order]
+    order = [table.features.index(name) for name in model.numeric]
+    return with_text(table.x[:, order], table.texts, model.text)
 
 
 def predict(model: Model, x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:

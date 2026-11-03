@@ -3963,6 +3963,49 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /trials/offers/decline:
+    post:
+      tags:
+      - trials
+      summary: Decline an offered model trial
+      description: 'The offer is not shown again until its occasion arises anew: the model proposed again,
+        or its version changed again. The ledger records `trial.declined` with you as its actor. Declining
+        binds and starts nothing (ADR-0149 §3).'
+      operationId: decline_trials_offers_decline_post
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeclineBody'
+      responses:
+        '200':
+          description: The offer declined.
+          content:
+            application/json:
+              schema:
+                title: Response Decline Trials Offers Decline Post
+        '404':
+          description: No such offer stands now.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
   /trials/{trial_id}:
     get:
       tags:
@@ -4033,6 +4076,23 @@ components:
           description: Free text, as you would write it.
       type: object
       title: AnswerBody
+    CaseBody:
+      properties:
+        process:
+          type: string
+          minLength: 1
+          title: Process
+          description: A process of your tenant.
+        inputs:
+          additionalProperties: true
+          type: object
+          title: Inputs
+          description: The run's inputs.
+      additionalProperties: false
+      type: object
+      required:
+      - process
+      title: CaseBody
     ChooseBody:
       properties:
         choices:
@@ -4061,6 +4121,35 @@ components:
             (ADR-0134 §4).'
       type: object
       title: CommissionBody
+    DeclineBody:
+      properties:
+        purpose:
+          type: string
+          pattern: ^[a-z][a-z0-9_-]*$
+          title: Purpose
+          description: The offer's purpose.
+        occasion:
+          type: string
+          title: Occasion
+          description: 'The offer''s occasion: introduced, proposed or changed.'
+        model:
+          type: string
+          minLength: 1
+          title: Model
+          description: The model the offer concerns.
+        reason:
+          type: string
+          maxLength: 500
+          title: Reason
+          description: Why you decline it, in your words; optional.
+          default: ''
+      additionalProperties: false
+      type: object
+      required:
+      - purpose
+      - occasion
+      - model
+      title: DeclineBody
     HandBackBody:
       properties:
         result:
@@ -4362,6 +4451,15 @@ components:
           description: 'Why the trial runs: one of introduced, proposed, changed, asked; `asked` unless
             it answers an offer.'
           default: asked
+        cases:
+          items:
+            $ref: '#/components/schemas/CaseBody'
+          type: array
+          maxItems: 50
+          title: Cases
+          description: 'Cases you name beside the evaluation cases: a process whose active version asks
+            for the purpose, and the inputs of one run. Each runs once per candidate; it has no target,
+            so it passes on its run''s own ending (ADR-0149 §1).'
       additionalProperties: false
       type: object
       required:

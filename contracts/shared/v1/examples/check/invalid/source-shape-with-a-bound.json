@@ -1,0 +1,5 @@
+{
+  "kind": "source_shape",
+  "columns": ["id"],
+  "minimum": 1
+}

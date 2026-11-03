@@ -421,7 +421,7 @@ role it would tie the core to a model stack and the removal test would be lost.
   continues or halts the run it holds, and to `composition/moves.py` with its request. A
   request that accepted a proposal to move a step to a trained model registers the moved
   version; one that accepted a proposal to roll a move back registers the replaced version again
-  (ADR-0114). A move that cannot be applied is logged, and `taktusctl maturation apply`
+  (ADR-0114, on DEC-0164's answer as UC-4.24 states it). A move that cannot be applied is logged, and `taktusctl maturation apply`
   (`adapters/driving/cli/maturation_command.py`) applies it once the cause is gone; `taktusctl
   maturation moves` and `rollback` measure and undo a move.
 - **The maturity of every configured adapter** is `taktusctl conformance list`

@@ -100,9 +100,14 @@ from taktus.components.governance.application.service import (
     ExpectedRuns,
     ReportCapacity,
     ReportCapacityHandler,
+    ResultDefects,
     Stages,
 )
-from taktus.components.governance.domain.model import Incident, WatchConfiguration
+from taktus.components.governance.domain.model import (
+    AnchorConfiguration,
+    Incident,
+    WatchConfiguration,
+)
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.identity.domain.model import (
     BrowserSession,
@@ -169,6 +174,7 @@ from taktus.composition.change_in_channel import ChangeInChannel
 from taktus.composition.conformance import InstanceSuites, worker_suites
 from taktus.composition.deadlines import Deadlines
 from taktus.composition.decisions import DecisionWiring, decision_wiring
+from taktus.composition.defects import DefectWatch, defects_tick
 from taktus.composition.evaluations import Evaluations, evaluations_tick, outward_by
 from taktus.composition.execution import (
     connector_pool,
@@ -286,6 +292,8 @@ class Wired:
     stops: StopsConfirmed
     """The stops of adapters the scheduler confirms on every tick while it leads, once each
     holds (ADR-0138)."""
+    defects: DefectWatch
+    """Every correction nobody assessed, raised as a result defect by the scheduler (ADR-0184)."""
     stages: Stages
     """A tenant's introduction in stages, looked at by the scheduler once an hour while it
     leads (ADR-0137)."""
@@ -1182,6 +1190,19 @@ async def wire(
                     clock,
                 ),
                 stops=StopsConfirmed(tenants, stops),
+                defects=DefectWatch(
+                    ledger,
+                    ResultDefects(
+                        provenance_store,
+                        ledger,
+                        PostgresRepository(persistence, Incident),
+                        PostgresRepository(persistence, WatchConfiguration),
+                        PostgresRepository(persistence, AnchorConfiguration),
+                        persistence,
+                        clock,
+                    ),
+                    persistence,
+                ),
                 stages=staged.stages,
                 skills=skill_lifecycle,
                 agents=shared_agents,
@@ -1438,6 +1459,8 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
         # And it looks at every tenant's stages: one that holds or stopped holding, and the
         # next one proposed for a person to open (ADR-0137).
         look_at_stages = stages_tick(wired.stages, wired.tenants, wired.clock)
+        # And it assesses every correction nobody assessed, as a result defect (ADR-0184).
+        assess_corrections = defects_tick(wired.defects, wired.tenants, wired.clock)
         # And it moves every tenant's skills through their lifecycle: drafts from recurring
         # corrections, rounds scored, approval by rule at level 4, fallback by rule (ADR-0162).
         look_at_skills = (
@@ -1460,6 +1483,7 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
             await erase_traces()
             await anchor_chains()
             await look_at_stages()
+            await assess_corrections()
             if look_at_skills is not None:
                 await look_at_skills()
 
