@@ -15,3 +15,9 @@ description = "Ed25519 public keys in the catalogue contract's examples"
 condition = "AND"
 paths = ['''^contracts/catalogue/v1/examples/''']
 regexes = ['''^[A-Za-z0-9_-]{43}$''']
+
+[[rules.allowlists]]
+description = "The public key of the project's reference catalogue, recorded in NEED-0039"
+condition = "AND"
+paths = ['''^docs/decisions/NEED-0039-''']
+regexes = ['''^9cXIHtNI9qUd7lBL1ZSM1Nmca5A8yuocJnpQ5YYmn30$''']

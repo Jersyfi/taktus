@@ -57,3 +57,7 @@ key, one of the test keys the examples are signed with.
 
 Everywhere else the scan looks exactly as before. The trial of section 2 shows it: the same value
 in another file was found, and a longer value in the examples was found.
+
+**Added on 2026-11-03.** The project's own reference key was generated under NEED-0040, and its public half is recorded in
+NEED-0039. The same rule reported it. A second exception sets aside exactly that value in exactly
+that file, and nothing else: the public half of a signing key is published by design (ADR-0175).
