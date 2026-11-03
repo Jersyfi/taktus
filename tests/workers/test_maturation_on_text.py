@@ -115,7 +115,7 @@ async def test_a_step_that_reads_text_is_proposed_a_model_the_bench_trained_on_i
     assert "the text of title, embedded on the bench" in request.request.situation
 
 
-async def test_the_moved_step_predicts_its_text_case_and_falls_back_on_an_empty_text(
+async def test_the_moved_step_predicts_its_text_case_and_refuses_an_empty_text(
     ml_bench: Bench,
 ) -> None:
     async with HttpWorker(ml_bench.endpoint) as bench:
