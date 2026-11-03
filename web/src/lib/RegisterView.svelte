@@ -75,7 +75,9 @@
 				{/if}
 				<p class="muted">
 					{row.serves.join(', ') || 'serves nothing declared'} · {row.location ?? 'location undeclared'}
-					<span class="residency {row.residency}">{row.residency === 'outside' ? 'outside the rule' : row.residency}</span>
+					{#if row.location || row.residency !== 'undeclared'}
+						<span class="residency {row.residency}">{row.residency === 'outside' ? 'outside the rule' : row.residency}</span>
+					{/if}
 				</p>
 				{#if row.processes.length}
 					<p class="uses">

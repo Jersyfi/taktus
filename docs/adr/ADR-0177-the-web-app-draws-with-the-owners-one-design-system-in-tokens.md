@@ -49,7 +49,8 @@ Every value in it is a reference to a Hubtask primitive, never a literal. It nam
 - **The series of a chart**: two series, and the four price kinds of a model's tokens (ADR-0148).
 
 Hubtask's `raspberry` stays what Hubtask says it is: the signature, with no system meaning. Taktus
-uses it in its mark and in the ambient tint of the page, nowhere else.
+uses it as a brand, never as a meaning: in its mark, in the ambient tint of the page and in the
+rule under the start page's sentence.
 
 ### 3. One generated stylesheet
 

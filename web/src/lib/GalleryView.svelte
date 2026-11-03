@@ -67,91 +67,131 @@
 		</p>
 	{/if}
 
-	{#each blueprints as blueprint (blueprint.id)}
-		<article class="blueprint" data-blueprint={blueprint.id}>
-			<h2>{blueprint.title}</h2>
-			<p class="muted">For {blueprint.for}. {blueprint.summary}</p>
-			{#each blueprint.processes as process (process.id)}
-				<div class="process" data-process={process.id}>
-					<h3>{process.name}</h3>
-					{#if process.refused}
-						<p class="refused" data-refused>Not offered: {process.refused.join('; ')}</p>
-					{:else}
-						<p>{process.reason}.</p>
-						<ol class="steps">
-							{#each process.steps ?? [] as step (step.id)}
-								<li>By {methods[step.method] ?? step.method}: {step.reason}.</li>
-							{/each}
-						</ol>
-						<p class="muted">
-							It starts at autonomy level {process.level}: {process.level_reason}.
-						</p>
-						<form onsubmit={(event) => choose(event, blueprint.id, process)}>
-							{#each process.choices ?? [] as choice (choice.name)}
-								<label>
-									{choice.label}
-									<input
-										type="text"
-										name={choice.name}
-										value={typed[key(blueprint.id, process.id, choice.name)] ?? shown(choice.value)}
-										oninput={(event) =>
-											(typed[key(blueprint.id, process.id, choice.name)] = (event.currentTarget as HTMLInputElement).value)}
-									/>
-								</label>
-							{/each}
-							<button type="submit" class="primary" disabled={busy}>Make this my first process</button>
-						</form>
-					{/if}
-				</div>
-			{/each}
-		</article>
-	{/each}
+	<div class="shelf">
+		{#each blueprints as blueprint (blueprint.id)}
+			<article class="blueprint" data-blueprint={blueprint.id}>
+				<h2>{blueprint.title}</h2>
+				<p class="muted">For {blueprint.for}. {blueprint.summary}</p>
+				{#each blueprint.processes as process (process.id)}
+					<div class="process" data-process={process.id}>
+						<h3>{process.name}</h3>
+						{#if process.refused}
+							<p class="refused" data-refused>Not offered: {process.refused.join('; ')}</p>
+						{:else}
+							<p>{process.reason}.</p>
+							<ol class="steps">
+								{#each process.steps ?? [] as step (step.id)}
+									<li>By {methods[step.method] ?? step.method}: {step.reason}.</li>
+								{/each}
+							</ol>
+							<p class="muted">
+								It starts at autonomy level {process.level}: {process.level_reason}.
+							</p>
+							<form onsubmit={(event) => choose(event, blueprint.id, process)}>
+								{#each process.choices ?? [] as choice (choice.name)}
+									<label>
+										{choice.label}
+										<input
+											type="text"
+											name={choice.name}
+											value={typed[key(blueprint.id, process.id, choice.name)] ?? shown(choice.value)}
+											oninput={(event) =>
+												(typed[key(blueprint.id, process.id, choice.name)] = (event.currentTarget as HTMLInputElement).value)}
+										/>
+									</label>
+								{/each}
+								<button type="submit" class="primary" disabled={busy}>Make this my first process</button>
+							</form>
+						{/if}
+					</div>
+				{/each}
+			</article>
+		{/each}
+	</div>
 </section>
 
 <style>
 	.muted {
 		color: var(--text-secondary);
-		font-size: 0.9rem;
+		font-size: var(--fs-100);
+	}
+	/* The gallery as a shelf: one card per situation, side by side where there is room. */
+	.shelf {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+		gap: var(--sp-250);
+		margin-top: var(--sp-300);
+		align-items: start;
 	}
 	.blueprint {
-		border: 1px solid var(--border-subtle);
-		border-radius: 18px;
-		padding: 1rem 1.2rem;
-		margin: 1rem 0;
-		max-width: 52rem;
+		position: relative;
+		border: var(--bw-hairline) solid var(--border-subtle);
+		border-radius: var(--r-2xl);
+		padding: var(--sp-300) var(--sp-250) var(--sp-250);
+		background: var(--bg-surface);
+		box-shadow: var(--shadow-raised);
+		overflow: hidden;
+	}
+	/* A band of the reproducible family across the top: every gallery process runs on rules. */
+	.blueprint::before {
+		content: '';
+		position: absolute;
+		inset: 0 0 auto;
+		height: 4px;
+		background: linear-gradient(to right, var(--family-reproducible), var(--accent-primary));
+	}
+	.blueprint h2 {
+		margin-top: 0;
+		color: var(--text-brand);
 	}
 	.process {
-		border-top: 1px solid var(--border-subtle);
-		padding-top: 0.75rem;
-		margin-top: 0.75rem;
+		border-top: var(--bw-hairline) solid var(--border-subtle);
+		padding-top: var(--sp-200);
+		margin-top: var(--sp-200);
+	}
+	.process h3 {
+		margin-top: 0;
+		font-family: var(--font-display);
+		font-size: var(--fs-500);
+		font-weight: var(--fw-bold);
+		line-height: var(--lh-tight);
 	}
 	.steps {
-		padding-left: 1.2rem;
+		padding-inline-start: var(--sp-250);
+		font-size: var(--fs-100);
+	}
+	.steps li + li {
+		margin-top: var(--sp-050);
 	}
 	.refused {
 		color: var(--text-subtle);
 	}
 	form {
 		display: grid;
-		gap: 0.6rem;
-		max-width: 36rem;
+		gap: var(--sp-150);
+		margin-top: var(--sp-200);
 	}
 	label {
 		display: grid;
-		gap: 0.25rem;
+		gap: var(--sp-050);
+		font-size: var(--fs-075);
+		font-weight: var(--fw-semibold);
+		color: var(--text-subtle);
 	}
 	input {
-		font: inherit;
-		padding: 0.5rem 0.75rem;
-		border: 1px solid var(--border-subtle);
-		border-radius: 10px;
-		background: var(--bg-canvas);
+		font-size: var(--fs-100);
+		font-weight: var(--fw-text);
 		color: var(--text-primary);
 	}
+	form button {
+		margin-top: var(--sp-100);
+	}
 	.message {
-		background: var(--bg-surface);
-		border-radius: 12px;
-		padding: 0.7rem 0.9rem;
+		background: var(--status-info-surface);
+		color: var(--status-info-text);
+		border: var(--bw-hairline) solid var(--status-info-border);
+		border-radius: var(--r-lg);
+		padding: var(--sp-150) var(--sp-200);
 		max-width: 46rem;
 	}
 </style>

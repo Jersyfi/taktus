@@ -87,6 +87,8 @@ serves the runs of every instance (#625, NTC-0245). Issue #402 had named its own
 free number of its area, built with package D in concept mode (DEC-0222).
 `UC-4.24` Taktus proposes a cheaper method for a step (DEC-0164), the next free number of its
 area.
+`UC-13.7` every role finds its way in one measured design system (DEC-0227, NTC-0260), the
+number package E gave it, built in concept mode.
 
 ## Numbers of the definition with no file of their own
 

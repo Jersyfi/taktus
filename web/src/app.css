@@ -271,3 +271,18 @@ hr {
 	clip-path: inset(50%);
 	white-space: nowrap;
 }
+
+/* A page the surface refused, or whose read failed, says so in a notice of its own: the words
+   are the surface's, the reader learns who reads the page instead. */
+main > p[role='alert'],
+main > p.status:only-child {
+	max-width: 46rem;
+	margin: var(--sp-400) 0;
+	padding: var(--sp-200) var(--sp-250);
+	border-radius: var(--r-lg);
+	border: var(--bw-hairline) solid var(--status-info-border);
+	border-inline-start-width: 4px;
+	background: var(--status-info-surface);
+	color: var(--status-info-text);
+	font-size: var(--fs-200);
+}
