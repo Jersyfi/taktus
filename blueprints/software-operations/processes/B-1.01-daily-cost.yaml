@@ -105,7 +105,7 @@ steps:
       - method: rule
         why: a median over a window is a statistic of a series, not a fixed rule over one value
     exactness: exact
-    checks:   # provisional: DEC-0173
+    checks:   # recomputation: DEC-0173
       - { kind: recomputation, subject: "the day's total, the median and each service's change" }
     depends_on: [read-costs]
     work:

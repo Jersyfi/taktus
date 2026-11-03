@@ -1,8 +1,8 @@
 # ADR-0114 — An accepted proposal moves the step to a trained model as a new version, and the move is measured
 
 **Status:** accepted · builds the third part of method maturation (issue #218, roadmap `0.4.0`)
-on ADR-0076, ADR-0084 and ADR-0091, with the conditions of DEC-0164's provisional answer,
-Option A
+on ADR-0076, ADR-0084 and ADR-0091, with the conditions UC-4.24 states (DEC-0164,
+Option A)
 
 ## Context
 ADR-0084 measures every step and proposes moving a step from a language model to a trained
@@ -12,7 +12,7 @@ accepted it. ADR-0076 lets a step of method `ml` run, but an unsure model could 
 case to a person. A step moved from a language model should hand an unsure case back to the
 language model, so that it is handled as it was before.
 
-DEC-0164's provisional answer, items 4 and 5, says what follows an accepted proposal. The step
+UC-4.24, requirements 4 and 5, says what follows an accepted proposal. The step
 runs on the trained model, pinned. Below the confidence threshold it falls back to the language
 model it ran on before. The new version registers only with the model's evaluation on the
 held-out cases. It can be rolled back in one act. Over the first 100 cases on the new version,
@@ -145,13 +145,13 @@ change is undone as any version is. The ledger records `process.rolled_back`, as
 does, and `method.rolled_back` with the move. Nothing is deleted: the moved version stays
 registered and readable by name.
 
-### 7. What depends on DEC-0164's answer
-Four numbers and one rule are Option A's: the 100 cases a move is measured over (item 5), the
-95 % agreement registration holds an evaluation to (item 2), the fallback to the language model
-the step ran on (item 4), the proposal to roll back a move that is not cheaper (item 5), and the
-rollback in one act (item 4). An answer that changes a number changes the constant
-(`maturation.MOVE_CASES`, `evaluation.MIN_AGREEMENT`). An answer of Option B or C changes the
-source these rest on, not the mechanism.
+### 7. What rests on UC-4.24
+Four numbers and one rule are the use case's: the 100 cases a move is measured over
+(requirement 5), the 95 % agreement registration holds an evaluation to (requirement 2), the
+fallback to the language model the step ran on (requirement 4), the proposal to roll back a move
+that is not cheaper (requirement 5), and the rollback in one act (requirement 4). A change of the
+use case that changes a number changes the constant (`maturation.MOVE_CASES`,
+`evaluation.MIN_AGREEMENT`).
 
 ## Alternatives
 - **Applying the answer as soon as it is given.** An answer is read, reflected back and

@@ -7,7 +7,7 @@ serves: [P6, P8, P12]
 state: building
 version: 0.5.0
 tests: [tests/governance/test_result_defects.py::test_the_window_starts_after_the_change_and_ends_at_the_newest_result, tests/governance/test_result_defects.py::test_every_derived_result_across_two_processes_is_listed_with_its_class, tests/governance/test_result_defects.py::test_a_result_delivered_through_a_channel_is_marked_as_having_left, tests/governance/test_result_defects.py::test_a_window_without_a_found_cause_says_so_and_is_unbounded_at_the_first_record, tests/governance/test_result_defects.py::test_a_result_older_than_the_chain_is_not_reconstructed, tests/governance/test_result_defects.py::test_the_analysis_changes_nothing]
-adrs: {ADR-0014: 6611f7833deb, ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0153: 5c2e05c4a6d7}
+adrs: {ADR-0014: 6611f7833deb, ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0153: 1f4e8c44971d}
 supersedes: null
 ---
 

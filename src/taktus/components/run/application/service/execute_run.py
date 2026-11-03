@@ -4565,7 +4565,7 @@ class RunEngine:
         trace: Trace,
         span: Span,
     ) -> checking.Finding:
-        """A recomputation (DEC-0173, provisional): a rule or a statistic is evaluated again over
+        """A recomputation (DEC-0173): a rule or a statistic is evaluated again over
         the same inputs. A call is never made twice; its value is held to what the call
         answered, as the step's provenance records the reading by digest."""
         digest = _digest(_canonical(value))

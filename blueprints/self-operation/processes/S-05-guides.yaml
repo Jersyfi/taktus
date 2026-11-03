@@ -110,7 +110,7 @@ steps:
       - method: llm
         why: a list the manifest states needs no judgement
     exactness: exact
-    checks:   # provisional: DEC-0173
+    checks:   # recomputation: DEC-0173
       - { kind: recomputation, subject: the list of the guides' sources }
     depends_on: [read-manifest]
     work:
@@ -156,7 +156,7 @@ steps:
           a page a model wrote would say something the repository does not, which is the second
           source of truth UC-13.6 forbids
     exactness: exact
-    checks:   # provisional: DEC-0173
+    checks:   # recomputation: DEC-0173
       - { kind: recomputation, subject: the rendered guides }
     depends_on: [read-manifest, read-sources]
     work:
@@ -203,7 +203,7 @@ steps:
           whether a person edited a page must be answered the same way every time; a judgement
           could overwrite an edit
     exactness: exact
-    checks:   # provisional: DEC-0173
+    checks:   # recomputation: DEC-0173
       - { kind: recomputation, subject: the difference between the rendered and the published guides }
     depends_on: [render, read-held]
     work:

@@ -126,7 +126,7 @@ steps:
         subject: the net and the tax to book
         total: the total with tax the invoice states
         source: documents.invoices
-      - { kind: recomputation, subject: "the amounts to book and to pay" }   # provisional: DEC-0173
+      - { kind: recomputation, subject: "the amounts to book and to pay" }   # recomputation: DEC-0173
     fallback:
       when: an amount does not hold, or the invoice differs from its order
       to: human

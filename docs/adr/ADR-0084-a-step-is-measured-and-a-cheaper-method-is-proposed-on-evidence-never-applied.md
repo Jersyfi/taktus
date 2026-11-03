@@ -1,7 +1,7 @@
 # ADR-0084 — A step is measured, and a cheaper method is proposed on evidence, never applied
 
 **Status:** accepted · builds the second part of method maturation (issue #217, roadmap `0.4.0`)
-on ADR-0004 and ADR-0076, with the conditions of DEC-0164's provisional answer, Option A
+on ADR-0004 and ADR-0076, with the conditions UC-4.24 states (DEC-0164, Option A)
 
 ## Context
 ADR-0004 says that Taktus measures every step — cost, latency, error rate, how often a person
@@ -14,8 +14,8 @@ change Taktus makes.
 What was missing is the part between. Nothing measured a step. Nothing said when a move may be
 proposed. And no way existed to record that a person found a result wrong.
 
-DEC-0164 asks the owner what maturation must require. Until the owner answers, issue #217 is
-built on its recommended option. Its numbers are used here and change with the answer.
+What maturation must require is UC-4.24, which the owner set in DEC-0164, Option A. Issue #217
+is built against it, and its numbers are the use case's.
 
 Five questions were open. Where the measures come from. What a correction is. How a candidate is
 trained and how the evidence is made. How the cost of two methods is compared. And to whom the
@@ -145,7 +145,7 @@ what it proposes. Applying an accepted proposal is #218.
 - Nothing calls the handlers on a schedule or from the command line yet: #229.
 
 ## Where this promise ends
-The floor is DEC-0164's provisional answer, and the numbers move with the owner's answer. The
+The floor is UC-4.24's, and a number moves only with a change of the use case. The
 evidence is the held-out cases, which were labelled by the language model where no person
 corrected them. A model that agrees with a language model's mistakes agrees with mistakes. The
 measures read every run of the tenant on each call, which is a cost that grows with the history.

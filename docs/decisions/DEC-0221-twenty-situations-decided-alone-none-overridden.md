@@ -82,3 +82,11 @@ Nothing. The work continues on Option A.
 ## 7. How to answer
 
 "DEC-0221: Option A." or "DEC-0221: Option B."
+
+## Outcome
+
+**Decided:** 2026-11-03
+**Answer:** Option A. "DEC-0221: Option A." (the owner's words, in the issue).
+**Reasoning given:** none beyond the recommendation.
+**What it changes:** Sessions go on deciding a situation no anchor names and record it as an `unlisted` notice; the next review comes at forty.
+**Recorded in:** this pull request
