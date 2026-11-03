@@ -1,0 +1,44 @@
+{
+  "credentials": {
+    "actions": "VENDOR_TOKEN",
+    "intake": "VENDOR_INTAKE_SECRET"
+  },
+  "read": {
+    "operation": "notes.pages.list",
+    "input": {}
+  },
+  "writes": [
+    {
+      "operation": "notes.pages.create",
+      "input": {
+        "title": "suite {{unique}}",
+        "body": "written by the conformance suite"
+      }
+    }
+  ],
+  "invalid": {
+    "operation": "notes.pages.get",
+    "input": {
+      "id": "missing"
+    },
+    "expected_cause": "invalid"
+  },
+  "intake": {
+    "signature": {
+      "header": "webhook-signature",
+      "prefix": "v1,",
+      "identified": {
+        "id": "webhook-id",
+        "timestamp": "webhook-timestamp"
+      }
+    },
+    "supported": {
+      "headers_file": "deliveries/note-created.headers.json",
+      "body_file": "deliveries/note-created.body.json"
+    },
+    "unsupported": {
+      "headers_file": "deliveries/note-viewed.headers.json",
+      "body_file": "deliveries/note-viewed.body.json"
+    }
+  }
+}

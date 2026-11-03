@@ -1,0 +1,9 @@
+{
+  "events": [
+    "invoice.created",
+    "invoice.paid"
+  ],
+  "signature": {
+    "scheme": "hmac-sha256-identified"
+  }
+}

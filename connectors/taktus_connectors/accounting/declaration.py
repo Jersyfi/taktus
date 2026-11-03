@@ -33,6 +33,16 @@ OPERATIONS: list[Json] = [
         "account and cost centre it is booked to. Every amount as decimal text.",
     },
     {
+        "name": "accounting.orders.list",
+        "demand": {"quota_units": 1},
+        "capability": ORDERS,
+        "effect": "read",
+        "summary": "The orders and contracts still open of one `supplier`, by its tax "
+        "identifier, in the shape `accounting.orders.read` gives each, with its `reference`: "
+        "at most 50, ordered by reference, `complete` saying whether every one fit. What an "
+        "invoice that names no order is classified against (UC-04, ADR-0188).",
+    },
+    {
         "name": "accounting.bookings.propose",
         "demand": {"quota_units": 2},
         "capability": BOOKINGS,

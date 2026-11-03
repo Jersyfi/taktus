@@ -14,7 +14,8 @@ writes, one call the target must refuse, and the recorded payloads for intake. T
    connector that only reads, passes C-05 as not applicable (ADR-0111);
 4. calls the invalid case — C-06;
 5. delivers the intake payload signed, unsigned, wrongly signed — and, under a timestamped
-   scheme, signed at a moment long before it arrived — and the unsupported and own-action
+   scheme, signed at a moment long before it arrived, and under the identified scheme with
+   its identifier or its moment altered after signing — and the unsupported and own-action
    payloads where the scenario has them — C-07, C-08; and the handshake where the scenario
    names one: signed, it must be refused with exactly the answer the scenario expects, and
    unsigned, wrongly signed or stale with no answer at all — C-08;
@@ -33,6 +34,7 @@ is C-07 or C-08 depending on what was expected. Transport faults are C-01.
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -503,19 +505,52 @@ def _sign(body: str, secret: str) -> str:
     return hmac.new(secret.encode(), body.encode(), hashlib.sha256).hexdigest()
 
 
+SECRET_PREFIX = "whsec_"  # noqa: S105 — a prefix of the specification, no secret
+"""The prefix the open specification of signed webhooks puts before a secret's base64."""
+SUITE_DELIVERY = "msg_conformance_suite"
+"""The delivery identifier the suite signs where the recorded payload names none."""
+
+
+def _key_of(secret: str) -> bytes:
+    """The key of the scheme hmac-sha256-identified: the bytes the secret encodes in base64,
+    after an optional prefix. A secret that is no base64 is used as its own bytes, so that a
+    connector that decodes it refuses — and the suite says so instead of failing to sign."""
+    text = secret.removeprefix(SECRET_PREFIX)
+    try:
+        return base64.b64decode(text, validate=True)
+    except (binascii.Error, ValueError):
+        return secret.encode()
+
+
+def _sign_identified(delivery: str, moment: int, body: str, secret: str) -> str:
+    base = f"{delivery}.{moment}.{body}".encode()
+    return base64.b64encode(hmac.new(_key_of(secret), base, hashlib.sha256).digest()).decode()
+
+
 @dataclass(frozen=True)
 class _Signer:
     """The signature headers for one payload, as the scenario says the target writes them:
     the digest over the raw body, or — with `timestamp` — over `<version>:<moment>:<body>`, the
-    moment in a header of its own."""
+    moment in a header of its own, or — with `identified` — the base64 digest over
+    `<identifier>.<moment>.<body>`, the identifier and the moment in headers of their own
+    (ADR-0186)."""
 
     header: str
     prefix: str
     timestamp_header: str | None = None
     version: str = ""
+    id_header: str | None = None
 
     @classmethod
     def of(cls, signature: Json) -> _Signer:
+        identified = signature.get("identified")
+        if isinstance(identified, dict):
+            return cls(
+                str(signature["header"]),
+                str(signature["prefix"]),
+                str(identified["timestamp"]),
+                id_header=str(identified["id"]),
+            )
         timestamp = signature.get("timestamp")
         if isinstance(timestamp, dict):
             return cls(
@@ -530,13 +565,44 @@ class _Signer:
     def timestamped(self) -> bool:
         return self.timestamp_header is not None
 
-    def stale(self, body: str, secret: str) -> Json:
-        """Signed correctly, at a moment STALE_SECONDS before the payload arrives."""
-        return self.headers(body, secret, moment=STALE_MOMENT)
+    @property
+    def identified(self) -> bool:
+        return self.id_header is not None
 
-    def headers(self, body: str, secret: str | None, *, moment: int = RECEIVED_EPOCH) -> Json:
-        """`secret` None: the moment alone where the scheme carries one, and no signature."""
+    def stale(self, body: str, secret: str, payload: Json | None = None) -> Json:
+        """Signed correctly, at a moment STALE_SECONDS before the payload arrives."""
+        return self.headers(body, secret, moment=STALE_MOMENT, payload=payload)
+
+    def delivery_of(self, payload: Json | None) -> str:
+        """The identifier the recorded payload carries in the identifier header, or the
+        suite's own."""
+        recorded = (payload or {}).get("headers") or {}
+        given = {str(k).lower(): str(v) for k, v in recorded.items()}
+        return given.get((self.id_header or "").lower()) or SUITE_DELIVERY
+
+    def headers(
+        self,
+        body: str,
+        secret: str | None,
+        *,
+        moment: int = RECEIVED_EPOCH,
+        payload: Json | None = None,
+        sent_delivery: str | None = None,
+        sent_moment: int | None = None,
+    ) -> Json:
+        """`secret` None: the moment and the identifier alone where the scheme carries them,
+        and no signature. `sent_delivery` and `sent_moment` put into the headers another
+        identifier or moment than the one signed: a delivery altered on the way."""
         headers: Json = {}
+        if self.id_header is not None and self.timestamp_header is not None:
+            delivery = self.delivery_of(payload)
+            headers[self.id_header] = sent_delivery or delivery
+            headers[self.timestamp_header] = str(sent_moment or moment)
+            if secret is not None:
+                headers[self.header] = self.prefix + _sign_identified(
+                    delivery, moment, body, secret
+                )
+            return headers
         base = body
         if self.timestamp_header is not None:
             headers[self.timestamp_header] = str(moment)
@@ -637,7 +703,7 @@ async def _intake(
         return answer.json
 
     body = str(supported["body"])
-    signed = await deliver("signed", supported, signer.headers(body, secret))
+    signed = await deliver("signed", supported, signer.headers(body, secret, payload=supported))
     if signed is not None:
         for violation in rules.intake_violations(capabilities, signed, expect="accepted"):
             findings.add(violation, "intake (signed)")
@@ -651,43 +717,93 @@ async def _intake(
             )
 
     cases: list[tuple[str, Json, Json, str]] = [
-        ("unsigned", supported, signer.headers(body, None), "unsigned"),
-        ("wrongly signed", supported, signer.headers(body, secret + "-not"), "bad_signature"),
+        ("unsigned", supported, signer.headers(body, None, payload=supported), "unsigned"),
+        (
+            "wrongly signed",
+            supported,
+            signer.headers(body, secret + "-not", payload=supported),
+            "bad_signature",
+        ),
     ]
+    if signer.identified:
+        # Signed correctly, then altered on the way: the identifier, or the moment within the
+        # window. Neither may verify (ADR-0186).
+        cases.append(
+            (
+                "identifier altered",
+                supported,
+                signer.headers(
+                    body,
+                    secret,
+                    payload=supported,
+                    sent_delivery=signer.delivery_of(supported) + "-other",
+                ),
+                "bad_signature",
+            )
+        )
+        cases.append(
+            (
+                "moment altered",
+                supported,
+                signer.headers(body, secret, payload=supported, sent_moment=RECEIVED_EPOCH - 1),
+                "bad_signature",
+            )
+        )
     expected_answer: Json | None = None
     if handshake is not None:
         # A handshake is answered only once its signature verified: the signed one must come
         # back refused with exactly the answer the scenario names, every other one without.
         expected_answer = dict(intake["handshake"]["answer"])
         shake = str(handshake["body"])
-        cases.append(("handshake", handshake, signer.headers(shake, secret), "unsupported_event"))
-        cases.append(("handshake unsigned", handshake, signer.headers(shake, None), "unsigned"))
+        cases.append(
+            (
+                "handshake",
+                handshake,
+                signer.headers(shake, secret, payload=handshake),
+                "unsupported_event",
+            )
+        )
+        cases.append(
+            (
+                "handshake unsigned",
+                handshake,
+                signer.headers(shake, None, payload=handshake),
+                "unsigned",
+            )
+        )
         cases.append(
             (
                 "handshake wrongly signed",
                 handshake,
-                signer.headers(shake, secret + "-not"),
+                signer.headers(shake, secret + "-not", payload=handshake),
                 "bad_signature",
             )
         )
         if signer.timestamped:
             cases.append(
-                ("handshake stale", handshake, signer.stale(shake, secret), "bad_signature")
+                (
+                    "handshake stale",
+                    handshake,
+                    signer.stale(shake, secret, handshake),
+                    "bad_signature",
+                )
             )
     if signer.timestamped:
         # Signed with the right secret, at a moment long before it arrived: a replay.
-        cases.append(("stale", supported, signer.stale(body, secret), "bad_signature"))
+        cases.append(("stale", supported, signer.stale(body, secret, supported), "bad_signature"))
     if unsupported is not None:
         cases.append(
             (
                 "unsupported",
                 unsupported,
-                signer.headers(str(unsupported["body"]), secret),
+                signer.headers(str(unsupported["body"]), secret, payload=unsupported),
                 "unsupported_event",
             )
         )
     if own is not None:
-        cases.append(("own action", own, signer.headers(str(own["body"]), secret), "own_action"))
+        cases.append(
+            ("own action", own, signer.headers(str(own["body"]), secret, payload=own), "own_action")
+        )
     refused = 0
     for purpose, payload, signature, reason in cases:
         result = await deliver(purpose, payload, signature)

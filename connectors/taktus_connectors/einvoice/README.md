@@ -28,7 +28,7 @@ structured invoice, which a scan is not.
 
 | Operation | Effect | Input | Output |
 |---|---|---|---|
-| `documents.invoices.list` | read | `limit` (default 100, at most 1000) | `documents`, oldest first: `document` (its file name), `size`, `modified`, `etag`; `complete` |
+| `documents.invoices.list` | read | `limit` (default 100, at most 1000); `referenced`, optional: `true` for the documents that name an order, `false` for those that name none, each document read once to tell, so the call reports one request more per document; a document that is no invoice counts as naming one (ADR-0188) | `documents`, oldest first: `document` (its file name), `size`, `modified`, `etag`; `complete` |
 | `documents.invoices.read` | read | `document`, a file name in the folder | `document`, `digest` (SHA-256 of its bytes), `syntax`, `type` (`invoice` or `credit_note`), `type_code`, `number`, `issue_date`, `due_date`, `currency`, `buyer_reference`, `order_reference`, `contract_reference`, `seller` (`name`, `vat_id`), `payment` (`account`), `lines`, `tax`, `totals` |
 
 Each line is `id`, `quantity`, `unit`, `net_amount`, `order_line`, `item`, `tax_category`,

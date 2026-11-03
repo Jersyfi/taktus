@@ -65,13 +65,17 @@ class Firing(Value):
         """The identifier of the run this firing starts for `item` (None without `each`).
         Derived, never drawn: a scheduler that fires the same slot again — after a restart,
         or a second leader for a moment — names the same run, and the run engine refuses to
-        create a run that exists."""
+        create a run that exists. Under `each.once` the slot is left out, so that an item a
+        later slot lists again names the run it already has."""
         document = {
             "tenant": tenant,
             "trigger": self.state.id,
             "slot": self.slot.isoformat(),
             "item": item,
         }
+        if self.trigger.each is not None and self.trigger.each.once:
+            # One run per item, whatever slot lists it (ADR-0188): no slot in the identifier.
+            del document["slot"]
         canonical = json.dumps(document, ensure_ascii=False, sort_keys=True)
         return "run_" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:20]
 

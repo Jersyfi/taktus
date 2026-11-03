@@ -190,7 +190,9 @@ db-down: need-docker ## Stop the development database; its data volume stays
 # `up-dev` layers the reference worker over it (compose.reference-worker.yml), in its own
 # image, for trying a bundle out; the control plane image carries no worker (DEC-0011).
 # Each first writes the operator's further connectors from deploy/docker/connectors.json into
-# compose.connectors.yml (connectors.py) and lays it over the rest when it exists.
+# compose.connectors.yml (connectors.py) and lays it over the rest when it exists, after filling
+# the secret files from the operator's store where deploy/docker/secret-store.json names one
+# (secret_store.py, ADR-0187).
 COMPOSE := deploy/docker/compose.yml
 COMPOSE_WORKER := deploy/docker/compose.reference-worker.yml
 COMPOSE_CONNECTORS := deploy/docker/compose.connectors.yml
@@ -199,6 +201,7 @@ WITH_CONNECTORS = $$(test -f $(COMPOSE_CONNECTORS) && echo -f $(COMPOSE_CONNECTO
 .PHONY: up
 up: need-docker ## Bring Taktus up: two containers, migrations applied, ready
 	deploy/docker/secrets.sh
+	python3 deploy/docker/secret_store.py
 	python3 deploy/docker/connectors.py
 	docker compose -f $(COMPOSE) $(WITH_CONNECTORS) up --build --detach --wait
 
@@ -212,6 +215,7 @@ start: need-docker ## Install on one machine in one command: up, the first tenan
 .PHONY: up-dev
 up-dev: need-docker ## The same, plus the reference worker in its own image, for development
 	deploy/docker/secrets.sh
+	python3 deploy/docker/secret_store.py
 	python3 deploy/docker/connectors.py
 	docker compose -f $(COMPOSE) -f $(COMPOSE_WORKER) $(WITH_CONNECTORS) up --build --detach --wait
 

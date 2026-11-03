@@ -24,7 +24,10 @@ OPERATIONS: list[Json] = [
         "effect": "read",
         "summary": "The documents in the inbox folder, up to `limit` (default 100, at most "
         "1000), oldest first: each by its `document` name, its size in bytes, when it was last "
-        "changed and its entity tag. `complete` says whether every document fit within `limit`.",
+        "changed and its entity tag. `complete` says whether every document fit within `limit`. "
+        "With `referenced` true or false, only the documents that name an order, or only those "
+        "that name none, each read once to tell; a document that is no invoice counts as one "
+        "that names an order (ADR-0188).",
     },
     {
         "name": "documents.invoices.read",
