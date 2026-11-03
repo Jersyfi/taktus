@@ -4522,7 +4522,9 @@ class RunEngine:
             match check.kind:
                 case CheckKind.BOUNDS:
                     findings.append(checking.bounds(position, check, judged))
-                case CheckKind.RECONCILIATION | CheckKind.AGREEMENT:
+                case CheckKind.SOURCE_SHAPE:
+                    findings.append(checking.source_shape(position, check, judged))
+                case CheckKind.RECONCILIATION | CheckKind.AGREEMENT | CheckKind.COMPLETENESS:
                     read = await self._check_read(run, step_run, check, reads, span)
                     if isinstance(read, str):
                         findings.append(checking.Finding(position, check, False, read))
@@ -4531,6 +4533,8 @@ class RunEngine:
                     inputs.append(source)
                     if check.kind is CheckKind.RECONCILIATION:
                         findings.append(checking.reconciliation(position, check, judged, other))
+                    elif check.kind is CheckKind.COMPLETENESS:
+                        findings.append(checking.completeness(position, check, judged, other))
                     else:
                         findings.append(checking.agreement(position, check, judged, other))
                 case CheckKind.RECOMPUTATION:
@@ -4597,8 +4601,9 @@ class RunEngine:
         reads: Mapping[str, CheckRead],
         span: Span,
     ) -> tuple[Any, ProvenanceInput] | str:
-        """What a reconciliation or an agreement reads through its source at the moment of the
-        check, with the source as a provenance input; or why it could not be read."""
+        """What a reconciliation, an agreement or a completeness check reads through its source
+        at the moment of the check, with the source as a provenance input; or why it could not
+        be read."""
         source = str(check.source)
         read = reads.get(source)
         if read is None:

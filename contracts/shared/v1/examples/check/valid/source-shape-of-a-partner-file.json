@@ -1,0 +1,6 @@
+{
+  "kind": "source_shape",
+  "subject": "the partner file",
+  "columns": ["id", "amount", "currency"],
+  "pattern": "^id,"
+}

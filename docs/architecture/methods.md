@@ -171,8 +171,10 @@ catalogue in the shared kernel (`contracts/shared/v1/Check.json`). A bundle whos
 declares none does not register, and the finding names the catalogue. The statement is generated
 from the process version whenever it is read, and `taktusctl exactness --process <bundle>` prints
 it. A sixth row, *recomputation* — the value is computed again from its recorded inputs — is
-part of the catalogue since DEC-0173. The checks are declared, not yet run (#223), and the statement is not
-yet shown in the web app or a report (#224).
+part of the catalogue since DEC-0173. Two more since DEC-0223 (ADR-0185): *completeness* — the
+result has as many parts as a count another source holds — and *the shape of the source* — what
+the step read has the columns it was written for, in order, or matches a pattern. Every check
+runs before the value counts (ADR-0152).
 
 ---
 

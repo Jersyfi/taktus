@@ -356,3 +356,95 @@ async def test_a_recomputation_of_a_call_holds_the_value_to_its_answer_and_calls
     run = await w.start()
     assert run.step_run("book").state is StepState.SUCCEEDED
     assert len(w.connector.calls) == 1
+
+
+# --- completeness and the shape of the source: the rows DEC-0223 added (ADR-0185, #92) ----------
+
+COMPLETE = check(
+    "completeness", subject="the imported rows", count="the rows of the partner file", source=SOURCE
+)
+SHAPED = check("source_shape", subject="the partner file", columns=("id", "amount", "currency"))
+MARKED = check("source_shape", subject="the partner file", pattern="^#format v2")
+
+
+@pytest.mark.parametrize(
+    ("given", "value", "other", "passes"),
+    [
+        (COMPLETE, [1, 2, 3], 3, True),
+        (COMPLETE, {"a": 1, "b": 2}, "2", True),
+        (COMPLETE, [1, 2, 3], 4, False),
+        (COMPLETE, [1, 2], "two", False),
+        (COMPLETE, [1, 2], 2.5, False),
+    ],
+)
+def test_completeness_counts_the_parts_against_the_count_read(
+    given: Check, value: Any, other: Any, passes: bool
+) -> None:
+    assert checking.completeness(1, given, value, other).passed is passes
+
+
+@pytest.mark.parametrize(
+    ("given", "value", "passes"),
+    [
+        (SHAPED, "id,amount,currency\n1,10,EUR\n", True),
+        (SHAPED, "id;amount;currency\n1;10;EUR\n", True),
+        (SHAPED, "amount,id,currency\n10,1,EUR\n", False),
+        (SHAPED, [{"id": 1, "amount": 10, "currency": "EUR"}], True),
+        (SHAPED, [{"id": 1, "amount": 10, "currency": "EUR"}, {"id": 2, "amount": 3}], False),
+        (SHAPED, 42, False),
+        (MARKED, "#format v2\nid,amount\n", True),
+        (MARKED, "#format v1\nid,amount\n", False),
+    ],
+)
+def test_the_shape_of_the_source_holds_its_columns_in_order_and_its_marker(
+    given: Check, value: Any, passes: bool
+) -> None:
+    assert checking.source_shape(1, given, value).passed is passes
+
+
+def test_a_wrong_part_that_is_present_completes_and_the_statement_names_that_case() -> None:
+    assert checking.completeness(1, COMPLETE, [100, 999, 20], 3).passed  # 999 was 99
+    assert "a part present but wrong" in _residual(COMPLETE)
+
+
+def test_a_wrong_value_in_a_source_of_the_right_shape_passes_and_the_statement_names_it() -> None:
+    assert checking.source_shape(1, SHAPED, "id,amount,currency\n1,1000,EUR\n").passed
+    assert "a wrong value in a source of the right shape" in _residual(SHAPED)
+
+
+def test_the_two_rows_take_exactly_their_parameters() -> None:
+    with pytest.raises(ValueError, match="needs count"):
+        check("completeness", source=SOURCE)
+    with pytest.raises(ValueError, match="names its columns or a pattern"):
+        check("source_shape")
+    with pytest.raises(ValueError, match="takes no minimum"):
+        check("source_shape", columns=("id",), minimum=1)
+    with pytest.raises(ValueError, match="takes no count"):
+        check("bounds", minimum=0, count="the rows")
+
+
+COUNT_READ = {SOURCE: {"operation": READ, "input": {"id": "invoice"}, "select": "lines"}}
+
+
+async def test_a_result_missing_a_part_reaches_no_dependent_step() -> None:
+    w = await world(booking(COMPLETE, value=[100, 20], reads=COUNT_READ), after())
+    w.connector.reads["invoice"] = {"id": "invoice", "total": "120.00", "lines": 3}
+    run = await w.start()
+    assert run.state is RunState.ESCALATED
+    reason = run.step_run("book").reason or ""
+    assert "completeness" in reason and "2 part(s)" in reason and "is 3" in reason
+    assert run.step_run("post").state is StepState.PLANNED
+
+
+async def test_a_partner_file_whose_column_order_changed_does_not_count() -> None:
+    w = await world(booking(SHAPED, value="amount,id,currency\n10,1,EUR\n"), after())
+    run = await w.start()
+    assert run.state is RunState.ESCALATED
+    reason = run.step_run("book").reason or ""
+    assert "source_shape" in reason and "amount, id, currency" in reason
+    complete = await world(
+        booking(COMPLETE, SHAPED, value="id,amount,currency\n1,10,EUR\n", reads=COUNT_READ),
+        after(),
+    )
+    complete.connector.reads["invoice"] = {"id": "invoice", "lines": 1}
+    assert (await complete.start()).state is RunState.FINISHED
