@@ -12,6 +12,7 @@ here, whose private half the connector reads from a file and signs with.
 
 from __future__ import annotations
 
+import base64
 import functools
 import hashlib
 import json
@@ -878,6 +879,7 @@ VENDOR = ROOT / "tests" / "conformance" / "vendor"
 VENDOR_TIME = ROOT / "tests" / "fakes" / "vendor_time_server.py"
 VENDOR_NOTES = ROOT / "tests" / "fakes" / "vendor_notes_server.py"
 VENDOR_ACTIONS = "VENDOR_TOKEN"
+VENDOR_INTAKE = "VENDOR_INTAKE_SECRET"
 
 
 def _wait_listening(process: subprocess.Popen[bytes], port: int, log: Path, what: str) -> None:
@@ -912,11 +914,17 @@ def start_vendor_connector(tmp_path: Path) -> Iterator[StartConnector]:
         scenario: Path | None = None,
         fault: str | None = None,
         admits: str = "the token",
+        intake: bool = False,
     ) -> RunningConnector:
         """`admits`: whom the stand-in admits — `the token` the connector reads, `anyone`, or
-        `another token` than that."""
+        `another token` than that. `intake`: the connector also takes the vendor's events as
+        signed webhooks under the open specification, with a secret of its own (ADR-0186)."""
         token = "vtk-" + secrets.token_hex(12)
         name = f"{server}-{'manifest' if manifest else 'bare'}-{fault or 'honest'}-{admits[:5]}"
+        name += "-intake" if intake else ""
+        values = {VENDOR_ACTIONS: token}
+        if intake:
+            values[VENDOR_INTAKE] = "whsec_" + base64.b64encode(secrets.token_bytes(32)).decode()
         port = free_port()
         service_url = f"http://127.0.0.1:{port}"
         log = tmp_path / f"vendor-{name}.log"
@@ -934,8 +942,14 @@ def start_vendor_connector(tmp_path: Path) -> Iterator[StartConnector]:
             )
         started.append(process)
         _wait_listening(process, port, log, f"vendor's {server} server")
-        env = {**_clean_environment(), **_secret_files(tmp_path, name, {VENDOR_ACTIONS: token})}
+        env = {**_clean_environment(), **_secret_files(tmp_path, name, values)}
         args = ["--upstream", f"{service_url}/mcp"]
+        if intake:
+            args += [
+                "--intake-channel", "channel.notes",
+                "--intake-events", "note.created,note.deleted",
+                "--intake-sender", "notes-service",
+            ]  # fmt: skip
         if manifest is not None:
             args += ["--manifest", str(manifest)]
         else:
@@ -947,7 +961,7 @@ def start_vendor_connector(tmp_path: Path) -> Iterator[StartConnector]:
             f"{endpoint}/mcp",
             connector_log,
             service_url,
-            {VENDOR_ACTIONS: token},
+            values,
             started[-1],
             scenario=scenario or VENDOR / f"{server}-scenario.json",
         )

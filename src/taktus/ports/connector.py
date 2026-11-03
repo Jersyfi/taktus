@@ -139,10 +139,14 @@ class CredentialNeed(Value):
 class SignatureScheme(StrEnum):
     """There is no scheme `none`: an intake declaration without a signature is not valid.
     `hmac-sha256` signs the raw body; `hmac-sha256-timestamped` signs a version token, the
-    moment of sending and the raw body, and bounds a replay by that moment (§7)."""
+    moment of sending and the raw body, and bounds a replay by that moment (§7);
+    `hmac-sha256-identified` is the open specification of signed webhooks: it signs the
+    delivery's identifier, the moment and the raw body, in base64, and bounds a replay the same
+    way (ADR-0186)."""
 
     HMAC_SHA256 = "hmac-sha256"
     HMAC_SHA256_TIMESTAMPED = "hmac-sha256-timestamped"
+    HMAC_SHA256_IDENTIFIED = "hmac-sha256-identified"
 
 
 class IntakeSignature(Value):
