@@ -222,6 +222,9 @@ class Services:
     """The register, the dependencies and the variants (ADR-0147); a test that reaches them
     sets them. What they gather is held by `tests/composition/test_acting.py`."""
     evaluated: Any = None
+    stages: Any = None
+    """A tenant's introduction in stages (ADR-0191); a test that reaches it sets it. What it
+    computes is held by `tests/governance/test_stages.py`."""
     """A process's evaluations and its proposed cases (ADR-0134); a test that reaches them sets
     them. What they do is held by `tests/composition/test_evaluations.py`."""
     """The acts on a proposal; a test that reaches them sets them. What they do is held by

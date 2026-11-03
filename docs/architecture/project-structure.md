@@ -326,7 +326,9 @@ role it would tie the core to a model stack and the removal test would be lost.
   the level a process runs at now, its takeover instructions, the identities and the
   owner-facing channel — and registration's `StageCeilings`, and the scheduler looks at every
   tenant's stages once an hour. `taktusctl stage` declares, shows and opens them, and the
-  table `stage_plan` keeps each plan (ADR-0137).
+  table `stage_plan` keeps each plan (ADR-0137). `adapters/driving/rest/stages.py` serves the
+  same view and the opening at `GET /stages` and `POST /stages/{stage}/open`, for the plan's
+  responsible role, through `RestServices.stages` (ADR-0191).
   While it leads it also looks at every process's evaluation cases
   once a minute (`composition/evaluations.py`, ADR-0134): `Evaluations` starts a drift
   evaluation at every slot of a version's evaluation schedule, moves every evaluation on — its

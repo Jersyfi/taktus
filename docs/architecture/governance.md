@@ -103,6 +103,11 @@ holds is `stage.held`, the next one is proposed to the plan's responsible role, 
 that stops holding falls — its processes drop to the level its absence leaves them, each fall
 an incident and `autonomy.lowered`, as above. A stage lifts a ceiling and nothing else: no
 stage overrides an anchor. `taktusctl stage show` computes every figure from the ledger.
+A stage opens, and holds, only while every process it adds has an active version for the
+tenant; the condition may bound the days without the tenant's daily report of signals
+(`reports_missed`); and the view shows each process with its version, level and what it did in
+the window, also at `GET /stages` for the responsible role (ADR-0191). A blueprint may propose
+the anchors of its domain beside its stages (`anchors.json`, ADR-0192).
 
 ---
 

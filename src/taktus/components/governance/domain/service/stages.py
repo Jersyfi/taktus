@@ -8,7 +8,8 @@ the same entries give the same answer. A rehearsal's entries count for nothing (
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
-from datetime import datetime, timedelta
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 from taktus.components.governance.domain.model.stages import (
     GRANTING,
@@ -38,7 +39,19 @@ INCIDENT_RECORDED = "incident.recorded"
 DECIDED = "proposal.decided"
 AWAITING = "step.awaiting"
 ANSWERED = ("proposal.decided", "step.confirmed", "step.performed")
-FIGURE_KINDS = (FINISHED, INCIDENT_RAISED, INCIDENT_RECORDED, AWAITING, *ANSWERED)
+REPORT_RAISED = "report.raised"
+DAILY_REPORT = "signals-"
+"""The prefix of the identifier of a tenant's daily report of signals, as the reporting
+component derives it: `signals-<YYYYMMDD>`, the day it reports on (UC-6.13). The daily report
+is the instance's, not a process: it carries no process version (ADR-0191 §2)."""
+FIGURE_KINDS = (
+    FINISHED,
+    INCIDENT_RAISED,
+    INCIDENT_RECORDED,
+    AWAITING,
+    *ANSWERED,
+    REPORT_RAISED,
+)
 """The kinds the figures are counted from."""
 
 MISSED = "missed"
@@ -99,8 +112,14 @@ def figures(
     decided: dict[tuple[str, str | None], list[int]] = {}
     awaiting: dict[tuple[str, str], datetime] = {}
     answered: dict[tuple[str, str], datetime] = {}
+    reported: set[str] = set()
     for entry in entries:
         if entry.rehearsal or entry.ts > now:
+            continue
+        if entry.kind == REPORT_RAISED:
+            report = entry.refs.report_id or ""
+            if report.startswith(DAILY_REPORT) and entry.ts >= since:
+                reported.add(report.removeprefix(DAILY_REPORT))
             continue
         process = process_of(entry.refs.process_version)
         if process not in names or process is None:
@@ -136,7 +155,59 @@ def figures(
         incidents=incidents,
         correction_rate=max(rates) if rates else None,
         undecided=undecided,
+        reports_missed=sum(1 for day in whole_days(since, now) if day not in reported),
     )
+
+
+def whole_days(since: datetime, now: datetime) -> list[str]:
+    """Every UTC day that began at or after `since` and ended by `now`, as `YYYYMMDD`."""
+    start = since.astimezone(UTC)
+    day = start.replace(hour=0, minute=0, second=0, microsecond=0)
+    if day < start:
+        day += timedelta(days=1)
+    days: list[str] = []
+    while day + timedelta(days=1) <= now:
+        days.append(day.strftime("%Y%m%d"))
+        day += timedelta(days=1)
+    return days
+
+
+@dataclass(frozen=True)
+class Did:
+    """What one process did within a window."""
+
+    runs: int = 0
+    missed: int = 0
+    incidents: int = 0
+    last_finished: datetime | None = None
+
+
+def per_process(
+    entries: Sequence[LedgerEntry],
+    processes: Iterable[str],
+    *,
+    since: datetime,
+    now: datetime,
+) -> dict[str, Did]:
+    """What each process did between `since` and `now`, from the same entries as the figures."""
+    found = {p: Did() for p in processes}
+    for entry in entries:
+        if entry.rehearsal or entry.ts > now or entry.ts < since:
+            continue
+        process = process_of(entry.refs.process_version)
+        if process is None or process not in found:
+            continue
+        did = found[process]
+        if entry.kind == FINISHED:
+            last = entry.ts if did.last_finished is None else max(did.last_finished, entry.ts)
+            did = Did(did.runs + 1, did.missed, did.incidents, last)
+        elif entry.kind == INCIDENT_RAISED:
+            missing = 1 if entry.outcome == MISSED else 0
+            did = Did(did.runs, did.missed + missing, did.incidents + 1, did.last_finished)
+        elif entry.kind == INCIDENT_RECORDED and entry.outcome == MISSED:
+            did = Did(did.runs, did.missed + 1, did.incidents, did.last_finished)
+        found[process] = did
+    return found
 
 
 def unmet(condition: Condition, found: StageFigures) -> list[str]:
@@ -162,6 +233,11 @@ def unmet(condition: Condition, found: StageFigures) -> list[str]:
     if condition.undecided is not None and found.undecided > condition.undecided:
         missing.append(
             f"{found.undecided} proposal(s) waiting for a person, at most {condition.undecided}"
+        )
+    if condition.reports_missed is not None and found.reports_missed > condition.reports_missed:
+        missing.append(
+            f"{found.reports_missed} day(s) without the daily report, at most "
+            f"{condition.reports_missed}"
         )
     return missing
 
