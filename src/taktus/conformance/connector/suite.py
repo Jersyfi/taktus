@@ -1,4 +1,4 @@
-"""The suite: C-01 to C-10 against a live connector over MCP.
+"""The suite: C-01 to C-11 against a live connector over MCP.
 
 Two inputs: the connector's MCP endpoint and a scenario (`Connector.json#/$defs/Scenario`). The
 suite cannot know which input an operation needs, so the scenario names one read, one or more
@@ -18,9 +18,12 @@ writes, one call the target must refuse, and the recorded payloads for intake. T
    payloads where the scenario has them — C-07, C-08; and the handshake where the scenario
    names one: signed, it must be refused with exactly the answer the scenario expects, and
    unsigned, wrongly signed or stale with no answer at all — C-08;
-6. scans everything it saw, and the connector's log, for every credential value it knows —
+6. where the declaration names a scoped capability, calls the scenario's scoped operation with
+   a context scoped to its subject, once for the subject's own data, which must be answered,
+   and once for another subject's, which must be refused as `out_of_scope` — C-11 (ADR-0130);
+7. scans everything it saw, and the connector's log, for every credential value it knows —
    C-04;
-7. reports C-10 as pending: the removal test needs processes, and the suite has none.
+8. reports C-10 as pending: the removal test needs processes, and the suite has none.
 
 Every schema violation is attributed to the check that owns the document: an invalid
 declaration is C-01, an invalid Result is C-02, an invalid Error is C-06, an invalid IntakeResult
@@ -117,6 +120,7 @@ async def run_connector_suite(options: ConnectorSuiteOptions) -> Report:
             await _writes(client, scenario, capabilities, findings, seen)
             await _c06(client, scenario, findings, seen)
             await _intake(client, options, capabilities, findings, seen)
+            await _c11(client, scenario, capabilities, findings, seen)
     except Exception as error:
         report.notes.append(f"the connector at {options.endpoint} stopped answering: {error!r}")
         if not findings.evidence["C-01"]:
@@ -189,9 +193,13 @@ def _key(step: str) -> str:
     return f"conf-{secrets.token_hex(8)}:{step}:1"
 
 
-def _context(scenario: Json, step: str, key: str, *, credentials: bool = True) -> Json:
+def _context(
+    scenario: Json, step: str, key: str, *, credentials: bool = True, subject: str | None = None
+) -> Json:
     names = [scenario["credentials"]["actions"]] if credentials else []
+    scope = {} if subject is None else {"scope": {"subject": subject}}
     return {
+        **scope,
         "tenant": "conformance",
         "identity": "idn_conformance",
         "run_id": "run_conformance",
@@ -700,6 +708,96 @@ async def _intake(
             f"{refused} payload(s) refused with the expected reason: "
             + ", ".join(reason for _, _, _, reason in cases),
         )
+
+
+# --- C-11 on a scoped capability ---------------------------------------------------------------
+
+
+async def _c11(
+    client: ConnectorClient,
+    scenario: Json,
+    capabilities: Json,
+    findings: Findings,
+    seen: Seen,
+) -> None:
+    scoped = set(capabilities.get("scoped") or ())
+    case = scenario.get("scoped")
+    if not scoped:
+        if case is not None:
+            findings.fail(
+                "C-11",
+                "the scenario names a scoped call, but the declaration names no scoped capability",
+            )
+        else:
+            findings.ok("C-11", "not applicable: the declaration names no scoped capability")
+        return
+    if case is None:
+        findings.inconclusive.setdefault(
+            "C-11",
+            f"the declaration names {sorted(scoped)} scoped, but the scenario has no scoped call; "
+            "name one under scoped",
+        )
+        return
+    operation = str(case["operation"])
+    declared = rules.operations_of(capabilities).get(operation)
+    if declared is None or declared.get("capability") not in scoped:
+        findings.fail(
+            "C-11",
+            f"the scenario's scoped call {operation!r} is not an operation of a capability the "
+            f"declaration names scoped ({sorted(scoped)})",
+        )
+        return
+    subject = str(case["subject"])
+    own = await _call(
+        client,
+        seen,
+        "scoped, its own subject",
+        {"operation": operation, "input": case["own"]},
+        _context(scenario, "scoped", _key("own"), subject=subject),
+    )
+    where = f"scoped {operation} for its own subject"
+    if _result_of(own, findings, where, error_owner="C-11") is None:
+        if not findings.failed("C-11"):
+            findings.inconclusive.setdefault(
+                "C-11", f"{where}: the answer does not validate (see C-02, C-09)"
+            )
+        return
+    other = await _call(
+        client,
+        seen,
+        "scoped, another subject",
+        {"operation": operation, "input": case["other"]},
+        _context(scenario, "scoped", _key("other"), subject=subject),
+    )
+    where = f"scoped {operation} for another subject"
+    if other.transport_error:
+        findings.fail("C-01", f"{where}: the call did not go through: {other.transport_error}")
+        return
+    if not other.is_error:
+        findings.fail(
+            "C-11",
+            f"{where}: answered although the call's scope names {subject!r}; a scoped capability "
+            "refuses another subject's data with out_of_scope",
+        )
+        return
+    error = _error_of(other, findings, where)
+    if error is None:
+        findings.inconclusive.setdefault(
+            "C-11", f"{where}: refused, but the error is not classified (see C-06)"
+        )
+        return
+    if error.get("cause") != "out_of_scope" or error.get("effect") != "none":
+        findings.fail(
+            "C-11",
+            f"{where}: refused with cause {error.get('cause')!r} and effect "
+            f"{error.get('effect')!r}, expected out_of_scope and none",
+        )
+        return
+    findings.ok(
+        "C-11",
+        f"{operation}: answered its own subject, and refused another with out_of_scope and no "
+        "effect",
+    )
 
 
 # --- C-04 across everything --------------------------------------------------------------------

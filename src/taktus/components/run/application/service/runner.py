@@ -2,11 +2,13 @@
 
 One runner serves the tenants it is given. In a loop it claims due jobs up to its free slots,
 one job per tenant in turn, starting each round with the next tenant, so that a tenant with much
-queued work holds back no other (issue #319). It executes each in a task of its own through the
-engine's `resume`, which starts a submitted run, continues a halted one, or recovers one whose
-runner died. While a run executes, a heartbeat renews the claim's lease; a runner that dies
-stops renewing, the lease expires, and another runner claims the job and recovers the run at its
-last boundary (ADR-0013 A).
+queued work holds back no other (issue #319). Inside a tenant's turn the queue shares the places
+between the tenant's organisational units, and the runner hands it each unit's limit of
+concurrent runs, read once per tenant per round (ADR-0166). It executes each job in a task of
+its own through the engine's `resume`, which starts a submitted run, continues a halted one, or
+recovers one whose runner died. While a run executes, a heartbeat renews the claim's lease; a
+runner that dies stops renewing, the lease expires, and another runner claims the job and
+recovers the run at its last boundary (ADR-0013 A).
 
 A runner can also lose its claim while it is alive: it could not reach the database, or was
 paused, for longer than the lease, and another runner claimed the job. Every write of the run
@@ -65,12 +67,13 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from collections import deque
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from taktus.components.run.application.service.execute_run import ResumeRun, RunEngine
 from taktus.components.run.domain.model import Cause, ClaimLost, Run, RunState, StepState
 from taktus.components.run.domain.service import waiting
+from taktus.components.run.ports import OrgUnits
 from taktus.ports.clock import Clock
 from taktus.ports.identity import ServedTenants
 from taktus.ports.persistence import Tenant, UnitOfWork
@@ -103,6 +106,9 @@ class RunnerOptions:
     outcomes_kept: int = 1000
     """How many of the latest outcomes the runner keeps for `outcomes`; older ones are dropped,
     and the log has had them through `on_outcome` (#592)."""
+    org_units: OrgUnits | None = None
+    """The tenants' quotas per organisational unit (ADR-0166). None: no unit is limited, and
+    the queue still shares the places between units."""
 
 
 @dataclass
@@ -204,13 +210,18 @@ class Runner:
         self._turn = start + 1
         waiting = served[start:] + served[:start]
         claimed = 0
+        limits: dict[Tenant, Mapping[str, int]] = {}
         while waiting and not self._stopping:
             still: list[Tenant] = []
             for tenant in waiting:
                 if self.options.concurrency - len(self._executing) <= 0 or self._stopping:
                     return claimed
+                if tenant not in limits:
+                    limits[tenant] = await self._limits(tenant)
                 async with self.work.transaction(tenant):
-                    jobs = await self.queue.claim(tenant, self.options.claimant, 1)
+                    jobs = await self.queue.claim(
+                        tenant, self.options.claimant, 1, limits[tenant] or None
+                    )
                 for job in jobs:
                     self._start(tenant, job)
                     claimed += 1
@@ -218,6 +229,12 @@ class Runner:
                     still.append(tenant)
             waiting = still
         return claimed
+
+    async def _limits(self, tenant: Tenant) -> Mapping[str, int]:
+        """The tenant's limits of concurrent runs per unit; none where no port is wired."""
+        if self.options.org_units is None:
+            return {}
+        return await self.options.org_units.concurrent(tenant)
 
     def _start(self, tenant: Tenant, job: Job) -> None:
         run_id = str(job.payload.get("run_id", ""))
@@ -270,6 +287,7 @@ class Runner:
                         # The queue counts claims less deferrals towards its limit.
                         last_attempt=executing.job.attempts - executing.job.deferrals
                         >= self.options.max_attempts,
+                        held_since=executing.job.held_since,
                     )
                 )
             except ClaimLost as lost:
@@ -330,9 +348,10 @@ class Runner:
         longer ours: the run is asked to stop at its boundary and the job is left alone, and
         so is the worker's assignment, which the runner holding the claim now adopts
         (ADR-0038). A renewal also reads a take-over asked on the job, which the engine
-        serves at the step's next boundary (ADR-0128), and the tenant's stops of adapters, which
-        stop a step inside a stopped adapter at its boundary (ADR-0138); a claim the engine
-        passed to a take-over is not lost."""
+        serves at the step's next boundary (ADR-0128), the persons' messages placed on it,
+        which the engine hands to the step's worker (ADR-0156), and the tenant's stops of
+        adapters, which stop a step inside a stopped adapter at its boundary (ADR-0138); a
+        claim the engine passed to a take-over is not lost."""
         while True:
             await self.clock.sleep(self.options.heartbeat_seconds)
             renewed = await self._renew(executing)
@@ -342,6 +361,7 @@ class Runner:
                 asked = await self._asked(executing)
                 if asked is not None:
                     await self.engine.takeover_asked(executing.run_id, asked)
+                await self._messages(executing)
                 await self._stops(executing)
                 continue
             if self.engine.passed(executing.run_id):
@@ -378,6 +398,22 @@ class Runner:
                 return await self.queue.takeover_asked(executing.tenant, executing.job.id)
         except Exception:  # the next heartbeat asks again
             return None
+
+    async def _messages(self, executing: _Executing) -> None:
+        """Hand the persons' messages placed on the job to the worker of the step they are for,
+        under the claim (ADR-0156 §8). A store that did not answer is read again at the next
+        renewal; a message is marked handed only once it was."""
+        claim = Claim(
+            job_id=executing.job.id,
+            claimant=self.options.claimant,
+            attempt=executing.job.attempts,
+        )
+        with contextlib.suppress(Exception):
+            async with self.work.transaction(executing.tenant):
+                asked = await self.queue.messages_asked(executing.tenant, executing.job.id)
+            waiting = [m for m in asked if not m.handed]
+            if waiting:
+                await self.engine.messages_asked(executing.tenant, executing.run_id, claim, waiting)
 
     async def _stops(self, executing: _Executing) -> None:
         """Ask the run to stop at its boundary when the adapter of the step it is inside is

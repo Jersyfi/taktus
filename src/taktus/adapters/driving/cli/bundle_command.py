@@ -5,6 +5,9 @@ every step's rules, the graph, and the exactness statement (ADR-0113 §4). It ne
 database, no login and no network, so that a repository holding bundles can run it in its own
 CI. Nothing is stored and nothing is recorded.
 
+Below a directory it also checks every skill under a `skills/` directory: its `SKILL.md` held
+to the open format by the catalogue's rule, its name equal to its directory's (ADR-0162 §9).
+
 Three refusals of registration need an instance, and this command does not make them: a step
 naming a credential that administers the instance's platform (ADR-0025), a raise of an
 autonomy level over the active version (ADR-0039), and a version already registered with
@@ -20,6 +23,8 @@ from typing import Annotated, Any
 import typer
 import yaml
 
+from taktus.components.catalog.domain.model import InvalidSkill, SkillFile
+from taktus.components.catalog.domain.service import skills as rules
 from taktus.components.process.application.service.register_version import parse_bundle
 from taktus.components.process.domain.model import InvalidProcess
 
@@ -74,6 +79,18 @@ def check(
                 typer.echo(f"  - {finding}")
             continue
         typer.echo(f"ok         {path}  {version.ref}")
+    skills_ok = skills_refused = 0
+    for directory, parsed in (found for p in paths if p.is_dir() for found in skills_below(p)):
+        if isinstance(parsed, InvalidSkill):
+            skills_refused += 1
+            typer.echo(f"refused    {directory}")
+            for finding in parsed.findings:
+                typer.echo(f"  - {finding}")
+        else:
+            skills_ok += 1
+            typer.echo(f"ok         {directory}  skill {parsed.name}")
+    if skills_ok or skills_refused:
+        typer.echo(f"{skills_ok + skills_refused} skill(s): {skills_refused} refused")
     total = checked + unreadable
     typer.echo(
         f"{total} bundle(s): {checked - refused} would register, {refused} refused, "
@@ -82,7 +99,7 @@ def check(
     typer.echo(NOT_CHECKED)
     if unreadable or total == 0:
         raise typer.Exit(code=2)
-    if refused:
+    if refused or skills_refused:
         raise typer.Exit(code=1)
 
 
@@ -109,3 +126,37 @@ def _load(path: Path, *, named: bool) -> dict[str, Any] | None:
     if not named and "kind" in document and "steps" not in document:
         return None
     return document
+
+
+def skill_on_disk(directory: Path) -> SkillFile:
+    """The skill a directory holds: its `SKILL.md` and every other file below it, parsed by
+    the catalogue's rule. InvalidSkill where it does not hold to the open format."""
+    path = directory / rules.FILE
+    if not path.is_file():
+        raise InvalidSkill((f"{directory} holds no {rules.FILE}",))
+    files = {
+        str(p.relative_to(directory)): p.read_bytes()
+        for p in sorted(directory.rglob("*"))
+        if p.is_file()
+    }
+    front_text, body = rules.split(files[rules.FILE].decode("utf-8"))
+    try:
+        front = yaml.safe_load(front_text)
+    except yaml.YAMLError as error:
+        raise InvalidSkill((f"{rules.FILE}: the front matter is not YAML: {error}",)) from error
+    return rules.parse(directory.name, front, body, files)
+
+
+def skills_below(root: Path) -> list[tuple[Path, SkillFile | InvalidSkill]]:
+    """Every skill directory under a `skills/` directory below `root`, parsed or with why
+    not."""
+    found: list[tuple[Path, SkillFile | InvalidSkill]] = []
+    for marker in sorted(root.rglob(rules.FILE)):
+        directory = marker.parent
+        if directory.parent.name != "skills":
+            continue
+        try:
+            found.append((directory, skill_on_disk(directory)))
+        except InvalidSkill as error:
+            found.append((directory, error))
+    return found

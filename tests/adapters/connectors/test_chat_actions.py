@@ -13,10 +13,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
-from taktus.adapters.driven.connectors.slack import declaration
-from taktus.adapters.driven.connectors.slack.operations import MARK_TYPE
-from taktus.adapters.driven.connectors.slack.server import Config, Connector
+from taktus_connectors.slack import declaration
+from taktus_connectors.slack.operations import MARK_TYPE
+from taktus_connectors.slack.server import Config, Connector
 
 from .conftest import CHAT_READ, CHAT_WRITE, ChatService
 

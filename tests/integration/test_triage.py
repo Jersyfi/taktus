@@ -99,7 +99,7 @@ def outside(tmp_path: Path) -> Iterator[Outside]:
                 [
                     sys.executable,
                     "-m",
-                    "taktus.adapters.driven.connectors.github",
+                    "taktus_connectors.github",
                     "--port",
                     str(connector_port),
                     "--target",

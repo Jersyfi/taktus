@@ -66,9 +66,12 @@ class RegisterEntry(Value):
     modifications: str | None = None
     answer_raw: str = Field(min_length=1)
     decided_by: str = Field(min_length=1)
+    """The person whose confirmed answer took effect, or `rule:<id>` for a rule's (ADR-0161)."""
     raised_at: datetime
     answered_at: datetime
     decided_at: datetime
+    rule: str | None = Field(default=None, min_length=1)
+    """The rule from precedent that answered the request; None for a person's decision."""
 
 
 def entry_id(request_id: str) -> str:

@@ -1,4 +1,4 @@
-"""The ledger store in memory, for development and tests: one chain per tenant."""
+"""The ledger store in memory, for development and tests: a chain per run and the tenant's."""
 
 from __future__ import annotations
 
@@ -13,9 +13,9 @@ from taktus.shared.v1 import LedgerEntry
 class MemoryLedgerStore:
     """A list per tenant behind the ledger store port. Append-only by construction: nothing
     here can replace or remove an entry. Single-instance by nature, but two transactions of one
-    process may still record into one chain at once: `last` claims the tenant's chain until the
-    transaction ends, as the database adapter's advisory lock does, so that the second reads
-    the first one's entries once they are committed."""
+    process may still record at once. `last` and `allocate` claim the tenant's entries until the
+    transaction ends, every chain at once: here the positions stay gapless and commit in order,
+    so every committed entry is final and the stable head is the newest entry (ADR-0164)."""
 
     def __init__(self, persistence: MemoryPersistence) -> None:
         self._persistence = persistence
@@ -30,13 +30,37 @@ class MemoryLedgerStore:
             raise DuplicateSequence(tenant, entry.seq)
         transaction.appended.append(entry)
 
-    async def last(self, tenant: Tenant) -> LedgerEntry | None:
+    async def last(self, tenant: Tenant, chain: str = "") -> LedgerEntry | None:
+        transaction = self._persistence.current(tenant)
+        # One claim for every chain of the tenant: in one process there is nothing to gain by
+        # finer claims, and a transaction that writes two chains cannot wait for itself.
+        await self._persistence.claim(transaction, f"ledger:{tenant}")
+        found = [e for e in await self.entries(tenant) if e.chain_name() == chain]
+        return found[-1] if found else None
+
+    async def allocate(self, tenant: Tenant) -> int:
         transaction = self._persistence.current(tenant)
         await self._persistence.claim(transaction, f"ledger:{tenant}")
-        if transaction.appended:
-            return transaction.appended[-1]
-        chain = self._persistence.chain(tenant)
-        return chain[-1] if chain else None
+        entries = await self.entries(tenant)
+        return (entries[-1].seq if entries else 0) + 1
+
+    async def in_chain(self, tenant: Tenant, chain: str, place: int) -> LedgerEntry | None:
+        return next(
+            (
+                e
+                for e in await self.entries(tenant)
+                if e.chain_name() == chain
+                and (e.seq if e.chain_seq is None else e.chain_seq) == place
+            ),
+            None,
+        )
+
+    async def heads(self, tenant: Tenant, after: int, through: int) -> Sequence[LedgerEntry]:
+        newest: dict[str, LedgerEntry] = {}
+        for e in await self.entries(tenant):
+            if after < e.seq <= through and e.chain_name() != "":
+                newest[e.chain_name()] = e
+        return [newest[c] for c in sorted(newest)]
 
     async def entries(self, tenant: Tenant) -> Sequence[LedgerEntry]:
         transaction = self._persistence.current(tenant)
@@ -106,11 +130,14 @@ class MemoryLedgerStore:
         *,
         limit: int,
         kinds: Collection[str] | None = None,
+        through: int | None = None,
     ) -> Sequence[LedgerEntry]:
         return [
             e
             for e in await self.entries(tenant)
-            if e.seq > seq and (kinds is None or e.kind in kinds)
+            if e.seq > seq
+            and (through is None or e.seq <= through)
+            and (kinds is None or e.kind in kinds)
         ][:limit]
 
     async def position(self, tenant: Tenant, hash: str) -> int | None:

@@ -1,0 +1,9 @@
+# A gallery blueprint (ADR-0136 §1): what the web app's gallery shows for it. Its processes are
+# the bundles under processes/. Removing this directory removes it from the gallery and from
+# nothing else.
+kind: gallery
+title: A club
+for: a club or an association
+summary: >
+  Every month, the reminder of the next meeting, with when and where it is. It reaches nothing
+  outside Taktus: you read the reminder in the web app and pass it on.

@@ -9,19 +9,19 @@ import time
 
 import httpx
 import pytest
+from taktus_connectors.github.declaration import INTAKE_CREDENTIAL
+from taktus_connectors.github.server import Config, build_server
+from taktus_connectors.slack.declaration import (
+    INTAKE_CREDENTIAL as CHAT_INTAKE_CREDENTIAL,
+)
+from taktus_connectors.slack.server import Config as ChatConfig
+from taktus_connectors.slack.server import build_server as build_chat_server
 
 from adapters.connectors.test_chat_intake import SHARED as CHAT_SHARED
 from adapters.connectors.test_chat_intake import recorded as chat_recorded
 from adapters.connectors.test_chat_intake import signed as chat_signed
 from adapters.connectors.test_repository_intake import SHARED, recorded, signed
-from taktus.adapters.driven.connectors.github.declaration import INTAKE_CREDENTIAL
-from taktus.adapters.driven.connectors.github.server import Config, build_server
 from taktus.adapters.driven.connectors.mcp import McpIntakeConnector
-from taktus.adapters.driven.connectors.slack.declaration import (
-    INTAKE_CREDENTIAL as CHAT_INTAKE_CREDENTIAL,
-)
-from taktus.adapters.driven.connectors.slack.server import Config as ChatConfig
-from taktus.adapters.driven.connectors.slack.server import build_server as build_chat_server
 from taktus.adapters.driving.rest import build_app
 from taktus.components.command.application.service import ReceiveIntakeHandler
 from taktus.ports.connector import ConnectorError, Delivery

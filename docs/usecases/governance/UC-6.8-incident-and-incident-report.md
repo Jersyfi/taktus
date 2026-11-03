@@ -4,10 +4,10 @@ title: Incident and incident report
 component: governance
 epic: E6
 serves: [P1, P6, P12, P14]
-state: specified
+state: building
 version: 0.5.0
-tests: []
-adrs: {ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0023: 949c6f4e13af, ADR-0024: 52ba89e4adec, ADR-0029: 37c061ef032a}
+tests: [tests/governance/test_result_defects.py::test_a_reported_result_raises_one_incident_with_what_the_rule_read]
+adrs: {ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0023: 949c6f4e13af, ADR-0024: 52ba89e4adec, ADR-0029: 37c061ef032a, ADR-0153: 5c2e05c4a6d7}
 supersedes: null
 ---
 
@@ -79,3 +79,11 @@ its artifact (ADR-0029). Written first in `UC-4-result-defects.md` on 2026-09-17
 this format in the migration's second step. One amendment restores the definition: the situation
 package for an escalated or stopped result defect, which definition `UC-4.6` asks for every
 business-critical finding (NTC-0030). No version of the definition has an incident object.
+
+## 5. What is proven so far
+
+A result reported wrong raises one incident of kind `result.defect`, with the verdict of the rule
+of ADR-0023 §2 as its severity and the facts and thresholds it read; a second report raises
+nothing; the incident names no person (ADR-0153) — by the named test. Not built: delivery through
+a connector, updates to the same external object, the situation package, the report a model may
+write, and the refusal to close while a request of class `correction` is open.

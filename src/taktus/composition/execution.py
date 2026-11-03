@@ -30,6 +30,7 @@ from taktus.adapters.driven.telemetry import (
     exporter_for,
     metric_exporter_for,
 )
+from taktus.adapters.driven.workers.connected import connected_worker
 from taktus.adapters.driven.workers.http import HttpWorker
 from taktus.adapters.driven.workers.launched import LaunchedWorker
 from taktus.composition.settings import (
@@ -39,9 +40,10 @@ from taktus.composition.settings import (
     TelemetrySettings,
     WorkerSettings,
 )
-from taktus.ports.configuration import Configuration
+from taktus.ports.configuration import Configuration, ConfigurationError
 from taktus.ports.connector import ActionConnector
 from taktus.ports.execution import Execution, ExecutionUnit, ResourceLimits
+from taktus.ports.relay import Relay
 from taktus.ports.worker import Worker
 
 UNIT_NAME = "unit"
@@ -123,6 +125,10 @@ def unit_of(settings: ExecutionSettings, name: str = UNIT_NAME) -> ExecutionUnit
     )
 
 
+REACHED = (ExecutionKind.ENDPOINT, ExecutionKind.CONNECTED)
+"""The kinds of a worker that runs on its own and is reached, not launched by the instance."""
+
+
 def worker_unit(worker: WorkerSettings) -> ExecutionUnit:
     """The unit one configured worker launches, named after the worker."""
     return unit_of(worker.execution, worker.name or UNIT_NAME)
@@ -135,7 +141,7 @@ def service_hosts(workers: Sequence[WorkerSettings]) -> dict[str, tuple[str, ...
     return {
         worker.identifier: worker.execution.service_hosts
         for worker in workers
-        if worker.execution.kind is not ExecutionKind.ENDPOINT and worker.execution.service_hosts
+        if worker.execution.kind not in REACHED and worker.execution.service_hosts
     }
 
 
@@ -147,7 +153,7 @@ def unit_environments(workers: Sequence[WorkerSettings]) -> dict[str, tuple[str,
     return {
         worker.identifier: tuple(name for name, _ in worker.execution.unit_env)
         for worker in workers
-        if worker.execution.kind is not ExecutionKind.ENDPOINT and worker.execution.unit_env
+        if worker.execution.kind not in REACHED and worker.execution.unit_env
     }
 
 
@@ -160,7 +166,7 @@ def memory_demand(workers: Sequence[WorkerSettings]) -> int | None:
     demands = [
         worker_unit(worker).limits.memory_bytes
         for worker in workers
-        if worker.execution.kind not in (ExecutionKind.ENDPOINT, ExecutionKind.CLUSTER)
+        if worker.execution.kind not in (*REACHED, ExecutionKind.CLUSTER)
     ]
     return max(demands) if demands else None
 
@@ -204,10 +210,23 @@ async def open_worker(
     state_dir: Path,
     endpoint: str | None = None,
     stream_timeout: float = 3600.0,
+    relay: Relay | None = None,
 ) -> AsyncIterator[Worker]:
     """One configured worker. `endpoint` overrides the configured one for the unnamed worker of
-    kind `endpoint` (`taktusctl run --worker`); a named worker's endpoint is its own."""
+    kind `endpoint` (`taktusctl run --worker`); a named worker's endpoint is its own. A worker
+    of kind `connected` is reached through `relay`, the outbound binding's relay every instance
+    shares (ADR-0156); without one it cannot be reached here."""
     settings = worker.execution
+    if settings.kind is ExecutionKind.CONNECTED:
+        if relay is None:
+            raise ConfigurationError(
+                configuration.name("execution"),
+                f"the worker {worker.identifier} connects outbound; only an instance with its "
+                "database relays to it",
+            )
+        async with connected_worker(relay, worker.identifier, stream_timeout=stream_timeout) as w:
+            yield w
+        return
     if settings.kind is ExecutionKind.ENDPOINT:
         address = (endpoint if worker.name is None else None) or settings.endpoint
         async with HttpWorker(address, stream_timeout=stream_timeout) as w:
@@ -226,6 +245,7 @@ async def open_workers(
     state_dir: Path,
     endpoint: str | None = None,
     stream_timeout: float = 3600.0,
+    relay: Relay | None = None,
 ) -> AsyncIterator[list[tuple[str, Worker]]]:
     """Every configured worker with its adapter identifier, in the configured order: what the
     worker pool resolves a step against (ADR-0078). Each is an adapter of its own, so the
@@ -241,6 +261,7 @@ async def open_workers(
                         state_dir=state_dir,
                         endpoint=endpoint,
                         stream_timeout=stream_timeout,
+                        relay=relay,
                     )
                 ),
             )

@@ -10,7 +10,7 @@ import contextvars
 import pytest
 
 from taktus.ports.persistence import PersistenceError
-from taktus.ports.queue import RUN_EXECUTE, Claim, Job
+from taktus.ports.queue import RUN_EXECUTE, AskedMessage, Claim, Job
 
 from .conftest import Backend
 
@@ -288,3 +288,49 @@ async def test_a_takeover_s_claim_ends_at_its_time(backend: Backend) -> None:
     assert await fence(backend, tenant, held("takeover:x", 2)), "over, but nobody claimed it"
     assert await claim(backend, tenant, "b") == ["job_1"], "a runner takes it back"
     assert not await fence(backend, tenant, held("takeover:x", 2)), "a late hand-back is refused"
+
+
+# --- a person's message (ADR-0156) -------------------------------------------------------------
+
+DIGEST = "sha256:" + "ab" * 32
+
+
+async def place(backend: Backend, tenant: str, message_id: str, run: str = "run_1") -> bool:
+    async with backend.work.transaction(tenant):
+        return await backend.queue.ask_message(
+            tenant, run, AskedMessage(message_id=message_id, step_id="s", digest=DIGEST, text="go")
+        )
+
+
+async def asked(backend: Backend, tenant: str) -> list[tuple[str, bool]]:
+    async with backend.work.transaction(tenant):
+        return [
+            (m.message_id, m.handed) for m in await backend.queue.messages_asked(tenant, "job_1")
+        ]
+
+
+async def test_a_message_is_placed_only_on_a_job_a_runner_holds_and_handed_once(
+    backend: Backend,
+) -> None:
+    tenant = await backend.tenant()
+    await enqueue(backend, tenant, job(1))
+    assert not await place(backend, tenant, "msg_0001"), "no runner holds it yet"
+    assert await claim(backend, tenant, "a") == ["job_1"]
+    assert not await place(backend, tenant, "msg_0001", run="run_2"), "no job of that run"
+    assert await place(backend, tenant, "msg_0001")
+    assert await place(backend, tenant, "msg_0001"), "placed again: kept once"
+    assert await place(backend, tenant, "msg_0002")
+    assert await asked(backend, tenant) == [("msg_0001", False), ("msg_0002", False)]
+    async with backend.work.transaction(tenant):
+        await backend.queue.message_handed(tenant, "job_1", "msg_0001")
+        await backend.queue.message_handed(tenant, "job_1", "msg_9999")  # unknown: nothing
+    assert await asked(backend, tenant) == [("msg_0001", True), ("msg_0002", False)]
+
+
+async def test_no_message_is_placed_on_a_job_a_person_holds(backend: Backend) -> None:
+    tenant = await backend.tenant()
+    await enqueue(backend, tenant, job(1))
+    assert await claim(backend, tenant, "a") == ["job_1"]
+    assert await ask(backend, tenant, "takeover:x")
+    assert await pass_on(backend, tenant, held("a", 1), "takeover:x")
+    assert not await place(backend, tenant, "msg_0001")

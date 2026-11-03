@@ -15,15 +15,14 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
-from taktus.adapters.driven.connectors.github import __main__ as connector_main
-from taktus.adapters.driven.connectors.github.app import (
+from taktus_connectors.github import __main__ as connector_main
+from taktus_connectors.github.app import (
     APP_ID_VARIABLE,
     APP_KEY_VARIABLE,
     REFRESH_MARGIN,
     AppConfig,
 )
-from taktus.adapters.driven.connectors.github.server import Config, Connector
+from taktus_connectors.github.server import Config, Connector
 
 from .conftest import WRITE_CREDENTIAL, Service, private_key_pem
 

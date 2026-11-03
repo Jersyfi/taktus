@@ -74,7 +74,7 @@ from .test_chat_channel import free_port, wait_ready
 
 ROOT = Path(__file__).resolve().parents[3]
 CONTROL_PLANE = "https://taktus.example/instance-a"
-CHAT_PAYLOADS = ROOT / "src/taktus/adapters/driven/connectors/slack/payloads"
+CHAT_PAYLOADS = ROOT / "connectors/taktus_connectors/slack/payloads"
 GERMAN = json.loads((ROOT / "src/taktus/composition/phrasebooks/de.json").read_text("utf-8"))
 CHAT = "channel.chat"
 TENANT = "default"
@@ -118,7 +118,7 @@ def connectors(chat_service: ChatService, service: Service, tmp_path: Path) -> I
     for name, module, args, env in [
         (
             "chat",
-            "taktus.adapters.driven.connectors.slack",
+            "taktus_connectors.slack",
             ["--target", chat_service.url],
             {
                 CHAT_WRITE: chat_service.write_value,
@@ -127,7 +127,7 @@ def connectors(chat_service: ChatService, service: Service, tmp_path: Path) -> I
         ),
         (
             "repository",
-            "taktus.adapters.driven.connectors.github",
+            "taktus_connectors.github",
             ["--target", service.url, "--repository", "placeholder-owner/placeholder-repo"],
             {
                 WRITE_CREDENTIAL: service.write_value,

@@ -31,6 +31,13 @@ class MemoryProvenanceStore:
             (r for r in self._all(tenant) if r.run_id == run_id), key=lambda r: r.ledger_seq
         )
 
+    async def of_subject(self, tenant: Tenant, subject: str) -> Sequence[Provenance]:
+        self._persistence.current(tenant)
+        return sorted(
+            (r for r in self._all(tenant) if r.scope is not None and r.scope.subject == subject),
+            key=lambda r: r.ledger_seq,
+        )
+
     async def chain(self, tenant: Tenant, run_id: str, artifact_id: str) -> Sequence[Provenance]:
         self._persistence.current(tenant)
         records = self._all(tenant)
@@ -48,6 +55,20 @@ class MemoryProvenanceStore:
                     found[producer.id] = producer
                     queue.append(producer)
         return sorted(found.values(), key=lambda r: r.ledger_seq, reverse=True)
+
+    async def derived(self, tenant: Tenant, run_id: str, step_id: str) -> Sequence[Provenance]:
+        self._persistence.current(tenant)
+        records = self._all(tenant)
+        # Breadth first from the step run through what read it; each record once.
+        found: dict[str, Provenance] = {}
+        queue = deque([(run_id, step_id)])
+        while queue:
+            key = queue.popleft()
+            for record in records:
+                if record.id not in found and key in record.reads_from():
+                    found[record.id] = record
+                    queue.append((record.run_id, record.step_id))
+        return sorted(found.values(), key=lambda r: r.ledger_seq)
 
     def _all(self, tenant: Tenant) -> list[Provenance]:
         transaction = self._persistence.current(tenant)

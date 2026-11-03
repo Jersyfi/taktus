@@ -182,7 +182,7 @@ def test_without_a_manifest_a_listing_that_needs_a_credential_refuses_the_start(
         _wait_listening(vendor, port, tmp_path / "vendor.log", "vendor's notes server")
         refused = subprocess.run(  # noqa: S603 — our own module, fixed arguments
             [
-                sys.executable, "-m", "taktus.adapters.driven.connectors.vendor",
+                sys.executable, "-m", "taktus_connectors.vendor",
                 "--upstream", f"http://127.0.0.1:{port}/mcp", "--capability", "notes.pages",
             ],
             capture_output=True, text=True, timeout=60, check=False,
@@ -215,7 +215,7 @@ async def test_a_credential_the_vendor_does_not_accept_is_unauthenticated(
 
 
 def test_every_runtime_check_has_a_fault_for_the_notes_manifest() -> None:
-    assert {check for _, check in NOTES_FAULTS} == set(CHECKS) - {"C-07", "C-08", "C-10"}, (
+    assert {check for _, check in NOTES_FAULTS} == set(CHECKS) - {"C-07", "C-08", "C-10", "C-11"}, (
         "a vendor's server has no intake, and C-10 has no runtime fault"
     )
 

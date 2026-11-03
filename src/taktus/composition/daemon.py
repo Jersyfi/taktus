@@ -3,8 +3,8 @@
 Startup, in order: read and validate the settings (a wrong one is one sentence on stderr and
 exit code 2); log the effective configuration with every secret masked; connect to the
 database and — with `TAKTUS_MIGRATE_ON_START` — bring it to the current schema; refuse to serve
-against a schema that is not at the revision this build needs (exit code 3: silent drift is
-worse than a refusal); wire the adapters to the ports, once, here; start the roles.
+against a schema outside the range this build runs against (ADR-0093 §2; exit code 3: silent
+drift is worse than a refusal); wire the adapters to the ports, once, here; start the roles.
 
 Shutdown, on SIGTERM or SIGINT: stop accepting work; let every running step reach its boundary
 — up to the hard ceiling `TAKTUS_SHUTDOWN_CEILING_SECONDS`, after which the process exits and
@@ -21,7 +21,7 @@ import os
 import signal
 import socket
 import sys
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import timedelta
@@ -37,7 +37,6 @@ from taktus.adapters.driven.connectors.loopback import ADAPTER as LOOPBACK
 from taktus.adapters.driven.connectors.loopback import LoopbackConnector
 from taktus.adapters.driven.connectors.mcp import McpIntakeConnector
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
-from taktus.adapters.driven.memory import MemoryObjectStore
 from taktus.adapters.driven.models.pool import StaticModelPool
 from taktus.adapters.driven.platform import HostPlatform
 from taktus.adapters.driven.postgres import (
@@ -45,11 +44,13 @@ from taktus.adapters.driven.postgres import (
     PostgresLeadership,
     PostgresLedgerSignal,
     PostgresLedgerStore,
+    PostgresOrgUnitSpends,
     PostgresOutbox,
     PostgresPersistence,
     PostgresProjectionStore,
     PostgresProvenanceStore,
     PostgresQueue,
+    PostgresRelay,
     PostgresRepository,
     PostgresTenantStore,
     PostgresTraceStore,
@@ -60,11 +61,27 @@ from taktus.adapters.driven.postgres import (
 from taktus.adapters.driven.postgres.url import described
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.adapters.driving.rest import build_app
+from taktus.adapters.driving.rest.relay import ConnectedHost
+from taktus.components.accounting.application.service import (
+    CostOfRunHandler,
+    SpendHandler,
+    TrialReports,
+)
 from taktus.components.catalog.application.service import (
+    AgentCatalog,
     RecordRemovalResultHandler,
     RunConformanceHandler,
+    SkillCatalog,
 )
-from taktus.components.catalog.domain.model import AdapterMaturity
+from taktus.components.catalog.domain.model import (
+    AdapterMaturity,
+    AgentCore,
+    CatalogueInstallation,
+    RoleProfile,
+    SkillOwnership,
+    SkillPolicy,
+    SkillVersion,
+)
 from taktus.components.command.application.service import (
     CommissionPlanHandler,
     CompleteIntakeHandler,
@@ -101,6 +118,7 @@ from taktus.components.process.application.service.reactions import ReactionsHan
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
+from taktus.components.process.application.service.streams import ValueStreams
 from taktus.components.process.application.service.triggers import TriggersHandler
 from taktus.components.process.domain.model import (
     CorrectedCase,
@@ -109,6 +127,7 @@ from taktus.components.process.domain.model import (
     ProcessVersion,
     Proposal,
     TriggerState,
+    ValueStream,
 )
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.application.service import (
@@ -139,9 +158,13 @@ from taktus.components.run.application.service import (
 from taktus.components.run.application.service.stops import Stops
 from taktus.components.run.domain.model import AdapterStop, Run
 from taktus.composition import roles
+from taktus.composition.acting import ActingReads
 from taktus.composition.agent_surface import AgentSurface
+from taktus.composition.agents import SharedAgents
 from taktus.composition.alerts import alerts, alerts_tick, say_who_hears
+from taktus.composition.anchors import anchors_tick
 from taktus.composition.capacity import capacity_report, capacity_tick, rules_of
+from taktus.composition.catalogue_in_channel import CatalogueInChannel
 from taktus.composition.change_in_channel import ChangeInChannel
 from taktus.composition.conformance import InstanceSuites, worker_suites
 from taktus.composition.deadlines import Deadlines
@@ -164,37 +187,54 @@ from taktus.composition.findings import (
     intake_of,
     sending_of,
 )
+from taktus.composition.gallery import Gallery
 from taktus.composition.guides import InstanceGuides, served_directory
 from taktus.composition.interfaces import broken_interfaces, interfaces_tick
-from taktus.composition.levels import RepositoryLevelRecords
+from taktus.composition.levels import RepositoryLevelRecords, VersionStatements
 from taktus.composition.live import LiveHub, LiveOptions, Records, run_listener, state_of
 from taktus.composition.logging import configure, log_effective_configuration
 from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.maturation import InstanceMaturation, RepositoryScores, maturation_wiring
-from taktus.composition.maturity import CatalogMaturities
+from taktus.composition.maturity import CatalogMaturities, InstanceCatalogue
 from taktus.composition.moves import MethodMoves
+from taktus.composition.objects import object_store_of
 from taktus.composition.operation import OperationRecords
+from taktus.composition.org_units import OrgUnitsOfTheRun
 from taktus.composition.owner_channel import (
     OwnerChannelWiring,
     known_secrets,
     owner_channel_wiring,
 )
+from taktus.composition.participants import ParticipantAnswers
+from taktus.composition.profiles import RoleProfiles
 from taktus.composition.proposals import InstanceChanges, ProposalActs
 from taktus.composition.reactions import Reactions, capacity_condition
 from taktus.composition.replies import ConnectorReplies
-from taktus.composition.settings import Role, Settings, load
+from taktus.composition.settings import (
+    CONNECT_KEY,
+    ExecutionKind,
+    Role,
+    Settings,
+    WorkerSettings,
+    load,
+)
 from taktus.composition.shipped import load as load_shipped
 from taktus.composition.signals import CommandInterventions, signal_wiring, signals_tick
+from taktus.composition.skills import CatalogGuidance, SkillLifecycle, skills_tick
+from taktus.composition.spend_in_channel import SpendInChannel
 from taktus.composition.stages import stage_wiring, stages_tick
 from taktus.composition.stops import StopsConfirmed
+from taktus.composition.streams import StreamReads
 from taktus.composition.takeover_in_channel import TakeoverInChannel
 from taktus.composition.traces import traces_tick
+from taktus.composition.trials import Trials
 from taktus.composition.triggers import Triggers
 from taktus.ports.clock import Clock
 from taktus.ports.configuration import Configuration, ConfigurationError, Secret
 from taktus.ports.leadership import Leadership
 from taktus.ports.ledger import Ledger
 from taktus.ports.persistence import Queried, Repository, Stored, UnitOfWork
+from taktus.ports.relay import Relay
 from taktus.shared.v1 import Command, Plan
 
 EXIT_CONFIGURATION = 2
@@ -217,6 +257,7 @@ class Wired:
     work: UnitOfWork
     runs: Queried[Run]
     ledger: Ledger
+    ledger_store: PostgresLedgerStore
     provenance: ProvenanceQuery
     engine: RunEngine
     register_version: RegisterProcessVersionHandler
@@ -282,7 +323,20 @@ class Wired:
     evaluations: Evaluations
     """A change held to the process's evaluation cases, and drift measured on them, which the
     scheduler advances (ADR-0134)."""
+    spend: SpendHandler
+    """Where a run and a process spend, per step, and two runs side by side (ADR-0148)."""
+    trials: Trials
+    """A model tried on fixed cases, and the trials offered (ADR-0149)."""
+    gallery: Gallery
+    """The gallery a person chooses a first process from, read from its directory on every
+    request (UC-10.4, ADR-0136)."""
+    acting: ActingReads
+    """The register, the dependencies and the variants of a process (ADR-0147)."""
     agent: AgentSurface
+    streams: StreamReads
+    """The organisation as value streams, and their declaration (ADR-0159)."""
+    profiles: RoleProfiles
+    """A role's profile, derived from the processes (ADR-0167)."""
     traces: StepTraces
     """The trace inside a worker's step, read and shared by role, and erased by the scheduler
     when its retention ends (ADR-0135)."""
@@ -290,6 +344,13 @@ class Wired:
     moves: MethodMoves | None = None
     """An accepted proposal to move a step applied, and a move rolled back (ADR-0114)."""
     runner: Runner | None = None
+    skills: SkillLifecycle | None = None
+    """The skill lifecycle the scheduler looks at once a minute (ADR-0162)."""
+    agents: SharedAgents | None = None
+    """Shared agents with role profiles (ADR-0163)."""
+    connected: ConnectedHost | None = None
+    """The host of the outbound binding for the workers configured as connected, which the
+    `api` role serves; None when no worker connects (ADR-0156)."""
     leading: bool = field(default=False, init=False)
     """Whether this process holds the scheduler's lead right now."""
 
@@ -346,8 +407,9 @@ class Wired:
             await applied_move(self.moves, tenant, request_id)
 
     async def ready(self) -> str | None:
-        """None when the database answers and is at the schema this build needs; otherwise
-        the reason, in one sentence. Readiness is a question, not a memory."""
+        """None when the database answers and its schema lies in the range this build runs
+        against (ADR-0093 §2); otherwise the reason, in one sentence. Readiness is a question,
+        not a memory."""
         try:
             await check_schema(self.persistence.engine)
         except SchemaOutOfDate as error:
@@ -386,9 +448,12 @@ async def wire(
     if settings.migrate_on_start:
         log.info("migrating", database=described(url))
         try:
-            await upgrade(url)
+            migrated = await upgrade(url)
         except Exception as error:
             raise NotOperable(f"the migrations failed against {described(url)}: {error}") from error
+        if not migrated:
+            # A newer build migrated it; whether this one may serve it is the range's question.
+            log.info("not migrating: the schema is newer than this build", database=described(url))
     persistence = PostgresPersistence(
         url,
         pool_size=settings.runner_concurrency + 4,
@@ -415,7 +480,6 @@ async def wire(
             ledger=ledger,
             clock=clock,
             ids=ids,
-            narrowed_to=settings.tenants,
         )
         # Who a sender is, and who acts: the identity component, and nothing else (ADR-0040).
         identities = IdentityDirectory(
@@ -437,19 +501,24 @@ async def wire(
         # message (ADR-0135 §2).
         secrets = known_secrets(os.environ, also=[settings.database.reveal()])
         queue = PostgresQueue(persistence, lease_seconds=settings.lease_seconds)
+        # The outbound binding's requests in flight, shared by every instance (ADR-0156).
+        relay = PostgresRelay(persistence)
 
         def stored[T: Stored](kind: type[T]) -> Repository[T]:
             return PostgresRepository(persistence, kind)
 
         decisions = decision_wiring(stored, persistence, ledger, clock, identities)
+        org_units = OrgUnitsOfTheRun(decisions.org_units, PostgresOrgUnitSpends(persistence))
         async with open_workers(
-            settings.workers, configuration, state_dir=settings.state_dir
+            settings.workers, configuration, state_dir=settings.state_dir, relay=relay
         ) as opened:
             # The loopback connector is in the pool the engine resolves from and needs the
             # engine; it is created first and bound last (composition/loopback.py).
             loopback = LoopbackConnector()
-            objects = MemoryObjectStore(
-                settings.state_dir / "objects", cache_bytes=settings.object_cache_mb * 1024 * 1024
+            objects = object_store_of(
+                settings.object_store,
+                state_dir=settings.state_dir,
+                cache_bytes=settings.object_cache_mb * 1024 * 1024,
             )
             recordings = RecordedResponses(runs, persistence, objects)
             pools = Pools(
@@ -457,6 +526,11 @@ async def wire(
                     opened,
                     hosts=service_hosts(settings.workers),
                     environment=unit_environments(settings.workers),
+                    connected=frozenset(
+                        w.identifier
+                        for w in settings.workers
+                        if w.execution.kind is ExecutionKind.CONNECTED
+                    ),
                 ),
                 connector_pool(
                     settings.connectors,
@@ -477,6 +551,24 @@ async def wire(
                 clock,
                 ids,
                 stoppable=pools.identifiers(),
+            )
+
+            # Skills and shared agents in the catalogue, handed to a run's steps (ADR-0162,
+            # ADR-0163).
+            skill_catalog = SkillCatalog(
+                PostgresRepository(persistence, SkillVersion),
+                PostgresRepository(persistence, SkillPolicy),
+                PostgresRepository(persistence, SkillOwnership),
+                persistence,
+                ledger,
+                clock,
+            )
+            agent_catalog = AgentCatalog(
+                PostgresRepository(persistence, AgentCore),
+                PostgresRepository(persistence, RoleProfile),
+                persistence,
+                ledger,
+                clock,
             )
 
             def engine_for(
@@ -514,6 +606,7 @@ async def wire(
                         PostgresRepository(persistence, AdapterMaturity),
                         persistence,
                         Pools(workers, connectors, models),
+                        PostgresRepository(persistence, CatalogueInstallation),
                     ),
                     anchors=decisions.anchors,
                     administration=settings.administration,
@@ -527,6 +620,12 @@ async def wire(
                     traces=trace_store,
                     masking=secrets,
                     stops=stops,
+                    messages=decisions.messages,
+                    statements=VersionStatements(
+                        persistence, PostgresRepository(persistence, ProcessVersion)
+                    ),
+                    guidance=CatalogGuidance(skill_catalog, agent_catalog),
+                    org_units=org_units,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -614,7 +713,10 @@ async def wire(
                     pools=pools,
                     settings=configuration,
                     workers=worker_suites(
-                        settings.workers, configuration, state_dir=settings.state_dir
+                        settings.workers,
+                        configuration,
+                        state_dir=settings.state_dir,
+                        relay=relay,
                     ),
                     connectors=settings.connectors,
                     model_endpoint=settings.model.endpoint,
@@ -698,6 +800,7 @@ async def wire(
                 lowered=decisions.lowered,
                 sources=decisions.sources,
                 stages=staged.ceilings,
+                structure=identities,
             )
             moves = MethodMoves(
                 versions=PostgresRepository(persistence, ProcessVersion),
@@ -732,6 +835,56 @@ async def wire(
                 ids=ids,
                 outward=outward_by(pools),
             )
+            skill_lifecycle = SkillLifecycle(
+                catalog=skill_catalog,
+                processes=PostgresRepository(persistence, Process),
+                versions=PostgresRepository(persistence, ProcessVersion),
+                evaluations=evaluations,
+                evaluation_records=PostgresRepository(persistence, Evaluation),
+                runs=runs,
+                drifts=Drifts(
+                    PostgresRepository(persistence, Incident),
+                    PostgresRepository(persistence, WatchConfiguration),
+                    ledger,
+                    persistence,
+                    clock,
+                ),
+                ledger=ledger,
+                work=persistence,
+                clock=clock,
+            )
+            shared_agents = SharedAgents(
+                catalog=agent_catalog,
+                processes=PostgresRepository(persistence, Process),
+                versions=PostgresRepository(persistence, ProcessVersion),
+                evaluations=evaluations,
+                commission=commission,
+                engine=engine,
+                identities=identities,
+                ledger=ledger,
+                work=persistence,
+                clock=clock,
+                ids=ids,
+                costs=CostOfRunHandler(ledger, objects, persistence),
+            )
+            # Where a process spends, and a model tried on fixed cases (ADR-0148, ADR-0149).
+            spend = SpendHandler(ledger, objects, persistence)
+            trials = Trials(
+                processes=PostgresRepository(persistence, Process),
+                versions=PostgresRepository(persistence, ProcessVersion),
+                runs=runs,
+                evaluations=evaluations,
+                commission=commission,
+                engine=engine,
+                identities=identities,
+                models=pools.models,
+                reports=TrialReports(ledger, spend, persistence),
+                ledger=ledger,
+                objects=objects,
+                work=persistence,
+                clock=clock,
+                ids=ids,
+            )
             proposal_acts = ProposalActs(
                 proposals=proposals,
                 processes=PostgresRepository(persistence, Process),
@@ -762,6 +915,44 @@ async def wire(
                     evaluations=evaluations,
                 )
             )
+            # Where a run or a process spends, asked there too (ADR-0148).
+            owner.answers.spend_with(
+                SpendInChannel(
+                    channels=PostgresRepository(persistence, OwnerChannel),
+                    runs=runs,
+                    work=persistence,
+                    spend=spend,
+                    deliveries=owner.deliveries,
+                    secrets=owner.secrets,
+                    clock=clock,
+                )
+            )
+            # The processes a person may start, and a start as the person, from any channel
+            # (ADR-0131, ADR-0159).
+            agent = AgentSurface(
+                processes=PostgresRepository(persistence, Process),
+                versions=PostgresRepository(persistence, ProcessVersion),
+                commission=commission,
+                engine=engine,
+                ledger=ledger,
+                work=persistence,
+                clock=clock,
+                ids=ids,
+                channels=PostgresRepository(persistence, OwnerChannel),
+            )
+            # What a person may ask for, and a start of it, there too (ADR-0159 §3).
+            owner.answers.catalogue_with(
+                CatalogueInChannel(
+                    channels=PostgresRepository(persistence, OwnerChannel),
+                    pending=PostgresRepository(persistence, PendingAct),
+                    work=persistence,
+                    surface=agent,
+                    identities=identities,
+                    deliveries=owner.deliveries,
+                    secrets=owner.secrets,
+                    clock=clock,
+                )
+            )
             # A running step taken over and handed back there too (ADR-0128 §7).
             owner.answers.take_over_with(
                 TakeoverInChannel(
@@ -790,11 +981,13 @@ async def wire(
                 shipped=load_shipped(),
             )
             wired = Wired(
+                connected=connected_host(settings.workers, configuration, relay),
                 settings=settings,
                 persistence=persistence,
                 work=persistence,
                 runs=runs,
                 ledger=ledger,
+                ledger_store=ledger_store,
                 provenance=ProvenanceQuery(provenance_store, runs, ledger, persistence),
                 engine=engine,
                 register_version=register_version,
@@ -810,7 +1003,11 @@ async def wire(
                     identities,
                     telemetry,
                     ConnectorReplies(pools.connectors),
-                    owner.answers,
+                    # An outside participant's answer in its thread, before the owner-facing
+                    # channel reads the message (ADR-0155).
+                    ParticipantAnswers(
+                        runs, persistence, engine, ConnectorReplies(pools.connectors), owner.answers
+                    ),
                     outbox,
                     clock=clock,
                     offer_window=timedelta(seconds=settings.offer_window_seconds),
@@ -852,15 +1049,72 @@ async def wire(
                 proposals=proposals,
                 proposal_acts=proposal_acts,
                 evaluations=evaluations,
-                agent=AgentSurface(
+                spend=spend,
+                trials=trials,
+                gallery=Gallery(
+                    settings.gallery_directory,
+                    proposals,
+                    PostgresRepository(persistence, ProcessVersion),
+                    persistence,
+                ),
+                acting=ActingReads(
                     processes=PostgresRepository(persistence, Process),
                     versions=PostgresRepository(persistence, ProcessVersion),
-                    commission=commission,
-                    engine=engine,
+                    maturities=PostgresRepository(persistence, AdapterMaturity),
+                    runs=runs,
+                    catalogue=InstanceCatalogue(
+                        pools,
+                        CatalogMaturities(
+                            PostgresRepository(persistence, AdapterMaturity),
+                            persistence,
+                            pools,
+                            PostgresRepository(persistence, CatalogueInstallation),
+                        ),
+                    ),
+                    pools=pools,
+                    residency=decisions.residency,
+                    stops=stops,
+                    blocked=BlockedTime(ledger, objects, persistence, runs),
+                    identities=identities,
+                    provenance=provenance_store,
                     ledger=ledger,
                     work=persistence,
                     clock=clock,
-                    ids=ids,
+                ),
+                agent=agent,
+                streams=StreamReads(
+                    streams=ValueStreams(
+                        PostgresRepository(persistence, ValueStream),
+                        PostgresRepository(persistence, Process),
+                        persistence,
+                        ledger,
+                        clock,
+                    ),
+                    processes=PostgresRepository(persistence, Process),
+                    versions=PostgresRepository(persistence, ProcessVersion),
+                    runs=runs,
+                    blocked=BlockedTime(ledger, objects, persistence, runs),
+                    identities=identities,
+                    work=persistence,
+                    clock=clock,
+                ),
+                profiles=RoleProfiles(
+                    processes=PostgresRepository(persistence, Process),
+                    versions=PostgresRepository(persistence, ProcessVersion),
+                    streams=ValueStreams(
+                        PostgresRepository(persistence, ValueStream),
+                        PostgresRepository(persistence, Process),
+                        persistence,
+                        ledger,
+                        clock,
+                    ),
+                    anchors=decisions.anchors,
+                    requests=PostgresRepository(persistence, Request),
+                    runs=runs,
+                    blocked=BlockedTime(ledger, objects, persistence, runs),
+                    identities=identities,
+                    work=persistence,
+                    clock=clock,
                 ),
                 moves=moves,
                 complete_intake=complete_intake,
@@ -929,6 +1183,8 @@ async def wire(
                 ),
                 stops=StopsConfirmed(tenants, stops),
                 stages=staged.stages,
+                skills=skill_lifecycle,
+                agents=shared_agents,
                 deadlines=Deadlines(
                     tenants=tenants,
                     keeper=decisions.deadlines,
@@ -975,6 +1231,7 @@ async def wire(
                         # A waiting run is not tried again sooner than one poll (ADR-0037).
                         wait_first_seconds=settings.poll_seconds,
                         on_outcome=roles.said,
+                        org_units=org_units,
                     ),
                 )
             try:
@@ -991,11 +1248,13 @@ async def serve(
     configuration: Configuration | None = None,
     stop: asyncio.Event | None = None,
     on_wired: Callable[[Wired], None] | None = None,
+    on_serving: Callable[[], None] | None = None,
     clock: Clock | None = None,
 ) -> int:
     """Run the roles until `stop` — set by SIGTERM or SIGINT, or by the caller — and wind
     down. The exit code of the process. `on_wired` hands the wired services to a test that
-    runs the daemon in-process; `clock` lets such a test move time itself."""
+    runs the daemon in-process, and `on_serving` tells it that the HTTP server listens;
+    `clock` lets such a test move time itself."""
     stop = stop or asyncio.Event()
     _install_signal_handlers(stop)
     try:
@@ -1023,7 +1282,16 @@ async def serve(
             gc.collect()
             gc.freeze()
             tasks = _start_roles(wired, stop)
-            server = await _start_http(wired, stop)
+            try:
+                server = await _start_http(wired, stop)
+            except NotOperable:
+                # The roles started already: they wind down before the wiring closes under
+                # them, as at a stop.
+                stop.set()
+                await _wind_down(tasks, settings.shutdown_ceiling_seconds)
+                raise
+            if on_serving is not None:
+                on_serving()
             await stop.wait()
             log.info("taktusd stopping", ceiling_seconds=settings.shutdown_ceiling_seconds)
             # New work is refused first — the surface goes, the runner claims nothing more —
@@ -1051,6 +1319,22 @@ def _install_signal_handlers(stop: asyncio.Event) -> None:
             pass
 
 
+def connected_host(
+    workers: Sequence[WorkerSettings], configuration: Configuration, relay: Relay
+) -> ConnectedHost | None:
+    """The host of the outbound binding for every worker configured as connected, with each
+    one's connect key by its name (ADR-0156 §3); None when no worker connects. A worker's key
+    is its own: `connect.key` has no fallback to the instance's (`WorkerConfiguration`)."""
+    keys = {}
+    for worker in workers:
+        if worker.execution.kind is not ExecutionKind.CONNECTED:
+            continue
+        key = worker.configuration(configuration).secret(CONNECT_KEY)
+        if key is not None:
+            keys[worker.identifier.removeprefix("worker.")] = key
+    return ConnectedHost(relay=relay, keys=keys) if keys else None
+
+
 async def _start_http(wired: Wired, stop: asyncio.Event) -> uvicorn.Server:
     """Every process serves health and readiness under the prefix; the `api` role adds the
     rest (commit by commit: intake and the read API). The server takes no signal of its own:
@@ -1058,7 +1342,11 @@ async def _start_http(wired: Wired, stop: asyncio.Event) -> uvicorn.Server:
     installs its own on startup and would otherwise take the daemon's away."""
     settings = wired.settings
     app = build_app(
-        wired, prefix=settings.path_prefix, full=Role.API in settings.roles, web=WEB_BUILD
+        wired,
+        prefix=settings.path_prefix,
+        full=Role.API in settings.roles,
+        web=WEB_BUILD,
+        connected=wired.connected,
     )
     server = uvicorn.Server(
         uvicorn.Config(
@@ -1070,7 +1358,16 @@ async def _start_http(wired: Wired, stop: asyncio.Event) -> uvicorn.Server:
             lifespan="off",
         )
     )
-    task = asyncio.create_task(server.serve(), name="http")
+
+    async def serving() -> None:
+        # The server exits the process when it cannot bind its port. Caught here, the daemon
+        # winds its roles down and says why, and a test that serves it in-process survives it.
+        try:
+            await server.serve()
+        except SystemExit as exit:
+            raise OSError(f"the server exited with {exit.code}") from None
+
+    task = asyncio.create_task(serving(), name="http")
     while not server.started:
         if task.done():
             error = task.exception()
@@ -1129,9 +1426,23 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
         evaluate = evaluations_tick(wired.evaluations, wired.tenants, wired.clock)
         # And it erases every line of a trace whose tenant's retention ended (ADR-0135).
         erase_traces = traces_tick(wired.traces, wired.tenants, wired.clock)
+        # And it anchors every tenant's run chains in the tenant's chain, and makes the
+        # ledger's months ahead (ADR-0164).
+        anchor_chains = anchors_tick(
+            wired.ledger,
+            wired.work,
+            wired.tenants,
+            wired.clock,
+            partitions=wired.ledger_store.partitions,
+        )
         # And it looks at every tenant's stages: one that holds or stopped holding, and the
         # next one proposed for a person to open (ADR-0137).
         look_at_stages = stages_tick(wired.stages, wired.tenants, wired.clock)
+        # And it moves every tenant's skills through their lifecycle: drafts from recurring
+        # corrections, rounds scored, approval by rule at level 4, fallback by rule (ADR-0162).
+        look_at_skills = (
+            None if wired.skills is None else skills_tick(wired.skills, wired.tenants, wired.clock)
+        )
 
         async def scheduled() -> None:
             await wired.triggers.tick()
@@ -1147,7 +1458,10 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
             await judge_signals()
             await evaluate()
             await erase_traces()
+            await anchor_chains()
             await look_at_stages()
+            if look_at_skills is not None:
+                await look_at_skills()
 
         tasks.append(
             asyncio.create_task(
@@ -1209,14 +1523,6 @@ def main() -> None:
         sys.exit(EXIT_CONFIGURATION)
     configure(settings.log_level)
     log_effective_configuration(settings)
-    if settings.tenants is not None:
-        # ADR-0104 §7: the registry is the list; the variable only narrows it, for one release.
-        log.warning(
-            "TAKTUS_TENANTS is deprecated and will be removed: this instance serves only the "
-            "tenants of its registry that the variable names. Create a tenant with "
-            "`taktusctl tenant create`, and unset the variable to serve every tenant",
-            tenants=list(settings.tenants),
-        )
     if not settings.administration.checked:
         # ADR-0052: without the platform named, ADR-0025's rule is the operator's alone.
         log.warning(

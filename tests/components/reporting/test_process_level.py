@@ -208,3 +208,20 @@ def test_the_process_level_opens_with_how_its_steps_work() -> None:
     )
     busy = process_level(facts(run("r1", "draft"), run("r2", "draft")))
     assert busy.summary.endswith(" 1 step running now.")
+
+
+def test_the_process_level_shows_each_persons_role_and_never_the_person() -> None:
+    """UC-4.20 §2: each step's role, the fallback's role and the expertise, in words too."""
+    given = facts()
+    steps = list(given.steps)
+    steps[1] = steps[1].model_copy(
+        update={"fallback_role": "editor", "expertise": ("house style",)}
+    )
+    steps[2] = steps[2].model_copy(update={"role": "finance-lead", "expertise": ("payment terms",)})
+    level = process_level(given.model_copy(update={"steps": tuple(steps)}))
+    draft, approve = level.steps[1], level.steps[2]
+    assert (draft.role, draft.fallback_role, draft.expertise) == (None, "editor", ("house style",))
+    assert (approve.role, approve.expertise) == ("finance-lead", ("payment terms",))
+    assert "the role editor" in draft.text
+    assert "Performed by the role finance-lead." in approve.text
+    assert "idn_" not in level.model_dump_json(), "no level shows the person behind a role"

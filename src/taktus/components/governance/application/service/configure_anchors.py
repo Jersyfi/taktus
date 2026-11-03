@@ -2,7 +2,8 @@
 
 The configuration is a document: `anchors`, a list in the shape of
 `contracts/shared/v1/Anchor.json`, and `risk_classes`, a map from a risk class to the tool
-actions it covers. One that would leave the legal or the correction class empty, select an
+actions it covers, and `levels`, the ceiling of a risk class (ADR-0170).
+One that would leave the legal or the correction class empty, select an
 undefined risk class, or name an anchor twice is refused, and nothing is stored. A stored
 configuration replaces the one before it; the ledger entry `anchors.configured` carries the
 digest of what was stored and the identity who configured it, in the same transaction.
@@ -24,7 +25,7 @@ from taktus.components.governance.domain.model.anchors import (
     AnchorConfiguration,
     shipped_default,
 )
-from taktus.components.governance.domain.service.anchors import applying
+from taktus.components.governance.domain.service.anchors import applying, ceilings
 from taktus.ports.clock import Clock
 from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
@@ -41,7 +42,7 @@ class AnchorsRefused(Exception):
 class ConfigureAnchors:
     tenant: Tenant
     document: Mapping[str, Any]
-    """`{"anchors": [...], "risk_classes": {...}}`."""
+    """`{"anchors": [...], "risk_classes": {...}, "levels": {...}}`."""
     actor: str
 
 
@@ -59,7 +60,7 @@ class ConfigureAnchorsHandler:
         self._clock = clock
 
     async def execute(self, command: ConfigureAnchors) -> AnchorConfiguration:
-        unknown = set(command.document) - {"anchors", "risk_classes"}
+        unknown = set(command.document) - {"anchors", "risk_classes", "levels"}
         if unknown:
             raise AnchorsRefused(f"unknown keys: {', '.join(sorted(unknown))}")
         try:
@@ -69,6 +70,7 @@ class ConfigureAnchorsHandler:
                     "tenant": command.tenant,
                     "anchors": command.document.get("anchors", []),
                     "risk_classes": command.document.get("risk_classes", {}),
+                    "levels": command.document.get("levels", {}),
                     "configured_at": self._clock.now(),
                     "configured_by": command.actor,
                 }
@@ -112,6 +114,11 @@ class AnchorsInForce:
     ) -> tuple[Anchor, ...]:
         """The anchors that name a step's act."""
         return applying(await self.of(tenant), process=process, actions=actions)
+
+    async def ceilings(self, tenant: Tenant, actions: Sequence[str]) -> Mapping[str, int]:
+        """The ceiling a risk class sets on each of `actions` it covers (ADR-0170)."""
+        found = ceilings(await self.of(tenant), actions)
+        return {action: level for action, (level, _) in found.items()}
 
 
 def _explained(error: ValidationError) -> str:

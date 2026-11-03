@@ -54,6 +54,18 @@ def _refused(error: RunError) -> JSONResponse:
     return problem(422, str(error))
 
 
+async def visible_to(services: RestServices, who: Resolution, run_id: str) -> bool:
+    """Whether `who` may see the run: what taking its step over, and sending it a message,
+    need until rights per role exist (UC-7.3)."""
+    reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+    async with services.work.transaction(who.tenant):
+        run = await services.runs.get(who.tenant, run_id)
+    if run is None:
+        return False
+    ref = RunRef(id=run.id, tenant=run.tenant, process_version=run.process_version)
+    return visibility.may_see(reader, ref)
+
+
 def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
     routes = APIRouter(tags=["takeover"])
     common: dict[int | str, dict[str, Any]] = {
@@ -63,13 +75,7 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
     }
 
     async def visible(who: Resolution, run_id: str) -> bool:
-        reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
-        async with services.work.transaction(who.tenant):
-            run = await services.runs.get(who.tenant, run_id)
-        if run is None:
-            return False
-        ref = RunRef(id=run.id, tenant=run.tenant, process_version=run.process_version)
-        return visibility.may_see(reader, ref)
+        return await visible_to(services, who, run_id)
 
     @routes.post(
         "/runs/{run_id}/steps/{step_id}/takeover",

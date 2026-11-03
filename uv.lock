@@ -2041,6 +2041,14 @@ mlbench = [
     { name = "scikit-learn" },
 ]
 
+[package.dev-dependencies]
+connectors = [
+    { name = "httpx" },
+    { name = "httpx2" },
+    { name = "mcp" },
+    { name = "pyjwt", extra = ["crypto"] },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "alembic" },
@@ -2075,6 +2083,14 @@ requires-dist = [
     { name = "uvicorn", extras = ["standard"] },
 ]
 provides-extras = ["dev", "mlbench"]
+
+[package.metadata.requires-dev]
+connectors = [
+    { name = "httpx" },
+    { name = "httpx2" },
+    { name = "mcp" },
+    { name = "pyjwt", extras = ["crypto"] },
+]
 
 [[package]]
 name = "testcontainers"

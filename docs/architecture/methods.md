@@ -16,7 +16,7 @@ Eight method kinds are available for a process step. **Four of them are reproduc
 | `neural` | images, text recognition, speech, embeddings, patterns in time series | exactly, at a pinned version and seed | medium |
 | `llm` | understanding and producing language, judgement under ambiguity, planning, explanation | variable | high |
 | `worker` | multi-step work with tools, e.g. writing code | variable | high |
-| `human` | approval, decision, anchor | n/a | waiting |
+| `human` | approval, decision, anchor, an outside participant's answer in its own channel (ADR-0155) | n/a | waiting |
 | `wait` | time, event, external state | exactly | 0 |
 
 **Reproducibility is therefore not a question of "AI or no AI" but of which method was chosen.**

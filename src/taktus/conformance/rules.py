@@ -2,13 +2,15 @@
 
 A stream rule cannot be expressed in JSON Schema because it concerns the order and the
 completeness of events, not the shape of one. These are the executable reading of the checks
-W-03 to W-07, W-10, W-11, W-13, W-14 and W-18 of contracts/worker/v1/README.md §7. They take a
-transcript — the assignment, the estimate the worker gave for it, and every event in order — and
-return every violation found, each naming its check. Three rules concern no stream. W-15 judges a
-capacity probe — the assignments the suite held, and the answer to one more
-(`capacity_violations`). W-16 judges the answer to the state of an id the worker never received
-(`unknown_id_violations`). W-17 judges the answer to an assignment whose id the worker already
-holds, and what it holds afterwards (`repeated_id_violations`).
+W-03 to W-07, W-10, W-11, W-13, W-14 and W-18 to W-20 of contracts/worker/v1/README.md §7. They
+take a transcript — the assignment, the estimate the worker gave for it, every event in order,
+the steering messages posted and whether a handover was requested — and return every violation
+found, each naming its check. Four rules concern no stream. W-15 judges a capacity probe — the
+assignments the suite held, and the answer to one more (`capacity_violations`). W-16 judges the
+answer to the state of an id the worker never received (`unknown_id_violations`). W-17 judges
+the answer to an assignment whose id the worker already holds, and what it holds afterwards
+(`repeated_id_violations`). W-21 judges the answers a worker posted over the outbound binding
+(`relay_violations`).
 
 The same functions serve two callers: the gate under tests/conformance, which applies them to the
 fixtures under contracts/worker/v1/examples/transcript, and the live suite, which applies them to
@@ -47,6 +49,12 @@ CHECKS: dict[str, str] = {
     "W-18": "a task's command after the work runs once the work is done, and its standard "
     "output is the artifact it names, byte for byte; a task's command before the work runs "
     "first, and the work starts only when it succeeded",
+    "W-19": "a steering message is received once, at a step boundary; a worker that does not "
+    "declare steering refuses it",
+    "W-20": "a handover ends the assignment at a boundary with a handover.state artifact "
+    "another assignment continues from; a worker that does not declare handover refuses it",
+    "W-21": "over the outbound binding, every relayed request is answered exactly once, "
+    "with a status",
 }
 
 # Where the README states each rule. A failure cites this so that the reader can look it up.
@@ -69,6 +77,9 @@ SECTIONS: dict[str, str] = {
     "W-16": "§3 Assignment",
     "W-17": "§3 Assignment",
     "W-18": "§3 Assignment",
+    "W-19": "§6 Stopping, steering and handing over",
+    "W-20": "§6 Stopping, steering and handing over",
+    "W-21": "§8 The outbound binding",
 }
 
 REQUIREMENTS: dict[str, str] = {
@@ -128,6 +139,25 @@ REQUIREMENTS: dict[str, str] = {
     "a succeeded assignment carries the artifact.produced with the artifact_id the task names, "
     "produced by its first step, and its bytes are what the command wrote; a command that exits "
     "with anything but 0 fails the assignment, and no step of the work starts",
+    "W-19": "a worker that declares supports.steering answers POST /v1/assignments/{id}/messages "
+    "to a running assignment with 202 and its state, and the same message posted again with "
+    "202; it emits message.received for that message exactly once, after the seq its answer "
+    "named, at a step boundary — after a step.boundary or before the first step.started — and "
+    "never inside a step; a message accepted before the assignment finished is received before "
+    "assignment.finished. A worker that does not declare it answers the message with a status of "
+    "400 or above, emits no message.received, and the assignment ends as it would have",
+    "W-20": "a worker that declares supports.handover answers POST /v1/assignments/{id}/handover "
+    "to a running assignment with 202 and status stopping; the assignment ends stopped at a "
+    "step boundary with that boundary's checkpoint_ref, carries exactly one artifact.produced of "
+    "kind handover.state after that boundary, and names it in assignment.finished.handover; its "
+    "bytes validate against Worker.json#/$defs/Handover, name the assignment and the checkpoint, "
+    "and list every other artifact the assignment produced. An assignment whose "
+    "context.handover carries the document succeeds, starts no step the document lists as done "
+    "and produces no artifact it lists. A worker that does not declare it answers the request "
+    "with a status of 400 or above, and the assignment ends as it would have",
+    "W-21": "a worker connected over the outbound binding answers every request the host "
+    "relayed to it exactly once, at POST <base>/answers/{request_id} under that request's id, "
+    "with a Relay-Status that is a status code; it posts no answer to a request never relayed",
 }
 
 CATALOGUE = Catalogue.build(
@@ -374,10 +404,14 @@ def stream_violations(
     events: Sequence[Json],
     *,
     stopped: bool = False,
+    messages: Sequence[Json] = (),
+    handover_requested: bool = False,
 ) -> list[Violation]:
     """Every stream rule the transcript breaks. `stopped` says that a stop was requested and
     acknowledged while the assignment ran, which is when W-06 has something to check; a fixture
-    that ends in `stopped` implies it."""
+    that ends in `stopped` implies it. `messages` are the steering messages the worker accepted,
+    each with the `last_seq` its answer named (W-19); `handover_requested` says that a handover
+    was requested and acknowledged, which makes a stopped end W-20's to judge."""
     out: list[Violation] = []
     if not events:
         return [Violation("W-03", "the stream carried no event at all")]
@@ -441,9 +475,15 @@ def stream_violations(
     if unknown:
         out.append(Violation("W-05", f"step.boundary for step(s) {unknown} that never started"))
 
-    if (stopped or outcome == "stopped") and boundaries:
-        # A halt at a limit has the shape of a requested stop; its faults are W-14's.
-        check = "W-14" if last.get("limit") and not stopped else "W-06"
+    if (stopped or handover_requested or outcome == "stopped") and boundaries:
+        # A halt at a limit has the shape of a requested stop; its faults are W-14's. A
+        # handover is a stop too; its faults are W-20's.
+        if handover_requested and not stopped:
+            check = "W-20"
+        elif last.get("limit") and not stopped:
+            check = "W-14"
+        else:
+            check = "W-06"
         out.extend(stop_violations(events, last, boundaries, check=check))
     out.extend(limit_violations(assignment, events, stop_requested=stopped))
 
@@ -472,6 +512,205 @@ def stream_violations(
     out.extend(artifact_violations(events))
     out.extend(after_violations(assignment, events, str(outcome)))
     out.extend(before_violations(assignment, events, str(outcome)))
+    out.extend(steering_violations(events, messages))
+    out.extend(handover_violations(assignment, events, requested=handover_requested))
+    return out
+
+
+def _continues(assignment: Json) -> bool:
+    """Whether the assignment continues an earlier one: from a checkpoint, or from a handover
+    document. Either may have done the task's commands before it."""
+    context = assignment.get("context") or {}
+    return context.get("checkpoint_ref") is not None or context.get("handover") is not None
+
+
+def steering_violations(events: Sequence[Json], messages: Sequence[Json]) -> list[Violation]:
+    """W-19 within one stream: every message the worker accepted is received exactly once,
+    after the `seq` its answer named, at a step boundary — after a `step.boundary`, or before
+    the first `step.started` — and never inside a step. A `message.received` for a message the
+    worker did not accept is a violation too: that is how a worker that refused a message but
+    still acted on it is caught. An assignment that failed may end before the next boundary,
+    and is not held to receiving what it accepted."""
+    accepted = {str(m["message_id"]): int(m["accepted_at_seq"]) for m in messages}
+    received: dict[str, int] = {}
+    out: list[Violation] = []
+    running: str | None = None
+    # A stream without a single boundary has no place a message could be received at; that
+    # is W-05's to report, and where a message was received is then not judged.
+    bounded = any(e.get("type") == "step.boundary" for e in events)
+    for event in events:
+        kind = event.get("type")
+        if kind == "step.started":
+            running = str(event.get("step_id"))
+        elif kind == "step.boundary":
+            running = None
+        elif kind == "message.received":
+            message = str(event.get("message_id"))
+            seq = int(event.get("seq", 0))
+            if message not in accepted:
+                out.append(
+                    Violation(
+                        "W-19",
+                        f"message.received (seq {seq}) names {message!r}, which the worker "
+                        "never accepted",
+                    )
+                )
+            elif message in received:
+                out.append(
+                    Violation(
+                        "W-19",
+                        f"message {message!r} was received twice (seq {received[message]} and "
+                        f"{seq}); a message is received once",
+                    )
+                )
+            else:
+                if seq <= accepted[message]:
+                    out.append(
+                        Violation(
+                            "W-19",
+                            f"message {message!r} was received at seq {seq}, not after the seq "
+                            f"{accepted[message]} the worker's answer to it named",
+                        )
+                    )
+                if running is not None and bounded:
+                    out.append(
+                        Violation(
+                            "W-19",
+                            f"message {message!r} was received inside step {running!r} (seq "
+                            f"{seq}), not at a step boundary",
+                        )
+                    )
+            received.setdefault(message, seq)
+    finished = [e for e in events if e.get("type") == "assignment.finished"]
+    if finished and finished[-1].get("outcome") != "failed":
+        never = sorted(m for m in accepted if m not in received)
+        if never:
+            out.append(
+                Violation(
+                    "W-19",
+                    f"message(s) {never} were accepted but never received before "
+                    "assignment.finished",
+                )
+            )
+    return out
+
+
+def handover_violations(
+    assignment: Json, events: Sequence[Json], *, requested: bool
+) -> list[Violation]:
+    """W-20 within one stream. A handed-over assignment ends with exactly one `handover.state`
+    artifact, produced after its last boundary and named by `assignment.finished`; that it ends
+    at that boundary is `stop_violations`'s, judged for W-20. An assignment nobody asked to hand
+    over names no handover. An assignment that continues from a handover document repeats no
+    step and no artifact the document lists. That the document's bytes validate only a live
+    run can show."""
+    out: list[Violation] = []
+    states = [
+        e
+        for e in events
+        if e.get("type") == "artifact.produced" and e.get("kind") == "handover.state"
+    ]
+    finished = [e for e in events if e.get("type") == "assignment.finished"]
+    last = finished[-1] if finished else None
+    named = None if last is None else last.get("handover")
+    if not requested:
+        if named is not None:
+            out.append(
+                Violation(
+                    "W-20",
+                    f"assignment.finished names the handover {named!r}, but no handover was "
+                    "requested",
+                )
+            )
+    elif last is not None and last.get("outcome") == "stopped":
+        boundaries = [e for e in events if e.get("type") == "step.boundary"]
+        final = boundaries[-1] if boundaries else None
+        if len(states) != 1:
+            out.append(
+                Violation(
+                    "W-20",
+                    f"the handed-over assignment carries {len(states)} artifact(s) of kind "
+                    "handover.state, not exactly one",
+                )
+            )
+        else:
+            state = states[0]
+            if final is not None and int(state.get("seq", 0)) < int(final.get("seq", 0)):
+                out.append(
+                    Violation(
+                        "W-20",
+                        f"the handover.state artifact (seq {state.get('seq')}) was produced "
+                        f"before the last step.boundary (seq {final.get('seq')})",
+                    )
+                )
+            if named != state.get("artifact_id"):
+                out.append(
+                    Violation(
+                        "W-20",
+                        f"assignment.finished names the handover {named!r}, but the "
+                        f"handover.state artifact is {state.get('artifact_id')!r}",
+                    )
+                )
+    elif last is not None and last.get("outcome") not in ("failed", "rejected"):
+        out.append(
+            Violation(
+                "W-20",
+                f"a handover was requested and acknowledged, but the assignment ended "
+                f"{last.get('outcome')!r}, not stopped",
+            )
+        )
+    document = (assignment.get("context") or {}).get("handover")
+    if isinstance(document, dict):
+        done = {str(s.get("step_id")) for s in document.get("steps", [])}
+        ids = {str(a.get("id")) for a in document.get("artifacts", [])}
+        digests = {str(a.get("digest")) for a in document.get("artifacts", [])}
+        for event in events:
+            if event.get("type") == "step.started" and str(event.get("step_id")) in done:
+                out.append(
+                    Violation(
+                        "W-20",
+                        f"step {event.get('step_id')!r} started again (seq {event.get('seq')}), "
+                        "although the handover lists it as done",
+                    )
+                )
+            elif event.get("type") == "artifact.produced" and (
+                str(event.get("artifact_id")) in ids or str(event.get("digest")) in digests
+            ):
+                out.append(
+                    Violation(
+                        "W-20",
+                        f"artifact {event.get('artifact_id')!r} was produced again (seq "
+                        f"{event.get('seq')}), although the handover lists it",
+                    )
+                )
+    return out
+
+
+def relay_violations(probe: Json) -> list[Violation]:
+    """W-21: over the outbound binding, the worker answers every request the host relayed to
+    it exactly once, under that request's id, with a status code. `probe` has the shape
+    `RelayProbe` of Worker.json: the requests relayed, and every answer posted, in order."""
+    relayed = [str(r["request_id"]) for r in probe["relayed"]]
+    answered: dict[str, int] = {}
+    out: list[Violation] = []
+    for answer in probe["answers"]:
+        request = str(answer["request_id"])
+        status = answer.get("status")
+        if request not in relayed:
+            out.append(Violation("W-21", f"an answer names {request!r}, a request never relayed"))
+            continue
+        answered[request] = answered.get(request, 0) + 1
+        if answered[request] == 2:
+            out.append(Violation("W-21", f"request {request!r} was answered more than once"))
+        if not isinstance(status, int) or not 100 <= status <= 599:
+            out.append(
+                Violation(
+                    "W-21", f"the answer to {request!r} carries no status code in Relay-Status"
+                )
+            )
+    never = [r for r in relayed if r not in answered]
+    if never:
+        out.append(Violation("W-21", f"request(s) {never} were relayed and never answered"))
     return out
 
 
@@ -484,7 +723,7 @@ def before_violations(assignment: Json, events: Sequence[Json], outcome: str) ->
     before = (assignment.get("task") or {}).get("before")
     if not isinstance(before, dict) or outcome != "succeeded":
         return []
-    if (assignment.get("context") or {}).get("checkpoint_ref") is not None:
+    if _continues(assignment):
         return []
     named = before.get("artifact")
     produced = [
@@ -526,7 +765,7 @@ def after_violations(assignment: Json, events: Sequence[Json], outcome: str) -> 
         if e.get("type") == "artifact.produced" and e.get("artifact_id") == named
     ]
     if not produced:
-        if (assignment.get("context") or {}).get("checkpoint_ref") is not None:
+        if _continues(assignment):
             return []
         return [
             Violation(

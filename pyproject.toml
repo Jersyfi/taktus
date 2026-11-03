@@ -39,6 +39,13 @@ dev = [
 # that the tests run the worker as it ships. Never part of the control plane image (DEC-0011).
 mlbench = ["scikit-learn==1.9.1", "numpy==2.5.4"]
 
+[dependency-groups]
+# What a connector's image installs (connectors/Dockerfile, ADR-0158), exported from the lock
+# file at build time so that every connector runs at the versions the tests ran. The control
+# plane needs these too and lists them above; none of the control plane's other libraries
+# reaches a connector's image.
+connectors = ["mcp", "httpx", "httpx2", "pyjwt[crypto]"]
+
 [project.scripts]
 taktusd = "taktus.composition.daemon:main"
 taktusctl = "taktus.composition.taktusctl:main"
@@ -48,7 +55,10 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/taktus"]
+# The connectors are a package of their own beside the control plane (ADR-0158): one wheel
+# carries both for development and the tests, and each image copies only its part: the control
+# plane image copies src/ and never connectors/, a connector image connectors/ and never src/.
+packages = ["src/taktus", "connectors/taktus_connectors"]
 
 [tool.hatch.build.targets.wheel.force-include]
 # The conformance suite validates against the contracts; an installed package carries them.
@@ -68,7 +78,7 @@ select = ["E", "F", "I", "UP", "B", "ASYNC", "S", "RUF"]
 strict = true
 # The product, the repository's own tools and the backup program, held to the same check
 # (`make lint`, #142).
-files = ["src/taktus", "tools", "deploy/backup"]
+files = ["src/taktus", "connectors/taktus_connectors", "tools", "deploy/backup"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

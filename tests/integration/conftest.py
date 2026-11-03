@@ -7,15 +7,23 @@ same file either way.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import time
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 import httpx
+import psycopg
 import pytest
+from alembic import command
 from fakes.ports import free_port
+from sqlalchemy.engine import make_url
+
+from taktus.adapters.driven.postgres.migrate import configuration
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKER = ROOT / "workers" / "script" / "worker.py"
@@ -30,14 +38,48 @@ def identity(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TAKTUS_IDENTITY", "idn_test")
 
 
-@pytest.fixture(autouse=True)
-def served(monkeypatch: pytest.MonkeyPatch) -> None:
-    """These tests share one database, and every test tenant is in its registry. A daemon or a
-    command line started here serves `default` alone, as before the registry (ADR-0104 §7):
-    otherwise every runner would claim every other test's runs. A test about the registry
-    gives the variable empty, against a database of its own. Once the variable is removed,
-    the tests keep apart in another way."""
-    monkeypatch.setenv("TAKTUS_TENANTS", "default")
+@pytest.fixture(scope="session")
+def template(postgres_server: str) -> Iterator[str]:
+    """A database migrated once per session and never connected to again, so that PostgreSQL
+    can copy it: the template of every integration test's own database."""
+    name = f"integration_template_{os.urandom(4).hex()}"
+    with administration(postgres_server) as connection:
+        connection.execute(f'CREATE DATABASE "{name}"')  # a name of this file's own
+    command.upgrade(configuration(database(postgres_server, name)), "head")
+    try:
+        yield name
+    finally:
+        with administration(postgres_server) as connection:
+            connection.execute(f'DROP DATABASE "{name}" WITH (FORCE)')
+
+
+@pytest.fixture
+def postgres_url(postgres_server: str, template: str) -> Iterator[str]:
+    """A database of this test's own, copied from the migrated template (#517). A daemon
+    serves every tenant of its registry (ADR-0104); on a shared database it would serve, and
+    claim the runs of, every other test's tenants. The copy takes a fraction of a second; the
+    database is dropped when the test ends, whatever is still connected."""
+    name = f"integration_{os.urandom(6).hex()}"
+    with administration(postgres_server) as connection:
+        connection.execute(f'CREATE DATABASE "{name}" TEMPLATE "{template}"')
+    try:
+        yield database(postgres_server, name)
+    finally:
+        with administration(postgres_server) as connection:
+            connection.execute(f'DROP DATABASE "{name}" WITH (FORCE)')
+
+
+@contextmanager
+def administration(server: str) -> Iterator[psycopg.Connection[Any]]:
+    """A connection outside a transaction, as CREATE and DROP DATABASE need."""
+    plain = make_url(server).set(drivername="postgresql").render_as_string(hide_password=False)
+    with psycopg.connect(plain, autocommit=True) as connection:
+        yield connection
+
+
+def database(server: str, name: str) -> str:
+    """The URL of the database `name` on the server of `server`, in the form `server` had."""
+    return make_url(server).set(database=name).render_as_string(hide_password=False)
 
 
 @pytest.fixture

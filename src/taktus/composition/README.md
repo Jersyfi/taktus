@@ -44,7 +44,10 @@ process components: every decision that takes effect on the HTTP surface or in t
 channel is handed to it, and it registers the moved version or rolls a move back (ADR-0114). A
 person's own agent starts a process over the MCP surface through `agent_surface.py`, which
 crosses the process, command and run components the same way and records every call of the
-surface in the ledger (ADR-0131).
+surface in the ledger (ADR-0131). The same `AgentSurface` lists what a person may ask for and
+starts it from the web app and, through `catalogue_in_channel.py`, from the owner's conversation
+(ADR-0159). `streams.py` gathers the value streams' facts from the process, run and identity
+components for the reporting component's view.
 
 `local.py` wires `taktusctl` for a developer's machine: PostgreSQL when `TAKTUS_DATABASE_URL`
 (or `_FILE`) is configured, otherwise the in-memory stores with a file snapshot under a state

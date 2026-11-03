@@ -53,6 +53,9 @@ def registry(
     administrator had created them one after another."""
     clock = clock or FakeClock()
     store = MemoryTenantStore(persistence)
+    if "default" not in tenants:
+        # Every store holds `default`; a test that serves other tenants only holds those.
+        persistence.table("tenant", "default").pop("default", None)
     for n, tenant in enumerate(tenants):
         if tenant != "default":
             persistence.table("tenant", tenant)[tenant] = TenantEntry(
@@ -64,8 +67,6 @@ def registry(
         ledger=ledger or ChainedLedger(MemoryLedgerStore(persistence), clock),
         clock=clock,
         ids=FakeIdentifiers(),
-        # `default` is in every registry; a test that serves others only narrows to them.
-        narrowed_to=None if "default" in tenants else tuple(tenants),
     )
 
 

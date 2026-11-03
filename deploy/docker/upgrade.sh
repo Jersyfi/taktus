@@ -16,7 +16,9 @@
 #   2. starts the previous release from nothing, with the reference worker of that release;
 #   3. leaves five runs, one in each state: finished, waiting for a person, parked in a long
 #      wait, halted at its money limit, escalated after its worker step failed;
-#   4. upgrades: the containers are replaced by this checkout's, which migrate on start;
+#   4. runs this checkout's migrations while the previous release still serves, and — when that
+#      release reads the schema's range (#330) — checks that it stays ready; then upgrades:
+#      the containers are replaced by this checkout's, which migrate on start;
 #   5. checks that every run is where it was, and that its ledger's chain is intact;
 #   6. continues each one as its operator would — confirms the waiting step, raises the halted
 #      run's limit, resumes the escalated one once its cause is gone, and lets the parked one
@@ -198,6 +200,18 @@ print(json.dumps({"run": sys.argv[1], "intact": ledger["chain"]["intact"],
 }
 snapshot > "$work/before.txt"
 cat "$work/before.txt"
+
+say "4a. this checkout's migrations, while the previous release still serves (ADR-0093)"
+# What the cluster's pre-upgrade hook does: the schema moves first, the old process keeps running.
+current run --rm --no-deps -T taktus alembic -c migrations/alembic.ini upgrade head
+if git show "${from}:src/taktus/adapters/driven/postgres/migrate.py" | grep -q "OLDEST_CODE"; then
+    # The previous release reads the range (#330): it stays ready against the migrated schema.
+    curl -fsS "${api}/ready" | grep -q '"status": *"ready"' \
+        || { echo "the previous release is not ready against the migrated schema"; exit 1; }
+    echo "the previous release is ready against this checkout's schema"
+else
+    echo "${from} predates the range check (#330): its readiness after the migration is not held"
+fi
 
 say "4. the upgrade: the containers replaced by this checkout's, migrating on start"
 current up --no-build --detach --wait

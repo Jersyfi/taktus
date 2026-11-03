@@ -62,6 +62,8 @@ counted once, at its highest count: what a later line adds goes to the step the 
 When a line carries text and the call comes in a later line, the tokens wait for the call. A
 message that calls no tool — the closing summary — gives its tokens to the `report` step. So
 does whatever the session total in the agent's final line holds beyond what the stream showed.
+Each step also reports its `turns`: the agent's messages that led to its call, so that a call
+made in parallel with another from one message counts none (ADR-0148).
 That total is the final line's `modelUsage`, per model, and its `usage` only where it names
 none. The pinned agent writes every line of a message with the output written so far, and its
 `usage` adds up those lines; only `modelUsage` holds what each message used in the end. A

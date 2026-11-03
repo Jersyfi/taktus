@@ -21,9 +21,15 @@ from .conftest import RunningWorker, StartWorker, mlbench_faults
 FAULTS = mlbench_faults()
 
 
+# The extensions this worker does not offer (ADR-0139): W-19 and W-20 hold it to refusing
+# them, and the reference worker's faults prove both checks; W-21 is the outbound binding,
+# which this worker does not offer either.
+NOT_OFFERED = {"W-19", "W-20", "W-21"}
+
+
 def test_every_runtime_check_has_a_fault() -> None:
     broken = {check for _, check in FAULTS}
-    assert broken == set(CHECKS) - {"W-12"}, "W-12 is the only check without a runtime fault"
+    assert broken == set(CHECKS) - {"W-12", *NOT_OFFERED}
 
 
 async def test_the_ml_bench_passes_the_suite(start_mlbench_worker: StartWorker) -> None:
@@ -33,6 +39,7 @@ async def test_the_ml_bench_passes_the_suite(start_mlbench_worker: StartWorker) 
     assert report.failed == [], report.render()
     assert report.inconclusive == [], report.render()
     assert statuses.pop("W-12") is Status.PENDING
+    assert statuses.pop("W-21") is Status.PENDING, "reached at an endpoint"
     assert set(statuses.values()) == {Status.PASSED}
     runs = {r.purpose: r for r in report.runs}
     assert runs["main"].outcome == "succeeded"

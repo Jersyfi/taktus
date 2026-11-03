@@ -132,6 +132,10 @@ class Configuration(Value):
     """For a connector that serves a vendor's MCP server: the manifest it serves it under
     (ADR-0117). Absent for every other adapter, so that a configuration without it reads as it
     did before."""
+    binding: Literal["outbound"] | None = None
+    """For a worker that connects outbound: the binding it is reached over (ADR-0156 §5), so
+    that a verdict earned at an endpoint never stands for the binding. Absent for every other
+    adapter, so that a configuration without it reads as it did before."""
 
     @property
     def without_manifest(self) -> bool:

@@ -14,27 +14,35 @@ from __future__ import annotations
 
 import base64
 import ipaddress
+import json
 import os
 import re
 import shutil
 import subprocess
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
 import yaml
+from images import connector_names
 
 from taktus.adapters.driven.execution.kubernetes.api import PERMITTED
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools"))
+
+import image_digests  # noqa: E402 — a script under tools/, found through the line above
+
 CHART = ROOT / "deploy" / "k8s" / "chart"
 EXAMPLE = ROOT / "deploy" / "k8s" / "values.example.yaml"
 RELEASE_NAMESPACE = "taktus"
 EXECUTION_NAMESPACE = "taktus-execution"
 
 # What the deployment identity may create and change in the two namespaces (NEED-0007). The
-# chart renders nothing else: no cluster-wide object, no certificate, no disruption budget.
+# chart renders nothing else: no cluster-wide object, no certificate, and outside the profile
+# `ha` no disruption budget (ADR-0165; the profile needs that right too, README §1).
 ALLOWED_KINDS = {
     "Secret",
     "ConfigMap",
@@ -250,6 +258,7 @@ def test_every_secret_is_a_mounted_file_and_never_an_environment_variable() -> N
         "telemetry.otlp.endpoint=http://collector:4317",
         "telemetry.otlp.headersSecret=otlp",
         "telemetry.otlp.headersKey=headers",
+        *OTHERS,
     )
     variables = 0
     for name, spec in pod_specs(documents):
@@ -281,7 +290,7 @@ def test_every_image_tag_is_a_version(rendered: list[dict[str, Any]]) -> None:
         config["data"]["TAKTUS_EXECUTION_EGRESS_IMAGE"],
     ]
     for image in images:
-        repository, _, tag = image.rpartition(":")
+        repository, _, tag = image.partition("@")[0].rpartition(":")
         assert repository and "/" not in tag, f"{image} names no tag"
         assert VERSION_TAG.match(tag) and tag != "latest", f"{image}: not a version"
 
@@ -297,6 +306,100 @@ def test_every_image_tag_is_a_version(rendered: list[dict[str, Any]]) -> None:
 )
 def test_a_tag_that_is_not_a_version_is_refused(setting: str) -> None:
     assert "tag" in render_fails(setting)
+
+
+# --- every image by its digest (ADR-0173 §7) ------------------------------------------------
+
+DIGEST = "sha256:" + "0123456789abcdef" * 4
+COMMIT = "0123456789abcdef0123456789abcdef01234567"
+PINNED = (
+    f"image.digest={DIGEST}",
+    f"backup.image.digest={DIGEST}",
+    f"database.image.digest={DIGEST}",
+    f"connectors.digests.github={DIGEST}",
+    f"connectors.digests.slack={DIGEST}",
+    f"execution.image=taktus-worker-coding:0.1.0@{DIGEST}",
+    f"execution.egress.proxyImage=python@{DIGEST}",
+)
+
+
+def every_image(documents: list[dict[str, Any]]) -> list[str]:
+    images = [c["image"] for _, spec in pod_specs(documents) for c in containers(spec)]
+    [config] = of_kind(documents, "ConfigMap")
+    return [
+        *images,
+        config["data"]["TAKTUS_EXECUTION_UNIT"],
+        config["data"]["TAKTUS_EXECUTION_EGRESS_IMAGE"],
+    ]
+
+
+def test_every_image_is_referred_to_by_its_digest_when_the_values_give_one() -> None:
+    images = every_image(render(*PINNED, "images.requireDigest=true"))
+    assert images
+    for image in images:
+        assert image.endswith(f"@{DIGEST}"), f"{image} is not pinned"
+    assert "taktus:0.1.0@" + DIGEST in images, "the tag stays beside the digest, for a reader"
+    assert f"python@{DIGEST}" in images, "a reference by digest alone needs no tag"
+
+
+def test_without_a_digest_an_image_is_referred_to_by_its_tag_as_before(
+    rendered: list[dict[str, Any]],
+) -> None:
+    assert not [image for image in every_image(rendered) if "@" in image]
+
+
+@pytest.mark.parametrize("left_out", range(len(PINNED)))
+def test_require_digest_refuses_any_image_without_one(left_out: int) -> None:
+    sets = [s for i, s in enumerate(PINNED) if i != left_out]
+    message = render_fails(*sets, "images.requireDigest=true")
+    assert "requireDigest" in message, message
+
+
+@pytest.mark.parametrize(
+    "setting",
+    [
+        "image.digest=sha256:short",
+        "image.digest=md5:" + "0" * 32,
+        f"image.digest={DIGEST.upper()}",
+        "connectors.digests.github=latest",
+        "execution.image=taktus-worker-coding:0.1.0@sha256:short",
+        "execution.image=taktus-worker-coding@latest",
+    ],
+)
+def test_a_digest_of_another_form_is_refused(setting: str) -> None:
+    assert "not a digest" in render_fails(setting)
+
+
+def test_an_image_of_main_is_tagged_with_its_commit() -> None:
+    """The development instance runs `main` (ADR-0020); its images carry the full commit hash,
+    which names one commit and is never pushed twice (ADR-0173 §1). A short hash is refused."""
+    images = every_image(render(f"image.tag={COMMIT}"))
+    assert f"taktus:{COMMIT}" in images
+    assert "is not a version" in render_fails(f"image.tag={COMMIT[:12]}x")
+
+
+def test_the_digests_the_image_workflow_records_pin_the_chart(tmp_path: Path) -> None:
+    """`digests.values.yaml`, as tools/image_digests.py writes it from one run, pins every image
+    the chart derives from the release (ADR-0173 §6)."""
+    source = tmp_path / "in"
+    source.mkdir()
+    names = ["taktus", "taktus-backup", *(f"taktus-connector-{n}" for n in connector_names())]
+    for number, name in enumerate(names):
+        digest = f"sha256:{number:064x}"
+        entry = {"name": name, "repository": f"r/{name}", "tag": "0.1.0", "digest": digest}
+        (source / name).write_text(json.dumps(entry), encoding="utf-8")
+    image_digests.record(source, tmp_path / "out")
+    args = ["template", "taktus", str(CHART), "--namespace", RELEASE_NAMESPACE, "-f", str(EXAMPLE)]
+    args += ["-f", str(tmp_path / "out" / "digests.values.yaml")]
+    completed = run_helm(*args)
+    assert completed.returncode == 0, completed.stderr
+    documents = [d for d in yaml.safe_load_all(completed.stdout) if d]
+    images = [c["image"] for _, spec in pod_specs(documents) for c in containers(spec)]
+    derived = [
+        i for i in images if i.startswith(("taktus:", "taktus-backup:", "taktus-connector-"))
+    ]
+    assert derived
+    assert all(re.search(r"@sha256:[0-9a-f]{64}$", i) for i in derived), derived
 
 
 def test_one_deployment_per_role_and_migrations_with_the_same_image(
@@ -360,8 +463,8 @@ def test_the_database_is_its_own_with_a_twenty_gibibyte_volume_that_is_watched(
 def test_the_chat_connector_is_reached_by_the_roles_alone_and_reads_its_secrets_as_files(
     rendered: list[dict[str, Any]],
 ) -> None:
-    """Issue #239: the chat channel's connector is deployed with the instance, from the
-    control plane's image, with its bot token and signing secret as mounted files; it is
+    """Issue #239: the chat channel's connector is deployed with the instance, from its own
+    image (ADR-0158), with its bot token and signing secret as mounted files; it is
     reached from the roles alone and mounts no token. Disabled, nothing of it is rendered."""
     [connector] = [
         d
@@ -371,7 +474,9 @@ def test_the_chat_connector_is_reached_by_the_roles_alone_and_reads_its_secrets_
     spec = connector["spec"]["template"]["spec"]
     assert spec["automountServiceAccountToken"] is False
     [container] = spec["containers"]
-    assert container["command"][:3] == ["python", "-m", "taktus.adapters.driven.connectors.slack"]
+    assert container["image"] == "taktus-connector-slack:0.1.0"
+    assert "command" not in container, "the image's entry point is the connector's module"
+    assert container["args"][:2] == ["--host", "0.0.0.0"]  # noqa: S104 — inside its pod
     variables = {v["name"]: v["value"] for v in container["env"]}
     assert variables == {
         "TAKTUS_CREDENTIAL_CHAT_TOKEN_FILE": "/run/secrets/taktus/chat/bot-token",
@@ -633,9 +738,10 @@ def test_a_worker_the_instance_could_not_read_is_refused(
 def test_the_repository_connector_is_reached_by_the_roles_alone_and_acts_as_the_app(
     rendered: list[dict[str, Any]],
 ) -> None:
-    """Issue #66: the repository channel's connector is deployed with the instance, from the
-    control plane's image, as Taktus's own app (ADR-0033); the roles name it as `channel.repo`
-    and as the findings connector; it is reached from the roles alone and mounts no token."""
+    """Issue #66: the repository channel's connector is deployed with the instance, from its own
+    image beside the control plane's (ADR-0158), as Taktus's own app (ADR-0033); the roles
+    name it as `channel.repo` and as the findings connector; it is reached from the roles alone
+    and mounts no token."""
     [connector] = [
         d
         for d in of_kind(rendered, "Deployment")
@@ -649,10 +755,12 @@ def test_the_repository_connector_is_reached_by_the_roles_alone_and_acts_as_the_
         for d in of_kind(rendered, "Deployment")
         if d["metadata"]["labels"]["app.kubernetes.io/component"] == "control-plane"
     ]
-    assert {container["image"]} == {
-        d["spec"]["template"]["spec"]["containers"][0]["image"] for d in roles
+    assert {d["spec"]["template"]["spec"]["containers"][0]["image"] for d in roles} == {
+        "taktus:0.1.0"
     }
-    assert container["command"][:3] == ["python", "-m", "taktus.adapters.driven.connectors.github"]
+    assert container["image"] == "taktus-connector-github:0.1.0"
+    assert "command" not in container
+    assert container["args"][-2:] == ["--repository", "example-owner/example-repository"]
     variables = {v["name"]: v["value"] for v in container["env"]}
     assert set(variables) == {
         "TAKTUS_REPOSITORY_APP_ID",
@@ -676,6 +784,176 @@ def test_the_repository_connector_is_reached_by_the_roles_alone_and_acts_as_the_
     off = render("connectors.repository.enabled=false", "connectors.chat.enabled=false")
     assert not [d for d in off if "connector" in d["metadata"]["name"]]
     assert "TAKTUS_CONNECTORS" not in of_kind(off, "ConfigMap")[0]["data"]
+
+
+OTHERS = (
+    "connectors.others[0].name=payments",
+    "connectors.others[0].capability=payments.subscriptions",
+    "connectors.others[0].connector=stripe",
+    "connectors.others[0].port=9111",
+    "connectors.others[0].credentials[0].name=PAYMENTS_TOKEN",
+    "connectors.others[0].credentials[0].secret=taktus-payments",
+    "connectors.others[0].credentials[0].key=token",
+    "connectors.others[1].name=errors",
+    "connectors.others[1].capability=errors.issues",
+    "connectors.others[1].image=errors-connector:1.2.0",
+    "connectors.others[1].port=9200",
+    "connectors.others[1].args={--target,https://errors.invalid}",
+    "connectors.others[1].healthPath=",
+)
+
+
+def _component(documents: list[dict[str, Any]], kind: str, component: str) -> dict[str, Any]:
+    [found] = [
+        d
+        for d in of_kind(documents, kind)
+        if d["metadata"]["labels"].get("app.kubernetes.io/component") == component
+    ]
+    return found
+
+
+def test_any_further_connector_deploys_from_values_reached_by_the_roles_alone() -> None:
+    """The beta runs connectors beyond the two channels (ADR-0150, docs/roadmap.md): each entry
+    of `connectors.others` is a deployment of its own — a shipped connector from its own image
+    (ADR-0158), or an image of its own — named in TAKTUS_CONNECTORS by its capability, reached from
+    the roles alone, its credentials mounted files and no token."""
+    documents = render(*OTHERS)
+    payments = _component(documents, "Deployment", "connector-payments")
+    spec = payments["spec"]["template"]["spec"]
+    assert payments["metadata"]["name"] == "taktus-connector-payments"
+    assert spec["automountServiceAccountToken"] is False
+    [container] = spec["containers"]
+    roles = {
+        d["spec"]["template"]["spec"]["containers"][0]["image"]
+        for d in of_kind(documents, "Deployment")
+        if d["metadata"]["labels"]["app.kubernetes.io/component"] == "control-plane"
+    }
+    assert container["image"] == "taktus-connector-stripe:0.1.0"
+    assert container["image"] not in roles
+    assert "command" not in container
+    assert container["args"] == [
+        "--host",
+        "0.0.0.0",  # noqa: S104 — inside the connector's pod
+        "--port",
+        "9111",
+    ]
+    assert container["env"] == [
+        {
+            "name": "TAKTUS_CREDENTIAL_PAYMENTS_TOKEN_FILE",
+            "value": "/run/secrets/taktus/payments-token/token",
+        }
+    ]
+    mounts = {m["name"]: m for m in container["volumeMounts"]}
+    assert mounts["credential-payments-token"]["readOnly"] is True
+    [volume] = [v for v in spec["volumes"] if "secret" in v]
+    assert volume["secret"]["secretName"] == "taktus-payments"
+    assert container["readinessProbe"]["httpGet"]["path"] == "/health"
+
+    errors = _component(documents, "Deployment", "connector-errors")
+    [own] = errors["spec"]["template"]["spec"]["containers"]
+    assert own["image"] == "errors-connector:1.2.0"
+    assert "command" not in own
+    assert own["args"] == ["--target", "https://errors.invalid"]
+    assert "env" not in own
+    assert "readinessProbe" not in own, "an empty healthPath: no probes"
+
+    [config] = of_kind(documents, "ConfigMap")
+    entries = config["data"]["TAKTUS_CONNECTORS"].split(",")
+    assert "payments.subscriptions=http://taktus-connector-payments:9111/mcp" in entries
+    assert "errors.issues=http://taktus-connector-errors:9200/mcp" in entries
+    for name in ("taktus-connector-payments", "taktus-connector-errors"):
+        [policy] = [d for d in of_kind(documents, "NetworkPolicy") if d["metadata"]["name"] == name]
+        [allowed] = policy["spec"]["ingress"]
+        [peer] = allowed["from"]
+        assert peer["podSelector"]["matchLabels"]["app.kubernetes.io/component"] == "control-plane"
+        assert "namespaceSelector" not in peer
+    [roles_policy] = [
+        d
+        for d in of_kind(documents, "NetworkPolicy")
+        if d["spec"]["podSelector"].get("matchLabels", {}).get("app.kubernetes.io/component")
+        == "control-plane"
+        and "Egress" in d["spec"].get("policyTypes", [])
+    ]
+    reached = {
+        peer["podSelector"]["matchLabels"].get("app.kubernetes.io/component")
+        for rule in roles_policy["spec"]["egress"]
+        for peer in rule.get("to", [])
+        if "podSelector" in peer and "namespaceSelector" not in peer
+    }
+    assert {"connector-payments", "connector-errors"} <= reached
+
+
+@pytest.mark.parametrize(
+    ("sets", "message"),
+    [
+        ((*OTHERS, "connectors.others[1].name=payments"), "is named twice"),
+        ((*OTHERS, "connectors.others[1].name=chat"), "is named twice"),
+        (
+            (*OTHERS, "connectors.others[1].capability=payments.subscriptions"),
+            "another connector's label",
+        ),
+        (
+            (*OTHERS, "connectors.others[1].connector=sentry"),
+            "not both",
+        ),
+        (
+            ("connectors.others[0].name=a", "connectors.others[0].capability=a.b"),
+            "connector, module or image",
+        ),
+        (
+            (
+                "connectors.others[0].name=a",
+                "connectors.others[0].capability=a.b",
+                "connectors.others[0].connector=stripe",
+            ),
+            "port is required",
+        ),
+        ((*OTHERS, "connectors.others[0].connector=nosuch"), "is no connector this release"),
+        (
+            (*OTHERS, "connectors.others[0].connector=", "connectors.others[0].module=my.module"),
+            "is no shipped connector's",
+        ),
+        ((*OTHERS, "connectors.others[1].image=errors-connector:latest"), "is not a version"),
+        ((*OTHERS, "connectors.others[0].credentials[0].name=payments"), "not a parameter name"),
+    ],
+)
+def test_a_further_connector_that_cannot_be_deployed_is_refused(
+    sets: tuple[str, ...], message: str
+) -> None:
+    assert message in render_fails(*sets)
+
+
+def test_a_module_an_earlier_release_ran_from_the_control_plane_runs_from_its_own_image() -> None:
+    """The upgrade path (ADR-0158): values written for a release that ran a connector's module
+    from the control plane's image keep working; the module now names the connector's image."""
+    old = tuple(
+        "connectors.others[0].module=taktus.adapters.driven.connectors.stripe"
+        if item == "connectors.others[0].connector=stripe"
+        else item
+        for item in OTHERS
+    )
+    payments = _component(render(*old), "Deployment", "connector-payments")
+    [container] = payments["spec"]["template"]["spec"]["containers"]
+    assert container["image"] == "taktus-connector-stripe:0.1.0"
+    assert container["args"][:2] == ["--host", "0.0.0.0"]  # noqa: S104 — inside its pod
+
+
+def test_the_connector_images_follow_the_prefix_and_the_release() -> None:
+    documents = render("connectors.imagePrefix=registry.invalid/team/conn", "image.tag=0.2.0")
+    images = {
+        d["metadata"]["labels"]["app.kubernetes.io/component"]: d["spec"]["template"]["spec"][
+            "containers"
+        ][0]["image"]
+        for d in of_kind(documents, "Deployment")
+    }
+    assert images["connector-repository"] == "registry.invalid/team/conn-github:0.2.0"
+    assert images["connector-chat"] == "registry.invalid/team/conn-slack:0.2.0"
+
+
+def test_the_chart_knows_every_connector_the_release_ships() -> None:
+    helpers = (CHART / "templates" / "_helpers.tpl").read_text(encoding="utf-8")
+    block = helpers.split('define "taktus.shippedConnectors" -}}', 1)[1].split("{{-", 1)[0]
+    assert block.split() == list(connector_names())
 
 
 def test_the_platform_and_each_credentials_declaration_are_configuration() -> None:
@@ -910,3 +1188,242 @@ def test_without_the_backup_nothing_of_it_is_rendered() -> None:
 )
 def test_a_backup_without_its_store_or_its_version_is_refused(setting: str) -> None:
     assert "backup." in render_fails(setting)
+
+
+# --- point-in-time recovery and the restore drill (ADR-0174, #346) -------------------------------
+
+PITR = ("backup.pointInTime.enabled=true",)
+
+
+def _database(documents: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]]:
+    [database] = [
+        d for d in of_kind(documents, "StatefulSet") if d["metadata"]["name"].endswith("-database")
+    ]
+    pod = database["spec"]["template"]["spec"]
+    [container] = pod["containers"]
+    return pod, container
+
+
+def test_point_in_time_recovery_is_off_unless_the_operator_enables_it(
+    rendered: list[dict[str, Any]],
+) -> None:
+    pod, container = _database(rendered)
+    assert container["image"].startswith("postgres:") and "args" not in container
+    assert "backup-store" not in {v["name"] for v in pod["volumes"]}
+    [cron] = of_kind(rendered, "CronJob")
+    [backup] = cron["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"]
+    assert "TAKTUS_BACKUP_POINT_IN_TIME" not in {v["name"] for v in backup["env"]}
+    names = {p["metadata"]["name"] for p in of_kind(rendered, "NetworkPolicy")}
+    assert "taktus-database-archive" not in names
+
+
+def test_with_point_in_time_the_database_archives_its_log_to_the_store_and_reads_files() -> None:
+    documents = render(*PITR, "backup.pointInTime.archiveTimeoutSeconds=120")
+    _, container = _database(documents)
+    assert container["image"] == "taktus-backup:0.1.0", "the database's own image with the tools"
+    assert container["command"] == ["docker-entrypoint.sh"]
+    args = container["args"]
+    assert args[0] == "postgres"
+    assert "archive_mode=on" in args and "archive_timeout=120" in args
+    assert "archive_command=python3 /usr/local/bin/taktus-backup archive-wal %p %f" in args
+    assert "hba_file=/etc/taktus/database/pg_hba.conf" in args
+    env = {v["name"]: v.get("value") for v in container["env"]}
+    assert (
+        env["TAKTUS_CREDENTIAL_BACKUP_STORE_FILE"] == "/run/secrets/taktus/backup-store/secret_key"
+    )
+    assert not any("valueFrom" in v for v in container["env"]), "a secret is a file, never a value"
+    mounts = {m["name"]: m for m in container["volumeMounts"]}
+    assert mounts["backup-store"]["readOnly"] and mounts["database-hba"]["readOnly"]
+    [hba] = [
+        c for c in of_kind(documents, "ConfigMap") if c["metadata"]["name"] == "taktus-database-hba"
+    ]
+    rules = hba["data"]["pg_hba.conf"].splitlines()
+    assert rules[-1].split() == ["host", "replication", "all", "all", "scram-sha-256"]
+    assert not any(
+        r.split()[-1] == "trust" and r.split()[0] == "host" and r.split()[3] == "all" for r in rules
+    )
+    [cron] = of_kind(documents, "CronJob")
+    [backup] = cron["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"]
+    assert {v["name"]: v["value"] for v in backup["env"]}["TAKTUS_BACKUP_POINT_IN_TIME"] == "true"
+    policies = {p["metadata"]["name"]: p["spec"] for p in of_kind(documents, "NetworkPolicy")}
+    archive = policies["taktus-database-archive"]
+    assert archive["policyTypes"] == ["Egress"]
+    _, outside = archive["egress"]
+    assert [p["port"] for p in outside["ports"]] == [443]
+
+
+@pytest.mark.parametrize(
+    ("setting", "message"),
+    [
+        ("backup.enabled=false", "needs backup.enabled"),
+        ("database.deploy=false", "needs database.deploy"),
+    ],
+)
+def test_point_in_time_where_it_cannot_hold_is_refused(setting: str, message: str) -> None:
+    assert message in render_fails(*PITR, setting)
+
+
+def test_the_drill_is_off_by_default_and_a_weekly_job_that_reaches_the_store_alone() -> None:
+    assert [c["metadata"]["name"] for c in of_kind(render(), "CronJob")] == ["taktus-backup"]
+    documents = render("backup.drill.enabled=true")
+    [drill] = [c for c in of_kind(documents, "CronJob") if c["metadata"]["name"] == "taktus-drill"]
+    assert drill["spec"]["schedule"] == "47 4 * * 0"
+    assert drill["spec"]["concurrencyPolicy"] == "Forbid"
+    pod = drill["spec"]["jobTemplate"]["spec"]["template"]["spec"]
+    assert pod["automountServiceAccountToken"] is False
+    [container] = pod["containers"]
+    assert container["image"] == "taktus-backup:0.1.0" and container["args"] == ["drill"]
+    env = {v["name"]: v["value"] for v in container["env"]}
+    assert env["TAKTUS_DRILL_RESTORE_SECONDS"] == "3600"
+    assert "TAKTUS_DATABASE_URL_FILE" not in env, (
+        "the drill never connects to the instance's database"
+    )
+    assert "TAKTUS_CREDENTIAL_BACKUP_IDENTITY_FILE" not in env
+    policies = {p["metadata"]["name"]: p["spec"] for p in of_kind(documents, "NetworkPolicy")}
+    policy = policies["taktus-drill"]
+    assert policy["policyTypes"] == ["Ingress", "Egress"] and "ingress" not in policy
+    dns, outside = policy["egress"]
+    assert {p["port"] for p in dns["ports"]} == {53} and "podSelector" not in str(outside)
+    admitted = [
+        peer["podSelector"]["matchLabels"]["app.kubernetes.io/component"]
+        for peer in policies["taktus-database"]["ingress"][0]["from"]
+    ]
+    assert "drill" not in admitted
+
+
+def test_with_point_in_time_the_drill_restores_to_the_latest_moment() -> None:
+    [drill] = [
+        c for c in of_kind(render(*PITR, "backup.drill.enabled=true"), "CronJob")
+        if c["metadata"]["name"] == "taktus-drill"
+    ]  # fmt: skip
+    [container] = drill["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"]
+    assert container["args"] == ["drill", "--to", "latest"]
+
+
+def test_an_encrypted_backup_s_drill_names_the_private_key_s_secret_or_is_refused() -> None:
+    encrypted = ("backup.drill.enabled=true", "backup.recipient=age1example")
+    assert "backup.drill.identitySecret is required" in render_fails(*encrypted)
+    documents = render(
+        *encrypted, "backup.drill.identitySecret=taktus-backup-key", "backup.drill.identityKey=key"
+    )
+    [drill] = [c for c in of_kind(documents, "CronJob") if c["metadata"]["name"] == "taktus-drill"]
+    pod = drill["spec"]["jobTemplate"]["spec"]["template"]["spec"]
+    [container] = pod["containers"]
+    env = {v["name"]: v["value"] for v in container["env"]}
+    assert (
+        env["TAKTUS_CREDENTIAL_BACKUP_IDENTITY_FILE"] == "/run/secrets/taktus/backup-identity/key"
+    )
+    volumes = {v["name"]: v for v in pod["volumes"]}
+    assert volumes["backup-identity"]["secret"]["secretName"] == "taktus-backup-key"
+
+
+# The highly available profile (ADR-0165, #342): an S3-compatible store and an external database.
+S3 = (
+    "objectStore.kind=s3",
+    "objectStore.endpoint=https://store.example",
+    "objectStore.bucket=artifacts",
+    "objectStore.secret=taktus-object-store",
+    "objectStore.accessKeyIdKey=access_key",
+    "objectStore.secretKeyKey=secret_key",
+    "backup.objects=false",
+)
+HA = ("profile=ha", "database.deploy=false", *S3)
+ROLES = {"api", "runner", "scheduler", "automation"}
+
+
+def role_deployments(documents: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    return {
+        d["spec"]["template"]["metadata"]["labels"]["taktus-role"]: d
+        for d in of_kind(documents, "Deployment")
+        if d["metadata"]["labels"]["app.kubernetes.io/component"] == "control-plane"
+    }
+
+
+def test_the_highly_available_profile_shares_no_volume_and_budgets_and_spreads_every_role() -> None:
+    documents = render(*HA)
+    deployments = role_deployments(documents)
+    assert set(deployments) == ROLES
+    claims = {
+        d["metadata"]["name"]: d["spec"]["accessModes"]
+        for d in of_kind(documents, "PersistentVolumeClaim")
+        if d["metadata"]["namespace"] == RELEASE_NAMESPACE
+    }
+    assert not any("ReadWriteOnce" in modes for modes in claims.values()), claims
+    assert not of_kind(documents, "StatefulSet"), "no database of the chart's own"
+    budgets = {
+        b["spec"]["selector"]["matchLabels"]["taktus-role"]: b
+        for b in of_kind(documents, "PodDisruptionBudget")
+    }
+    assert set(budgets) == ROLES
+    for role, deployment in deployments.items():
+        assert deployment["spec"]["replicas"] >= 2, role
+        pod = deployment["spec"]["template"]
+        assert not [v for v in pod["spec"]["volumes"] if "persistentVolumeClaim" in v], role
+        selector = budgets[role]["spec"]["selector"]["matchLabels"]
+        assert selector.items() <= pod["metadata"]["labels"].items(), role
+        assert budgets[role]["spec"]["minAvailable"] == 1
+        [term] = pod["spec"]["affinity"]["podAntiAffinity"][
+            "preferredDuringSchedulingIgnoredDuringExecution"
+        ]
+        assert term["podAffinityTerm"]["topologyKey"] == "kubernetes.io/hostname"
+        spread = term["podAffinityTerm"]["labelSelector"]["matchLabels"]
+        assert spread["taktus-role"] == role
+        assert spread.items() <= pod["metadata"]["labels"].items()
+
+    required = role_deployments(render(*HA, "ha.antiAffinity=required", "roles.runner.replicas=3"))
+    assert required["runner"]["spec"]["replicas"] == 3
+    affinity = required["api"]["spec"]["template"]["spec"]["affinity"]["podAntiAffinity"]
+    assert list(affinity) == ["requiredDuringSchedulingIgnoredDuringExecution"]
+
+
+def test_the_other_profiles_render_no_disruption_budget_and_no_affinity() -> None:
+    for documents in (render(), render("profile=small"), render(*S3)):
+        assert not of_kind(documents, "PodDisruptionBudget")
+        for deployment in role_deployments(documents).values():
+            assert "affinity" not in deployment["spec"]["template"]["spec"]
+
+
+@pytest.mark.parametrize(
+    ("sets", "said"),
+    [
+        (("profile=ha", "database.deploy=false"), "requires objectStore.kind: s3"),
+        (("profile=ha", *S3), "requires database.deploy: false"),
+        ((*HA, "ha.antiAffinity=sometimes"), "ha.antiAffinity must be"),
+        ((*HA, "ha.replicas=1"), "ha.replicas must be at least 2"),
+        ((*S3, "backup.objects=true"), "backup.objects must be false"),
+        ((*S3, "objectStore.endpoint="), "objectStore.endpoint is required"),
+        ((*S3, "objectStore.secret="), "objectStore.secret is required"),
+        (("objectStore.kind=tape",), "objectStore.kind must be"),
+    ],
+)
+def test_the_profile_and_the_store_refuse_what_would_pin_a_role_to_one_node(
+    sets: tuple[str, ...], said: str
+) -> None:
+    assert said in render_fails(*sets)
+
+
+def test_the_s3_store_is_configured_and_its_credential_mounted_as_files() -> None:
+    documents = render(*S3)
+    [config] = [
+        c for c in of_kind(documents, "ConfigMap") if c["metadata"]["name"].endswith("-config")
+    ]
+    assert config["data"]["TAKTUS_OBJECT_STORE"] == "s3"
+    assert config["data"]["TAKTUS_OBJECT_STORE_ENDPOINT"] == "https://store.example"
+    assert config["data"]["TAKTUS_OBJECT_STORE_BUCKET"] == "artifacts"
+    assert config["data"]["TAKTUS_OBJECT_STORE_REGION"] == "us-east-1"
+    assert not [
+        p
+        for p in of_kind(documents, "PersistentVolumeClaim")
+        if p["metadata"]["name"].endswith("-state")
+    ]
+    for role, deployment in role_deployments(documents).items():
+        container = deployment["spec"]["template"]["spec"]["containers"][0]
+        env = {e["name"]: e.get("value") for e in container["env"]}
+        assert env["TAKTUS_OBJECT_STORE_ACCESS_KEY_ID_FILE"].endswith("/access_key"), role
+        assert env["TAKTUS_OBJECT_STORE_SECRET_KEY_FILE"].endswith("/secret_key"), role
+    standard = render()
+    [default] = [
+        c for c in of_kind(standard, "ConfigMap") if c["metadata"]["name"].endswith("-config")
+    ]
+    assert default["data"]["TAKTUS_OBJECT_STORE"] == "filesystem"
+    assert "TAKTUS_OBJECT_STORE_ENDPOINT" not in default["data"]

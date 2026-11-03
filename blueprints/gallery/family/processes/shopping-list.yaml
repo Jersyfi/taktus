@@ -1,0 +1,72 @@
+# The family's first process from the gallery (UC-10.4, ADR-0136): the week's shopping list.
+#
+# Two rule steps. A rule step produces its value by a fixed rule; none of them needs a worker, a
+# connector or a language model, so the process runs on an instance straight after its install
+# and its rehearsal runs to its end. Its choices are the inputs its weekly trigger gives.
+
+id: shopping-list
+version: "1"
+name: The week's shopping list
+autonomy:
+  level: 2
+  reason: >
+    it is a first process: a person confirms each step before it starts, and sees what it does
+  toward_next: >
+    a few weeks of lists a person read and did not have to correct
+author: the repository
+reason: every week, the shopping list of a household, from what it buys every week
+
+limits:
+  compute: { seconds: 10, resource_class: cpu.small }
+
+inputs:
+  household:
+    description: Who the list is for, such as your family's name
+    example: the Millers
+  day:
+    description: The day you do the shopping
+    example: Saturday
+  staples:
+    description: What you buy every week, separated by commas
+    example: bread, milk, eggs, fruit
+
+triggers:
+  - schedule: weekly
+    inputs:
+      household: the Millers
+      day: Saturday
+      staples: bread, milk, eggs, fruit
+
+steps:
+  - id: check
+    method: rule
+    reason: whether the list names anything is a fact of its text; nothing here needs judgement
+    rejected:
+      - method: llm
+        why: a fact of a text needs no language model
+    exactness: exact
+    checks:
+      - { kind: recomputation, subject: that the list names something }
+    work:
+      rule: check
+      conditions:
+        - value: { $input: staples }
+          not_matches: '^\s*$'
+
+  - id: write
+    method: rule
+    reason: the list is a fixed form of words filled in with the household's choices
+    rejected:
+      - method: llm
+        why: a fixed form of words needs no language model, and gives the same list every week
+    exactness: exact
+    checks:
+      - { kind: recomputation, subject: the shopping list }
+    depends_on: [check]
+    work:
+      rule: template
+      text: "Shopping for ${household} on ${day}: ${staples}. Add what is missing before ${day}."
+      values:
+        household: { $input: household }
+        day: { $input: day }
+        staples: { $input: staples }

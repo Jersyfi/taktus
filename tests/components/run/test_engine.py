@@ -578,15 +578,16 @@ def test_a_tampered_artifact_fails_the_check() -> None:
 
 
 async def test_a_plan_with_an_unexecutable_step_is_refused_before_anything_runs() -> None:
-    statistics = Step(
-        id="forecast",
-        method=Method.STATISTICS,
+    neural = Step(
+        id="see",
+        method=Method.NEURAL,
         reason="r",
         rejected=(),
-        exactness=ExactnessClass.EXACT,
+        exactness="tolerant",
+        model="vision@1",
     )
-    h = Harness(rule("a", {"rule": "constant", "value": 1}), (statistics, {"series": "x"}))
-    with pytest.raises(UnsupportedWork, match="no executor for method statistics"):
+    h = Harness(rule("a", {"rule": "constant", "value": 1}), (neural, {"series": "x"}))
+    with pytest.raises(UnsupportedWork, match="no executor for method neural"):
         await h.start()
     async with h.persistence.transaction(TENANT):
         assert await h.runs.list(TENANT) == []

@@ -55,6 +55,10 @@ class ExecutionKind(StrEnum):
     CONTAINER = "container"
     """A unit started per job in a container with limits, a memory-backed credential store
     and a network that reaches the allowed hosts and nothing else."""
+    CONNECTED = "connected"
+    """A worker that connects outbound to the `api` role of any instance and fetches its
+    requests from there, as a worker in a network that admits no inbound connection does
+    (ADR-0156). It has no endpoint; it authenticates with its connect key (`connect.key`)."""
     CLUSTER = "cluster"
     """A unit started per job as a Job in a cluster's execution namespace, with limits,
     credentials from a Secret that lives as long as the job, and the instance's egress gateway
@@ -156,6 +160,10 @@ last segment of the worker's adapter identifier, `worker.<name>`, and a DNS labe
 
 WORKER_NAME_LENGTH = 40
 
+CONNECT_KEY = "connect.key"
+"""The configuration key of a connected worker's connect key: the file `TAKTUS_CONNECT_KEY_FILE`,
+or `TAKTUS_WORKER_<NAME>_CONNECT_KEY_FILE`, names it. The worker's alone (ADR-0156 §3)."""
+
 CREDENTIAL_PREFIX = "credential."
 """The configuration keys a worker's credentials are supplied under (CREDENTIALS.md)."""
 
@@ -173,11 +181,13 @@ class WorkerConfiguration:
     Every key `k` is first read as `worker.<name>.k` — the variable
     `TAKTUS_WORKER_<NAME>_K` — and, where the worker sets nothing, as the instance's own `k`:
     the execution namespace, the gateway and the limits are shared unless a worker sets
-    its own. Two keys have no such fallback. The endpoint (`worker`, read as
+    its own. Three keys have no such fallback. The endpoint (`worker`, read as
     `worker.<name>.endpoint`) is the worker's alone, because two workers at one endpoint are one
     worker. A credential (`credential.<name>`) is the worker's alone, because each launched
     worker receives only its own credentials: two workers that reference the same credential
-    name receive the value configured for each of them, and neither sees the other's."""
+    name receive the value configured for each of them, and neither sees the other's. A
+    connected worker's connect key (`connect.key`) is its own alone, so that one worker's key
+    never admits another (ADR-0156 §3)."""
 
     def __init__(self, configuration: Configuration, name: str) -> None:
         self._configuration = configuration
@@ -189,7 +199,7 @@ class WorkerConfiguration:
 
     @staticmethod
     def _alone(key: str) -> bool:
-        return key == "worker" or key.startswith(CREDENTIAL_PREFIX)
+        return key in ("worker", CONNECT_KEY) or key.startswith(CREDENTIAL_PREFIX)
 
     def _where(self, key: str) -> str:
         """The key the value under `key` is read from for this worker: its own where it is set
@@ -293,6 +303,85 @@ def load_telemetry(configuration: Configuration) -> TelemetrySettings:
         headers=configuration.secret("otlp.headers"),
         headers_source=configuration.source("otlp.headers"),
         service_name=reader.text("otlp.service.name", "taktus"),
+    )
+
+
+OBJECT_STORE_ACCESS_KEY_ID = "object.store.access.key.id"
+OBJECT_STORE_SECRET_KEY = "object.store.secret.key"  # noqa: S105 — a key, not a value
+
+
+@dataclass(frozen=True)
+class ObjectStoreSettings:
+    """Where artifact bytes live (ADR-0165 §1): `filesystem`, the default, under
+    `<TAKTUS_STATE_DIR>/objects`; or `s3`, keys `<prefix>/<hex>` in one bucket of an
+    S3-compatible store, its credential two files."""
+
+    kind: str
+    endpoint: str | None
+    bucket: str | None
+    prefix: str
+    region: str
+    access_key_id: Secret | None
+    secret_key: Secret | None
+    access_key_id_source: str | None
+    secret_key_source: str | None
+
+    def effective(self) -> list[tuple[str, str]]:
+        lines = [("TAKTUS_OBJECT_STORE", self.kind)]
+        if self.kind == "s3":
+            lines += [
+                ("TAKTUS_OBJECT_STORE_ENDPOINT", self.endpoint or ""),
+                ("TAKTUS_OBJECT_STORE_BUCKET", self.bucket or ""),
+                ("TAKTUS_OBJECT_STORE_PREFIX", self.prefix),
+                ("TAKTUS_OBJECT_STORE_REGION", self.region),
+                (
+                    "TAKTUS_OBJECT_STORE_ACCESS_KEY_ID",
+                    f"{self.access_key_id} (from {self.access_key_id_source})",
+                ),
+                (
+                    "TAKTUS_OBJECT_STORE_SECRET_KEY",
+                    f"{self.secret_key} (from {self.secret_key_source})",
+                ),
+            ]
+        return lines
+
+
+def load_object_store(configuration: Configuration) -> ObjectStoreSettings:
+    """The object store's settings; `s3` without its endpoint, bucket or credential refuses
+    the start, naming what is missing."""
+    reader = _Reader(configuration)
+    kind = reader.choice("object.store", "filesystem", ("filesystem", "s3"))
+    endpoint = reader.text("object.store.endpoint", "").strip() or None
+    bucket = reader.text("object.store.bucket", "").strip() or None
+    access = configuration.secret(OBJECT_STORE_ACCESS_KEY_ID)
+    secret = configuration.secret(OBJECT_STORE_SECRET_KEY)
+    if kind == "s3":
+        if endpoint is None or not endpoint.startswith(("http://", "https://")):
+            raise ConfigurationError(
+                configuration.name("object.store.endpoint"),
+                "must be the store's http(s) address with TAKTUS_OBJECT_STORE=s3",
+            )
+        if bucket is None:
+            raise ConfigurationError(
+                configuration.name("object.store.bucket"), "is required with TAKTUS_OBJECT_STORE=s3"
+            )
+        for key, value in ((OBJECT_STORE_ACCESS_KEY_ID, access), (OBJECT_STORE_SECRET_KEY, secret)):
+            if value is None:
+                raise ConfigurationError(
+                    configuration.name(key) + "_FILE",
+                    "is required with TAKTUS_OBJECT_STORE=s3: a file that holds the store's "
+                    "credential (CREDENTIALS.md)",
+                )
+    return ObjectStoreSettings(
+        kind=kind,
+        endpoint=endpoint,
+        bucket=bucket,
+        prefix=reader.text("object.store.prefix", "").strip().strip("/"),
+        region=reader.text("object.store.region", "").strip() or "us-east-1",
+        access_key_id=access,
+        secret_key=secret,
+        access_key_id_source=configuration.source(OBJECT_STORE_ACCESS_KEY_ID),
+        secret_key_source=configuration.source(OBJECT_STORE_SECRET_KEY),
     )
 
 
@@ -673,7 +762,7 @@ def load_execution(configuration: Configuration) -> ExecutionSettings:
         reader.choice("execution", "endpoint", tuple(k.value for k in ExecutionKind))
     )
     unit = reader.text("execution.unit", "") or None
-    if kind is not ExecutionKind.ENDPOINT and unit is None:
+    if kind not in (ExecutionKind.ENDPOINT, ExecutionKind.CONNECTED) and unit is None:
         what = "a command line" if kind is ExecutionKind.PROCESS else "an image reference"
         raise ConfigurationError(
             configuration.name("execution.unit"),
@@ -723,7 +812,14 @@ def load_workers(configuration: Configuration) -> tuple[WorkerSettings, ...]:
     reader = _Reader(configuration)
     names = reader.names("workers", ())
     if not names:
-        return (WorkerSettings(name=None, execution=load_execution(configuration)),)
+        execution = load_execution(configuration)
+        if execution.kind is ExecutionKind.CONNECTED and configuration.source(CONNECT_KEY) is None:
+            raise ConfigurationError(
+                configuration.name(CONNECT_KEY) + "_FILE",
+                "is not set; the worker connects outbound and is admitted only with its connect "
+                "key (ADR-0156 §3)",
+            )
+        return (WorkerSettings(name=None, execution=execution),)
     setting = configuration.name("workers")
     workers: list[WorkerSettings] = []
     for name in names:
@@ -735,6 +831,12 @@ def load_workers(configuration: Configuration) -> tuple[WorkerSettings, ...]:
             )
         scoped = WorkerConfiguration(configuration, name)
         execution = load_execution(scoped)
+        if execution.kind is ExecutionKind.CONNECTED and scoped.source(CONNECT_KEY) is None:
+            raise ConfigurationError(
+                scoped.name(CONNECT_KEY) + "_FILE",
+                f"is not set; the worker {name} of {setting} connects outbound and is admitted "
+                "only with its connect key (ADR-0156 §3)",
+            )
         if execution.kind is ExecutionKind.ENDPOINT and scoped.get("worker") is None:
             raise ConfigurationError(
                 scoped.name("worker"),
@@ -863,6 +965,44 @@ def load_knowledge_directory(configuration: Configuration) -> Path | None:
     return Path(value).expanduser() if value else None
 
 
+def load_gallery_directory(configuration: Configuration) -> Path | None:
+    """`TAKTUS_GALLERY_DIRECTORY`: the directory of the gallery a person chooses a first process
+    from, one directory per gallery blueprint (UC-10.4, ADR-0136 §1). None: the gallery is
+    empty, and nothing else changes. The image names the gallery it carries."""
+    value = _Reader(configuration).text("gallery.directory", "").strip()
+    return Path(value).expanduser() if value else None
+
+
+@dataclass(frozen=True)
+class CatalogueSettings:
+    """Where the catalogue's indexes are, and the keys its entries are verified against
+    (ADR-0175). Both are files the operator places; the instance fetches nothing."""
+
+    directory: Path | None = None
+    """`TAKTUS_CATALOGUE_DIRECTORY`: the directory of index files, one `*.json` per index.
+    None: the catalogue is empty."""
+    keys: Path | None = None
+    """`TAKTUS_CATALOGUE_KEYS`: the file of public keys the operator trusts, each for one tier.
+    None: no key is trusted, and no entry is admitted."""
+
+    def effective(self) -> list[tuple[str, str]]:
+        return [
+            ("TAKTUS_CATALOGUE_DIRECTORY", str(self.directory or "")),
+            ("TAKTUS_CATALOGUE_KEYS", str(self.keys or "")),
+        ]
+
+
+def load_catalogue(configuration: Configuration) -> CatalogueSettings:
+    """`TAKTUS_CATALOGUE_DIRECTORY` and `TAKTUS_CATALOGUE_KEYS` (ADR-0175 §1, §3)."""
+    reader = _Reader(configuration)
+    directory = reader.text("catalogue.directory", "").strip()
+    keys = reader.text("catalogue.keys", "").strip()
+    return CatalogueSettings(
+        directory=Path(directory).expanduser() if directory else None,
+        keys=Path(keys).expanduser() if keys else None,
+    )
+
+
 @dataclass(frozen=True)
 class FindingsShape:
     """The shape of the issue a product finding opens (UC-6.12, ADR-0046): its operator's
@@ -944,13 +1084,17 @@ def load_findings_connector(configuration: Configuration) -> str | None:
     return _Reader(configuration).url("findings.connector", "") or None
 
 
-def load_tenants(configuration: Configuration) -> tuple[str, ...] | None:
-    """`TAKTUS_TENANTS`, deprecated (ADR-0104 §7): the tenants of the registry an instance is
-    narrowed to. None, unset: every tenant of the registry. The command line reads it too."""
-    reader = _Reader(configuration)
-    if not reader.text("tenants", "").strip():
-        return None
-    return reader.names("tenants", ())
+def refuse_tenants(configuration: Configuration) -> None:
+    """`TAKTUS_TENANTS` is removed (ADR-0104 §7, #517): an instance serves every tenant of its
+    registry. A process that still sets it is refused with the way out, not quietly widened to
+    tenants its operator had left out. Empty, it narrowed nothing, and is ignored."""
+    if (configuration.get("tenants") or "").strip():
+        raise ConfigurationError(
+            configuration.name("tenants"),
+            "is removed: an instance serves every tenant of its registry (ADR-0104). Create "
+            "a tenant with `taktusctl tenant create`, list them with `taktusctl tenant list`, "
+            "and unset the variable",
+        )
 
 
 @dataclass(frozen=True)
@@ -1026,6 +1170,8 @@ class Settings:
     knowledge_directory: Path | None
     """The directory the instance serves `knowledge.pages` over, where the organisation keeps
     no wiki (UC-13.6); None when it serves none."""
+    gallery_directory: Path | None
+    """The directory of the gallery (UC-10.4, ADR-0136 §1); None when the gallery is empty."""
     findings_connector: str | None
     """The MCP URL of the connector through which product findings go to the repository its
     operator chose (UC-6.12, ADR-0046). None: the operator did not enable it, and findings are
@@ -1042,14 +1188,12 @@ class Settings:
     is taken, and a person hands over the changed bundle. Which process does it is a tenant's
     bundle, never a default of the product (ADR-0092)."""
     state_dir: Path
-    """Where artifact bytes are written."""
+    """Where artifact bytes are written with the object store `filesystem`."""
+    object_store: ObjectStoreSettings
+    """Which adapter holds artifact bytes, and where (ADR-0165)."""
     object_cache_mb: int
     """How many MiB of artifact bytes the object store keeps in memory at most: the objects used
-    most recently. Every object stays readable from `state_dir`. 0 keeps none (#311)."""
-    tenants: tuple[str, ...] | None
-    """`TAKTUS_TENANTS`, deprecated: the tenants of the registry this instance is narrowed to.
-    None, the default: every tenant of the registry, read by every role on every round
-    (ADR-0104)."""
+    most recently. Every object stays readable from the store. 0 keeps none (#311)."""
     administration_key: Secret | None
     """`TAKTUS_ADMINISTRATION_KEY_FILE`: the key that admits a request to the administration of
     tenants on the HTTP surface (ADR-0104 §4). None: those routes answer 404."""
@@ -1107,6 +1251,7 @@ class Settings:
             ("TAKTUS_CONNECTORS", ",".join(f"{c}={u}" for c, u in self.connectors.items())),
             ("TAKTUS_TRIAGE", ",".join(f"{c}={p}" for c, p in self.triage.items())),
             ("TAKTUS_KNOWLEDGE_DIRECTORY", str(self.knowledge_directory or "")),
+            ("TAKTUS_GALLERY_DIRECTORY", str(self.gallery_directory or "")),
             ("TAKTUS_FINDINGS_CONNECTOR", self.findings_connector or ""),
             *self.findings.effective(),
             ("TAKTUS_BACKUP_EXPECTED_HOURS", str(self.backup_expected_hours or "")),
@@ -1119,8 +1264,8 @@ class Settings:
                 ),
             ),
             ("TAKTUS_STATE_DIR", str(self.state_dir)),
+            *self.object_store.effective(),
             ("TAKTUS_OBJECT_CACHE_MB", str(self.object_cache_mb)),
-            ("TAKTUS_TENANTS", ",".join(self.tenants or ())),
             (
                 "TAKTUS_ADMINISTRATION_KEY",
                 ""
@@ -1143,6 +1288,7 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
     """Read and validate every setting. `default_instance` is what the process calls itself
     when `TAKTUS_INSTANCE` is not set (the composition root passes host name and pid)."""
     reader = _Reader(configuration)
+    refuse_tenants(configuration)
     database = configuration.secret("database.url")
     if database is None:
         raise ConfigurationError(
@@ -1176,13 +1322,14 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         triage=reader.triage(),
         administration=load_administration(configuration),
         knowledge_directory=load_knowledge_directory(configuration),
+        gallery_directory=load_gallery_directory(configuration),
         findings_connector=load_findings_connector(configuration),
         findings=load_findings(configuration),
         backup_expected_hours=load_backup_expected_hours(configuration),
         change_process=reader.text("change.process", "").strip() or None,
         state_dir=Path(reader.text("state.dir", "~/.cache/taktus/taktusd")).expanduser(),
+        object_store=load_object_store(configuration),
         object_cache_mb=reader.integer("object.cache.mb", 64, low=0),
-        tenants=load_tenants(configuration),
         administration_key=configuration.secret("administration.key"),
         administration_key_source=configuration.source("administration.key"),
         instance=reader.text("instance", default_instance),

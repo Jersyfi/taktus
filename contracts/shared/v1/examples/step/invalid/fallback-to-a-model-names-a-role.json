@@ -1,0 +1,12 @@
+{
+  "id": "draft-summary",
+  "method": "llm",
+  "reason": "free text; variation is wanted",
+  "rejected": [],
+  "exactness": "free",
+  "fallback": {
+    "when": "the draft is rejected twice",
+    "to": "llm",
+    "role": "editor"
+  }
+}

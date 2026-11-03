@@ -5,7 +5,9 @@ bundle's own rules, the graph's, the exactness statement's, and the refusal of a
 would administer the instance's platform. Otherwise the request is answered with the findings
 registration would give, and nothing is kept. The proposal names a version the process has not
 registered, because a registered version is never written over. It is made against the active
-version, and carries its difference against it, computed by a rule.
+version, and carries its difference against it, computed by a rule. A process with no active
+version — one the tenant does not have yet — gets a proposal made against none, its first
+version (ADR-0136 §4).
 
 Nothing here registers anything: the active version, its triggers and its runs are unchanged.
 """
@@ -84,12 +86,13 @@ class Proposals:
         )
         async with self._work.transaction(command.tenant):
             process = await self._processes.get(command.tenant, command.process_id)
-            if process is None or process.active_version is None:
-                raise ProposalError("unknown", f"no process {command.process_id!r}")
-            base = await self._versions.get(
-                command.tenant, f"{process.id}@{process.active_version}"
+            active = None if process is None else process.active_version
+            base = (
+                None
+                if active is None
+                else await self._versions.get(command.tenant, f"{command.process_id}@{active}")
             )
-            if base is None:
+            if active is not None and base is None:
                 raise ProposalError("unknown", f"no active version of {command.process_id!r}")
             if await self._versions.get(command.tenant, version.ref) is not None:
                 findings.append(
@@ -101,8 +104,8 @@ class Proposals:
             proposal = Proposal(
                 id=self._ids.new("prp"),
                 tenant=command.tenant,
-                process_id=process.id,
-                base_version=base.version,
+                process_id=command.process_id,
+                base_version=None if base is None else base.version,
                 version=version.version,
                 bundle=dict(command.bundle),
                 request=command.request,

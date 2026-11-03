@@ -4,10 +4,10 @@ title: Self-healing within the frame
 component: run
 epic: E4
 serves: [P8, P10, P12]
-state: specified
+state: building
 version: 0.2.0
-tests: []
-adrs: {ADR-0005: 0ea928e2016b, ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0024: 52ba89e4adec}
+tests: [tests/governance/test_autonomy.py::test_at_level_four_a_known_failure_inside_the_frame_is_healed_and_reported, tests/governance/test_autonomy.py::test_at_level_four_a_failure_past_the_frame_escalates_with_what_was_tried, tests/governance/test_autonomy.py::test_at_level_four_a_failure_of_no_known_kind_escalates_without_a_heal, tests/governance/test_autonomy.py::test_an_operation_that_cannot_recognise_a_repeat_is_never_healed]
+adrs: {ADR-0005: 0ea928e2016b, ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0024: 52ba89e4adec, ADR-0160: 34e64cb9d5ce}
 supersedes: null
 ---
 
@@ -71,3 +71,14 @@ taken since split that loop, and the requirement above follows them:
   the system is anchored to a person at every autonomy level (ADR-0022); only a correction of
   what nothing outside has seen stays at the process's level. The definition's unqualified
   "corrects itself" is superseded for everything that has left.
+
+## 5. What is proven so far
+
+Self-healing is built for level 4 (ADR-0160), where a person is out of the loop: a failure an
+adapter classified as repeatable is healed by a retry and recorded as `step.healed` with the
+failure it answered, and the step's next `step.finished` is its outcome; the retry passes
+admission against the budget as `step.retried`; an operation with `idempotency: none` is never
+repeated; a failure of no known kind, or one past the frame of two heals, escalates and says why.
+Below level 4 a failure reaches a person, who resumes the run. Not built: service-level objectives,
+the improvement proposal after the same failure healed three times, a heal shown in a rendered run
+report beyond the ledger, and the test that every bundle's step runs end with a recorded outcome.

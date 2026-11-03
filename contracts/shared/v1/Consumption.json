@@ -52,6 +52,14 @@
           "description": "Bytes of persistent state written.",
           "type": "integer",
           "minimum": 0
+        },
+        "turns": {
+          "description": "The calls to a language model an agent made within the step, each one turn. Not a quantity that is priced or limited: it tells where the tokens went. Alone it does not make a consumption.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "compression": {
+          "$ref": "#/$defs/compression"
         }
       },
       "dependentRequired": {
@@ -98,6 +106,26 @@
           ]
         }
       ]
+    },
+    "compression": {
+      "title": "Compression",
+      "description": "Where a compression of the model's input ran within the step: the input tokens it would have sent without it, and what it sent. Not a quantity that is priced: what it saved is before less after.",
+      "type": "object",
+      "properties": {
+        "before": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "after": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "before",
+        "after"
+      ],
+      "additionalProperties": false
     },
     "currencyAmounts": {
       "title": "CurrencyAmounts",

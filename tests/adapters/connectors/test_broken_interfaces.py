@@ -20,8 +20,8 @@ import pytest
 from fakes import FakeIdentifiers
 from fakes.maturity import VERIFIED
 from fakes.owner_channel import CHANNEL, OwnerChannel, owner_channel
+from taktus_connectors.github.server import Config, build_server
 
-from taktus.adapters.driven.connectors.github.server import Config, build_server
 from taktus.adapters.driven.connectors.mcp import McpActionConnector
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.adapters.driven.memory import (

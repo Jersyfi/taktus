@@ -22,13 +22,13 @@ import pytest
 from fakes import FakeClock
 from fakes import mail_service as mail_fake
 from fakes.identity import directory
+from taktus_connectors.mail import intake
+from taktus_connectors.mail.declaration import CHANNEL
+from taktus_connectors.mail.operations import mark_of
+from taktus_connectors.mail.protocol import Config
+from taktus_connectors.mail.relay import RELAYED, delivery, relay_once
+from taktus_connectors.mail.server import build_server
 
-from taktus.adapters.driven.connectors.mail import intake
-from taktus.adapters.driven.connectors.mail.declaration import CHANNEL
-from taktus.adapters.driven.connectors.mail.operations import mark_of
-from taktus.adapters.driven.connectors.mail.protocol import Config
-from taktus.adapters.driven.connectors.mail.relay import RELAYED, delivery, relay_once
-from taktus.adapters.driven.connectors.mail.server import build_server
 from taktus.adapters.driven.connectors.mcp import McpActionConnector, McpIntakeConnector
 from taktus.adapters.driven.memory import MemoryRepository
 from taktus.components.command.application.service import ReceiveIntake, ReceiveIntakeHandler

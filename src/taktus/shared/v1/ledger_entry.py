@@ -45,6 +45,14 @@ class LedgerRefs(Value):
     """The deadline the entry is about (ADR-0133)."""
     stage_id: str | None = Field(default=None, min_length=1)
     """The stage of a tenant's introduction the entry is about (ADR-0137)."""
+    skill_id: str | None = Field(default=None, min_length=1)
+    """The skill version the entry is about, `<name>@<version>` (ADR-0162)."""
+    agent_id: str | None = Field(default=None, min_length=1)
+    """The shared agent the entry is about: a core, `<agent>@<version>`, or a role profile,
+    `<agent>:<role>@<version>` (ADR-0163). It names a role, never a person."""
+    subject_request_id: str | None = Field(default=None, min_length=1)
+    """The data-protection request the entry is about (ADR-0176). It names the request, never
+    its subject."""
     artifact_ids: tuple[str, ...] | None = None
     actor: str | None = Field(default=None, min_length=1)
     trace_id: str | None = Field(default=None, pattern=TRACE_ID_PATTERN)
@@ -81,6 +89,24 @@ class LedgerEntry(Value):
     rehearsal: Literal[True] | None = None
     """True on every entry of a rehearsal run, absent otherwise (ADR-0030): nothing outside
     was acted on, and no such entry is evidence that anything was."""
+    chain_seq: int | None = Field(default=None, ge=1)
+    """The entry's place in its chain: its run's chain when it references a run, the tenant's
+    otherwise (ADR-0164). Absent on an entry written before: the tenant's chain was the only
+    one, and the entry's place in it is its seq."""
+    chain: Literal["tenant"] | None = None
+    """`tenant` on an entry that references a run and is on the tenant's chain all the same,
+    because what it records must be ordered with the tenant's other such entries (ADR-0164)."""
+    through: int | None = Field(default=None, ge=0)
+    """On `ledger.anchored` only: the seq up to which the anchor covers the run chains' heads
+    (ADR-0164)."""
+
+    def chain_name(self) -> str:
+        """The chain the entry is on: its run's identifier, or "" for the tenant's chain — an
+        entry that references no run, one marked `tenant`, and every entry written before
+        ADR-0164, when the tenant's chain was the only one."""
+        if self.chain_seq is None or self.chain == "tenant" or self.refs.run_id is None:
+            return ""
+        return self.refs.run_id
 
     def document(self) -> dict[str, object]:
         # prev_hash is required by the schema and null for the first entry: keep it when None.

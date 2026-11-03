@@ -5,9 +5,11 @@ step admitted or finished, an assignment rejected. It carries no text beyond tok
 no message, no payload, so that nothing personal and no secret can reach the chain (ADR-0006).
 The ledger component turns a fact into an entry with sequence, time, and the hash link.
 
-There is one chain per tenant (ADR-0020), so every call names the tenant. Recording happens
-inside the caller's unit of work: the entry and the state change it describes are one
-transaction.
+Every call names the tenant (ADR-0020). Within it, each run has a chain of its own, and the
+tenant's chain holds what references no run and the anchors of the run chains (ADR-0164).
+Recording happens inside the caller's unit of work: the entry and the state change it describes
+are one transaction. Two transactions that record into different chains do not wait for each
+other.
 
 A read costs what it returns (ADR-0105). The entries of one run, or of some kinds, are read
 without the rest of the chain. A value computed over the whole history — the calibration, the
@@ -45,6 +47,8 @@ class Fact(Value):
     content_digest: Digest | None = None
     rehearsal: Literal[True] | None = None
     """Set on every fact of a rehearsal run (ADR-0030); None on every other."""
+    through: int | None = Field(default=None, ge=0)
+    """On `ledger.anchored` only: the seq up to which the anchor covers (ADR-0164)."""
 
 
 class Verification(Value):
@@ -86,7 +90,18 @@ class Projection[S](Protocol):
 
 
 class Ledger(Protocol):
-    async def record(self, tenant: Tenant, fact: Fact) -> LedgerEntry: ...
+    async def record(self, tenant: Tenant, fact: Fact, *, in_order: bool = False) -> LedgerEntry:
+        """Record the fact on its run's chain, or on the tenant's when it references no run.
+        With `in_order`, on the tenant's chain whatever it references: the claim on that chain
+        orders this transaction after every earlier one that recorded in order, and every later
+        one after it. What reads the ledger in the same transaction then sees every entry those
+        earlier transactions committed (ADR-0132, ADR-0164)."""
+        ...
+
+    async def anchor(self, tenant: Tenant) -> LedgerEntry | None:
+        """Anchor in the tenant's chain the heads of the run chains written since the last
+        anchor, as one tree's root; None when no run chain moved (ADR-0164)."""
+        ...
 
     async def entries(self, tenant: Tenant, run_id: str | None = None) -> Sequence[LedgerEntry]:
         """The tenant's chain in order, or only the entries that reference one run: those are
@@ -115,7 +130,9 @@ class Ledger(Protocol):
 
     async def project[S](self, tenant: Tenant, projection: Projection[S]) -> S:
         """The projection's value at the newest entry: the stored value, brought up to date
-        with the entries after the sequence number it records, and stored again."""
+        with the entries after the sequence number it records, and stored again. What is
+        stored reaches the store's stable head; what is returned also folds every entry
+        committed beyond it (ADR-0164)."""
         ...
 
     async def rebuilt[S](self, tenant: Tenant, projection: Projection[S]) -> S:
@@ -124,8 +141,9 @@ class Ledger(Protocol):
         ...
 
     async def verify(self, tenant: Tenant, *, full: bool = False) -> Verification:
-        """Walk the tenant's chain from its last verified checkpoint: sequence gapless, every
-        link matches, every hash recomputes. Any alteration of an entry after the checkpoint
-        is a finding. `full` walks from the first entry and trusts no checkpoint: any
-        alteration of any entry is a finding (ADR-0105 §7)."""
+        """Walk the tenant's entries from the last verified checkpoint: sequence numbers rise,
+        every chain is gapless and every link matches, every hash recomputes, every anchor
+        matches the heads it covers. Any alteration of an entry after the checkpoint is a
+        finding. `full` walks from the first entry and trusts no checkpoint: any alteration of
+        any entry is a finding (ADR-0105 §7, ADR-0164)."""
         ...

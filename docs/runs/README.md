@@ -17,6 +17,7 @@ or it is not a friction anybody will fix.
 | [2026-10-11-the-first-restore.md](2026-10-11-the-first-restore.md) | 2026-10-11: a backup of a running Taktus restored onto an empty database by the steps of `deploy/k8s/README.md` §11, by hand; every check held (ADR-0013 C, #67) |
 | [2026-10-12-the-second-live-run.md](2026-10-12-the-second-live-run.md) | 2026-10-12: P-03 on #250 against the real service and agent, at level 2; Taktus opened #274 as its own app; the budget's estimate, reservation and actual per step, a halt on a real quota reservation, nine findings (#74) |
 | [2026-10-13-the-instance-opens-its-own-pull-request.md](2026-10-13-the-instance-opens-its-own-pull-request.md) | 2026-10-13: the installed instance runs P-03 to a pull request of its own app (#373), four findings fixed on the way; rows 3 and 4 of the next live run: row 3 not measurable by design, row 4 a rehearsal of P-01 from its real recording (#66, #75) |
+| [first-process-in-ten-minutes.md](first-process-in-ten-minutes.md) | from 2026-10-23: the time from `make start` to the end of a first rehearsed process, measured without a person (59 s from nothing) and, once NEED-0034 is provided, with one (UC-10.4) |
 
 **Why two files both about "the first run".** The record of 2026-09-19 was called the first run
 when it was written, and it was the first time the bundles met the real repository. It was not a

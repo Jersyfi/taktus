@@ -29,7 +29,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p01-roadmap-control
-version: "4"
+version: "5"
 name: P-01 Roadmap control
 autonomy:
   level: 3
@@ -96,6 +96,7 @@ steps:
     fallback:
       when: the connector serving repository.files is unavailable
       to: human
+      role: owner
     work:
       rule: connector
       operation: repository.files.read
@@ -118,6 +119,7 @@ steps:
     fallback:
       when: the connector serving repository.issues is unavailable
       to: human
+      role: owner
     work:
       rule: connector
       operation: repository.issues.list
@@ -140,6 +142,7 @@ steps:
     fallback:
       when: the connector serving repository.files is unavailable
       to: human
+      role: owner
     work:
       rule: connector
       operation: repository.files.list
@@ -240,6 +243,7 @@ steps:
     fallback:
       when: the connector serving repository.comments is unavailable
       to: human
+      role: owner
     depends_on: [compose-report]
     work:
       rule: connector

@@ -59,7 +59,7 @@ async def test_the_reference_worker_is_recorded_as_passed(
     start_worker: StartWorker, tmp_path: Path
 ) -> None:
     recorded = await record_worker(start_worker(), tmp_path)
-    assert_passed(recorded, "worker/v1", {"W-12"})
+    assert_passed(recorded, "worker/v1", {"W-12", "W-21"})
     assert recorded.current is not None and "shell.script" in recorded.current.serves
 
 

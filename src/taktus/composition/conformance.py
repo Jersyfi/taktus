@@ -15,6 +15,9 @@ a caller names:
   is the worker's own. How long one assignment may take, and how long the suite waits between two
   events, are `conformance.timeout` and `conformance.idle.timeout`; the suite's own defaults
   apply where they are not set.
+- `worker.<name>` of kind `connected`: over the outbound binding of the control plane, through
+  the relay every instance shares, whichever instance the worker is connected to (ADR-0156 §5).
+  W-21 is judged from what the relay recorded, and the pass names `binding: outbound`.
 - `connector.<label>`: the MCP URL `TAKTUS_CONNECTORS` maps the label to. The suite needs a
   scenario (`contracts/connector/v1/CONFORMANCE.md` §2); the instance reads its path under the
   configuration key `conformance.connector.<label>.scenario`. The suite writes into the target
@@ -41,9 +44,11 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
+import httpx
 from pydantic import ValidationError
 
 from taktus.adapters.driven.execution._common import credential_key
+from taktus.adapters.driven.workers.connected import BASE, RelayTransport
 from taktus.components.catalog.domain.model import Configuration, Family
 from taktus.components.catalog.ports import NotConfigured, NotRunnable, SuiteRun
 from taktus.composition.execution import execution_of, worker_unit
@@ -62,6 +67,7 @@ from taktus.conformance.suite import DEFAULT_CREDENTIAL
 from taktus.ports.configuration import Configuration as Settings
 from taktus.ports.configuration import ConfigurationError
 from taktus.ports.execution import ExecutionError, ExecutionRefused, JobRequest, reach
+from taktus.ports.relay import Relay
 from taktus.ports.worker import CredentialReference
 
 type WorkerTarget = Callable[[], AbstractAsyncContextManager[str]]
@@ -72,10 +78,53 @@ started for it and ended after."""
 @dataclass(frozen=True)
 class WorkerSuite:
     """What the suite of one configured worker needs: where the worker answers, and the
-    configuration as that worker reads it — its suite settings and its own credential."""
+    configuration as that worker reads it — its suite settings and its own credential. A
+    connected worker is reached through `relay` instead (ADR-0156 §5)."""
 
     target: WorkerTarget
     settings: Settings
+    relay: Relay | None = None
+
+
+class InstanceBinding:
+    """The control plane's host of the outbound binding as the suite runs over it: every
+    request relayed to the connected worker through the relay, kept until the suite read what
+    W-21 judges, and removed after (ADR-0156 §5)."""
+
+    def __init__(self, relay: Relay, adapter: str) -> None:
+        self.base = f"the control plane's binding for {adapter}"
+        self._transport = RelayTransport(relay, adapter, keep=True)
+        self._relay = relay
+
+    async def start(self) -> None:
+        return None
+
+    async def close(self) -> None:
+        await self._transport.forget()
+
+    def transport(self) -> RelayTransport:
+        return self._transport
+
+    async def wait_connected(self, seconds: float) -> bool:
+        """A worker is connected when it answers a request for its health in time."""
+        async with httpx.AsyncClient(
+            base_url=BASE, transport=self._transport, timeout=seconds
+        ) as http:
+            try:
+                await http.get("/v1/health")
+            except httpx.HTTPError:
+                return False
+        return True
+
+    async def probe(self) -> dict[str, Any]:
+        relayed = [r.document() for r in self._transport.relayed]
+        counts = await self._relay.counts([r["request_id"] for r in relayed])
+        answers = [
+            {"request_id": c.request_id, "status": c.status}
+            for c in counts
+            for _ in range(c.answers)
+        ]
+        return {"relayed": relayed, "answers": answers}
 
 
 CONTRACTS: Mapping[str, str] = {
@@ -107,6 +156,13 @@ def worker_target(
     (`conformance.worker.hosts`) and the worker's service hosts (`reach`, ADR-0089), and ended
     after the suite. `configuration` is the worker's own (`WorkerSettings.configuration`)."""
     settings = worker.execution
+    if settings.kind is ExecutionKind.CONNECTED:
+
+        @asynccontextmanager
+        async def binding() -> AsyncIterator[str]:
+            yield f"{worker.identifier} (outbound binding)"
+
+        return binding
     if settings.kind is ExecutionKind.ENDPOINT:
         address = (endpoint if worker.name is None else None) or settings.endpoint
 
@@ -162,13 +218,18 @@ def worker_suites(
     *,
     state_dir: Path,
     endpoint: str | None = None,
+    relay: Relay | None = None,
 ) -> dict[str, WorkerSuite]:
-    """The suite of every configured worker, by its adapter identifier."""
+    """The suite of every configured worker, by its adapter identifier. A connected worker's
+    runs over `relay`, the outbound binding's relay of the instance."""
     suites: dict[str, WorkerSuite] = {}
     for worker in workers:
         own = worker.configuration(configuration)
         target = worker_target(worker, own, state_dir=state_dir, endpoint=endpoint)
-        suites[worker.identifier] = WorkerSuite(target=target, settings=own)
+        connected = worker.execution.kind is ExecutionKind.CONNECTED
+        suites[worker.identifier] = WorkerSuite(
+            target=target, settings=own, relay=relay if connected else None
+        )
     return suites
 
 
@@ -237,10 +298,12 @@ class InstanceSuites:
         task = _json(task_path, settings.name("conformance.worker.task"))
         name = settings.get("conformance.worker.credential") or DEFAULT_CREDENTIAL
         log = settings.get("conformance.worker.log")
+        binding = None if suite.relay is None else InstanceBinding(suite.relay, integration)
         async with suite.target() as endpoint:
             return await run_suite(
                 SuiteOptions(
                     endpoint=endpoint,
+                    binding=binding,
                     task=task,
                     hosts=suite_hosts(settings),
                     credential_name=name,

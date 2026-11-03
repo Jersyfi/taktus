@@ -1,0 +1,135 @@
+{{- /*
+The restore drill, S-03 (ADR-0174 §3, README §11): a CronJob from the backup image that restores
+the newest backup into a server of its own pod — with point-in-time recovery, the newest base
+backup and the archived log up to the latest moment it reaches — and recomputes every tenant's
+ledger chain against the heads taken before. It never connects to the instance's database: its
+network policy admits the name service and the store alone, and nothing reaches it. Its report
+goes to the store under `drills/`; a failed drill is a failed Job.
+
+With `backup.recipient`, the drill must decrypt: `drill.identitySecret` then names the Secret
+holding the private key, which puts the key into the cluster — the README says why the drill is
+better run off the instance then.
+*/ -}}
+{{- $b := .Values.backup -}}
+{{- $d := $b.drill -}}
+{{- if and $b.enabled $d.enabled }}
+{{- $name := printf "%s-drill" (include "taktus.fullname" .) -}}
+{{- if and $b.recipient (not $d.identitySecret) -}}
+{{- fail "backup.drill.identitySecret is required with backup.recipient: the drill decrypts what it restores" -}}
+{{- end }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $name }}
+  namespace: {{ include "taktus.controlPlaneNamespace" . }}
+  labels:
+    {{- include "taktus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: drill
+spec:
+  schedule: {{ required "backup.drill.schedule is required" $d.schedule | quote }}
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: {{ $b.startingDeadlineSeconds }}
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    metadata:
+      labels:
+        {{- include "taktus.labels" . | nindent 8 }}
+        app.kubernetes.io/component: drill
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: {{ $d.activeDeadlineSeconds }}
+      template:
+        metadata:
+          labels:
+            {{- include "taktus.labels" . | nindent 12 }}
+            app.kubernetes.io/component: drill
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          {{- with .Values.image.pullSecret }}
+          imagePullSecrets:
+            - name: {{ . }}
+          {{- end }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 70
+            runAsGroup: 70
+            fsGroup: 70
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: drill
+              image: {{ include "taktus.image" (dict "root" $ "what" "backup.image" "image" $b.image) }}
+              imagePullPolicy: IfNotPresent
+              args:
+                - drill
+                {{- if include "taktus.pointInTime" . }}
+                - --to
+                - latest
+                {{- end }}
+              env:
+                - name: HOME
+                  value: /tmp
+                {{- include "taktus.backupStoreEnv" . | nindent 16 }}
+                - name: TAKTUS_BACKUP_WORK_DIR
+                  value: /work
+                - name: TAKTUS_DRILL_RESTORE_SECONDS
+                  value: {{ mul (int $d.restoreMinutes) 60 | quote }}
+                {{- if $d.identitySecret }}
+                - name: TAKTUS_CREDENTIAL_BACKUP_IDENTITY_FILE
+                  value: {{ printf "/run/secrets/taktus/backup-identity/%s" (required "backup.drill.identityKey is required with backup.drill.identitySecret" $d.identityKey) | quote }}
+                {{- end }}
+              resources:
+                {{- toYaml $d.resources | nindent 16 }}
+              securityContext:
+                {{- include "taktus.containerSecurity" . | nindent 16 }}
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                # The restored database lives here while the drill runs: as large as the database.
+                - name: work
+                  mountPath: /work
+                - name: backup-store
+                  mountPath: /run/secrets/taktus/backup-store
+                  readOnly: true
+                {{- if $d.identitySecret }}
+                - name: backup-identity
+                  mountPath: /run/secrets/taktus/backup-identity
+                  readOnly: true
+                {{- end }}
+          volumes:
+            - name: tmp
+              emptyDir: {}
+            - name: work
+              emptyDir:
+                sizeLimit: {{ $d.workSize }}
+            {{- include "taktus.backupStoreVolume" . | nindent 12 }}
+            {{- if $d.identitySecret }}
+            - name: backup-identity
+              secret:
+                secretName: {{ $d.identitySecret }}
+                defaultMode: 0440
+                items:
+                  - key: {{ $d.identityKey }}
+                    path: {{ $d.identityKey }}
+            {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}
+  namespace: {{ include "taktus.controlPlaneNamespace" . }}
+  labels:
+    {{- include "taktus.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: drill
+  policyTypes: [Ingress, Egress]
+  egress:
+    {{- include "taktus.dnsPeer" .Values.networkPolicy | nindent 4 }}
+    {{- include "taktus.backupStoreEgress" . | nindent 4 }}
+{{- end }}

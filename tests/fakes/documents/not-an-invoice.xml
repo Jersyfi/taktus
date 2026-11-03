@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A well-formed document that is no invoice: the connector refuses it as invalid. -->
+<note><to>finance</to><body>Please pay the attached.</body></note>

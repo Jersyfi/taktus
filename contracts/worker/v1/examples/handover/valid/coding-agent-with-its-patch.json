@@ -1,0 +1,43 @@
+{
+  "contract": "worker/v1",
+  "assignment_id": "asg_01J8R3K5Q2N7VX9M4T6B0DPHWE",
+  "checkpoint_ref": "ckpt/asg_01J8R3K5Q2N7VX9M4T6B0DPHWE/step-3",
+  "task": {
+    "goal": "Pin the model version on every ml step.",
+    "acceptance": [
+      "every ml step carries model as name@version"
+    ]
+  },
+  "summary": "Three of the five ml steps are pinned; the change so far is the patch. Remaining: the two steps of the training bundle, and the tests.",
+  "steps": [
+    {
+      "step_id": "step-1",
+      "kind": "plan",
+      "summary": "read the bundles"
+    },
+    {
+      "step_id": "step-2",
+      "kind": "edit",
+      "summary": "pin three steps"
+    },
+    {
+      "step_id": "step-3",
+      "kind": "test",
+      "summary": "run the bundle check"
+    }
+  ],
+  "artifacts": [
+    {
+      "id": "patch-2",
+      "kind": "patch",
+      "digest": "sha256:cb6d53778ee066ce09befdca170120166e1b7b515e264ae03e732b16c8608dd7",
+      "media_type": "text/x-diff"
+    }
+  ],
+  "messages": [
+    "msg_01J8RS9A0B2C4D"
+  ],
+  "resume": {
+    "session": "the worker's own reference to its agent's session"
+  }
+}

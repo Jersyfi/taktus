@@ -178,3 +178,58 @@ async def test_the_chain_behind_an_artifact_walks_back_across_runs_in_one_query(
         assert [r.step_id for r in await store.chain(tenant, "r1", "aside")] == ["d"]
         assert await store.chain(tenant, "r0", "final") == [], "the artifact is named per run"
         assert await store.chain(tenant, "r1", "nothing") == []
+
+
+async def test_what_was_built_on_a_step_run_walks_forward_across_runs_in_one_query(
+    backend: Backend,
+) -> None:
+    """r0's `fetch` was read by r1's `a`; r1's `b` read `a`, `c` read `b` and `a`; r2's `e`
+    read `c`; `d` read nothing. Forward from `fetch`: a, b, c, e — each once, although `c` is
+    reached twice, and never `fetch` itself or `d` (ADR-0147 §3)."""
+    tenant = await backend.tenant()
+    store = backend.provenance_store
+    async with backend.work.transaction(tenant):
+        await store.append(tenant, record("prov_0", "r0", "fetch", 2, outputs=("source",)))
+        await store.append(
+            tenant,
+            record("prov_1", "r1", "a", 10, result=1, reads=(("r0", "fetch", "source"),)),
+        )
+        await store.append(
+            tenant, record("prov_2", "r1", "b", 13, result=2, reads=(("r1", "a", None),))
+        )
+        await store.append(
+            tenant,
+            record("prov_3", "r1", "c", 16, result=3, reads=(("r1", "b", None), ("r1", "a", None))),
+        )
+        await store.append(tenant, record("prov_4", "r1", "d", 19, outputs=("aside",)))
+        await store.append(
+            tenant, record("prov_5", "r2", "e", 22, result=4, reads=(("r1", "c", None),))
+        )
+    async with backend.work.transaction(tenant):
+        walked = await store.derived(tenant, "r0", "fetch")
+        assert [(r.run_id, r.step_id) for r in walked] == [
+            ("r1", "a"),
+            ("r1", "b"),
+            ("r1", "c"),
+            ("r2", "e"),
+        ]
+        assert [r.step_id for r in await store.derived(tenant, "r1", "c")] == ["e"]
+        assert await store.derived(tenant, "r1", "d") == []
+
+
+async def test_the_records_of_a_subject_s_cases_are_found_by_its_identifier(
+    backend: Backend,
+) -> None:
+    # The steps that served a subject's cases, found through the index (ADR-0176 §2).
+    tenant = await backend.tenant()
+    store = backend.provenance_store
+    async with backend.work.transaction(tenant):
+        await store.append(tenant, record("p1", "r1", "a", 3, scope={"subject": "cust-1"}))
+        await store.append(tenant, record("p2", "r2", "a", 5, scope={"subject": "cust-2"}))
+        await store.append(tenant, record("p3", "r3", "a", 7, scope={"subject": "cust-1"}))
+        await store.append(tenant, record("p4", "r3", "b", 8))
+    async with backend.work.transaction(tenant):
+        found = await store.of_subject(tenant, "cust-1")
+        none = await store.of_subject(tenant, "cust-9")
+    assert [r.id for r in found] == ["p1", "p3"]
+    assert none == []

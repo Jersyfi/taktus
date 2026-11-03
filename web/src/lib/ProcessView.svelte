@@ -6,10 +6,12 @@
 	(ADR-0064).
 -->
 <script lang="ts">
+	import ExactnessStatement from './ExactnessStatement.svelte';
 	import Glyph from './Glyph.svelte';
 	import Graph from './Graph.svelte';
 	import { chosen } from './motion.svelte';
-	import { changeLink, processLink, runLink } from './links';
+	import { changeLink, processLink, runLink, variantsLink } from './links';
+	import { processSpendLink } from './spend';
 	import type { ProcessLevel } from './types';
 
 	let { level, motionAllowed }: { level: ProcessLevel; motionAllowed: boolean } = $props();
@@ -22,6 +24,9 @@
 		const step = byId.get(id);
 		if (!step) return [];
 		const found = [step.method + (step.exactness ? ` · ${step.exactness}` : '')];
+		// Who acts at a person's step: a role, never a person (ADR-0146).
+		if (step.role) found.push(`role ${step.role}`);
+		else if (step.fallback_role) found.push(`falls back to ${step.fallback_role}`);
 		if (step.running_in?.length) found.push(`running in ${step.running_in.length}`);
 		return found;
 	}
@@ -33,6 +38,8 @@
 		<h1 id="process-title">{level.summary}</h1>
 		<p class="meta">
 			{process.id}@{process.version} · <a href={changeLink(process.id)}>change in dialogue</a>
+			· <a href={variantsLink(process.id)}>how it really runs</a>
+			· <a href={processSpendLink(process.id)}>where it spends</a>
 			{#if process.versions.length > 1}
 				· versions:
 				{#each process.versions as v (v.version)}
@@ -50,6 +57,10 @@
 		<p class="level">Autonomy level {process.autonomy.level}</p>
 		<p>{process.autonomy_text}</p>
 	</section>
+
+	{#if level.exactness}
+		<ExactnessStatement statement={level.exactness} />
+	{/if}
 
 	<Graph steps={level.steps} {motionAllowed} {notes} />
 

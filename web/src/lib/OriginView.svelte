@@ -7,7 +7,7 @@
 -->
 <script lang="ts">
 	import Graph from './Graph.svelte';
-	import { runLink } from './links';
+	import { runLink, wrongResultLink } from './links';
 	import type { OriginLevel } from './types';
 
 	let { level, motionAllowed }: { level: OriginLevel; motionAllowed: boolean } = $props();
@@ -38,6 +38,7 @@
 	<h1 id="origin-title">{level.summary}</h1>
 	<p class="meta">
 		Run <a href={runLink(level.result.run)}>{level.result.run}</a> · {level.result.exactness}
+		· <a href={wrongResultLink(level.result.run, level.result.step)}>if it was wrong, where it went</a>
 	</p>
 
 	<Graph steps={nodes} {motionAllowed} notes={(id) => labels.get(id) ?? []} />

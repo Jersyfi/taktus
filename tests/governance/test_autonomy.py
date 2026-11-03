@@ -1,5 +1,5 @@
-"""Autonomy levels 1 to 3, per process and per tool action, enforced at the step boundary
-(UC-7.1 §2, ADR-0039).
+"""Autonomy levels 1 to 4, per process and per tool action, enforced at the step boundary
+(UC-7.1 §2, ADR-0039, ADR-0160).
 
 Each case runs a plan through the run engine over fakes of every port and reads the run and the
 ledger back: which steps waited for a person, which ran, which never reached their adapter.
@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 from fakes import FakeClock, FakeConnector, FakeIdentifiers, FakeMaturities, FakeWorker
-from fakes.connector import READ, WRITE
+from fakes.connector import BLIND, READ, WRITE, failure
 
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.adapters.driven.memory import (
@@ -363,6 +363,111 @@ async def test_a_resume_of_a_waiting_run_is_no_confirmation() -> None:
     assert run.step_run("prep").state is StepState.WAITING_HUMAN
 
 
+# --- level 4: unattended in execution, healed within the frame (ADR-0160) -----------------------
+
+
+async def test_an_action_at_level_two_waits_while_the_rest_of_a_level_four_run_continues() -> None:
+    w = World(
+        rule("prep"),
+        worker("build", after=("prep",)),
+        rule("report", after=("prep",)),
+        rule("publish", after=("build",)),
+        level=4,
+        actions={"shell.script": 2},
+    )
+    run = await w.start()
+    assert run.state is RunState.WAITING_HUMAN and run.cause is Cause.PERSON
+    assert states(run) == {
+        "prep": StepState.SUCCEEDED,
+        "build": StepState.WAITING_HUMAN,
+        "report": StepState.SUCCEEDED,
+        "publish": StepState.PLANNED,
+    }
+    assert w.worker.assignments == [], "nothing of the action at level 2 started"
+    run = await w.confirm(run, "build")
+    assert run.state is RunState.FINISHED and run.step_run("build").confirmed_by == PERSON
+    awaiting = [k for k in await w.kinds(run) if k.startswith("step.awaiting")]
+    assert awaiting == ["step.awaiting:build:confirmation"], "only the action set lower asked"
+
+
+async def test_at_level_four_a_known_failure_inside_the_frame_is_healed_and_reported() -> None:
+    w = World(rule("prep"), call("write", WRITE, after=("prep",)), level=4)
+    w.connector.fail_next[WRITE] = failure("unavailable", retryable=True)
+    run = await w.start()
+    assert run.state is RunState.FINISHED, "no person was drawn in"
+    assert w.connector.acted == 1 and len(w.connector.calls) == 2
+    keys = {c[1].idempotency_key for c in w.connector.calls}
+    assert len(keys) == 1, "the heal repeats the call under the same key"
+    kinds = await w.kinds(run)
+    assert [k for k in kinds if k.startswith("step.") and ":write" in k] == [
+        "step.admitted:write",
+        "step.started:write",
+        "step.finished:write:failed",
+        "step.healed:write:retry",
+        "step.retried:write:after_failure",
+        "step.admitted:write",
+        "step.started:write",
+        "step.finished:write:succeeded",
+    ]
+    (healed,) = [e for e in await w.entries(run) if e.kind == "step.healed"]
+    assert healed.content_digest is not None, "the failure it answered is recorded"
+    assert healed.refs.actor is None, "Taktus healed, no person"
+
+
+async def test_at_level_four_a_failure_past_the_frame_escalates_with_what_was_tried() -> None:
+    w = World(call("write", WRITE), level=4)
+    w.connector.fail_each[WRITE] = [failure("unavailable", retryable=True) for _ in range(3)]
+    run = await w.start()
+    assert run.state is RunState.ESCALATED and run.cause is Cause.FAILURE
+    assert len(w.connector.calls) == 3
+    kinds = await w.kinds(run)
+    assert kinds.count("step.healed:write:retry") == 2
+    assert run.reason is not None and "healed 2 time(s)" in run.reason
+    assert "frame is exceeded" in run.reason
+
+
+async def test_at_level_four_a_failure_of_no_known_kind_escalates_without_a_heal() -> None:
+    w = World(rule("prep"), failing("check", after=("prep",)), level=4)
+    run = await w.start()
+    assert run.state is RunState.ESCALATED and run.cause is Cause.FAILURE
+    assert not [k for k in await w.kinds(run) if k.startswith("step.healed")]
+    assert run.reason is not None and "not of a kind Taktus knows" in run.reason
+
+
+async def test_an_operation_that_cannot_recognise_a_repeat_is_never_healed() -> None:
+    w = World(call("fire", BLIND), level=4)
+    w.connector.fail_next[BLIND] = failure("unavailable", retryable=True)
+    run = await w.start()
+    assert run.state is RunState.ESCALATED
+    assert len(w.connector.calls) == 1, "Taktus did not repeat it (ADR-0024)"
+    assert run.reason is not None and "idempotency: none" in run.reason
+
+
+@pytest.mark.parametrize(
+    ("level", "actions"),
+    [(3, None), (4, {WRITE: 3})],
+    ids=["level-three", "action-set-lower"],
+)
+async def test_below_level_four_a_failure_reaches_a_person_without_a_heal(
+    level: AutonomyLevel, actions: dict[str, AutonomyLevel] | None
+) -> None:
+    w = World(call("write", WRITE), level=level, actions=actions)
+    w.connector.fail_next[WRITE] = failure("unavailable", retryable=True)
+    run = await w.start()
+    assert run.state is RunState.ESCALATED and run.cause is Cause.FAILURE
+    assert len(w.connector.calls) == 1
+    assert not [k for k in await w.kinds(run) if k.startswith("step.healed")]
+    assert run.reason is not None and "not healed" not in run.reason, "level 3 is unchanged"
+
+
+async def test_a_rehearsal_at_level_four_heals_nothing() -> None:
+    w = World(call("read", READ), level=4)
+    w.connector.fail_next[READ] = failure("unavailable", retryable=True)
+    run = await w.start(rehearsal=True)
+    assert run.state is RunState.ESCALATED
+    assert not [k for k in await w.kinds(run) if k.startswith("step.healed")]
+
+
 # --- from level 3, verified adapters only (NTC-0051) ---------------------------------------------
 
 
@@ -415,7 +520,7 @@ async def test_a_rehearsal_is_asked_for_neither_confirmation_nor_maturity() -> N
 # --- what no level switches off --------------------------------------------------------------
 
 
-@pytest.mark.parametrize("level", [1, 2, 3])
+@pytest.mark.parametrize("level", [1, 2, 3, 4])
 async def test_no_level_switches_off_the_stop_the_reports_or_the_escalation(level: int) -> None:
     autonomy_level: AutonomyLevel = level  # type: ignore[assignment]
     # The escalation duty: a failing step escalates at every level.
@@ -463,8 +568,8 @@ def test_no_field_of_the_statement_reaches_the_stop_the_reports_or_the_escalatio
 # --- no level is reserved for a size or kind of tenant ------------------------------------------
 
 
-@pytest.mark.parametrize("level", [1, 2, 3])
-async def test_a_tenant_of_one_person_sets_any_of_the_three_levels(level: int) -> None:
+@pytest.mark.parametrize("level", [1, 2, 3, 4])
+async def test_a_tenant_of_one_person_sets_any_of_the_four_levels(level: int) -> None:
     autonomy_level: AutonomyLevel = level  # type: ignore[assignment]
     w = World(rule("only"), level=autonomy_level)
     run = await w.start()

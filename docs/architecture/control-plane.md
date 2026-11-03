@@ -137,6 +137,11 @@ process is shown; a bundle with a bare level does not register. A registered ver
 - a **fallback** for any method that can vary
 - an **exactness class** — `exact`, `sourced`, `tolerant`, `free` — limiting which methods may
   produce the result; on every step that produces one, never on `wait` or `human` (ADR-0018)
+- a **role**, on a `human` step and on a fallback to a person: the role of the tenant's
+  structure that acts there, never a named person, with the **expertise** the work needs.
+  Registration requires it once an identity of the tenant holds a role, and refuses a role no
+  identity holds (ADR-0146). A run addresses the wait at such a step to the role
+  (ADR-0167)
 
 See [methods.md](methods.md). The choice is measured continuously and Taktus proposes changes.
 A step of method `ml` registers only with its model's evaluation on held-out cases, for the
@@ -147,6 +152,25 @@ step serves, from the run's inputs and never from a step's result, and every con
 the step carries it; `analytic` names the one source an analytic step reads, which its tenant
 declares free of personal fields, and leaves it no outward operation and no host. Registration
 refuses a frame that cannot hold, and the run refuses it again at every call.
+
+A connector step that delivers what a model drafted sends an **outward message** (ADR-0142).
+Its work declares `message`: the named checks that make its send decision, the step that checks
+the draft on its own and answers `send` or `reject`, the step that classifies promises, and the
+case. Before it sends, the run holds it to that frame by rule: a check that fails or a check step
+that does not answer `send` sends nothing (`message.held`); a promise, an unclassified message
+and more recipients than the tenant's limit wait for a person at every level; an approved
+message waits for the tenant's delay and quiet hours at its boundary, the run parked
+(`message.delayed`); a person's answer in the case ends it without its act. The tenant's label
+is added to its text at the call, and `message.sent` names the message's record beside its
+egress entry.
+
+**An input check** is a step, never a hook (UC-7.9). Content from outside a process is checked
+by a `rule` step of work `screen` before a model or a worker reads it: it names which of
+`injection` and `personal_data` to run over a text. A check that finds something fails the step,
+the failure names the check and never the text found, the steps after it do not start and the
+run goes to a person. A text that passes is not declared safe: the patterns are fixed and name
+only what they name, so the step is classed `tolerant` at best and never `exact`. It is drawn in
+the graph and has its own entry in the ledger like any step.
 
 ### 4.2 Versioning
 
@@ -171,6 +195,12 @@ by the run. `examples/README.md` is the reference for that shape.
 `taktusctl bundle check` holds a bundle to the rules registration holds it to, with the same
 code and without an instance, a database or a login, so that a repository holding bundles checks
 them in its own CI (ADR-0113 §4, `examples/README.md`).
+
+BPMN is a second projection of a version, and a description to start one from (ADR-0168,
+UC-4.23). `taktusctl bpmn export` writes a bundle's version as BPMN 2.0. `taktusctl bpmn draft`
+reads a BPMN model into a plan draft: its tasks as proposed steps with no method chosen, and
+the questions to be answered. `taktusctl bpmn complete` turns the filled draft into a bundle.
+A draft is never a version; the bundle it becomes is proposed as any bundle is.
 
 A **skill** in a bundle is a directory in the open `SKILL.md` format, under
 `skills/<name>/SKILL.md`: YAML front matter with `name` and `description`, then the instructions.
@@ -299,7 +329,10 @@ worker's own answer decides whether it has a free place; no runner counts a work
 assignments, so runners that share one worker never place more on it than it declares. A wait
 beyond the step's ceiling, one hour unless the step names one, escalates the run with cause
 `capacity`. The ledger carries `step.waiting` for each answer and `step.waited` with the wait's
-duration (ADR-0037; `tests/integration/test_capacity_wait.py`).
+duration (ADR-0037; `tests/integration/test_capacity_wait.py`). A launched worker's platform
+is its capacity: a cluster without room for its unit, or one still creating it — pulling its
+image, `ContainerCreating`, `Pending` — when the unit's health bound passes, makes the step wait
+the same way, and a unit that runs and answers nothing still fails (ADR-0037 §6, ADR-0145).
 
 **A provider at its rate limit.** A model provider that answers `429` is treated the same way:
 nothing was produced, the step goes back to its boundary, the run halts with cause `capacity`,
@@ -320,14 +353,15 @@ planned → admitted → running → [waiting_human] → running → finished
                         │            │
                         │            └─ a step waits for a person (approval, an act to perform, anchor)
                         ├─ halted (limit, emergency stop, user, worker at capacity, maturity) → resumed
-                        ├─ self-healed (retry or correction within frame) → running
+                        ├─ self-healed (level 4: a known failure retried within frame) → running
                         └─ escalated (frame exceeded) → situation package to a person
 ```
 
 A run reaches `waiting_human` when every step it can still run waits for a person: a step at
 autonomy level 2 for a confirmation, a step that acts at level 1 for the person to perform it
 (ADR-0039), a step whose act an anchor names for the decision its request asks for, at every
-level (ADR-0042). Such a step is in the step state `waiting_human`; the steps that do not depend
+level (ADR-0042), and a person's own `human` step for a person of its role to perform it, at
+every level (ADR-0167). Such a step is in the step state `waiting_human`; the steps that do not depend
 on it run on before the run waits. A person's answer continues the run; a stop halts it at once.
 A declined anchored act halts the run with cause `declined`, and a resume asks again.
 
@@ -388,7 +422,12 @@ rule over these entries stops the step when the call it is about to make would b
 the tenant's limit within the run (`taktusctl incident configure --repeated-calls
 --repeated-model-calls`, three each by default). The step is rejected, `repetition.stopped`
 names the action, the count and the limit, the run halts with cause `repeated`, and an incident
-of kind `step.repeated` is raised.
+of kind `step.repeated` is raised. A worker's step is counted from what its worker reports
+(ADR-0144): a tool call marked `outward` is recorded as `connector.called`, a model's answer
+as `model.called`, and a tool call after an answer as `tool.result`, from which the answers
+are counted again. The worker reports a call after it made it, so a count that crossed the
+limit asks the worker to stop at its next boundary; the step stops there with its checkpoint,
+and the run halts with cause `repeated`.
 
 **A stop can be scoped to an adapter, and is confirmed once it holds** (ADR-0138, UC-7.2). A
 person stops a configured worker, connector or model with `taktusctl stop adapter NAME`,
@@ -494,8 +533,10 @@ the figures took 3 ms, the raises 4 ms and the sweep 14 ms
 (`tests/integration/test_ledger_at_scale.py`).
 
 **A chain is verified from its last verified checkpoint.** The checkpoint is the sequence number
-and hash of the newest entry a verification found intact, stored as a projection. A verification
-walks the entries after it and moves it when it finds nothing. `GET /runs/{id}/ledger` answers
+of the newest entry a verification found intact, with the count of entries up to it and the bound
+of the newest anchor, stored as a projection. A verification walks the entries after it, every
+chain at once, links a chain whose predecessor lies before it by one read, compares every anchor
+with the heads it covers, and moves the checkpoint when it finds nothing (ADR-0164 §6). `GET /runs/{id}/ledger` answers
 where its walk started, as `chain.checkpoint`. A full verification walks from the first entry
 and trusts no checkpoint: `taktusctl ledger verify --full`. When it finds a fault, the checkpoint
 goes back to the start, so every later verification finds the fault again. A change to an entry
@@ -509,12 +550,22 @@ application role may insert and read, and a trigger rejects every update, delete
 for everyone but a superuser (`migrations/`). A hash chain whose rows can be edited proves
 nothing.
 
-**One chain per tenant, one claim on it.** Each entry carries the next sequence number and the
-hash of the entry before it, so two transactions must not append to one chain at once. The
-ledger store claims the tenant's chain when it reads the newest entry, and holds the claim until
-the transaction ends: in the database a transaction advisory lock, in memory a lock released at
-the transaction's end. A second transaction waits, then reads the first one's entries. The claim
-is the only lock on the chain; no lock of the process is held beside it. A lock of the process
+**A chain per run, one claim on each** (ADR-0164, #341). An entry that references a run goes on
+its run's chain; what references no run, what is recorded `in_order` (`open_work.admitted`) and
+the anchors go on the tenant's chain. Each entry carries its place in its chain, `chain_seq`, and
+the hash of the entry before it there, so two transactions must not append to one chain at once.
+The ledger store claims a chain when it reads its newest entry, and holds the claim until the
+transaction ends: in the database a transaction advisory lock, a run's in namespace `RUN_CHAIN`,
+the tenant's in `LEDGER`; in memory one lock per tenant, released at the transaction's end.
+Writers of different runs do not wait for each other. Each takes its reading position, `seq`,
+from the sequence `ledger_entry_seq`; a position may commit after a higher one, so a reader that
+keeps its place reads up to the **stable head** only, the newest entry below every open
+writer's marker. Once a minute the scheduler anchors the heads of the run chains written since
+the last anchor in the tenant's chain, as a Merkle root (`ledger.anchored`,
+`composition/anchors.py`), and makes the ledger's monthly partitions ahead. With eight writers in
+one tenant, 492 commits per second against 48 with one, with 10 ms of work in each transaction
+(`tests/adapters/persistence/test_ledger_throughput.py`). The claims are the only locks on the
+chains; no lock of the process is held beside them. A lock of the process
 held while the store waits for the claim formed a cycle that neither side could see: two runs of
 one tenant whose commits recorded two entries each hung for good (#309, NTC-0201;
 `tests/integration/test_ledger_concurrency.py`). Every database connection also carries
@@ -569,7 +620,10 @@ role, a trigger against everything else, one record per step run by unique key
 (`migrations/versions/0002_provenance.py`).
 
 Following inputs from the record that produced an artifact leads back through every step run
-that contributed to it, across runs. That walk is one query (`ProvenanceQuery.chain`), and
+that contributed to it, across runs. That walk is one query (`ProvenanceQuery.chain`). The
+walk forward — every record that read a step run's result, and every record that read one of
+those — is one query too (`ProvenanceStore.derived`), which the view of where a wrong result
+went reads (ADR-0147 §3). And
 `ProvenanceQuery.verify` holds a run's records against the run and against the ledger: every
 completed step has exactly one record, every input names a record that lists what was read,
 every record agrees with the entry it names. Growth is bounded and measured: one record per

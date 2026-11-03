@@ -102,6 +102,30 @@ async def test_a_worker_at_capacity_while_it_estimates_makes_the_step_wait() -> 
     assert await h.verify()
 
 
+async def test_a_unit_still_being_created_makes_the_step_wait_and_the_run_go_on() -> None:
+    """The cluster is still creating the worker's unit when it is asked what it offers: the
+    step waits as for a platform without room, and goes on once the unit answers (ADR-0145,
+    #634)."""
+    fake = FakeWorker(creating_for=2, script=(InnerStep("one", 1.0),))
+    h = Harness(waiting_worker(), workers=[fake])
+
+    run = await h.start()
+    assert run.state is RunState.HALTED and run.cause is Cause.CAPACITY
+    do = run.step_run("do")
+    assert do.state is StepState.STOPPED, "waiting at its boundary, not failed"
+    assert do.reason is not None and "ContainerCreating" in do.reason
+    run = await h.resume(run)
+    assert run.state is RunState.HALTED and run.step_run("do").waits == 2
+
+    run = await h.resume(run)
+    assert run.state is RunState.FINISHED
+    assert run.step_run("do").state is StepState.SUCCEEDED
+    kinds = await h.kinds(run)
+    assert kinds.count("step.waiting:do:at_capacity") == 2
+    assert not [k for k in kinds if k.startswith(("run.escalated", "step.finished:do:failed"))]
+    assert await h.verify()
+
+
 async def test_a_wait_beyond_the_step_s_ceiling_escalates_with_the_cause() -> None:
     fake = FakeWorker(full_for=1000)
     h = Harness(waiting_worker(ceiling=30), workers=[fake])

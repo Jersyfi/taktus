@@ -24,7 +24,7 @@ __all__ = ["chosen", "instances"]
 async def test_a_completed_step_is_found_at_all_four_levels(
     instances: Callable[..., Instance], chosen: str
 ) -> None:
-    async with instances("levels", TAKTUS_ROLES="api,runner", TAKTUS_TENANTS=chosen) as one:
+    async with instances("levels", TAKTUS_ROLES="api,runner") as one:
         assert one.wired is not None
         wired = one.wired
         key = await reader_key(wired, chosen)

@@ -19,23 +19,23 @@ from fakes.vendor_notes_server import State
 from fakes.vendor_notes_server import create_server as notes_server
 from mcp_server_time.server import create_server as time_server
 from pydantic import ValidationError
-
-from taktus.adapters.driven.connectors.mcp import McpActionConnector
-from taktus.adapters.driven.connectors.serving import Call, TargetError
-from taktus.adapters.driven.connectors.vendor.manifest import (
+from taktus_connectors.serving import Call, TargetError
+from taktus_connectors.vendor.manifest import (
     Manifest,
     ManifestError,
     load,
 )
-from taktus.adapters.driven.connectors.vendor.server import build_server, prepare
-from taktus.adapters.driven.connectors.vendor.upstream import Upstream, VendorTool
-from taktus.adapters.driven.connectors.vendor.wrapping import (
+from taktus_connectors.vendor.server import build_server, prepare
+from taktus_connectors.vendor.upstream import Upstream, VendorTool
+from taktus_connectors.vendor.wrapping import (
     PlanError,
     Wrapper,
     operation_segment,
     with_manifest,
     without_manifest,
 )
+
+from taktus.adapters.driven.connectors.mcp import McpActionConnector
 from taktus.ports.connector import CallContext, CallFailed, Capabilities, idempotency_key
 from taktus.ports.worker import CredentialReference
 

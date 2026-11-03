@@ -137,10 +137,10 @@
     },
     "input": {
       "title": "ProvenanceInput",
-      "description": "One thing a step read, and when. An artifact or a result of an earlier step run, named by run and step; or an external source, named by the capability it was read through and a reference the connector understands.",
+      "description": "One thing a step read, and when. An artifact or a result of an earlier step run, named by run and step; or an external source, named by the capability it was read through and a reference the connector understands; or a person's message the step's worker received at a boundary, named by its identifier and its text's digest (ADR-0156).",
       "type": "object",
       "properties": {
-        "kind": { "type": "string", "enum": ["artifact", "result", "source"] },
+        "kind": { "type": "string", "enum": ["artifact", "result", "source", "message"] },
         "run_id": {
           "description": "The run of the step that produced what was read. For artifact and result.",
           "type": "string",
@@ -161,12 +161,12 @@
           "$ref": "Capability.json"
         },
         "ref": {
-          "description": "What was read from the external source, as the connector names it. Carries no credential. For source only.",
+          "description": "What was read from the external source, as the connector names it, for source; the message's identifier, for message. Carries no credential.",
           "type": "string",
           "minLength": 1
         },
         "digest": {
-          "description": "Digest of what was read, where the reader had the content: an artifact's digest, a result's digest, a source's content digest.",
+          "description": "Digest of what was read, where the reader had the content: an artifact's digest, a result's digest, a source's content digest, a message's text digest.",
           "$ref": "Artifact.json#/$defs/digest"
         },
         "observed_at": {
@@ -197,6 +197,14 @@
           "then": {
             "required": ["capability", "ref"],
             "not": { "anyOf": [{ "required": ["run_id"] }, { "required": ["step_id"] }, { "required": ["artifact_id"] }] }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "message" } } },
+          "then": {
+            "required": ["ref", "digest"],
+            "properties": { "ref": { "pattern": "^msg_[A-Za-z0-9_-]{4,}$" } },
+            "not": { "anyOf": [{ "required": ["run_id"] }, { "required": ["step_id"] }, { "required": ["artifact_id"] }, { "required": ["capability"] }] }
           }
         }
       ]

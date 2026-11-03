@@ -40,7 +40,7 @@ from taktus.components.run.domain.model import Run, RunState, StepState
 from taktus.components.run.domain.model.block import TAKEN_OVER
 from taktus.components.run.domain.service import provenance
 from taktus.ports.objectstore import ObjectStore
-from taktus.ports.worker import ComputeLimit, Limits
+from taktus.ports.worker import ComputeLimit, Event, Limits, StepBoundary
 from taktus.shared.v1 import (
     Commissioned,
     ExactnessClass,
@@ -152,6 +152,16 @@ async def test_a_step_taken_over_through_one_instance_is_handed_back_and_finishe
         script=(InnerStep("one", artifacts=(("out-1", b"1\n"),)), InnerStep("two")),
         inner_seconds=0.3,
     )
+
+    async def held_until_asked(event: Event) -> None:
+        # The worker reaches its first boundary only once the take-over asked it to stop, so
+        # that a loaded machine cannot finish the step before the take-over reaches it (#520).
+        if isinstance(event, StepBoundary) and event.step_id == "one":
+            async with asyncio.timeout(30):
+                while not worker.stops and not worker.handovers:  # noqa: ASYNC110 — the fake's lists
+                    await asyncio.sleep(0.02)
+
+    worker.on_event = held_until_asked
     engine_a, engine_b = engine(a, objects, worker), engine(b, objects, worker)
     plan = Plan(
         id=f"pln_{os.urandom(4).hex()}",

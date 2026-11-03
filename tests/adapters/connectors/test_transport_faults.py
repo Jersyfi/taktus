@@ -9,11 +9,11 @@ from types import ModuleType
 
 import httpx
 import pytest
+from taktus_connectors.github import api as github
+from taktus_connectors.github import server as github_server
+from taktus_connectors.slack import api as slack
+from taktus_connectors.slack import server as slack_server
 
-from taktus.adapters.driven.connectors.github import api as github
-from taktus.adapters.driven.connectors.github import server as github_server
-from taktus.adapters.driven.connectors.slack import api as slack
-from taktus.adapters.driven.connectors.slack import server as slack_server
 from taktus.conformance.connector.rules import CHECKS
 from taktus.conformance.connector.suite import ConnectorSuiteOptions, Seen, _c04
 from taktus.conformance.findings import Findings

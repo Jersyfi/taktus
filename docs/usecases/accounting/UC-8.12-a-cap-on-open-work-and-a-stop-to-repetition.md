@@ -3,9 +3,9 @@ id: UC-8.12
 title: A cap on open work, and a stop to repetition
 component: accounting
 serves: [P8, P10, P12]
-state: building
+state: built
 version: 0.5.0
-tests: [tests/components/run/test_open_work.py::test_a_cap_of_two_with_two_open_pull_requests_finds_the_third_run_waiting, tests/components/run/test_open_work.py::test_a_run_in_flight_counts_until_it_ends, tests/components/run/test_open_work.py::test_a_run_that_passed_while_another_counted_is_counted_by_it, tests/governance/test_open_work_cap.py::test_a_process_that_raises_its_own_cap_is_refused_and_the_refusal_recorded, tests/governance/test_open_work_cap.py::test_a_person_changes_a_cap_and_is_named_as_its_actor, tests/components/run/test_repetition.py::test_the_same_outward_call_beyond_the_limit_is_stopped_at_its_boundary, tests/components/run/test_repetition.py::test_a_model_asked_again_without_a_tool_result_beyond_the_limit_is_stopped, tests/governance/test_open_work_cap.py::test_a_stop_raises_one_incident_that_names_the_action_the_count_and_the_limit]
+tests: [tests/components/run/test_open_work.py::test_a_cap_of_two_with_two_open_pull_requests_finds_the_third_run_waiting, tests/components/run/test_open_work.py::test_a_run_in_flight_counts_until_it_ends, tests/components/run/test_open_work.py::test_a_run_that_passed_while_another_counted_is_counted_by_it, tests/governance/test_open_work_cap.py::test_a_process_that_raises_its_own_cap_is_refused_and_the_refusal_recorded, tests/governance/test_open_work_cap.py::test_a_person_changes_a_cap_and_is_named_as_its_actor, tests/components/run/test_repetition.py::test_the_same_outward_call_beyond_the_limit_is_stopped_at_its_boundary, tests/components/run/test_repetition.py::test_a_model_asked_again_without_a_tool_result_beyond_the_limit_is_stopped, tests/governance/test_open_work_cap.py::test_a_stop_raises_one_incident_that_names_the_action_the_count_and_the_limit, tests/components/run/test_repetition.py::test_a_worker_repeating_the_same_outward_call_is_stopped_at_its_next_boundary, tests/components/run/test_repetition.py::test_a_worker_s_model_answers_without_a_tool_result_past_the_limit_are_stopped]
 adrs: {ADR-0005: 0ea928e2016b, ADR-0023: 949c6f4e13af, ADR-0043: 5bcc93809622}
 supersedes: null
 ---

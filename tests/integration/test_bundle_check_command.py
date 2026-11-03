@@ -58,11 +58,20 @@ def test_every_bundle_of_the_repository_passes_with_nothing_of_an_instance(
 ) -> None:
     result = check(ROOT / "blueprints", ROOT / "examples" / "processes", cwd=tmp_path)
     assert result.returncode == 0, result.stdout + result.stderr
-    bundles = [*sorted(ROOT.glob("blueprints/*/processes/*.yaml")), EXAMPLE]
+    bundles = [
+        *sorted(ROOT.glob("blueprints/*/processes/*.yaml")),
+        *sorted(ROOT.glob("blueprints/gallery/*/processes/*.yaml")),  # ADR-0136
+        EXAMPLE,
+    ]
     for path in bundles:
         assert f"ok         {path}" in result.stdout
-    assert "3 file(s) skipped as no process" in result.stdout, (
-        "the two blueprint.yaml and software-operations' stages.yaml (ADR-0137)"
+    skipped = (
+        len(list(ROOT.glob("blueprints/*/blueprint.yaml")))
+        + len(list(ROOT.glob("blueprints/gallery/*/gallery.yaml")))
+        + len(list(ROOT.glob("blueprints/*/stages.yaml")))
+    )
+    assert f"{skipped} file(s) skipped as no process" in result.stdout, (
+        "blueprint.yaml, gallery.yaml and software-operations' stages.yaml (ADR-0137)"
     )
     assert "Not checked without an instance" in result.stdout
     assert sorted(p.name for p in tmp_path.iterdir()) == ["home"], "it left nothing behind"
@@ -121,3 +130,28 @@ def test_the_documented_ci_snippet_is_a_workflow_that_runs_the_check() -> None:
     assert any("taktusctl bundle check" in run for run in runs)
     assert not [s for s in runs if "TAKTUS_" in s], "it configures nothing of an instance"
     assert "secrets." not in snippets[0], "it needs no credential"
+
+
+def test_a_bundles_skills_are_checked_beside_its_processes(tmp_path: Path) -> None:
+    """A skill under `skills/` is held to the open format by the catalogue's rule (ADR-0162 §9):
+    one whose name is not its directory's is refused, and the check fails."""
+    bundle = tmp_path / "bundle"
+    (bundle / "processes").mkdir(parents=True)
+    (bundle / "processes" / "six-times-seven.yaml").write_text(
+        EXAMPLE.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    good = bundle / "skills" / "reply-kindly"
+    good.mkdir(parents=True)
+    (good / "SKILL.md").write_text(
+        "---\nname: reply-kindly\ndescription: How to reply to a late parcel.\n---\nBe kind.\n",
+        encoding="utf-8",
+    )
+    passed = check(bundle, cwd=tmp_path)
+    assert passed.returncode == 0, passed.stdout + passed.stderr
+    assert "skill reply-kindly" in passed.stdout
+    wrong = bundle / "skills" / "other"
+    wrong.mkdir()
+    (wrong / "SKILL.md").write_text("---\nname: not-other\ndescription: x\n---\n", "utf-8")
+    refused = check(bundle, cwd=tmp_path)
+    assert refused.returncode == 1
+    assert "equals the directory's name" in refused.stdout

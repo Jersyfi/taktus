@@ -81,7 +81,7 @@ def test_a_removed_entry_is_found() -> None:
     entries = chain()
     del entries[1]
     findings = verify(entries).findings
-    assert "entry 3: expected seq 2" in findings
+    assert "entry 3: expected place 2 in its chain" in findings
     assert "entry 3: prev_hash does not match entry 1" in findings
 
 
@@ -160,11 +160,11 @@ class _Holding:
     def __getattr__(self, name: str) -> Any:
         return getattr(self._store, name)
 
-    async def last(self, tenant: str) -> LedgerEntry | None:
+    async def last(self, tenant: str, chain: str = "") -> LedgerEntry | None:
         if tenant == self._tenant:
             self.reached.set()
             await self.release.wait()
-        return await self._store.last(tenant)
+        return await self._store.last(tenant, chain)
 
 
 async def test_a_tenant_waiting_for_its_chain_does_not_hold_up_another_tenant() -> None:

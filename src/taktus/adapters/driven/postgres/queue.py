@@ -16,11 +16,22 @@ under it. A claim that committed first changed the row, and the check finds noth
 A take-over (ADR-0128, `0064_takeover.py`) is asked by one update that succeeds only where no
 take-over is asked or held, and only on a job a runner holds. Passing the claim moves it to the
 take-over's claimant as a new attempt, held until a time `claim_jobs` honours.
+
+A claim shares the places between organisational units, and holds a unit's concurrent limit
+where the runner names one (ADR-0166, `0092_org_units.py`): the five-argument `claim_jobs`.
+A claim with limits takes the tenant's claim lock first (`_locks.CLAIM`), so that two runners
+claiming at once count each other's claims; the claim itself is the next statement, which reads
+what the other committed.
+
+A person's message (ADR-0156, `0087_relay_and_steering.py`) is appended to the job's
+`messages` by one update that succeeds only on a job a runner holds; marking one handed rewrites
+the list under the row's lock.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import json
+from collections.abc import Mapping, Sequence
 from datetime import timedelta
 from typing import Any
 
@@ -28,10 +39,11 @@ from sqlalchemy import delete, func, insert, select, text, update
 from sqlalchemy.engine import Row
 from sqlalchemy.exc import IntegrityError
 
+from taktus.adapters.driven.postgres import _locks
 from taktus.adapters.driven.postgres import _schema as s
 from taktus.adapters.driven.postgres.persistence import PostgresPersistence
 from taktus.ports.persistence import PersistenceError, Tenant
-from taktus.ports.queue import RUN_EXECUTE, Claim, Job, TakeoverAsked
+from taktus.ports.queue import RUN_EXECUTE, AskedMessage, Claim, Job, TakeoverAsked
 
 
 class PostgresQueue:
@@ -58,24 +70,36 @@ class PostgresQueue:
                     payload=dict(job.payload),
                     available_at=func.now(),
                     attempts=job.attempts,
+                    org_unit=job.org_unit,
                     created_at=func.now(),
                 )
             )
         except IntegrityError as error:
             raise PersistenceError(f"tenant {tenant!r} already has a job {job.id!r}") from error
 
-    async def claim(self, tenant: Tenant, claimant: str, batch: int) -> Sequence[Job]:
+    async def claim(
+        self,
+        tenant: Tenant,
+        claimant: str,
+        batch: int,
+        per_unit: Mapping[str, int] | None = None,
+    ) -> Sequence[Job]:
         connection = self._persistence.connection(tenant)
+        if per_unit:
+            key = select(s.tenant.c.lock_key).where(s.tenant.c.id == tenant).scalar_subquery()
+            await connection.execute(select(func.pg_advisory_xact_lock(_locks.CLAIM, key)))
         rows = await connection.execute(
             text(
-                "SELECT id, kind, payload, attempts, deferrals FROM claim_jobs(:claimant, :batch, "
-                ":lease, :max_attempts) ORDER BY created_at, id"
+                "SELECT id, kind, payload, attempts, deferrals, org_unit, quota_held_since "
+                "FROM claim_jobs(:claimant, :batch, :lease, :max_attempts, "
+                "CAST(:per_unit AS jsonb)) ORDER BY created_at, id"
             ),
             {
                 "claimant": claimant,
                 "batch": batch,
                 "lease": self._lease,
                 "max_attempts": self._max_attempts,
+                "per_unit": json.dumps(dict(per_unit or {})),
             },
         )
         return [_job(row) for row in rows]
@@ -199,6 +223,59 @@ class PostgresQueue:
         )
         return bool(result.rowcount)
 
+    async def ask_message(self, tenant: Tenant, run_id: str, message: AskedMessage) -> bool:
+        connection = self._persistence.connection(tenant)
+        row = (
+            await connection.execute(
+                select(s.job.c.id, s.job.c.messages)
+                .where(
+                    s.job.c.tenant == tenant,
+                    s.job.c.kind == RUN_EXECUTE,
+                    s.job.c.payload["run_id"].astext == run_id,
+                    s.job.c.claimed_by.is_not(None),
+                    s.job.c.held_until.is_(None),
+                )
+                .with_for_update()
+            )
+        ).first()
+        if row is None:
+            return False
+        held = list(row.messages or [])
+        if any(m.get("message_id") == message.message_id for m in held):
+            return True
+        await connection.execute(
+            update(s.job)
+            .where(s.job.c.tenant == tenant, s.job.c.id == row.id)
+            .values(messages=[*held, message.document()])
+        )
+        return True
+
+    async def messages_asked(self, tenant: Tenant, job_id: str) -> Sequence[AskedMessage]:
+        connection = self._persistence.connection(tenant)
+        held = await connection.scalar(
+            select(s.job.c.messages).where(s.job.c.tenant == tenant, s.job.c.id == job_id)
+        )
+        return tuple(AskedMessage.model_validate(m) for m in held or [])
+
+    async def message_handed(self, tenant: Tenant, job_id: str, message_id: str) -> None:
+        connection = self._persistence.connection(tenant)
+        held = await connection.scalar(
+            select(s.job.c.messages)
+            .where(s.job.c.tenant == tenant, s.job.c.id == job_id)
+            .with_for_update()
+        )
+        if not held:
+            return
+        await connection.execute(
+            update(s.job)
+            .where(s.job.c.tenant == tenant, s.job.c.id == job_id)
+            .values(
+                messages=[
+                    {**m, "handed": True} if m.get("message_id") == message_id else m for m in held
+                ]
+            )
+        )
+
 
 def _job(row: Row[Any]) -> Job:
     return Job(
@@ -207,4 +284,6 @@ def _job(row: Row[Any]) -> Job:
         payload=row.payload,
         attempts=row.attempts,
         deferrals=row.deferrals,
+        org_unit=row.org_unit,
+        held_since=row.quota_held_since,
     )

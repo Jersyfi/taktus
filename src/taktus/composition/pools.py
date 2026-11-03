@@ -79,6 +79,7 @@ class Pools:
                 version=version,
                 hosts=hosts or None,
                 environment=environment or None,
+                binding="outbound" if self.workers.outbound(integration) else None,
             )
         if family == "connector":
             declaration = await self.connectors.member(integration)

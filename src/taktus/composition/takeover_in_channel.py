@@ -11,7 +11,10 @@ The owner-facing channel (ADR-0045) reads three acts, by the words of its phrase
   nothing, so it needs no confirmation;
 - **a hand-back** — `hand back <takeover>: <result>` — is read back with how the result was read,
   as JSON or as the text written, and handed back only on the same person's `yes`. A `no` drops
-  it. Until then nothing changes.
+  it. Until then nothing changes;
+- **a message to a running step** — `message <run> <step>: <text>` — is read back with its
+  text, and asked only on the same person's `yes` (ADR-0156 §7). A refusal says the engine's
+  reason: the step does not run, no runner holds it, or its worker takes no message.
 
 Only in the owner's conversation, and only for the owner or someone the owner named (UC-1.7),
 and only on a run the person may see, by the predicate every level is read through. Anything
@@ -42,7 +45,7 @@ from taktus.components.reporting.domain.model import (
 from taktus.components.reporting.domain.service import reading as rules
 from taktus.components.reporting.domain.service import visibility
 from taktus.components.reporting.ports import Deliveries, SecretValues, Sent
-from taktus.components.run.application.service import HandBack, TakeOver
+from taktus.components.run.application.service import HandBack, SteerStep, TakeOver
 from taktus.components.run.domain.model import (
     Run,
     RunError,
@@ -60,7 +63,7 @@ TAKEN = "taken"
 """A take-over was asked, a result handed back, or a take-over's standing said."""
 ASKED = "read_back"
 REFUSED = "refused"
-KINDS = ("take_over", "hand_back")
+KINDS = ("take_over", "hand_back", "steer")
 """The acts read back here; a commissioning or a rollback waits in the same thread under the
 change in dialogue's (`composition/change_in_channel.py`)."""
 INPUTS_SHOWN = 600
@@ -75,6 +78,8 @@ class Takeovers(Protocol):
     async def takeover_state(self, tenant: Tenant, run_id: str, takeover: str) -> Any: ...
 
     async def hand_back(self, command: HandBack) -> Run: ...
+
+    async def steer(self, command: SteerStep) -> str: ...
 
 
 @dataclass(frozen=True)
@@ -160,6 +165,24 @@ class TakeoverInChannel:
             )
             read = _filled(book.takeover_read, run=run.id, step=step_run.step_id)
             return await self._read_back(found, act, read, thread, event)
+        if asked.kind == "steer":
+            run = await self._visible(reader, asked.run or "")
+            step_run = None if run is None else _step(run, asked.step or "")
+            said = asked.result or ""
+            if run is None or step_run is None or self._secrets.carried_by(said):
+                return await self._say(*not_done)
+            act = PendingAct(
+                id=_key(address, thread),
+                tenant=tenant,
+                kind="steer",
+                run=run.id,
+                step=step_run.step_id,
+                result=said,
+                by=identity,
+                asked_at=self._clock.now(),
+            )
+            read = _filled(book.steer_read, run=run.id, step=step_run.step_id, text=said)
+            return await self._read_back(found, act, read, thread, event)
         record = await self._asked(tenant, asked.takeover or "")
         run = None if record is None else await self._visible(reader, record.run or "")
         if record is None or run is None:
@@ -233,6 +256,22 @@ class TakeoverInChannel:
                     ),
                 )
             said = _filled(book.takeover_asked, takeover=takeover, run=run_id, step=step_id)
+            return await self._say(found, said + _page(found, run_id, book), thread, event, TAKEN)
+        if waiting.kind == "steer":
+            try:
+                message = await self._takeovers.steer(
+                    SteerStep(
+                        run_id=run_id,
+                        step_id=step_id,
+                        text=str(waiting.result),
+                        actor=waiting.by,
+                        tenant=tenant,
+                    )
+                )
+            except RunError as error:
+                said = _filled(book.steer_refused, reason=str(error).rstrip("."))
+                return await self._say(found, said, thread, event, REFUSED)
+            said = _filled(book.steered, message=message, run=run_id, step=step_id)
             return await self._say(found, said + _page(found, run_id, book), thread, event, TAKEN)
         takeover = waiting.takeover or ""
         try:

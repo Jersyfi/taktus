@@ -1,0 +1,45 @@
+{
+  "credentials": {
+    "actions": "ACCOUNTING_TOKEN"
+  },
+  "read": {
+    "operation": "accounting.orders.read",
+    "input": {
+      "reference": "PO-7"
+    }
+  },
+  "writes": [
+    {
+      "operation": "accounting.bookings.propose",
+      "input": {
+        "document": "CONF-{{unique}}",
+        "supplier": "DE123456789",
+        "currency": "EUR",
+        "issue_date": "2026-10-20",
+        "due_date": "2026-11-19",
+        "account": "4930",
+        "net": "100.00",
+        "tax": "19.00",
+        "gross": "119.00",
+        "taxes": [{"category": "S", "rate": "19", "base": "100.00", "amount": "19.00"}]
+      }
+    },
+    {
+      "operation": "payment.release.submit",
+      "input": {
+        "document": "CONF-{{unique}}",
+        "supplier": "DE123456789",
+        "currency": "EUR",
+        "amount": "119.00",
+        "due_date": "2026-11-19"
+      }
+    }
+  ],
+  "invalid": {
+    "operation": "accounting.orders.read",
+    "input": {
+      "reference": "PO-unknown"
+    },
+    "expected_cause": "invalid"
+  }
+}

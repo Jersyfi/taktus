@@ -27,4 +27,8 @@ Rules:
 - **The application connects as the user that ran the migration**, or as a member of the role
   `taktus_app` that the migration creates. The adapter assumes that role inside every
   transaction; a login that is not a member cannot open one.
+- **Every migration expands, or says that it contracts** (ADR-0093). One that drops, renames
+  or narrows what the previous release reads replaces `taktus_oldest_code()` with its own
+  revision and says so in its docstring; `tests/adapters/persistence/test_migrations_expand.py`
+  fails one that narrows and does not.
 - **Downgrades are potentially destructive** and follow CLAUDE.md §9: never without asking.

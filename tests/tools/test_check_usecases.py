@@ -66,6 +66,13 @@ def git(root: Path, *args: str) -> None:
     )
 
 
+@pytest.fixture(autouse=True)
+def _no_ci_branch(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The branch a test's repository is on decides concept mode, not the CI's own (DEC-0222)."""
+    monkeypatch.delenv("GITHUB_HEAD_REF", raising=False)
+    monkeypatch.delenv("TAKTUS_MERGED_FROM", raising=False)
+
+
 @pytest.fixture
 def repo(tmp_path: Path) -> Path:
     root = tmp_path
@@ -246,6 +253,55 @@ def test_a_changed_requirement_with_its_implementation_fails(
 ) -> None:
     write(repo, usecase())
     settle(repo)
+    write(repo, usecase(boundary="Nothing else, and less than before."))
+    (repo / "src/taktus/components/run/engine.py").write_text("x = 2\n")
+    code, out = gate(repo, capsys)
+    assert code == 1 and "requirement changed, and its implementation too" in out
+
+
+def test_a_new_requirement_with_its_implementation_passes_in_concept_mode(
+    repo: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """On the owner's word a concept is built whole, its new use cases beside it (DEC-0222)."""
+    monkeypatch.delenv("GITHUB_HEAD_REF", raising=False)
+    git(repo, "checkout", "-q", "-b", "concept/a-whole-concept")
+    write(repo, usecase())
+    (repo / "src/taktus/components/run/engine.py").write_text("x = 2\n")
+    code, out = gate(repo, capsys)
+    assert code == 0, out
+    assert "requirement new, built beside it in concept mode (concept/a-whole-concept)" in out
+
+
+def test_the_squash_commit_of_a_concept_pull_request_passes_on_main(
+    repo: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """On `main` the branch is `main`; CI names the branch the commit was merged from (#652)."""
+    monkeypatch.setenv("TAKTUS_MERGED_FROM", "concept/a-whole-concept")
+    write(repo, usecase())
+    (repo / "src/taktus/components/run/engine.py").write_text("x = 2\n")
+    code, out = gate(repo, capsys)
+    assert code == 0, out
+    assert "built beside it in concept mode (concept/a-whole-concept)" in out
+
+
+def test_a_commit_merged_from_any_other_branch_keeps_the_rule_on_main(
+    repo: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("TAKTUS_MERGED_FROM", "feat/something")
+    write(repo, usecase())
+    (repo / "src/taktus/components/run/engine.py").write_text("x = 2\n")
+    code, out = gate(repo, capsys)
+    assert code == 1 and "requirement new, and its implementation too" in out
+
+
+def test_a_changed_requirement_with_its_implementation_fails_in_concept_mode(
+    repo: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Concept mode admits a new use case only; an existing one changes by a decision."""
+    monkeypatch.delenv("GITHUB_HEAD_REF", raising=False)
+    write(repo, usecase())
+    settle(repo)
+    git(repo, "checkout", "-q", "-b", "concept/a-whole-concept")
     write(repo, usecase(boundary="Nothing else, and less than before."))
     (repo / "src/taktus/components/run/engine.py").write_text("x = 2\n")
     code, out = gate(repo, capsys)

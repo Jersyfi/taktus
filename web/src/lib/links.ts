@@ -6,6 +6,11 @@ export function runLink(runId: string): string {
 	return `#/runs/${encodeURIComponent(runId)}`;
 }
 
+/** A run's stages, for a participant (UC-6.15). */
+export function stagesLink(runId: string): string {
+	return `#/stages/${encodeURIComponent(runId)}`;
+}
+
 /** A process's level, for `process@version` or a bare process id (the active version). */
 export function processLink(ref: string): string {
 	const at = ref.lastIndexOf('@');
@@ -28,6 +33,11 @@ export function changeLink(processId: string): string {
 	return `#/changes/${encodeURIComponent(processId)}`;
 }
 
+/** The gallery a person chooses a first process from (ADR-0136 §5). */
+export function galleryLink(): string {
+	return '#/gallery';
+}
+
 /** A report to the owner: where every link a channel carries to it leads (ADR-0120). The
  * control plane builds the same route (`rendering.py`'s `view_url`). */
 export function reportLink(reportId: string): string {
@@ -38,4 +48,24 @@ export function reportLink(reportId: string): string {
  * (ADR-0135). The control plane builds the same route (`traces.py`'s `link`). */
 export function traceLink(runId: string, stepId: string): string {
 	return `#/runs/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepId)}`;
+}
+
+/** How a process really runs: its variants, its waiting and its proposals (UC-9.7). */
+export function variantsLink(processId: string): string {
+	return `#/variants/${encodeURIComponent(processId)}`;
+}
+
+/** The register of everything that acts for the tenant (UC-7.8). */
+export function registerLink(): string {
+	return '#/register';
+}
+
+/** What breaks if an adapter goes (UC-6.16); without one, where data goes. */
+export function removeLink(adapter?: string): string {
+	return adapter ? `#/dependencies/remove/${encodeURIComponent(adapter)}` : '#/dependencies';
+}
+
+/** Where a wrong result of one step of one run went (UC-6.16, UC-4.11). */
+export function wrongResultLink(runId: string, stepId: string): string {
+	return `#/dependencies/wrong/${encodeURIComponent(runId)}/${encodeURIComponent(stepId)}`;
 }

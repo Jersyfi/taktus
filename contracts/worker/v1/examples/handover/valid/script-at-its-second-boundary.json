@@ -1,0 +1,43 @@
+{
+  "contract": "worker/v1",
+  "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+  "checkpoint_ref": "ckpt/asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE/prepare",
+  "task": {
+    "goal": "Run the four steps of the default work.",
+    "acceptance": [
+      "the stream ends with assignment.finished"
+    ]
+  },
+  "summary": "2 of 4 step(s) done: inspect, prepare. Remaining: run, report.",
+  "steps": [
+    {
+      "step_id": "inspect",
+      "kind": "shell",
+      "summary": "inspect the host"
+    },
+    {
+      "step_id": "prepare",
+      "kind": "shell",
+      "summary": "write the plan"
+    }
+  ],
+  "artifacts": [
+    {
+      "id": "plan",
+      "kind": "plan",
+      "digest": "sha256:ed87dd0c3489106c00695b74686b177186c1238c3fbd97c7be049edfc3a89769",
+      "media_type": "text/plain",
+      "size_bytes": 36
+    }
+  ],
+  "messages": [],
+  "resume": {
+    "plan": [
+      "inspect",
+      "prepare",
+      "run",
+      "report"
+    ],
+    "next": 2
+  }
+}

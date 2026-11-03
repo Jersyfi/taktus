@@ -82,7 +82,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p03-implementation
-version: "22"
+version: "23"
 name: P-03 Implementation
 autonomy:
   level: 4
@@ -172,6 +172,7 @@ steps:
     fallback:
       when: the connector serving repository.issues is unavailable
       to: human
+      role: owner
     work:
       rule: connector
       operation: repository.issues.read
@@ -190,6 +191,7 @@ steps:
     fallback:
       when: the connector serving repository.comments is unavailable
       to: human
+      role: owner
     depends_on: [read-issue]
     work:
       rule: connector
@@ -234,6 +236,7 @@ steps:
     fallback:
       when: the connector serving repository.issues is unavailable
       to: human
+      role: owner
     depends_on: [read-issue]
     work:
       rule: connector
@@ -258,6 +261,7 @@ steps:
     fallback:
       when: the connector serving repository.files is unavailable
       to: human
+      role: owner
     depends_on: [read-issue]
     work:
       rule: connector
@@ -305,6 +309,7 @@ steps:
     fallback:
       when: the connector serving repository.labels is unavailable
       to: human
+      role: owner
     depends_on: [admit]
     work:
       rule: connector
@@ -350,6 +355,7 @@ steps:
     fallback:
       when: the connector serving repository.comments is unavailable
       to: human
+      role: owner
     depends_on: [claim, claim-notice]
     work:
       rule: connector
@@ -394,6 +400,7 @@ steps:
     fallback:
       when: the connector serving repository.branches is unavailable
       to: human
+      role: owner
     depends_on: [claim, branch-name]
     work:
       rule: connector
@@ -426,6 +433,7 @@ steps:
     fallback:
       when: the connector serving repository.pipelines is unavailable
       to: human
+      role: owner
     depends_on: [claim]
     work:
       until:
@@ -454,6 +462,7 @@ steps:
     fallback:
       when: the connector serving repository.pipelines is unavailable
       to: human
+      role: owner
     depends_on: [wait-for-main]
     work:
       rule: connector
@@ -488,6 +497,7 @@ steps:
         shell.sandboxed — is unavailable, or the assignment fails, is stopped twice, or the
         pipeline is red
       to: human
+      role: owner
     requires: [code.read, code.edit, code.test, shell.sandboxed]
     depends_on: [claim, context, read-branch, read-main]
     work:
@@ -614,6 +624,7 @@ steps:
     fallback:
       when: the connector serving repository.files is unavailable
       to: human
+      role: owner
     depends_on: [implement]
     work:
       rule: connector
@@ -634,6 +645,7 @@ steps:
     fallback:
       when: the connector serving repository.files is unavailable
       to: human
+      role: owner
     depends_on: [implement]
     work:
       rule: connector
@@ -684,6 +696,7 @@ steps:
     fallback:
       when: the connector serving repository.refs is unavailable
       to: human
+      role: owner
     depends_on: [record-references]
     work:
       when:
@@ -711,6 +724,7 @@ steps:
     fallback:
       when: the connector serving repository.branches is unavailable
       to: human
+      role: owner
     depends_on: [implement, branch-name, reserve-records]
     work:
       rule: connector
@@ -734,6 +748,7 @@ steps:
     fallback:
       when: the connector serving repository.pipelines is unavailable
       to: human
+      role: owner
     depends_on: [create-branch]
     work:
       until:
@@ -761,6 +776,7 @@ steps:
     fallback:
       when: the connector serving repository.pipelines is unavailable
       to: human
+      role: owner
     depends_on: [wait-for-pipeline]
     work:
       rule: connector
@@ -942,6 +958,7 @@ steps:
     fallback:
       when: the connector serving repository.pullrequests is unavailable
       to: human
+      role: owner
     depends_on: [pull-request-title-form, pull-request-body-form]
     work:
       rule: connector
@@ -962,6 +979,7 @@ steps:
     fallback:
       when: the connector serving repository.labels is unavailable
       to: human
+      role: owner
     depends_on: [open-pr]
     work:
       rule: connector
@@ -991,6 +1009,7 @@ steps:
     fallback:
       when: the connector serving repository.labels is unavailable
       to: human
+      role: owner
     depends_on: [claim]
     work:
       on_escalation: true
@@ -1046,6 +1065,7 @@ steps:
     fallback:
       when: the connector serving repository.comments is unavailable
       to: human
+      role: owner
     depends_on: [claim, give-back-notice]
     work:
       on_escalation: true

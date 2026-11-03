@@ -20,6 +20,7 @@ from taktus.components.reporting.domain.service.levels import (
     process_level,
     run_level,
 )
+from taktus.components.reporting.domain.service.stages import StageView, stage_view
 from taktus.components.reporting.ports.levels import LevelRecords
 
 
@@ -42,6 +43,17 @@ class LevelQueries:
         if not visibility.may_see(reader, ref):
             return None
         return run_level(facts)
+
+    async def stages(self, reader: Reader, run_id: str) -> StageView | None:
+        """The stages of one run (UC-6.15), computed from the run level's records on each
+        request; None when there is no such run or the reader may not see it."""
+        facts = await self._records.run(reader.tenant, run_id)
+        if facts is None:
+            return None
+        ref = RunRef(id=facts.id, tenant=facts.tenant, process_version=facts.process_version)
+        if not visibility.may_see(reader, ref):
+            return None
+        return stage_view(facts)
 
     async def process(
         self, reader: Reader, process_id: str, version: str | None = None

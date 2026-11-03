@@ -5,6 +5,9 @@ the request becomes `confirmed`, then `applied`, and the decision register gains
 linked to the run, the step and the request — in the same transaction. A rejected reading
 takes nothing into effect: the request is open again, and the next answer is read afresh.
 
+A decision that took effect is then looked at with the others of its kind, and may lead to a
+rule being proposed, or adopted where it answers a proposal (`rules.py`, ADR-0161).
+
 What the run does with the decision is the run's: the composition root hands the applied request
 to the run engine, which continues or halts the run at the boundary it waits at.
 """
@@ -12,6 +15,7 @@ to the run engine, which continues or halts the run at the boundary it waits at.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Protocol
 
 from taktus.components.decision.application.service._ledger import (
     APPLIED,
@@ -47,6 +51,13 @@ class Confirmed:
     """The register entry, when the reading was confirmed."""
 
 
+class Precedents(Protocol):
+    """Where a decision that took effect is looked at with the others of its kind (`rules.py`,
+    ADR-0161)."""
+
+    async def decided(self, tenant: Tenant, entry: RegisterEntry) -> object: ...
+
+
 class ConfirmRequestHandler:
     def __init__(
         self,
@@ -55,14 +66,23 @@ class ConfirmRequestHandler:
         work: UnitOfWork,
         ledger: Ledger,
         clock: Clock,
+        precedents: Precedents | None = None,
     ) -> None:
         self._requests = requests
         self._register = register
         self._work = work
         self._ledger = ledger
         self._clock = clock
+        self._precedents = precedents
 
     async def execute(self, command: ConfirmRequest) -> Confirmed:
+        confirmed = await self._confirm(command)
+        if confirmed.entry is not None and self._precedents is not None:
+            # After the decision took effect, never inside it: a proposal changes nothing here.
+            await self._precedents.decided(command.tenant, confirmed.entry)
+        return confirmed
+
+    async def _confirm(self, command: ConfirmRequest) -> Confirmed:
         now = self._clock.now()
         async with self._work.transaction(command.tenant):
             request = await self._requests.get(command.tenant, command.request_id)

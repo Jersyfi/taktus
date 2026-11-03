@@ -69,6 +69,8 @@ AWAITING_CONFIRMATION = "awaiting_confirmation"
 """The step waits for a person to confirm it (level 2, ADR-0039)."""
 AWAITING_PERFORMANCE = "awaiting_performance"
 """The step waits for a person to perform its act (level 1, ADR-0039)."""
+AWAITING_ROLE = "awaiting_role"
+"""A `human` step waits for a person of its role to perform it, at every level (ADR-0167 §1)."""
 FELL_BACK = "fell_back"
 """The step's model was unsure, and the step went to its fallback, a person (ADR-0076)."""
 TAKEN_OVER = "taken_over"
@@ -83,6 +85,18 @@ WAITING_ON_CLOCK = "waiting_on_clock"
 AT_OPEN_WORK_CAP = "at_open_work_cap"
 """The process's open outcomes of a kind are at its cap: the run starts nothing until one
 closes (ADR-0132). Booked to `wait.external`: what the run waits for happens outside."""
+HOLDING_MESSAGE = "holding_message"
+"""An approved outward message waits for its tenant's sending delay or quiet hours to pass
+(ADR-0142 §8). Booked to `wait.external`: the clock it waits for is the recipients'."""
+AWAITING_PARTICIPANT = "awaiting_participant"
+"""A `human` step waits for a participant outside the organisation to answer in its own
+channel (ADR-0155). Booked to `wait.external`: the one who answers is outside."""
+AT_UNIT_QUOTA = "at_unit_quota"
+"""The run's organisational unit held as many runner places as its tenant's quota allows: a
+claim skipped its job until one freed (ADR-0166). Booked to `limit.quota`."""
+AT_UNIT_BUDGET = "at_unit_budget"
+"""The run's budget did not fit what is left of its organisational unit's budget quota for the
+month, or names no amount in the quota's currency (ADR-0166). Booked to `limit.budget`."""
 HELD_BACK = "held_back"
 """The step depends on a step that waits, and cannot start before it ends."""
 NO_WORKER = "no_worker"
@@ -131,6 +145,17 @@ class Takeover(Value):
     """The identifier of the step's artifact that holds the state the step was taken over in."""
 
 
+class Awaited(Value):
+    """Where a participant's answer is expected, and how far it has come (ADR-0155): the
+    channel and the thread, the digest of the account that answered first, and the digest of
+    the reading it was told. Names no person: the account only by its digest."""
+
+    channel: str = Field(min_length=1)
+    thread: str = Field(min_length=1)
+    account: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
+    reading: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
+
+
 class OpenBlock(Value):
     """A block that has not ended: what the step run carries while it waits."""
 
@@ -155,3 +180,6 @@ class OpenBlock(Value):
     takeover: Takeover | None = None
     """For a step a person took over: the take-over they hold (ADR-0128). None for every other
     block."""
+    awaited: Awaited | None = None
+    """For a step that waits for a participant outside the organisation: where the answer is
+    expected (ADR-0155). None for every other block."""

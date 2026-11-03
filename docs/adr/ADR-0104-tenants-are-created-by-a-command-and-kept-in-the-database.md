@@ -121,7 +121,22 @@ it removes it (#517). Neither the chart nor compose sets it.
   `api/openapi.yaml` is regenerated.
 - `CREDENTIALS.md` gains the administration key.
 - Tests that share one database keep apart by narrowing with `TAKTUS_TENANTS`. Its removal needs
-  them to keep apart in another way.
+  them to keep apart in another way: since #517 each integration test has a database of its
+  own, copied from a migrated template.
+
+## Amendment — the variable is removed before a release carried it (2026-10-28)
+§7 accepted `TAKTUS_TENANTS` for the first minor release that carries the registry, and removed
+it in the next. No minor release was tagged between the registry (#318) and its removal (#517):
+the tags are release candidates of `0.2.0`, and the registry arrived after them. The installed
+instances run the chart or compose, and neither sets the variable. The one release the
+deprecation was for therefore never existed, and keeping the variable for one would protect
+nobody.
+
+The variable is removed now. A daemon that still sets it to a value refuses to start, and its
+message names `taktusctl tenant create` and `taktusctl tenant list`. It is not quietly widened
+to every tenant of the registry, which would serve tenants its operator had left out. Set empty,
+it narrowed nothing, and it is ignored. The command line does not read it. The integration
+tests keep apart through a database of each test's own (`tests/integration/conftest.py`).
 
 ## Where this promise ends
 A tenant is served within one poll interval of its creation by every role that is running a round
@@ -133,4 +148,5 @@ The identifier is generated, and the surfaces accept none. Migration 0001's `def
 operator inserts with the database's own tools are outside that rule. The administration key on
 HTTP is a single secret: whoever holds it administers every tenant of the instance, and the
 ledger names only the administrator the request names. This ADR does not suspend, export or
-delete a tenant (#351).
+delete a tenant (#351). An operator who set `TAKTUS_TENANTS`
+learns of its removal when the upgraded daemon refuses to start, not one release earlier.

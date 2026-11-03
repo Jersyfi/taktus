@@ -35,6 +35,7 @@ from taktus.adapters.driven.memory import (
     MemoryBackupLog,
     MemoryLedgerStore,
     MemoryObjectStore,
+    MemoryOrgUnitSpends,
     MemoryPersistence,
     MemoryProjectionStore,
     MemoryProvenanceStore,
@@ -47,6 +48,7 @@ from taktus.adapters.driven.platform import HostPlatform
 from taktus.adapters.driven.postgres import (
     PostgresBackupLog,
     PostgresLedgerStore,
+    PostgresOrgUnitSpends,
     PostgresPersistence,
     PostgresProjectionStore,
     PostgresProvenanceStore,
@@ -58,6 +60,7 @@ from taktus.adapters.driven.postgres import (
     check_schema,
 )
 from taktus.adapters.driven.postgres.url import described
+from taktus.adapters.driven.signing import Ed25519Signatures
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.adapters.driving.cli.wiring import (
     CapacityServices,
@@ -65,16 +68,41 @@ from taktus.adapters.driving.cli.wiring import (
     NotOperable,
     Services,
 )
-from taktus.components.accounting.application.service import CostOfRunHandler, TaktRateHandler
+from taktus.components.accounting.application.service import (
+    CostOfRunHandler,
+    SpendHandler,
+    TaktRateHandler,
+)
 from taktus.components.catalog.application.service import (
+    AgentCatalog,
+    CatalogueInstalls,
     RecordRemovalResultHandler,
     RunConformanceHandler,
+    SkillCatalog,
 )
-from taktus.components.catalog.domain.model import AdapterMaturity
+from taktus.components.catalog.domain.model import (
+    AdapterMaturity,
+    AgentCore,
+    CatalogueInstallation,
+    RoleProfile,
+    SkillOwnership,
+    SkillPolicy,
+    SkillVersion,
+)
 from taktus.components.command.application.service import CommissionPlanHandler
 from taktus.components.decision.domain.model import Request
-from taktus.components.governance.application.service import ExpectedRuns
-from taktus.components.governance.domain.model import Incident, WatchConfiguration
+from taktus.components.governance.application.service import (
+    Drifts,
+    ExpectedRuns,
+    ResultDefects,
+    SubjectRequests,
+)
+from taktus.components.governance.domain.model import (
+    Incident,
+    SubjectRequest,
+    WatchConfiguration,
+)
+from taktus.components.governance.domain.model.anchors import AnchorConfiguration
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.identity.domain.model import (
     BrowserSession,
@@ -90,7 +118,13 @@ from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
-from taktus.components.process.domain.model import Evaluation, Process, ProcessVersion, Proposal
+from taktus.components.process.domain.model import (
+    CorrectedCase,
+    Evaluation,
+    Process,
+    ProcessVersion,
+    Proposal,
+)
 from taktus.components.reporting.application.service import Kept, ProductFindings, StepTraces
 from taktus.components.run.application.query import (
     BlockedTime,
@@ -100,10 +134,14 @@ from taktus.components.run.application.query import (
 from taktus.components.run.application.service import EngineOptions, RunEngine
 from taktus.components.run.application.service.stops import Stops
 from taktus.components.run.domain.model import AdapterStop, Run
+from taktus.composition.acting import ActingReads
+from taktus.composition.agents import SharedAgents
 from taktus.composition.alerts import alerts
 from taktus.composition.capacity import capacity_report, rules_of
+from taktus.composition.catalogue import CatalogueAuthor, InstanceCatalogueIndex
 from taktus.composition.conformance import InstanceSuites, worker_suites
 from taktus.composition.decisions import decision_wiring
+from taktus.composition.evaluations import Evaluations
 from taktus.composition.execution import (
     connector_pool,
     memory_demand,
@@ -116,18 +154,22 @@ from taktus.composition.execution import (
 from taktus.composition.findings import RunBlocks, RunContent, sending_of
 from taktus.composition.guides import InstanceGuides, served_directory
 from taktus.composition.interfaces import broken_interfaces
-from taktus.composition.levels import RepositoryLevelRecords
+from taktus.composition.levels import RepositoryLevelRecords, VersionStatements
 from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.maturation import InstanceMaturation, RepositoryScores, maturation_wiring
 from taktus.composition.maturity import CatalogMaturities, InstanceCatalogue
 from taktus.composition.moves import MethodMoves
+from taktus.composition.objects import object_store_of
+from taktus.composition.org_units import OrgUnitsOfTheRun
 from taktus.composition.owner_channel import known_secrets, owner_channel_wiring
 from taktus.composition.proposals import InstanceChanges
 from taktus.composition.settings import (
+    ExecutionKind,
     load_administration,
     load_backup_expected_hours,
     load_budget,
     load_capacity,
+    load_catalogue,
     load_connectors,
     load_database_timeouts,
     load_findings,
@@ -135,15 +177,18 @@ from taktus.composition.settings import (
     load_knowledge_directory,
     load_model,
     load_models,
+    load_object_store,
     load_telemetry,
-    load_tenants,
     load_workers,
 )
 from taktus.composition.shipped import load as load_shipped
 from taktus.composition.signals import signal_wiring
+from taktus.composition.skills import CatalogGuidance, SkillLifecycle
 from taktus.composition.stages import stage_wiring
+from taktus.composition.subjects import ProcessingEvidence, RunHoldings
 from taktus.ports.backups import BackupLog
 from taktus.ports.configuration import Configuration, ConfigurationError
+from taktus.ports.org_units import OrgUnitSpends
 from taktus.ports.persistence import (
     LedgerStore,
     ProjectionStore,
@@ -157,6 +202,7 @@ from taktus.ports.persistence import (
     UnreadableState,
 )
 from taktus.ports.queue import Queue
+from taktus.ports.relay import Relay
 from taktus.ports.traces import Traces
 from taktus.shared.v1 import Command, Plan
 
@@ -185,6 +231,9 @@ class Stores:
     directory, which the platform measures."""
     traces: Traces | None = None
     """The trace inside a worker's step (ADR-0135); None where nothing reads one."""
+    spends: OrgUnitSpends | None = None
+    """What organisational units committed of their budget quotas (ADR-0166); None where no
+    run commits to one."""
 
 
 class LocalWiring:
@@ -192,7 +241,11 @@ class LocalWiring:
         self._configuration = configuration or EnvironmentConfiguration()
 
     @asynccontextmanager
-    async def services(self, *, state_dir: Path, worker_endpoint: str) -> AsyncIterator[Services]:
+    async def services(
+        self, *, state_dir: Path, worker_endpoint: str, relay: Relay | None = None
+    ) -> AsyncIterator[Services]:
+        """`relay`: the outbound binding's relay, for a worker configured as connected
+        (ADR-0156); without one such a worker cannot be reached here."""
         clock = SystemClock()
         ids = SystemIdentifiers()
         try:
@@ -210,16 +263,20 @@ class LocalWiring:
             shape = findings_shape.form()
             findings_connector = load_findings_connector(self._configuration)
             findings_sending = sending_of(findings_shape, findings_connector)
-            tenants = load_tenants(self._configuration)
             administration = load_administration(self._configuration)
             knowledge_directory = load_knowledge_directory(self._configuration)
             backup_expected_hours = load_backup_expected_hours(self._configuration)
+            object_settings = load_object_store(self._configuration)
         except ConfigurationError as error:
             raise NotOperable(str(error)) from error
         async with (
             self._stores(state_dir) as stores,
             open_workers(
-                configured, self._configuration, state_dir=state_dir, endpoint=worker_endpoint
+                configured,
+                self._configuration,
+                state_dir=state_dir,
+                endpoint=worker_endpoint,
+                relay=relay,
             ) as opened,
         ):
             runs = stores.of(Run)
@@ -230,7 +287,6 @@ class LocalWiring:
                 ledger=ledger,
                 clock=clock,
                 ids=ids,
-                narrowed_to=tenants,
             )
             identities = IdentityDirectory(
                 tenants=registry,
@@ -245,6 +301,11 @@ class LocalWiring:
                 randomness=SystemRandomness(),
             )
             decisions = decision_wiring(stores.of, stores.work, ledger, clock, identities)
+            org_units = (
+                None
+                if stores.spends is None
+                else OrgUnitsOfTheRun(decisions.org_units, stores.spends)
+            )
             objects = MemoryObjectStore(state_dir / "objects")
             recordings = RecordedResponses(runs, stores.work, objects)
             # The loopback connector is in the pool the engine resolves from and needs the
@@ -255,6 +316,11 @@ class LocalWiring:
                     opened,
                     hosts=service_hosts(configured),
                     environment=unit_environments(configured),
+                    connected=frozenset(
+                        w.identifier
+                        for w in configured
+                        if w.execution.kind is ExecutionKind.CONNECTED
+                    ),
                 ),
                 connector_pool(
                     connectors,
@@ -273,10 +339,25 @@ class LocalWiring:
                 stoppable=pools.identifiers(),
             )
 
+            # Skills and shared agents in the catalogue, handed to a run's steps (ADR-0162,
+            # ADR-0163).
+            skill_catalog = SkillCatalog(
+                stores.of(SkillVersion),
+                stores.of(SkillPolicy),
+                stores.of(SkillOwnership),
+                stores.work,
+                ledger,
+                clock,
+            )
+            agent_catalog = AgentCatalog(
+                stores.of(AgentCore), stores.of(RoleProfile), stores.work, ledger, clock
+            )
+
             def engine_for(
                 workers: StaticWorkerPool, connectors: StaticConnectorPool, models: StaticModelPool
             ) -> RunEngine:
                 return RunEngine(
+                    guidance=CatalogGuidance(skill_catalog, agent_catalog),
                     runs=runs,
                     work=stores.work,
                     objects=objects,
@@ -306,6 +387,7 @@ class LocalWiring:
                         stores.of(AdapterMaturity),
                         stores.work,
                         Pools(workers, connectors, models),
+                        stores.of(CatalogueInstallation),
                     ),
                     anchors=decisions.anchors,
                     administration=administration,
@@ -319,6 +401,9 @@ class LocalWiring:
                     traces=stores.traces,
                     masking=known_secrets(os.environ),
                     stops=stops,
+                    messages=decisions.messages,
+                    statements=VersionStatements(stores.work, stores.of(ProcessVersion)),
+                    org_units=org_units,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -429,6 +514,55 @@ class LocalWiring:
                     stores.work,
                 ),
             )
+            drifts = Drifts(
+                stores.of(Incident),
+                stores.of(WatchConfiguration),
+                ledger,
+                stores.work,
+                clock,
+            )
+            evaluations = Evaluations(
+                processes=stores.of(Process),
+                versions=stores.of(ProcessVersion),
+                evaluations=stores.of(Evaluation),
+                cases=stores.of(CorrectedCase),
+                runs=runs,
+                commission=commission,
+                engine=engine,
+                identities=identities,
+                drifts=drifts,
+                ledger=ledger,
+                objects=objects,
+                work=stores.work,
+                clock=clock,
+                ids=ids,
+            )
+            skill_lifecycle = SkillLifecycle(
+                catalog=skill_catalog,
+                processes=stores.of(Process),
+                versions=stores.of(ProcessVersion),
+                evaluations=evaluations,
+                evaluation_records=stores.of(Evaluation),
+                runs=runs,
+                drifts=drifts,
+                ledger=ledger,
+                work=stores.work,
+                clock=clock,
+            )
+            shared_agents = SharedAgents(
+                catalog=agent_catalog,
+                processes=stores.of(Process),
+                versions=stores.of(ProcessVersion),
+                evaluations=evaluations,
+                commission=commission,
+                engine=engine,
+                identities=identities,
+                ledger=ledger,
+                work=stores.work,
+                clock=clock,
+                ids=ids,
+                costs=CostOfRunHandler(ledger, objects, stores.work),
+            )
             register_version = RegisterProcessVersionHandler(
                 stores.of(ProcessVersion),
                 stores.work,
@@ -439,6 +573,7 @@ class LocalWiring:
                 lowered=decisions.lowered,
                 sources=decisions.sources,
                 stages=staged.ceilings,
+                structure=identities,
             )
             findings = ProductFindings(
                 RunBlocks(BlockedTime(ledger, objects, stores.work, runs)),
@@ -454,11 +589,82 @@ class LocalWiring:
                 shape=shape,
                 shipped=load_shipped(),
             )
+            maturities = CatalogMaturities(
+                stores.of(AdapterMaturity), stores.work, pools, stores.of(CatalogueInstallation)
+            )
+            catalogue_settings = load_catalogue(self._configuration)
+            # Data-protection requests reach the store the artifacts live in, which may be a
+            # bucket, not this machine's directory (ADR-0165, ADR-0176).
+            acting = ActingReads(
+                processes=stores.of(Process),
+                versions=stores.of(ProcessVersion),
+                maturities=stores.of(AdapterMaturity),
+                runs=runs,
+                catalogue=InstanceCatalogue(pools, maturities),
+                pools=pools,
+                residency=decisions.residency,
+                stops=stops,
+                blocked=BlockedTime(ledger, objects, stores.work, runs),
+                identities=identities,
+                provenance=stores.provenance_store,
+                ledger=ledger,
+                work=stores.work,
+                clock=clock,
+            )
+            evidence = ProcessingEvidence(
+                register=acting.register,
+                processes=stores.of(Process),
+                versions=stores.of(ProcessVersion),
+                sources=decisions.sources,
+                residency=decisions.residency,
+                ledger=ledger,
+                work=stores.work,
+                clock=clock,
+                traces=stores.traces,
+            )
+            subjects = SubjectRequests(
+                stores.of(SubjectRequest),
+                RunHoldings(
+                    runs=runs,
+                    provenance=stores.provenance_store,
+                    ledger=ledger,
+                    objects=object_store_of(object_settings, state_dir=state_dir, cache_bytes=0),
+                    work=stores.work,
+                    tenants=stores.tenants,
+                    traces=stores.traces,
+                    locations=evidence.locations,
+                ),
+                ledger,
+                stores.work,
+                clock,
+                ids,
+            )
             yield Services(
                 conformance=conformance,
-                catalogue=InstanceCatalogue(
-                    pools,
-                    CatalogMaturities(stores.of(AdapterMaturity), stores.work, pools),
+                catalogue=InstanceCatalogue(pools, maturities),
+                catalogue_index=InstanceCatalogueIndex(
+                    directory=catalogue_settings.directory,
+                    keys=catalogue_settings.keys,
+                    installs=CatalogueInstalls(
+                        Ed25519Signatures(),
+                        stores.of(CatalogueInstallation),
+                        stores.work,
+                        ledger,
+                        objects,
+                        clock,
+                    ),
+                    maturities=maturities,
+                    proposals=Proposals(
+                        stores.of(ProcessVersion),
+                        stores.of(Process),
+                        stores.of(Proposal),
+                        stores.work,
+                        clock,
+                        ids,
+                        administration,
+                    ),
+                    versions=stores.of(ProcessVersion),
+                    work=stores.work,
                 ),
                 deactivate=DeactivateProcessHandler(stores.of(Process), stores.work, ledger),
                 register_version=register_version,
@@ -475,6 +681,7 @@ class LocalWiring:
                 cost=CostOfRunHandler(
                     ledger, MemoryObjectStore(state_dir / "objects"), stores.work
                 ),
+                spend=SpendHandler(ledger, MemoryObjectStore(state_dir / "objects"), stores.work),
                 takt_rate=TaktRateHandler(
                     ledger, MemoryObjectStore(state_dir / "objects"), stores.work, clock, weights
                 ),
@@ -522,8 +729,19 @@ class LocalWiring:
                 corridors=signals.corridors,
                 signals=signals.watch,
                 corrections=decisions.corrections,
+                defects=ResultDefects(
+                    stores.provenance_store,
+                    ledger,
+                    stores.of(Incident),
+                    stores.of(WatchConfiguration),
+                    stores.of(AnchorConfiguration),
+                    stores.work,
+                    clock,
+                ),
                 residency=decisions.residency,
                 sources=decisions.sources,
+                messages=decisions.messages.tenant,
+                org_units=decisions.org_units,
                 deadlines=decisions.deadlines,
                 stops=stops,
                 traces=None
@@ -544,6 +762,10 @@ class LocalWiring:
                     clock=clock,
                 ),
                 stages=staged.stages,
+                skills=skill_lifecycle,
+                agents=shared_agents,
+                subjects=subjects,
+                evidence=evidence,
             )
             telemetry.shutdown()
 
@@ -551,7 +773,6 @@ class LocalWiring:
     async def capacity(self, *, state_dir: Path) -> AsyncIterator[CapacityServices]:
         try:
             settings = load_capacity(self._configuration)
-            tenants = load_tenants(self._configuration)
             configured = load_workers(self._configuration)
         except ConfigurationError as error:
             raise NotOperable(str(error)) from error
@@ -563,7 +784,6 @@ class LocalWiring:
                 ledger=ChainedLedger(stores.ledger_store, clock, stores.projection_store),
                 clock=clock,
                 ids=SystemIdentifiers(),
-                narrowed_to=tenants,
             )
             yield CapacityServices(
                 report=capacity_report(
@@ -578,6 +798,10 @@ class LocalWiring:
                 tenants=await registry.served(),
                 job_memory_bytes=memory_demand(configured),
             )
+
+    def catalogue_author(self) -> CatalogueAuthor:
+        """Signing a catalogue's index needs no state (ADR-0175 §2)."""
+        return CatalogueAuthor(Ed25519Signatures())
 
     @asynccontextmanager
     async def guides(self, *, directory: Path) -> AsyncIterator[GuidesServices]:
@@ -607,6 +831,7 @@ class LocalWiring:
                     projection_store=MemoryProjectionStore(memory),
                     traces=MemoryTraceStore(memory),
                     backups=MemoryBackupLog(memory),
+                    spends=MemoryOrgUnitSpends(memory),
                     storage=f"memory with a snapshot under {state_dir} — development only, "
                     "not durable; set TAKTUS_DATABASE_URL for a database",
                 )
@@ -654,6 +879,7 @@ class LocalWiring:
                 backups=PostgresBackupLog(postgres),
                 storage=f"database {described(url)}; artifact bytes under {state_dir}/objects",
                 queue=PostgresQueue(postgres),
+                spends=PostgresOrgUnitSpends(postgres),
                 size=postgres,
             )
         finally:

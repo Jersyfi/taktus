@@ -37,6 +37,8 @@ Checks, per use case:
    a use case requires — sections 1 to 3, or a use case that is new or removed — does not touch
    its implementation: its component's code under `src/taktus/components/<component>/`, its
    component's tests under `tests/components/<component>/`, or the files of the tests it names.
+   In concept mode — a branch named `concept/<name>`, on the owner's word (DEC-0222) — a use
+   case that is new may be written beside its implementation; a changed or removed one may not.
 
 `--print` prints every use case with its component, state and version (`make usecases`).
 `--digest ADR-NNNN` prints the digest to record. The last line is the duration.
@@ -46,6 +48,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import os
 import re
 import subprocess
 import sys
@@ -417,6 +420,17 @@ def check_adrs(root: Path, case: UseCase) -> list[str]:
     return problems
 
 
+SPREAD_FROM = 8
+"""A use case naming this many tests or more has them run in four processes. Starting the
+processes costs about a second, which a handful of tests does not repay; a suite such as the
+worker conformance one, run once per fault, takes minutes alone and is run again by every case
+of the gate's self-test (`tools/gate_selftest.py`)."""
+
+
+def _spread(refs: list[str]) -> list[str]:
+    return ["-n", "4"] if len(refs) >= SPREAD_FROM else []
+
+
 def run_tests(root: Path, refs: list[str]) -> tuple[bool, str]:
     """Run the named tests; green only if every one ran and passed."""
     try:
@@ -435,6 +449,7 @@ def run_tests(root: Path, refs: list[str]) -> tuple[bool, str]:
                 "-p",
                 "no:cacheprovider",
                 f"--junitxml={report}",
+                *_spread(refs),
                 *refs,
             ],
             cwd=root,
@@ -516,8 +531,24 @@ def implementation(case: UseCase) -> list[str]:
     return paths
 
 
+def concept_branch(root: Path) -> str | None:
+    """The branch's name when it is a concept-mode branch (`concept/<name>`, DEC-0222).
+
+    A pull request names its branch in `GITHUB_HEAD_REF`. A commit on `main` names the branch
+    its pull request was merged from in `TAKTUS_MERGED_FROM`, which CI looks up, so that the
+    squash commit of a concept-mode pull request keeps the exception its branch had."""
+    name = os.environ.get("GITHUB_HEAD_REF") or os.environ.get("TAKTUS_MERGED_FROM") or ""
+    if not name:
+        try:
+            name = git(root, "rev-parse", "--abbrev-ref", "HEAD").strip()
+        except RuntimeError:
+            name = ""
+    return name if name.startswith("concept/") else None
+
+
 def check_separation(root: Path, base: str | None, cases: list[UseCase], report: Report) -> None:
     print("requirement and implementation apart")
+    concept = concept_branch(root)
     resolved = resolve_base(root, base)
     if resolved is None:
         report.fail("base", f"{base or 'origin/main or main'} not found; cannot tell what changed")
@@ -543,7 +574,9 @@ def check_separation(root: Path, base: str | None, cases: list[UseCase], report:
         hits = sorted(
             path for path in changed for impl in implementation(case) if path.startswith(impl)
         )
-        if hits:
+        if hits and how == "new" and concept is not None:
+            report.ok(f"{case.id}: requirement new, built beside it in concept mode ({concept})")
+        elif hits:
             report.fail(
                 case.path.as_posix(),
                 f"requirement {how}, and its implementation too: "
@@ -594,6 +627,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--base", help="commit or branch to compare with (default origin/main)")
     parser.add_argument("--print", dest="show", action="store_true", help="print every use case")
     parser.add_argument("--digest", metavar="ADR-NNNN", help="print the digest of one ADR")
+    parser.add_argument(
+        "--tests",
+        choices=("all", "changed"),
+        default="all",
+        help="whose named tests run: every verified use case's (default), or only those of a "
+        "use case the change touches, as the gate's self-test runs it",
+    )
     args = parser.parse_args(argv)
     root: Path = args.root.resolve()
 
@@ -643,6 +683,15 @@ def main(argv: list[str] | None = None) -> int:
         report.ok("no use case yet")
 
     verified = [c for c in cases if c.state == "verified" and c.tests]
+    if args.tests == "changed":
+        # The self-test plants one violation per case and runs this gate for each. The named
+        # tests of every other use case are the same code each time, and the lane `static`
+        # runs them all on the very commit; run here, they only made the self-test outrun its
+        # limit (UC-14.5's worker suite, once per fault). The case of a red test touches its
+        # use case, so it still runs.
+        resolved = resolve_base(root, args.base)
+        touched = changed_files(root, resolved) if resolved else set()
+        verified = [c for c in verified if c.path.as_posix() in touched]
     if verified:
         print("verified means green")
     for case in verified:

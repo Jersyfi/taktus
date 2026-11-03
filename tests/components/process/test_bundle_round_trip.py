@@ -23,7 +23,9 @@ from taktus.components.process.domain.model import ProcessVersion
 from taktus.components.process.domain.service.bundle import bundle_of, next_version
 
 ROOT = Path(__file__).resolve().parents[3]
-BUNDLES = sorted((ROOT / "blueprints").glob("*/processes/*.yaml"))
+BUNDLES = sorted((ROOT / "blueprints").glob("*/processes/*.yaml")) + sorted(
+    (ROOT / "blueprints" / "gallery").glob("*/processes/*.yaml")  # ADR-0136
+)
 
 
 @pytest.mark.parametrize("path", BUNDLES, ids=lambda p: p.stem)

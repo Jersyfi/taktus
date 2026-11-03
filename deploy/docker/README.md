@@ -4,10 +4,13 @@
 |---|---|
 | `compose.yml` | **the deployment shape**: Taktus and PostgreSQL, two containers for the control plane (ADR-0002). No worker: a worker is configured by endpoint, or started by the execution port (`TAKTUS_EXECUTION`) |
 | `compose.reference-worker.yml` | **development only**, layered over `compose.yml`: the reference worker in its own image, reached by endpoint, for trying a bundle out and for `verify.sh` (`make up-dev`) |
-| `Dockerfile` | the control plane image, every role, selected at start by `TAKTUS_ROLES`; carries no worker code (DEC-0011). The web app is built in a stage of its own with Node, and only its static build is carried over; the runtime holds no Node (ADR-0063). `npm ci` gives up a request that stalls after 30 s and retries it, so that a stalled download is retried rather than stopping the build (#360). It runs as user 999, pinned by number because the chart runs it as that number (`deploy/k8s/`). On a version tag, `.github/workflows/images.yml` builds it and each worker's image for the registry the repository names |
+| `Dockerfile` | the control plane image, every role, selected at start by `TAKTUS_ROLES`; carries no worker code (DEC-0011) and no connector (ADR-0158). The web app is built in a stage of its own with Node, and only its static build is carried over; the runtime holds no Node (ADR-0063). `npm ci` gives up a request that stalls after 30 s and retries it, so that a stalled download is retried rather than stopping the build (#360). It runs as user 999, pinned by number because the chart runs it as that number (`deploy/k8s/`). On a version tag and on a push to `main`, `.github/workflows/images.yml` builds it and each worker's image for the registry the repository names, scanned, signed and recorded by digest (ADR-0173) |
+| `connectors.py` | writes `compose.connectors.yml` from the operator's `connectors.json` — a service per further connector, its credentials as secret files, and `TAKTUS_CONNECTORS` on the `taktus` service — which `make up`, `make up-dev` and `make start` lay over `compose.yml` (see *Connectors*). Both files are the operator's, ignored by git; `connectors.example.json` is the shape |
 | `secrets.sh` | writes the two secret files `compose.yml` reads, once, under `secrets/` (ignored by git); the directory is closed to other host users and the files are readable, because the containers read them as their own user |
+| `start.py` | `make start`, the one command of a first install (ADR-0136 §6): what `make up` does, then `taktusctl first start` — the first tenant, its administrator and the account key, printed once — and a clock that runs until the tenant's first rehearsal has finished; it writes what it measured to `first-process.json`, which is never committed |
+| `first-process.sh` | `make verify-first-process` (ADR-0136 §7): `start.py` from nothing under a compose project of its own, then the gallery, a proposal and its rehearsal through the HTTP surface; fails where the rehearsal did not finish within ten minutes of the install's start |
 | `verify.sh` | the end-to-end check: from nothing, the image checked for worker code, a run, the container killed, restarted, the run resumed |
-| `upgrade.sh` | the upgrade test (ADR-0124): the previous release from its tag's compose files and published images, a run in each of five states, upgraded to this checkout; every run continues at its boundary and no completed step runs again (`make verify-upgrade`, and the workflow `upgrade` on every release tag) |
+| `upgrade.sh` | the upgrade test (ADR-0124): the previous release from its tag's compose files and published images, a run in each of five states, this checkout's migrations run while it still serves — and, once that release reads the schema's range, it stays ready (ADR-0093, #330) — then upgraded to this checkout; every run continues at its boundary and no completed step runs again (`make verify-upgrade`, and the workflow `upgrade` on every release tag) |
 | `taktus.env` | not in the repository: the operator's own settings, `TAKTUS_NAME=value` per line, read by `compose.yml` when it exists; never a secret value (ignored by git) |
 | `.env` | not in the repository: what Docker Compose itself reads every time, the host port `TAKTUS_HTTP_PORT` above all, so that a port chosen once is kept by every later `make up` (ignored by git). `TAKTUS_HTTP_PORT` in `taktus.env` changes nothing: inside the container the port is always 8080 |
 | `compose.dev.yml` | the development database: PostgreSQL alone, bound to `127.0.0.1`, trusting local connections, for `uv run taktusctl run` and the tests |
@@ -94,6 +97,34 @@ up-dev` layers the reference worker in its own image over the deployment:
 make up-dev
 ```
 
+## Connectors
+
+A connector serves a capability over MCP, such as payments or a cloud bill (ADR-0150). On one
+server each runs in a container of its own, as on a cluster (`deploy/k8s/README.md` §2,
+`connectors.others`). Compose cannot repeat a service for each entry of a list, so
+`connectors.py` writes the services from the operator's list.
+
+1. Copy `connectors.example.json` to `connectors.json` and keep the entries you use. Each names
+   the connector (`name`), its `capability` — its label in `TAKTUS_CONNECTORS` — either a
+   shipped `connector` by its name, built from this checkout's `connectors/Dockerfile` as
+   `taktus-connector-<connector>:local`, or an `image` of its own by version, its `port`,
+   `args`, and each credential as `{name, file}`. The `module` an earlier release ran from the
+   control plane's image, `taktus.adapters.driven.connectors.<connector>`, names the same
+   connector, so a list written then keeps working (ADR-0158). Optional: `healthPath` (`/health`; empty for none).
+2. Write each credential's value into the file it names under `secrets/`. `CREDENTIALS.md`
+   says what each parameter needs. The value never enters `connectors.json`.
+3. `make up`, as always.
+
+`make up`, `make up-dev` and `make start` run `connectors.py` first. It writes
+`compose.connectors.yml` and lays it over `compose.yml`. Each connector becomes the service
+`connector-<name>`, publishes no port, and reads each credential as a compose secret, its
+path in `TAKTUS_CREDENTIAL_<NAME>_FILE`. The `taktus` service receives `TAKTUS_CONNECTORS`
+naming every connector and starts after them. Both files are the operator's, and git ignores
+them. A list that names a connector, a capability or a credential twice, a module and an image
+at once, or no port is refused before anything starts. So is `TAKTUS_CONNECTORS` set in
+`taktus.env` beside the list: the list alone names the connectors. Without `connectors.json`
+nothing is added, and a `compose.connectors.yml` it wrote earlier is removed.
+
 ## Models, and a gateway in front of them
 
 A step on a model names a purpose, and Taktus routes it through that purpose's chain of models
@@ -125,6 +156,11 @@ providers on its own, and compresses prompts. Each of these breaks the provenanc
 residency rule above. It also reaches models through consumer subscriptions in ways a
 provider's terms may forbid (`docs/research/2026-10-12-market-review.md`, part 3).
 
+A person new to Taktus types `make start` instead (ADR-0136 §6). It does the same, then creates
+the first tenant and its administrator, prints the account key once with the web app's address,
+and keeps a clock running until the first rehearsal has finished: the installation guide,
+section 2.3.
+
 ## Verifying the promise
 
 ```bash
@@ -132,7 +168,7 @@ make verify-compose
 ```
 
 `verify.sh` does, from nothing: `make up-dev`, the deployment with the reference worker in
-its own image; checks that the control plane image holds no worker code; adds the identity
+its own image; checks that the control plane image holds no worker code and no connector; adds the identity
 `idn_verify`, which reads the API and submits and confirms the run, since nothing executes
 without an identity; queues a bundle
 whose worker step runs 24 commands, confirming each step as an operator would, since the bundle

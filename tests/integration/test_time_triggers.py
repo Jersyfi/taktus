@@ -130,7 +130,6 @@ async def daemons(
                 tmp_path,
                 TAKTUS_INSTANCE=name,
                 TAKTUS_HTTP_PORT=str(free_port()),
-                TAKTUS_TENANTS=tenant,
                 **environment,
             ),
             clock,

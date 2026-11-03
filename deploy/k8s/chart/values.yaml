@@ -14,9 +14,19 @@ namespaces:
 
 image:
   repository: ""           # where the control plane image is pulled from
-  tag: ""                  # the released version, never `latest`; the install fails without one
+  tag: ""                  # the released version, never `latest`; the install fails without one.
+                           # An image of `main` carries the full commit hash (ADR-0173 §1)
+  digest: ""               # sha256:<64 hex>: pins the image; rendered as <repository>:<tag>@<digest>
   pullPolicy: IfNotPresent
   pullSecret: ""           # name of an existing pull secret; empty when the image is public
+
+# Every image by its digest (ADR-0173 §7). Each image value takes a digest beside its tag —
+# `image.digest`, `backup.image.digest`, `database.image.digest`, `connectors.digests.<name>` —
+# and an image given as one reference may end in `@sha256:<digest>`. The image workflow writes
+# the values that pin one release's images as `digests.values.yaml` (README §3).
+# `requireDigest: true` fails the render of any image without a digest.
+images:
+  requireDigest: false
 
 # The user the control plane's image runs as (deploy/docker/Dockerfile pins it).
 securityContext:
@@ -26,7 +36,18 @@ securityContext:
 # `standard`: one deployment per role, as `roles` below. `small`: one deployment running every
 # role in one process (TAKTUS_ROLES=all), sized by `small`, beside the database. Not highly
 # available: a restart of the one pod stops every role until it is back (README §2).
+# `ha`: as `standard`, highly available (ADR-0165): at least `ha.replicas` of every role, a
+# disruption budget and anti-affinity per role, no volume shared by roles. It requires
+# `objectStore.kind: s3` and an external database (`database.deploy: false`) that runs with a
+# standby replica and archives its write-ahead log; the render fails otherwise.
 profile: standard
+
+ha:
+  replicas: 2              # the least replicas of every role; `roles.<role>.replicas` may give more
+  minAvailable: 1          # each role's disruption budget: pods that stay up while a node drains
+  # `preferred`: two replicas of a role prefer two nodes. `required`: never on one node; then a
+  # rolling update needs one node more than the role has replicas.
+  antiAffinity: preferred
 
 small:
   resources:
@@ -74,17 +95,34 @@ env: {}
 # Never a secret: a secret goes into `credentials`. Empty: none.
 configFiles: {}
 
-# Where artifact bytes are written (TAKTUS_STATE_DIR): one volume, shared by every role. The
-# volume binds to one node on a node-local storage class, as the database's does (README §9).
+# Where artifact bytes are written (TAKTUS_STATE_DIR) with `objectStore.kind: filesystem`: one
+# volume, shared by every role. The volume binds to one node on a node-local storage class, as
+# the database's does (README §9). With `s3` it is not rendered: each pod's state directory is
+# its own.
 state:
   storageClass: ""
   size: 5Gi
+
+# Where artifact bytes live (TAKTUS_OBJECT_STORE, ADR-0165). `filesystem`: the state volume
+# above. `s3`: keys `<prefix>/<hex>` in one bucket of an S3-compatible store, reached path-style
+# at `endpoint`; the roles reach it through `networkPolicy.controlPlaneEgress`. Its credential is
+# two keys of one existing Secret, mounted as files (CREDENTIALS.md, object store credential).
+objectStore:
+  kind: filesystem
+  endpoint: ""             # the store's http(s) address
+  bucket: ""
+  prefix: ""               # a path inside the bucket; empty: its top
+  region: ""               # empty: us-east-1, which compatible stores accept
+  secret: ""               # the Secret holding the credential
+  accessKeyIdKey: ""       # the key of the credential's identifier in it
+  secretKeyKey: ""         # the key of the credential's secret in it
 
 database:
   deploy: true             # a PostgreSQL of its own, deployed with the instance (DEC-0032); false: an existing server
   image:
     repository: postgres
     tag: "16-alpine"
+    digest: ""             # sha256:<64 hex>; required under images.requireDigest
   storageClass: ""
   size: 20Gi               # DEC-0033: cannot be enlarged on the target's storage class; watched from the first run
   resources:
@@ -105,11 +143,13 @@ backup:
   image:
     repository: ""         # the backup image (deploy/backup/Dockerfile), released with the instance
     tag: ""
+    digest: ""             # sha256:<64 hex>: pins it (ADR-0173 §7)
   schedule: "17 3 * * *"   # daily, 03:17 UTC
   expectedHours: 26        # how old the last successful backup may be before each owner hears it is missing (ADR-0106)
   retentionDays: 30        # a backup older than this is deleted; the newest never is
   recipient: ""            # an age public key (age1…); empty: not encrypted. The private key stays off the instance
-  objects: true            # archive the object store beside the dump (#322); its pod runs on the control plane's node
+  objects: true            # archive the object store beside the dump (#322); its pod runs on the control plane's node.
+                           # Must be false with `objectStore.kind: s3`: the bucket is off the node already
   store:
     endpoint: ""           # the object store's address
     region: ""
@@ -126,6 +166,27 @@ backup:
   resources:
     requests: { cpu: 50m, memory: 128Mi }
     limits: { memory: 512Mi }
+  # Point-in-time recovery (ADR-0174, README §11): the database archives its write-ahead log into
+  # the store as it writes it, and each backup run takes a base backup beside the dump. Off by
+  # default; needs `enabled` and `database.deploy`. The database then runs from the backup image
+  # and holds the store's credential.
+  pointInTime:
+    enabled: false
+    archiveTimeoutSeconds: 300   # a segment is archived at least this often: the recovery point objective
+  # The restore drill, S-03 (ADR-0174 §3): the newest backup restored into a server of the drill's
+  # own pod, every tenant's chain verified against the heads taken before; never the instance's
+  # database. With pointInTime, to the latest moment the archive reaches.
+  drill:
+    enabled: false
+    schedule: "47 4 * * 0"       # weekly, Sundays 04:47 UTC
+    restoreMinutes: 60           # the machine's part of the recovery time objective; a slower drill fails
+    identitySecret: ""           # with `recipient`: the Secret holding the age private key — see README §11
+    identityKey: ""
+    workSize: 40Gi               # the restored database lives here while the drill runs
+    activeDeadlineSeconds: 7200
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { memory: 1Gi }
 
 # The migrations: a Job with the control plane's own image, run by the install and by every
 # upgrade before the new version starts. With `database.deploy: true` the first install runs it
@@ -238,12 +299,18 @@ administration:
   platform: ""
   administers: {}          # CREDENTIAL_NAME: none | platform | a|b
 
-# The repository connector (README §2): a deployment of its own, from the control plane's image,
-# serving one repository's channel — its webhook intake and its actions over MCP — as Taktus's
+# Every connector this release ships runs from an image of its own (ADR-0158), never from the
+# control plane's: `<imagePrefix>-<name>` at `image.tag`, by default beside the control plane's
+# image as `<image.repository>-connector-<name>` — taktus-connector-github beside taktus.
+#
+# The repository connector (README §2): a deployment of its own, from its image, serving one
+# repository's channel — its webhook intake and its actions over MCP — as Taktus's
 # own app (ADR-0033). The roles reach it as `channel.repo` (TAKTUS_CONNECTORS); with `findings`
 # the instance's product findings go through it too (TAKTUS_FINDINGS_CONNECTOR, UC-6.12). Its
 # two secrets exist before the install and are mounted as files, like every other.
 connectors:
+  imagePrefix: ""          # where the connectors' images are pulled from; empty: beside `image`
+  digests: {}              # <connector>: sha256:<64 hex>, each shipped connector's image pinned (ADR-0173 §7)
   repository:
     enabled: false
     repository: ""         # owner/name of the repository it serves
@@ -263,7 +330,7 @@ connectors:
       requests: { cpu: 50m, memory: 128Mi }
       limits: { memory: 256Mi }
 
-  # The chat connector (#239): a deployment of its own, from the control plane's image, serving
+  # The chat connector (#239): a deployment of its own, from its image, serving
   # the chat channel — its event intake and its actions over MCP — as Taktus's own app in the
   # owner's chat workspace (NEED-0018). The roles reach it as `channel.chat`. Its bot token and
   # signing secret are keys of one existing Secret, mounted as files.
@@ -277,6 +344,31 @@ connectors:
     resources:
       requests: { cpu: 50m, memory: 128Mi }
       limits: { memory: 256Mi }
+
+  # Every further connector, one deployment each (README §2): the cost, payment and error
+  # connectors (ADR-0150), the mail, metrics and check connectors (ADR-0111), or a connector of
+  # an image of its own. The roles reach each as `<capability>=<its address>` in
+  # TAKTUS_CONNECTORS; nothing else reaches it. Each credential it reads is a key of an existing
+  # Secret, mounted as a file whose path is in TAKTUS_CREDENTIAL_<NAME>_FILE (CREDENTIALS.md).
+  #   - name: payments                 # lowercase letters and digits, words joined by hyphens;
+  #                                    # not `repository` or `chat`; the deployment's suffix
+  #     capability: payments.subscriptions   # its label in TAKTUS_CONNECTORS, unique
+  #     connector: stripe              # a connector this release ships, from its own image,
+  #                                    # given `--host 0.0.0.0 --port <port>` and `args`; the
+  #                                    # `module: taktus.adapters.driven.connectors.stripe` of an
+  #                                    # earlier release names the same connector (ADR-0158)
+  #     # image: <registry>/<image>:<version>   # or an image of its own, never both; its
+  #     # command: []                  # entrypoint unless `command` is given
+  #     port: 9111                     # where it serves MCP at /mcp
+  #     args: []                       # appended to the connector's arguments, or the image's args
+  #     credentials:                   # each: the parameter, the Secret and the key holding it
+  #       - name: PAYMENTS_TOKEN
+  #         secret: ""
+  #         key: ""
+  #     healthPath: /health            # optional; "" for an image that serves no readiness
+  #     egressPorts: [443]             # optional; [] for one that reaches nothing outside
+  #     resources: {}                  # optional; the chat connector's by default
+  others: []
 
 ingress:
   enabled: true            # rendered only when `host` is given as well

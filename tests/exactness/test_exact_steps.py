@@ -32,8 +32,10 @@ from taktus.shared.v1 import (
 )
 
 ROOT = Path(__file__).resolve().parents[2]
-BUNDLES = sorted((ROOT / "examples" / "processes").glob("*.yaml")) + sorted(
-    (ROOT / "blueprints").glob("*/processes/*.yaml")
+BUNDLES = (
+    sorted((ROOT / "examples" / "processes").glob("*.yaml"))
+    + sorted((ROOT / "blueprints").glob("*/processes/*.yaml"))
+    + sorted((ROOT / "blueprints" / "gallery").glob("*/processes/*.yaml"))  # ADR-0136
 )
 SHARED_EXAMPLES = ROOT / "contracts" / "shared" / "v1" / "examples" / "step"
 
@@ -123,7 +125,10 @@ def test_an_exact_step_s_value_comes_from_a_rule_at_run_time(bundle_path: Path) 
             continue
         examples = {name: declared.example for name, declared in version.inputs.items()}
         work = parse_work(step, version.work.get(step.id), examples)
-        assert type(work).__name__.endswith("Rule"), f"{step.id} would not run as a rule"
+        # A statistic is computed in the run as a rule is (ADR-0151).
+        assert type(work).__name__.endswith(("Rule", "Statistic")), (
+            f"{step.id} would not run as a rule or a statistic"
+        )
         assert not step.required_capabilities, f"{step.id} would need an adapter"
 
 

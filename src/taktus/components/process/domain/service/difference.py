@@ -3,7 +3,8 @@
 
 Steps are matched by their identifier. A step only in the proposal is added, a step only in the
 base is removed, and a step in both whose fields differ is changed, with the fields named. The
-work a step does when it runs counts as a field of its own, `work`.
+work a step does when it runs counts as a field of its own, `work`. Against no version, every
+step is added (ADR-0136 §4).
 """
 
 from __future__ import annotations
@@ -12,7 +13,16 @@ from taktus.components.process.domain.model.process import ProcessVersion
 from taktus.components.process.domain.model.proposal import Difference, StepChange
 
 
-def difference(base: ProcessVersion, proposed: ProcessVersion) -> Difference:
+def difference(base: ProcessVersion | None, proposed: ProcessVersion) -> Difference:
+    if base is None:
+        return Difference(
+            steps=tuple(
+                StepChange(id=step.id, change="added", after=step) for step in proposed.steps
+            ),
+            autonomy_after=proposed.autonomy,
+            triggers_changed=bool(proposed.triggers),
+            inputs_changed=bool(proposed.inputs),
+        )
     before = {step.id: step for step in base.steps}
     after = {step.id: step for step in proposed.steps}
     changes: list[StepChange] = []

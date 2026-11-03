@@ -1,0 +1,9 @@
+{
+  "tokens_in": 48200,
+  "tokens_out": 640,
+  "tokens_by_model": {
+    "example-large@2026-08": { "input": 1200, "cache_read": 41000, "cache_write": 6000, "output": 640 }
+  },
+  "turns": 7,
+  "compression": { "before": 71500, "after": 48200 }
+}

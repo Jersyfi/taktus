@@ -29,11 +29,17 @@ from taktus.components.decision.application.query import DecisionQueries
 from taktus.components.decision.application.service import (
     AnswerRequestHandler,
     ConfirmRequestHandler,
+    PrecedentRules,
     RaiseRequest,
     RaiseRequestHandler,
 )
 from taktus.components.decision.application.service import NotRaised as RequestNotRaised
-from taktus.components.decision.domain.model import RegisterEntry, Request
+from taktus.components.decision.domain.model import (
+    RULE_ACTOR_PREFIX,
+    DecisionRule,
+    RegisterEntry,
+    Request,
+)
 from taktus.components.decision.ports import Decider
 from taktus.components.governance.application.service import (
     AnchorsInForce,
@@ -43,13 +49,18 @@ from taktus.components.governance.application.service import (
     DecisionMade,
     Repetitions,
     RepetitionSeen,
+    TenantMessages,
+    TenantOrgUnits,
     TenantResidency,
     TenantSources,
 )
 from taktus.components.governance.domain.model import (
     AnchorConfiguration,
+    CaseAnswer,
     CorrectionLimits,
     Incident,
+    MessageRules,
+    OrgUnitQuota,
     ResidencyRule,
     SourceDeclaration,
     WatchConfiguration,
@@ -74,10 +85,12 @@ from taktus.components.run.ports import (
     LoweredLevels,
     NotRaised,
     ProposalDecided,
+    QuietHours,
     Repeated,
     RepetitionLimits,
     Verdict,
 )
+from taktus.components.run.ports import MessageRules as RunMessageRules
 from taktus.ports.clock import Clock
 from taktus.ports.ledger import Ledger
 from taktus.ports.persistence import Repository, Stored, Tenant, UnitOfWork
@@ -173,6 +186,7 @@ class RequestsOfTheRun:
             entry=shaped.outcome,
             answer=shaped.answer_raw,
             modified=shaped.answer_interpreted.modifications is not None,
+            by_rule=(request.decided_by or "").startswith(RULE_ACTOR_PREFIX),
         )
 
 
@@ -319,6 +333,33 @@ class RepetitionOfTheRun:
         return None if incident is None else incident.id
 
 
+class MessagesOfTheRun:
+    """The run's port `Messages`, answered from the governance component (ADR-0142)."""
+
+    def __init__(self, messages: TenantMessages) -> None:
+        self.tenant = messages
+        """The use case itself, for the command line that shows and changes it."""
+
+    async def rules(self, tenant: Tenant) -> RunMessageRules:
+        configured = await self.tenant.rules(tenant)
+        quiet = (
+            None
+            if configured.quiet_begins is None or configured.quiet_ends is None
+            else QuietHours(
+                begins=configured.quiet_begins, ends=configured.quiet_ends, zone=configured.zone
+            )
+        )
+        return RunMessageRules(
+            label=configured.label,
+            delay_seconds=configured.delay_seconds,
+            quiet=quiet,
+            recipient_limit=configured.recipient_limit,
+        )
+
+    async def answered(self, tenant: Tenant, process: str, case: str) -> bool:
+        return await self.tenant.answered(tenant, process, case)
+
+
 @dataclass(frozen=True)
 class DecisionWiring:
     """Everything an entry point needs of anchors and decisions, built once."""
@@ -331,6 +372,8 @@ class DecisionWiring:
     answer: AnswerRequestHandler
     confirm: ConfirmRequestHandler
     queries: DecisionQueries
+    rules: PrecedentRules
+    """Recurring decisions proposed as rules, and the rules a person adopted (ADR-0161)."""
     corrections: Corrections
     """The decisions on proposals counted, and the levels that fall by rule (ADR-0110)."""
     levels: LevelsOfTheRun
@@ -349,6 +392,12 @@ class DecisionWiring:
     deadlines: DeadlineKeeper
     """Where a run's deadlines are started, met and acted on, and the tenant's working time
     (ADR-0133)."""
+    messages: MessagesOfTheRun
+    """A tenant's rules for outward messages and the cases a person answered in, and the run's
+    port over them (ADR-0142)."""
+    org_units: TenantOrgUnits
+    """A tenant's quotas per organisational unit (ADR-0166); the run's port over them is
+    joined with the store of what was committed where the persistence is known."""
 
 
 def decision_wiring(
@@ -362,16 +411,18 @@ def decision_wiring(
     requests: Repository[Request] = of(Request)
     register: Repository[RegisterEntry] = of(RegisterEntry)
     deciders = DirectoryDeciders(directory)
+    rules = PrecedentRules(of(DecisionRule), register, requests, work, ledger, clock)
     corrections = Corrections(of(Incident), of(CorrectionLimits), ledger, work, clock)
     return DecisionWiring(
         anchors=AnchorsInForce(configurations, work),
         configure=ConfigureAnchorsHandler(configurations, work, ledger, clock),
         requests=RequestsOfTheRun(
-            RaiseRequestHandler(requests, work, ledger, clock), requests, work
+            RaiseRequestHandler(requests, work, ledger, clock, rules), requests, work
         ),
         answer=AnswerRequestHandler(requests, work, ledger, clock, deciders),
-        confirm=ConfirmRequestHandler(requests, register, work, ledger, clock),
+        confirm=ConfirmRequestHandler(requests, register, work, ledger, clock, rules),
         queries=DecisionQueries(requests, register, work, clock, deciders),
+        rules=rules,
         corrections=corrections,
         levels=LevelsOfTheRun(corrections),
         lowered=LoweredOfTheVersion(corrections),
@@ -389,4 +440,15 @@ def decision_wiring(
             clock,
             DeadlinesOfTheVersion(of(ProcessVersion), work),
         ),
+        messages=MessagesOfTheRun(
+            TenantMessages(of(MessageRules), of(CaseAnswer), ledger, work, clock)
+        ),
+        org_units=TenantOrgUnits(
+            of(OrgUnitQuota), ledger, work, clock, lambda t, n: _is_identity(directory, t, n)
+        ),
     )
+
+
+async def _is_identity(directory: IdentityDirectory, tenant: Tenant, name: str) -> bool:
+    """Whether a name is an identity of the tenant: a quota never limits one (principle 14)."""
+    return await directory.identity(tenant, name) is not None

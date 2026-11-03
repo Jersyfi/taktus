@@ -1,5 +1,5 @@
 {{- /*
-The chat connector (#239): one deployment from the control plane's image, serving the chat
+The chat connector (#239): one deployment from the connector's own image (ADR-0158), serving the chat
 channel over MCP — the event intake and the actions — as Taktus's own app in the owner's chat
 workspace (NEED-0018). The roles reach it, nothing else does; it reaches the name service and
 the chat service's API outside the cluster. Its bot token and signing secret are mounted files,
@@ -50,12 +50,9 @@ spec:
           type: RuntimeDefault
       containers:
         - name: connector
-          image: {{ include "taktus.image" (dict "what" "image" "image" .Values.image) }}
+          image: {{ include "taktus.connectorImage" (dict "root" . "name" "slack") }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command:
-            - python
-            - -m
-            - taktus.adapters.driven.connectors.slack
+          args:
             - --host
             - "0.0.0.0"
             - --port

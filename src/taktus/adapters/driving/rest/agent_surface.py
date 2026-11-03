@@ -18,8 +18,9 @@ actor and its outcome: `served`, `refused` or `failed` (§6).
 
 The tools call the application services the HTTP surface calls. Answering a decision request
 never takes effect alone: the reading comes back, and only `confirm_decision` makes it count
-(ADR-0008). The take-over tools are those of ADR-0128. The surface offers no resources and no
-prompts, and passes nothing on to another MCP server.
+(ADR-0008). The take-over tools are those of ADR-0128; `steer_step` sends a running step a
+message (ADR-0156). The surface offers no resources and no prompts, and passes nothing on to
+another MCP server.
 """
 
 from __future__ import annotations
@@ -48,7 +49,7 @@ from taktus.components.decision.application.service import (
 from taktus.components.identity.domain.model import Right
 from taktus.components.reporting.domain.model import Reader, RunRef
 from taktus.components.reporting.domain.service import visibility
-from taktus.components.run.application.service import HandBack, TakeOver
+from taktus.components.run.application.service import HandBack, SteerStep, TakeOver
 from taktus.components.run.domain.model import RunError
 from taktus.ports.identity import Resolution
 
@@ -256,6 +257,24 @@ async def _take_over_step(call: Call) -> Json:
     return {"takeover": takeover, "run_id": run_id, "step_id": step_id, "state": "asked"}
 
 
+async def _steer_step(call: Call) -> Json:
+    run_id, step_id, text = call.text("run_id"), call.text("step_id"), call.text("text")
+    await call.visible_run(run_id)
+    try:
+        message = await call.services.takeovers.steer(
+            SteerStep(
+                run_id=run_id,
+                step_id=step_id,
+                text=text,
+                actor=call.who.identity,
+                tenant=call.who.tenant,
+            )
+        )
+    except RunError as error:
+        raise Refused(str(error)) from error
+    return {"message": message, "run_id": run_id, "step_id": step_id, "state": "asked"}
+
+
 async def _show_takeover(call: Call) -> Json:
     run_id, takeover = call.text("run_id"), call.text("takeover_id")
     await call.visible_run(run_id)
@@ -354,6 +373,17 @@ TOOLS: tuple[Tool, ...] = (
         _object({"run_id": TEXT, "step_id": TEXT}, ("run_id", "step_id")),
         _take_over_step,
         Right.TAKE_OVER,
+    ),
+    Tool(
+        "steer_step",
+        "Send a message to a running worker step. Its worker receives it at its next boundary, "
+        "and the steps after it take it as an input; it never widens what the step may do.",
+        _object(
+            {"run_id": TEXT, "step_id": TEXT, "text": {"type": "string", "maxLength": 8000}},
+            ("run_id", "step_id", "text"),
+        ),
+        _steer_step,
+        Right.STEER,
     ),
     Tool(
         "show_takeover",

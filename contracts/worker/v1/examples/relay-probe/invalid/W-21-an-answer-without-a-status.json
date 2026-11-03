@@ -1,0 +1,15 @@
+{
+  "relayed": [
+    {
+      "request_id": "rly_00000001",
+      "method": "GET",
+      "path": "/v1/health"
+    }
+  ],
+  "answers": [
+    {
+      "request_id": "rly_00000001",
+      "status": null
+    }
+  ]
+}

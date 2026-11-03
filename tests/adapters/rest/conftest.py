@@ -27,6 +27,7 @@ from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.adapters.driving.rest import build_app
 from taktus.adapters.driving.rest.wiring import ProposalActs
+from taktus.components.accounting.application.service import SpendHandler
 from taktus.components.command.application.service import (
     CommissionPlanHandler,
     CompleteIntakeHandler,
@@ -44,7 +45,8 @@ from taktus.components.governance.domain.model import Incident
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.proposals import Proposals
-from taktus.components.process.domain.model import Process, ProcessVersion, Proposal
+from taktus.components.process.application.service.streams import ValueStreams
+from taktus.components.process.domain.model import Process, ProcessVersion, Proposal, ValueStream
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.application.service import (
     Alerted,
@@ -56,13 +58,16 @@ from taktus.components.reporting.application.service import (
     StepTraces,
 )
 from taktus.components.reporting.domain.model import BackupState, Corridor, Judged
-from taktus.components.run.application.service import HandBack, RunEngine, TakeOver
+from taktus.components.run.application.query.blocked_time import BlockedTime
+from taktus.components.run.application.service import HandBack, RunEngine, SteerStep, TakeOver
 from taktus.components.run.domain.model import Run, RunError, UnknownTakeover
 from taktus.composition.agent_surface import AgentSurface
 from taktus.composition.decisions import DecisionWiring, decision_wiring
 from taktus.composition.levels import RepositoryLevelRecords
 from taktus.composition.live import LiveHub, LiveOptions, Records, state_of
 from taktus.composition.owner_channel import KnownSecrets, OwnerChannelWiring, owner_channel_wiring
+from taktus.composition.profiles import RoleProfiles
+from taktus.composition.streams import StreamReads
 from taktus.ports.configuration import Secret
 from taktus.ports.connector import (
     ConnectorError,
@@ -149,6 +154,7 @@ class FakeTakeovers:
 
     asked: list[TakeOver] = field(default_factory=list)
     handed: list[HandBack] = field(default_factory=list)
+    steered: list[SteerStep] = field(default_factory=list)
     refusal: RunError | None = None
     states: dict[str, Any] = field(default_factory=dict)
     runs: Repository[Run] | None = None
@@ -174,6 +180,12 @@ class FakeTakeovers:
             run = await self.runs.get(command.tenant, command.run_id)
         assert run is not None
         return run
+
+    async def steer(self, command: SteerStep) -> str:
+        if self.refusal is not None:
+            raise self.refusal
+        self.steered.append(command)
+        return f"msg_{len(self.steered):04d}"
 
 
 @dataclass
@@ -203,6 +215,12 @@ class Services:
     administration_key: Secret | None = None
     """The instance's administration key; None: the administration of tenants is off."""
     acts: ProposalActs | None = None
+    chosen: Any = None
+    """The gallery (ADR-0136); a test that reaches it sets it. What it does is held by
+    `tests/composition/test_gallery.py`."""
+    views: Any = None
+    """The register, the dependencies and the variants (ADR-0147); a test that reaches them
+    sets them. What they gather is held by `tests/composition/test_acting.py`."""
     evaluated: Any = None
     """A process's evaluations and its proposed cases (ADR-0134); a test that reaches them sets
     them. What they do is held by `tests/composition/test_evaluations.py`."""
@@ -218,6 +236,11 @@ class Services:
     """A running step taken over and handed back (ADR-0128)."""
     queue: MemoryQueue | None = None
     """The queue a process started from the MCP surface is submitted to (ADR-0131)."""
+    objects: MemoryObjectStore = field(default_factory=MemoryObjectStore)
+    """The object store the spend reads budget statements from (ADR-0148)."""
+    tried: Any = None
+    """The model trials (ADR-0149); a test that reaches them sets them. What they do is held by
+    `tests/composition/test_trials.py`."""
     built_agent: AgentSurface | None = None
 
     @property
@@ -256,6 +279,48 @@ class Services:
                 ids=self.ids,
             )
         return self.built_agent
+
+    @property
+    def streams(self) -> StreamReads:
+        """The organisation as value streams, over this world's stores (ADR-0159)."""
+        return StreamReads(
+            streams=ValueStreams(
+                MemoryRepository(self.persistence, ValueStream),
+                MemoryRepository(self.persistence, Process),
+                self.persistence,
+                self.ledger,
+                self.clock,
+            ),
+            processes=MemoryRepository(self.persistence, Process),
+            versions=MemoryRepository(self.persistence, ProcessVersion),
+            runs=self.runs,
+            blocked=BlockedTime(self.ledger, self.objects, self.persistence, self.runs),
+            identities=self.identities,
+            work=self.persistence,
+            clock=self.clock,
+        )
+
+    @property
+    def profiles(self) -> RoleProfiles:
+        """A role's profile, over this world's stores (ADR-0167)."""
+        return RoleProfiles(
+            processes=MemoryRepository(self.persistence, Process),
+            versions=MemoryRepository(self.persistence, ProcessVersion),
+            streams=ValueStreams(
+                MemoryRepository(self.persistence, ValueStream),
+                MemoryRepository(self.persistence, Process),
+                self.persistence,
+                self.ledger,
+                self.clock,
+            ),
+            anchors=self.decisions.anchors,
+            requests=MemoryRepository(self.persistence, Request),
+            runs=self.runs,
+            blocked=BlockedTime(self.ledger, self.objects, self.persistence, self.runs),
+            identities=self.identities,
+            work=self.persistence,
+            clock=self.clock,
+        )
 
     @property
     def work(self) -> UnitOfWork:
@@ -334,6 +399,26 @@ class Services:
     def evaluations(self) -> Any:
         assert self.evaluated is not None, "this test sets the evaluations it reaches"
         return self.evaluated
+
+    @property
+    def acting(self) -> Any:
+        assert self.views is not None, "this test sets the views it reaches"
+        return self.views
+
+    @property
+    def spend(self) -> SpendHandler:
+        """Where a run and a process spend, over this world's ledger (ADR-0148)."""
+        return SpendHandler(self.ledger, self.objects, self.persistence)
+
+    @property
+    def trials(self) -> Any:
+        assert self.tried is not None, "this test sets the trials it reaches"
+        return self.tried
+
+    @property
+    def gallery(self) -> Any:
+        assert self.chosen is not None, "this test sets the gallery it reaches"
+        return self.chosen
 
     @property
     def proposals(self) -> Proposals:

@@ -71,7 +71,7 @@ MLBENCH_WORKER = ROOT / "workers" / "mlbench" / "worker.py"
 SECOND_CODING_WORKER = ROOT / "workers" / "codex" / "worker.py"
 SECOND_FAKE_AGENT = ROOT / "workers" / "codex" / "fake_agent.py"
 CODING_CREDENTIAL = {"api-key": "CODING_AGENT_API_KEY", "session": "CODING_AGENT_SESSION"}
-CONNECTOR = ROOT / "src" / "taktus" / "adapters" / "driven" / "connectors" / "github"
+CONNECTOR = ROOT / "connectors" / "taktus_connectors" / "github"
 SCENARIO = CONNECTOR / "scenario.json"
 FAKE_SERVICE = ROOT / "tests" / "fakes" / "repository_service.py"
 CREDENTIAL = "TAKTUS_CONFORMANCE_CREDENTIAL"
@@ -97,6 +97,9 @@ class RunningWorker:
     credential_name: str = CREDENTIAL
     task: dict[str, object] | None = None  # None: TASK
     hosts: tuple[str, ...] = (HOST,)
+    listen: str | None = None
+    """Where the suite serves the outbound binding the worker connects to; None: the worker
+    listens at `endpoint`."""
 
     def options(self) -> SuiteOptions:
         return SuiteOptions(
@@ -108,6 +111,7 @@ class RunningWorker:
             worker_log=self.log,
             timeout=90.0,
             idle_timeout=30.0,
+            listen=self.listen,
         )
 
     async def run_suite(self) -> Report:
@@ -129,9 +133,7 @@ def mlbench_faults() -> list[tuple[str, str]]:
 
 def connector_faults() -> list[tuple[str, str]]:
     """Every fault the connector offers, with the check it breaks, from the connector itself."""
-    return _list_faults(
-        [sys.executable, "-m", "taktus.adapters.driven.connectors.github", "--list-faults"]
-    )
+    return _list_faults([sys.executable, "-m", "taktus_connectors.github", "--list-faults"])
 
 
 def _list_faults(command: list[str]) -> list[tuple[str, str]]:
@@ -168,10 +170,16 @@ def start_worker(tmp_path: Path) -> Iterator[StartWorker]:
     started: list[subprocess.Popen[bytes]] = []
 
     def start(
-        *, profile: str = "quick", fault: str | None = None, estimate_factor: float = 0.5
+        *,
+        profile: str = "quick",
+        fault: str | None = None,
+        estimate_factor: float = 0.5,
+        outbound: bool = False,
     ) -> RunningWorker:
         """`estimate_factor` below 1 makes the worker underestimate, so that the suite's tight
-        run can make it cross a limit its estimate fits (W-14); above 1 it never can."""
+        run can make it cross a limit its estimate fits (W-14); above 1 it never can.
+        `outbound` starts the worker connected to the suite's host of the outbound binding:
+        it is still given a port, and must open none."""
         port = free_port()
         log = tmp_path / f"worker-{profile}-{fault or 'honest'}-{estimate_factor}.log"
         value = "conf-" + secrets.token_hex(12)
@@ -194,12 +202,18 @@ def start_worker(tmp_path: Path) -> Iterator[StartWorker]:
         ]
         if fault:
             args += ["--fault", fault]
+        listen = f"127.0.0.1:{free_port()}" if outbound else None
+        if listen is not None:
+            args += ["--connect", f"http://{listen}/relay"]
         with log.open("wb") as handle:
             process = subprocess.Popen(  # noqa: S603 — our own script, fixed arguments
                 args, stdout=handle, stderr=subprocess.STDOUT, env=env
             )
         started.append(process)
         endpoint = f"http://127.0.0.1:{port}"
+        if listen is not None:
+            # The suite serves the binding; the worker keeps asking it until it is there.
+            return RunningWorker(endpoint, log, value, process, listen=listen)
         deadline = time.monotonic() + READY_SECONDS
         while time.monotonic() < deadline:
             if process.poll() is not None:
@@ -391,6 +405,77 @@ def stop_all(processes: list[subprocess.Popen[bytes]]) -> None:
             process.kill()
 
 
+class Launcher:
+    """How the suite starts a connector: as a process from this checkout, the default, or from
+    the connector's own image (`ImageLauncher`, ADR-0158). Every starter below goes through
+    `LAUNCH`, so that the same fixtures prove a connector in both places."""
+
+    fake_host = "127.0.0.1"
+    """Where a fake of a product's API listens; an image reaches it on the host."""
+
+    def popen(
+        self, module: str, port: int, args: list[str], env: dict[str, str], log: Path
+    ) -> subprocess.Popen[bytes]:
+        command = [sys.executable, "-m", f"taktus_connectors.{module}", "--port", str(port)]
+        with log.open("wb") as handle:
+            return subprocess.Popen(  # noqa: S603 — our own module, fixed arguments
+                [*command, *args], stdout=handle, stderr=subprocess.STDOUT, env=env
+            )
+
+
+class ImageLauncher(Launcher):
+    """Each connector from its own image, `taktus-connector-<name>` (tests/images.py), in a
+    container that publishes its port on the loopback address. What the connector reaches on
+    the host — the fake of its product, a vendor's server — it reaches as `host.docker.internal`;
+    the files it reads — its credentials, a manifest — are mounted read only at the same paths.
+    A variable the starter set is handed to the container by name, never as a value on the
+    command line."""
+
+    HOST = "host.docker.internal"
+
+    def __init__(self, image: Callable[[str], str], mounts: list[Path]) -> None:
+        self._image = image
+        self._mounts = mounts
+        self.containers: list[str] = []
+        # Docker Desktop reaches the host's loopback; a Linux engine reaches the host's
+        # interfaces, not its loopback.
+        self.fake_host = "0.0.0.0" if sys.platform == "linux" else "127.0.0.1"  # noqa: S104
+
+    def popen(
+        self, module: str, port: int, args: list[str], env: dict[str, str], log: Path
+    ) -> subprocess.Popen[bytes]:
+        name = f"taktus-conformance-{module}-{port}-{secrets.token_hex(3)}"
+        self.containers.append(name)
+        command = ["docker", "run", "--rm", "--name", name, "--read-only", "--tmpfs", "/tmp"]  # noqa: S108
+        command += ["-p", f"127.0.0.1:{port}:{port}", f"--add-host={self.HOST}:host-gateway"]
+        if sys.platform == "linux":
+            command += ["--user", f"{os.getuid()}:{os.getgid()}"]  # it reads files 0600
+        for mount in self._mounts:
+            command += ["-v", f"{mount}:{mount}:ro"]
+        for key, value in env.items():
+            if os.environ.get(key) != value:
+                command += ["-e", key]
+        command += [self._image(module), "--host", "0.0.0.0", "--port", str(port)]  # noqa: S104
+        command += [arg.replace("127.0.0.1", self.HOST) for arg in args]
+        with log.open("wb") as handle:
+            return subprocess.Popen(  # noqa: S603 — our own image, fixed arguments
+                command, stdout=handle, stderr=subprocess.STDOUT, env=env
+            )
+
+    def remove(self) -> None:
+        for name in self.containers:
+            subprocess.run(  # noqa: S603 — containers this launcher started
+                ["docker", "rm", "--force", name],  # noqa: S607
+                capture_output=True,
+                check=False,
+                timeout=60,
+            )
+
+
+LAUNCH: Launcher = Launcher()
+"""How the starters below start a connector; `test_connector_v1_images.py` replaces it."""
+
+
 @dataclass
 class RunningConnector:
     endpoint: str
@@ -461,6 +546,8 @@ def start_connector(tmp_path: Path) -> Iterator[StartConnector]:
                 [
                     sys.executable,
                     str(FAKE_SERVICE),
+                    "--host",
+                    LAUNCH.fake_host,
                     "--port",
                     str(service_port),
                     "--issue-list-lag",
@@ -476,26 +563,10 @@ def start_connector(tmp_path: Path) -> Iterator[StartConnector]:
 
         port = free_port()
         log = tmp_path / f"connector-{name}.log"
-        args = [
-            sys.executable,
-            "-m",
-            "taktus.adapters.driven.connectors.github",
-            "--port",
-            str(port),
-            "--target",
-            service_url,
-            "--repository",
-            "conformance/target",
-        ]
+        args = ["--target", service_url, "--repository", "conformance/target"]
         if fault:
             args += ["--fault", fault]
-        with log.open("wb") as handle:
-            process = subprocess.Popen(  # noqa: S603 — our own module, fixed arguments
-                args,
-                stdout=handle,
-                stderr=subprocess.STDOUT,
-                env=connector_env,
-            )
+        process = LAUNCH.popen("github", port, args, connector_env, log)
         started.append(process)
         endpoint = f"http://127.0.0.1:{port}"
         wait_ready(process, f"{endpoint}/health", log, "connector")
@@ -505,7 +576,7 @@ def start_connector(tmp_path: Path) -> Iterator[StartConnector]:
     stop_all(started)
 
 
-CHAT_CONNECTOR = ROOT / "src" / "taktus" / "adapters" / "driven" / "connectors" / "slack"
+CHAT_CONNECTOR = ROOT / "connectors" / "taktus_connectors" / "slack"
 CHAT_SCENARIO = CHAT_CONNECTOR / "scenario.json"
 FAKE_CHAT = ROOT / "tests" / "fakes" / "chat_service.py"
 CHAT_ACTIONS = "CHAT_TOKEN"
@@ -514,9 +585,7 @@ CHAT_INTAKE = "CHAT_SIGNING_SECRET"
 
 def chat_connector_faults() -> list[tuple[str, str]]:
     """Every fault the chat connector offers, with the check it breaks, from the connector."""
-    return _list_faults(
-        [sys.executable, "-m", "taktus.adapters.driven.connectors.slack", "--list-faults"]
-    )
+    return _list_faults([sys.executable, "-m", "taktus_connectors.slack", "--list-faults"])
 
 
 @pytest.fixture
@@ -546,7 +615,14 @@ def start_chat_connector(tmp_path: Path) -> Iterator[StartConnector]:
         service_log = tmp_path / f"chat-service-{name}.log"
         with service_log.open("wb") as handle:
             service = subprocess.Popen(  # noqa: S603 — our own script, fixed arguments
-                [sys.executable, str(FAKE_CHAT), "--port", str(service_port)],
+                [
+                    sys.executable,
+                    str(FAKE_CHAT),
+                    "--host",
+                    LAUNCH.fake_host,
+                    "--port",
+                    str(service_port),
+                ],
                 stdout=handle,
                 stderr=subprocess.STDOUT,
                 env=service_env,
@@ -557,21 +633,8 @@ def start_chat_connector(tmp_path: Path) -> Iterator[StartConnector]:
 
         port = free_port()
         log = tmp_path / f"chat-connector-{name}.log"
-        args = [
-            sys.executable,
-            "-m",
-            "taktus.adapters.driven.connectors.slack",
-            "--port",
-            str(port),
-            "--target",
-            service_url,
-        ]
-        if fault:
-            args += ["--fault", fault]
-        with log.open("wb") as handle:
-            process = subprocess.Popen(  # noqa: S603 — our own module, fixed arguments
-                args, stdout=handle, stderr=subprocess.STDOUT, env=connector_env
-            )
+        args = ["--target", service_url] + (["--fault", fault] if fault else [])
+        process = LAUNCH.popen("slack", port, args, connector_env, log)
         started.append(process)
         endpoint = f"http://127.0.0.1:{port}"
         wait_ready(process, f"{endpoint}/health", log, "chat connector")
@@ -584,7 +647,7 @@ def start_chat_connector(tmp_path: Path) -> Iterator[StartConnector]:
     stop_all(started)
 
 
-KNOWLEDGE_CONNECTOR = ROOT / "src" / "taktus" / "adapters" / "driven" / "connectors" / "bookstack"
+KNOWLEDGE_CONNECTOR = ROOT / "connectors" / "taktus_connectors" / "bookstack"
 KNOWLEDGE_SCENARIO = KNOWLEDGE_CONNECTOR / "scenario.json"
 FAKE_WIKI = ROOT / "tests" / "fakes" / "wiki_service.py"
 KNOWLEDGE_ACTIONS = "KNOWLEDGE_TOKEN"
@@ -592,9 +655,7 @@ KNOWLEDGE_ACTIONS = "KNOWLEDGE_TOKEN"
 
 def knowledge_connector_faults() -> list[tuple[str, str]]:
     """Every fault the wiki connector offers, with the check it breaks, from the connector."""
-    return _list_faults(
-        [sys.executable, "-m", "taktus.adapters.driven.connectors.bookstack", "--list-faults"]
-    )
+    return _list_faults([sys.executable, "-m", "taktus_connectors.bookstack", "--list-faults"])
 
 
 @pytest.fixture
@@ -618,7 +679,14 @@ def start_knowledge_connector(tmp_path: Path) -> Iterator[StartConnector]:
         service_log = tmp_path / f"wiki-{name}.log"
         with service_log.open("wb") as handle:
             service = subprocess.Popen(  # noqa: S603 — our own script, fixed arguments
-                [sys.executable, str(FAKE_WIKI), "--port", str(service_port)],
+                [
+                    sys.executable,
+                    str(FAKE_WIKI),
+                    "--host",
+                    LAUNCH.fake_host,
+                    "--port",
+                    str(service_port),
+                ],
                 stdout=handle,
                 stderr=subprocess.STDOUT,
                 env=service_env,
@@ -629,21 +697,8 @@ def start_knowledge_connector(tmp_path: Path) -> Iterator[StartConnector]:
 
         port = free_port()
         log = tmp_path / f"knowledge-connector-{name}.log"
-        args = [
-            sys.executable,
-            "-m",
-            "taktus.adapters.driven.connectors.bookstack",
-            "--port",
-            str(port),
-            "--target",
-            service_url,
-        ]
-        if fault:
-            args += ["--fault", fault]
-        with log.open("wb") as handle:
-            process = subprocess.Popen(  # noqa: S603 — our own module, fixed arguments
-                args, stdout=handle, stderr=subprocess.STDOUT, env=connector_env
-            )
+        args = ["--target", service_url] + (["--fault", fault] if fault else [])
+        process = LAUNCH.popen("bookstack", port, args, connector_env, log)
         started.append(process)
         endpoint = f"http://127.0.0.1:{port}"
         wait_ready(process, f"{endpoint}/health", log, "wiki connector")
@@ -662,7 +717,7 @@ def start_knowledge_connector(tmp_path: Path) -> Iterator[StartConnector]:
 
 # --- the connectors over open standards (ADR-0111) ----------------------------------------------
 
-CONNECTORS = ROOT / "src" / "taktus" / "adapters" / "driven" / "connectors"
+CONNECTORS = ROOT / "connectors" / "taktus_connectors"
 FAKE_MAIL = ROOT / "tests" / "fakes" / "mail_service.py"
 FAKE_METRICS = ROOT / "tests" / "fakes" / "metrics_service.py"
 MAIL_LOGIN = "taktus@mail.example"
@@ -674,9 +729,7 @@ CHECK_ACTIONS = "CHECK_TOKEN"
 
 def open_standard_faults(module: str) -> list[tuple[str, str]]:
     """Every fault one of the connectors over open standards offers, from the connector."""
-    return _list_faults(
-        [sys.executable, "-m", f"taktus.adapters.driven.connectors.{module}", "--list-faults"]
-    )
+    return _list_faults([sys.executable, "-m", f"taktus_connectors.{module}", "--list-faults"])
 
 
 def _secret_files(tmp_path: Path, name: str, values: dict[str, str]) -> dict[str, str]:
@@ -704,18 +757,7 @@ def _start_connector(
 ) -> tuple[str, Path]:
     port = free_port()
     log = tmp_path / f"{module}-connector-{name}.log"
-    command = [
-        sys.executable,
-        "-m",
-        f"taktus.adapters.driven.connectors.{module}",
-        "--port",
-        str(port),
-        *args,
-    ]
-    with log.open("wb") as handle:
-        process = subprocess.Popen(  # noqa: S603 — our own module, fixed arguments
-            command, stdout=handle, stderr=subprocess.STDOUT, env=env
-        )
+    process = LAUNCH.popen(module, port, args, env, log)
     started.append(process)
     endpoint = f"http://127.0.0.1:{port}"
     wait_ready(process, f"{endpoint}/health", log, f"{module} connector")
@@ -734,7 +776,10 @@ def _start_fake(
     log = tmp_path / f"{script.stem}-{name}.log"
     with log.open("wb") as handle:
         process = subprocess.Popen(  # noqa: S603 — our own script, fixed arguments
-            [sys.executable, str(script), *args], stdout=handle, stderr=subprocess.STDOUT, env=env
+            [sys.executable, str(script), "--host", LAUNCH.fake_host, *args],
+            stdout=handle,
+            stderr=subprocess.STDOUT,
+            env=env,
         )
     started.append(process)
     wait_ready(process, ready, log, script.stem)
@@ -882,7 +927,7 @@ def start_vendor_connector(tmp_path: Path) -> Iterator[StartConnector]:
         script = VENDOR_NOTES if server == "notes" else VENDOR_TIME
         with log.open("wb") as handle:
             process = subprocess.Popen(  # noqa: S603 — a script of the gate, fixed arguments
-                [sys.executable, str(script), "--port", str(port)],
+                [sys.executable, str(script), "--host", LAUNCH.fake_host, "--port", str(port)],
                 stdout=handle,
                 stderr=subprocess.STDOUT,
                 env=vendor_env,
@@ -1029,3 +1074,76 @@ async def record_connector(connector: RunningConnector, tmp_path: Path) -> Recor
         connectors={"channel.repo": connector.endpoint},
         state_dir=tmp_path,
     )
+
+
+# --- connectors for the systems a business names (ADR-0150, issue #447) ---------------------------
+
+
+@dataclass(frozen=True)
+class BusinessConnector:
+    """One connector to a product a business names, with the fake of the product's API it is
+    proven against. Every fake admits the values of `FAKE_TOKENS` and serves `/_fake/state`."""
+
+    module: str
+    fake: Path
+    credential: str
+    args: tuple[str, ...] = ()
+    pair: bool = False
+    """The credential is a key pair, `<id>:<secret>`, as a provider that signs takes one."""
+
+    def value(self) -> str:
+        if self.pair:
+            return f"key-{secrets.token_hex(6)}:sig-{secrets.token_hex(12)}"
+        return "tok-" + secrets.token_hex(12)
+
+
+FAKES = ROOT / "tests" / "fakes"
+BUSINESS: dict[str, BusinessConnector] = {
+    "accounting": BusinessConnector(
+        "accounting", FAKES / "accounting_service.py", "ACCOUNTING_TOKEN"
+    ),
+    "anthropic": BusinessConnector(
+        "anthropic", FAKES / "cost_report_service.py", "MODEL_COSTS_TOKEN"
+    ),
+    "aws": BusinessConnector("aws", FAKES / "cloud_billing_service.py", "BILLING_KEY", pair=True),
+    "einvoice": BusinessConnector(
+        "einvoice", FAKES / "document_inbox_service.py", "DOCUMENTS_TOKEN"
+    ),
+    "openai": BusinessConnector("openai", FAKES / "model_costs_service.py", "MODEL_COSTS_TOKEN"),
+    "sentry": BusinessConnector(
+        "sentry", FAKES / "error_tracking_service.py", "ERRORS_TOKEN", ("--organization", "example")
+    ),
+    "stripe": BusinessConnector("stripe", FAKES / "payment_service.py", "PAYMENTS_TOKEN"),
+}
+
+
+@pytest.fixture
+def start_business_connector(tmp_path: Path) -> Iterator[Callable[..., RunningConnector]]:
+    """The fake of a product's API and its connector, each a process of its own."""
+    started: list[subprocess.Popen[bytes]] = []
+
+    def start(module: str, *, fault: str | None = None) -> RunningConnector:
+        spec = BUSINESS[module]
+        value = spec.value()
+        name = f"{module}-{fault or 'honest'}"
+        port = free_port()
+        service_url = f"http://127.0.0.1:{port}"
+        fake_env = {**_clean_environment(), "FAKE_TOKENS": value}
+        _start_fake(
+            started, tmp_path, spec.fake, ["--port", str(port)], fake_env,
+            f"{service_url}/_fake/state", name,
+        )  # fmt: skip
+        env = {**_clean_environment(), **_secret_files(tmp_path, name, {spec.credential: value})}
+        args = ["--target", service_url, *spec.args] + (["--fault", fault] if fault else [])
+        endpoint, log = _start_connector(started, tmp_path, module, args, env, name)
+        return RunningConnector(
+            f"{endpoint}/mcp",
+            log,
+            service_url,
+            {spec.credential: value},
+            started[-1],
+            scenario=CONNECTORS / module / "scenario.json",
+        )
+
+    yield start
+    stop_all(started)

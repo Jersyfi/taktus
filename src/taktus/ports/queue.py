@@ -22,6 +22,18 @@ runner claims the job before then. The person's hand-back is written under that 
 as a runner's write is, and releases the job. A lease that ends without a hand-back makes the
 job claimable again.
 
+A job carries the organisational unit its run runs for, the department below the tenant
+(ADR-0166). A claim shares the places between units: it takes first the due job whose unit holds
+the fewest claims, counting the unit's due jobs ahead of it, then the oldest. A claim may be
+given each unit's limit of concurrent claims, and skips a job whose unit holds that many; such a
+job carries when it was first skipped, `held_since`, until it is claimed, so that the wait is
+booked as a block (ADR-0043).
+
+A person's message to the step a runner is executing is *asked* on the run's job the same way
+(ADR-0156 §7): only while a runner holds it. The runner reads the messages with each renewal,
+hands each to its worker once, and marks it *handed*, so that neither it nor the next runner
+hands it again. A message stays on its job until the job is completed.
+
 Every call happens inside a unit of work of the same persistence and names its tenant
 (`ports/persistence.py`); the claim and the state it changes commit with the transaction. Two
 instances claiming at the same moment never receive the same job: that is the adapter's promise,
@@ -32,6 +44,7 @@ LOCKED` in the database, a lock in memory).
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 from typing import Any, Protocol
 
 from pydantic import Field
@@ -52,6 +65,11 @@ class Job(Value):
     deferrals: int = Field(default=0, ge=0)
     """How many of those claims ended deferred; they do not count towards the limit of
     attempts."""
+    org_unit: str | None = Field(default=None, min_length=1)
+    """The organisational unit the job's run runs for; None for the tenant itself (ADR-0166)."""
+    held_since: datetime | None = None
+    """When a claim first skipped the job because its unit held its concurrent claims; None
+    when none did since the job was last claimed. Set by the queue, never by the enqueuer."""
 
 
 class Claim(Value):
@@ -73,16 +91,39 @@ class TakeoverAsked(Value):
     step_id: str = Field(min_length=1)
 
 
+class AskedMessage(Value):
+    """A person's message asked on a run's job (ADR-0156 §7): which step it is for, its text's
+    digest, and the text itself, which the job carries to whichever runner holds it and drops
+    with the job. The ledger names the text by its digest only."""
+
+    message_id: str = Field(pattern=r"^msg_[A-Za-z0-9_-]{4,}$")
+    step_id: str = Field(min_length=1)
+    digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    text: str = Field(min_length=1, max_length=8000)
+    handed: bool = False
+    """The runner holding the job handed it to the worker, or found it could not."""
+
+
 class Queue(Protocol):
     async def enqueue(self, tenant: Tenant, job: Job) -> None:
         """Make the job claimable now. A job with an id the tenant already has is refused."""
         ...
 
-    async def claim(self, tenant: Tenant, claimant: str, batch: int) -> Sequence[Job]:
+    async def claim(
+        self,
+        tenant: Tenant,
+        claimant: str,
+        batch: int,
+        per_unit: Mapping[str, int] | None = None,
+    ) -> Sequence[Job]:
         """Up to `batch` jobs that are due and either unclaimed or whose lease has expired,
-        now claimed by `claimant` — the oldest first. Two claimants never receive the same job,
-        and a job whose attempts — its claims less its deferrals — have reached the adapter's
-        limit is never claimed again."""
+        now claimed by `claimant` — by place, then the oldest first: a job's place is the live
+        claims its unit holds plus its position among its unit's due jobs (ADR-0166). Two
+        claimants never receive the same job, and a job whose attempts — its claims less its
+        deferrals — have reached the adapter's limit is never claimed again. `per_unit` limits
+        the live claims of each unit it names, across every claimant; a due job it skips is
+        marked `held_since` from the first time. A claim with limits is serialised with every
+        other claim with limits of the tenant, so that no two claims take a unit's last place."""
         ...
 
     async def extend(self, tenant: Tenant, job_id: str, claimant: str) -> bool:
@@ -139,4 +180,17 @@ class Queue(Protocol):
         any number of times keeps its attempts. Called inside the transaction that
         fenced `claim`. False, and nothing changed, when `claim` is not the job's current
         claim or `holder` is not the take-over asked."""
+        ...
+
+    async def ask_message(self, tenant: Tenant, run_id: str, message: AskedMessage) -> bool:
+        """Place a message on the job that executes the run. True while a runner holds the job
+        and no take-over holds it; False, and nothing placed, otherwise."""
+        ...
+
+    async def messages_asked(self, tenant: Tenant, job_id: str) -> Sequence[AskedMessage]:
+        """Every message placed on the job, handed or not, in the order they were asked."""
+        ...
+
+    async def message_handed(self, tenant: Tenant, job_id: str, message_id: str) -> None:
+        """Mark the message handed; it is never handed again. A no-op for an unknown one."""
         ...

@@ -216,6 +216,22 @@ async def test_a_retryable_failure_keeps_the_attempt_and_the_key() -> None:
     assert keys == {f"taktus:{run.id}:write:1"}
 
 
+async def test_a_step_admitted_again_after_it_failed_is_recorded_as_a_retry() -> None:
+    """A retry is a fact of its own, beside the admission it is part of (ADR-0147 §4); the first
+    admission is none."""
+    h = ConnectorHarness(call("write", WRITE, {"title": "t"}))
+    h.connector.fail_next[WRITE] = failure("unavailable", retryable=True)
+    run = await h.start()
+    assert [e.kind for e in await h.entries(run)].count("step.retried") == 0
+    resumed = await h.resume(run)
+    entries = await h.entries(resumed)
+    retried = [e for e in entries if e.kind == "step.retried"]
+    assert len(retried) == 1
+    assert retried[0].refs.step_id == "write" and retried[0].outcome == "after_failure"
+    after = entries[entries.index(retried[0]) + 1]
+    assert after.kind == "step.admitted" and after.refs.step_id == "write"
+
+
 async def test_an_operation_that_cannot_recognise_a_repeat_is_never_repeated_by_the_run() -> None:
     h = ConnectorHarness(call("fire", BLIND, {"what": "pipeline"}))
     h.connector.fail_next[BLIND] = failure("unknown", effect="unknown")

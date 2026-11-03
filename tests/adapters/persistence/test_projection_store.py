@@ -79,15 +79,22 @@ async def test_the_entries_of_one_run_and_of_some_kinds_are_read_alone(backend: 
         ("run.finished", "run_a"),
     )
     async with backend.work.transaction(tenant):
-        assert [e.seq for e in await backend.ledger_store.of_run(tenant, "run_a")] == [1, 3, 5]
+        # The reading positions rise; the database's leave gaps (ADR-0164). The test counts
+        # in places: n is the n-th entry the tenant recorded.
+        at = [0, *(e.seq for e in await backend.ledger_store.entries(tenant))]
+        assert [e.seq for e in await backend.ledger_store.of_run(tenant, "run_a")] == [
+            at[1],
+            at[3],
+            at[5],
+        ]
         assert [e.seq for e in await backend.ledger_store.of_run(tenant, "run_c")] == []
         kinds = {"step.started", "run.finished"}
         found = await backend.ledger_store.after(tenant, 0, limit=10, kinds=kinds)
-        assert [e.seq for e in found] == [3, 5]
-        found = await backend.ledger_store.after(tenant, 3, limit=10, kinds=kinds)
-        assert [e.seq for e in found] == [5]
+        assert [e.seq for e in found] == [at[3], at[5]]
+        found = await backend.ledger_store.after(tenant, at[3], limit=10, kinds=kinds)
+        assert [e.seq for e in found] == [at[5]]
         found = await backend.ledger_store.after(tenant, 0, limit=1, kinds={"run.created"})
-        assert [e.seq for e in found] == [1]
+        assert [e.seq for e in found] == [at[1]]
 
 
 async def test_a_chain_is_verified_from_its_checkpoint_in_either_store(backend: Backend) -> None:
@@ -99,8 +106,10 @@ async def test_a_chain_is_verified_from_its_checkpoint_in_either_store(backend: 
     async with backend.work.transaction(tenant):
         second = await ledger(backend).verify(tenant)
         full = await ledger(backend).verify(tenant, full=True)
+    async with backend.work.transaction(tenant):
+        fourth = [e.seq for e in await backend.ledger_store.entries(tenant)][3]
     assert (first.intact, first.entries, first.checkpoint) == (True, 4, 0)
-    assert (second.intact, second.entries, second.checkpoint) == (True, 5, 4)
+    assert (second.intact, second.entries, second.checkpoint) == (True, 5, fourth)
     assert (full.intact, full.entries, full.checkpoint) == (True, 5, 0)
 
 

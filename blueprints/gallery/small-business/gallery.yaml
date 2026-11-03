@@ -1,0 +1,9 @@
+# A gallery blueprint (ADR-0136 §1): what the web app's gallery shows for it. Its processes are
+# the bundles under processes/. Removing this directory removes it from the gallery and from
+# nothing else.
+kind: gallery
+title: A small business
+for: a small business
+summary: >
+  Every week, the reminder to follow up the invoices that are overdue, with your payment term.
+  It reaches nothing outside Taktus yet: connecting your accounting system comes afterwards.

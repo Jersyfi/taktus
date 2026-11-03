@@ -147,7 +147,7 @@ async def measured[T](call: Callable[[], Awaitable[T]]) -> tuple[T, float, float
 async def test_two_thousand_runs_are_listed_in_time_without_stalling_the_loop(
     instances: Callable[..., Instance], chosen: str
 ) -> None:
-    async with instances("listing", TAKTUS_ROLES="api", TAKTUS_TENANTS=chosen) as one:
+    async with instances("listing", TAKTUS_ROLES="api") as one:
         assert one.wired is not None
         await seed(one.wired, chosen)
         key = await reader_key(one.wired, chosen)

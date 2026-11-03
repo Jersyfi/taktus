@@ -1,0 +1,19 @@
+{
+  "id": "approve-supplier-payment",
+  "method": "human",
+  "reason": "paying a supplier binds the organisation; a person of the role that holds the budget decides",
+  "rejected": [
+    {
+      "method": "rule",
+      "why": "the amount is above the threshold a rule may release"
+    }
+  ],
+  "role": "accounts-approver",
+  "expertise": [
+    "the supplier's contract terms",
+    "the cost centre's budget"
+  ],
+  "depends_on": [
+    "match-invoice"
+  ]
+}

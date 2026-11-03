@@ -91,11 +91,38 @@ export interface RunElement {
 	text: string;
 }
 
+/** The exactness statement of a process version, as generated (UC-6.9): four parts. */
+export interface ExactnessStatement {
+	process_version: string;
+	name: string;
+	parts: { title: string; lines: string[] }[];
+}
+
 export interface RunLevel {
 	run: RunElement;
 	steps: StepElement[];
 	/** One sentence: how far the run is and what it does now. */
 	summary: string;
+	/** The exactness statement of the version the run executes. */
+	exactness?: ExactnessStatement | null;
+}
+
+export interface Stage {
+	name: string;
+	state: 'done' | 'current' | 'ahead';
+	/** The role the stage waits for, never a person. */
+	waiting_for?: string | null;
+	/** Name, state and, where it waits, the role. */
+	text: string;
+}
+
+/** The stage view of UC-6.15: `GET /levels/runs/<run>/stages`. */
+export interface StageView {
+	run_id: string;
+	state: string;
+	stages: Stage[];
+	summary: string;
+	link: string;
 }
 
 export interface SnapshotRun {
@@ -142,6 +169,12 @@ export interface ProcessStepElement {
 	rejected?: string[];
 	fallback?: string;
 	depends_on?: string[];
+	/** For a human step: the role that performs it, never a person (ADR-0146). */
+	role?: string;
+	/** What the person of the role, or of the fallback's role, needs to know. */
+	expertise?: string[];
+	/** For a fallback to a person: the role that takes the step over. */
+	fallback_role?: string;
 	/** The runs this step is running in right now; absent at rest. */
 	running_in?: string[];
 	drawn: Drawn;
@@ -173,6 +206,8 @@ export interface ProcessLevel {
 	runs?: RunAtVersionElement[];
 	/** One sentence: how its steps work, and how many run now. */
 	summary: string;
+	/** The exactness statement of this version. */
+	exactness?: ExactnessStatement | null;
 }
 
 export interface RunningStepElement {
@@ -208,6 +243,8 @@ export interface ProcessSummaryElement {
 	/** The steps of its active version, so that the overview draws every process as one body. */
 	cells?: CellElement[];
 	text: string;
+	/** The exactness statement of its active version. */
+	exactness?: ExactnessStatement | null;
 }
 
 /** `GET /levels/overview` (ADR-0067). */
@@ -326,7 +363,8 @@ export interface StepChange {
 export interface Proposal {
 	id: string;
 	process_id: string;
-	base_version: string;
+	/** Absent for a process's first version, made against none (ADR-0136 §4). */
+	base_version?: string;
 	version: string;
 	request?: string;
 	state: 'proposed' | 'rehearsed' | 'commissioned' | 'discarded';
@@ -337,6 +375,8 @@ export interface Proposal {
 	evaluation?: string | null;
 	/** That evaluation, on the view of one proposal (ADR-0134 §9). */
 	evaluated?: Evaluated;
+	/** The bundle it proposes; the page reads only its name. */
+	bundle?: { name?: string };
 }
 
 /** One side of one evaluation case: what the version produced, and its score. */
@@ -366,6 +406,34 @@ export interface Evaluated {
 	scored_at: string | null;
 	scorers: { step: string; method: string; exactness: string; rule: string | null }[];
 	cases: { case: string; active: EvaluatedSide | null; proposed?: EvaluatedSide | null; change: number | null }[];
+}
+
+/** One choice a gallery process offers: a declared input its schedule gives (ADR-0136 §2). */
+export interface GalleryChoice {
+	name: string;
+	label: string;
+	value: unknown;
+}
+
+/** A gallery process: offered with its steps and choices, or refused with why. */
+export interface GalleryProcess {
+	id: string;
+	name: string;
+	reason: string;
+	level?: number;
+	level_reason?: string;
+	steps?: { id: string; method: string; reason: string }[];
+	choices?: GalleryChoice[];
+	refused?: string[];
+}
+
+/** `GET /gallery`: the gallery blueprints a person chooses a first process from. */
+export interface GalleryBlueprint {
+	id: string;
+	title: string;
+	for: string;
+	summary: string;
+	processes: GalleryProcess[];
 }
 
 /** A group's response times, or why they are withheld (ADR-0015). */

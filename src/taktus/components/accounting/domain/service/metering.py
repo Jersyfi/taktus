@@ -13,7 +13,7 @@ from collections.abc import Iterable, Mapping
 
 from pydantic import Field
 
-from taktus.shared.v1 import LedgerEntry, PriceKinds, Value, add_tokens_by_model
+from taktus.shared.v1 import Compression, LedgerEntry, PriceKinds, Value, add_tokens_by_model
 
 
 class Meter(Value):
@@ -33,6 +33,10 @@ class Meter(Value):
     """Finished steps per method."""
     currency_reported: Mapping[str, float] = Field(default_factory=dict)
     """Money as the workers reported it, beside what the price table computes."""
+    turns: int = 0
+    """The calls to a language model the agents made: where the tokens went (#449)."""
+    compression: Compression | None = None
+    """The input before and after, summed over the steps where a compression ran (#449)."""
 
 
 def meter(entries: Iterable[LedgerEntry]) -> Meter:
@@ -45,6 +49,8 @@ def meter(entries: Iterable[LedgerEntry]) -> Meter:
     storage = 0
     steps: dict[str, int] = {}
     money: dict[str, float] = {}
+    turns = 0
+    compression: Compression | None = None
     for entry in entries:
         if entry.kind != "step.finished":
             continue
@@ -65,6 +71,11 @@ def meter(entries: Iterable[LedgerEntry]) -> Meter:
         storage += used.storage_bytes or 0
         for code, amount in (used.currency or {}).items():
             money[code] = money.get(code, 0.0) + amount
+        turns += used.turns or 0
+        if used.compression is not None:
+            compression = (
+                used.compression if compression is None else compression.plus(used.compression)
+            )
     return Meter(
         tokens=tokens or {},
         tokens_unattributed=unattributed,
@@ -73,7 +84,19 @@ def meter(entries: Iterable[LedgerEntry]) -> Meter:
         storage_bytes=storage,
         steps=steps,
         currency_reported=money,
+        turns=turns,
+        compression=compression,
     )
+
+
+def meter_by_step(entries: Iterable[LedgerEntry]) -> dict[str, Meter]:
+    """The breakdown of each step, by its identifier, in the order the steps first finished:
+    where a run spent (#449). An entry without a step is in no step's meter."""
+    by_step: dict[str, list[LedgerEntry]] = {}
+    for entry in entries:
+        if entry.kind == "step.finished" and entry.refs.step_id is not None:
+            by_step.setdefault(entry.refs.step_id, []).append(entry)
+    return {step: meter(found) for step, found in by_step.items()}
 
 
 def combine(left: Meter, right: Meter) -> Meter:
@@ -90,4 +113,10 @@ def combine(left: Meter, right: Meter) -> Meter:
         storage_bytes=left.storage_bytes + right.storage_bytes,
         steps={k: int(v) for k, v in summed(left.steps, right.steps).items()},
         currency_reported=summed(left.currency_reported, right.currency_reported),
+        turns=left.turns + right.turns,
+        compression=(
+            left.compression.plus(right.compression)
+            if left.compression is not None and right.compression is not None
+            else left.compression or right.compression
+        ),
     )

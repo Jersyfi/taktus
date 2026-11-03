@@ -95,6 +95,11 @@ RULES: tuple[Rule, ...] = (
         ("workers/{name}/README.md", "docs/architecture/contracts.md"),
     ),
     Rule(
+        "a connector of its own image",
+        r"connectors/(?:taktus_connectors/(?P<name>[a-z]+)/.*|[^/]+|taktus_connectors/[^/]+)",
+        ("connectors/README.md", "docs/architecture/contracts.md"),
+    ),
+    Rule(
         "a blueprint",
         r"blueprints/(?P<name>[a-z-]+)/.*",
         ("blueprints/{name}/README.md", "docs/usecases/*.md"),

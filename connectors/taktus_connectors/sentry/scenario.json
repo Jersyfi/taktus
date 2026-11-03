@@ -1,0 +1,19 @@
+{
+  "credentials": {
+    "actions": "ERRORS_TOKEN"
+  },
+  "read": {
+    "operation": "errors.issues.list",
+    "input": {
+      "period": "24h"
+    }
+  },
+  "writes": [],
+  "invalid": {
+    "operation": "errors.issues.read",
+    "input": {
+      "id": "999999"
+    },
+    "expected_cause": "invalid"
+  }
+}

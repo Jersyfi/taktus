@@ -47,6 +47,11 @@ personal fields (UC-7.7, ADR-0130, `domain.service.frame`).
 Registering is where a declared evaluation must hold: its scorers score steps that produce a
 result, each by a rule or by a judge that says why no rule can and names its fallback, and its
 cases give the inputs the version requires (UC-4.18, ADR-0134 §1).
+
+Registering is where a person's step must name its role once the tenant has a structure: a
+`human` step, or a fallback to a person, without a role, or naming a role no identity of the
+tenant holds, is refused (UC-4.20, ADR-0146). While no identity holds a role, nothing is
+required.
 """
 
 from __future__ import annotations
@@ -82,13 +87,14 @@ from taktus.components.process.ports import (
     FreeSources,
     LoweredLevels,
     LoweredVersions,
+    RoleStructure,
     StageCeilings,
 )
 from taktus.ports.administration import Administration
 from taktus.ports.clock import Clock
 from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
-from taktus.shared.v1 import Autonomy, LedgerRefs, Step
+from taktus.shared.v1 import Autonomy, LedgerRefs, Method, Step
 
 type Document = Mapping[str, Any]
 
@@ -136,7 +142,10 @@ class RegisterProcessVersionHandler:
         lowered: LoweredVersions | None = None,
         sources: FreeSources | None = None,
         stages: StageCeilings | None = None,
+        structure: RoleStructure | None = None,
     ) -> None:
+        self._structure = structure
+        """Which roles the tenant's identities hold (ADR-0146). None: no role is required."""
         self._stages = stages
         """How high a process may run under the tenant's stages (ADR-0137). None: no stage
         caps a level."""
@@ -170,6 +179,9 @@ class RegisterProcessVersionHandler:
         undeclared = await self._undeclared(tenant, version)
         if undeclared:
             raise InvalidProcess(tuple(undeclared))
+        unroled = await self._unroled(tenant, version)
+        if unroled:
+            raise InvalidProcess(tuple(unroled))
         above = await self._above_ceiling(tenant, version)
         if above is not None:
             async with self._work.transaction(tenant):
@@ -300,6 +312,16 @@ class RegisterProcessVersionHandler:
             if not await self._sources.free_of_personal_fields(tenant, source)
         ]
 
+    async def _unroled(self, tenant: Tenant, version: ProcessVersion) -> list[str]:
+        """Every step where a person acts without a role the tenant's structure holds, once
+        the tenant has a structure (ADR-0146 §2)."""
+        if self._structure is None:
+            return []
+        held = await self._structure.roles(tenant)
+        if not held:
+            return []
+        return [f for step in version.steps if (f := unroled(step, held)) is not None]
+
     async def _lowerings(self, tenant: Tenant, version: ProcessVersion) -> dict[str, LoweredLevels]:
         """The lowered levels of every version the new one would replace, read before the
         registration's own transaction: units of work do not nest."""
@@ -369,6 +391,29 @@ class RegisterProcessVersionHandler:
                 outcome=outcome,
             ),
         )
+
+
+def unroled(step: Step, held: frozenset[str]) -> str | None:
+    """Why the step's person has no role of the structure `held`; None where it has one, or
+    where no person acts at it (ADR-0146 §2)."""
+    if step.method is Method.HUMAN:
+        where, role = "a human step", step.role
+    elif step.fallback is not None and step.fallback.to is Method.HUMAN:
+        where, role = "its fallback to a person", step.fallback.role
+    else:
+        return None
+    roles = ", ".join(sorted(held))
+    if role is None:
+        return (
+            f"step {step.id!r}: {where} names the role that performs it once the tenant has a "
+            f"structure; the tenant's roles are {roles} (ADR-0146)"
+        )
+    if role not in held:
+        return (
+            f"step {step.id!r}: {where} names the role {role!r}, which no identity of the tenant "
+            f"holds; the tenant's roles are {roles} (ADR-0146)"
+        )
+    return None
 
 
 def credentials_named(version: ProcessVersion) -> dict[str, list[str]]:

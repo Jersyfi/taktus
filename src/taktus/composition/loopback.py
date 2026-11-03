@@ -374,6 +374,7 @@ class Loopback:
         try:
             run = await engine.start(
                 StartRun(
+                    org_unit=command.org_unit,
                     plan=plan,
                     work=version.work,
                     budget=Limits.model_validate(dict(version.limits or {})),

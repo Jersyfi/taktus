@@ -178,7 +178,11 @@ async def test_the_projection_brought_up_to_date_equals_the_one_rebuilt_from_the
     entries = generated(5, runs=120)
     facts = [
         Fact.model_validate(
-            {k: v for k, v in e.document().items() if k not in {"seq", "ts", "prev_hash", "hash"}}
+            {
+                k: v
+                for k, v in e.document().items()
+                if k not in {"seq", "ts", "prev_hash", "hash", "chain_seq", "chain"}
+            }
         )
         for e in entries
     ]

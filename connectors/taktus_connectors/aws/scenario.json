@@ -1,0 +1,21 @@
+{
+  "credentials": {
+    "actions": "BILLING_KEY"
+  },
+  "read": {
+    "operation": "billing.costs.daily",
+    "input": {
+      "days": 3,
+      "end": "2026-10-01"
+    }
+  },
+  "writes": [],
+  "invalid": {
+    "operation": "billing.costs.daily",
+    "input": {
+      "days": 3,
+      "end": "2019-06-01"
+    },
+    "expected_cause": "invalid"
+  }
+}

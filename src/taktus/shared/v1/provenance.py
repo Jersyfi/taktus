@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from enum import StrEnum
 from typing import Literal
@@ -15,16 +16,20 @@ from taktus.shared.v1.method import NON_PRODUCING, PRODUCING, Method
 from taktus.shared.v1.step import MODEL_PATTERN, StepId
 from taktus.shared.v1.value import Value
 
+MESSAGE_REF = r"msg_[A-Za-z0-9_-]{4,}"
+
 
 class InputKind(StrEnum):
     ARTIFACT = "artifact"
     RESULT = "result"
     SOURCE = "source"
+    MESSAGE = "message"
+    """A person's message the step's worker received at a boundary (ADR-0156 §9)."""
 
 
 class ProvenanceInput(Value):
-    """One thing a step read, and when: an artifact or a result of an earlier step run, or an
-    external source read through a capability."""
+    """One thing a step read, and when: an artifact or a result of an earlier step run, an
+    external source read through a capability, or a person's message its worker received."""
 
     kind: InputKind
     run_id: str | None = Field(default=None, min_length=1)
@@ -52,6 +57,12 @@ class ProvenanceInput(Value):
             needed, forbidden = {"run_id", "step_id"}, {"artifact_id", "capability", "ref"}
             if self.digest is None:
                 raise ValueError("a result input carries the result's digest")
+        elif self.kind is InputKind.MESSAGE:
+            needed, forbidden = {"ref"}, {"run_id", "step_id", "artifact_id", "capability"}
+            if self.digest is None:
+                raise ValueError("a message input carries the digest of the message's text")
+            if self.ref is not None and re.fullmatch(MESSAGE_REF, self.ref) is None:
+                raise ValueError("a message input names the message's identifier, msg_…")
         else:
             needed, forbidden = {"capability", "ref"}, {"run_id", "step_id", "artifact_id"}
         if missing := needed - present:

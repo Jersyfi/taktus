@@ -41,9 +41,8 @@ from typing import Any
 
 import httpx
 import pytest
-
-from taktus.adapters.driven.connectors.github.app import AppConfig, AppTokens
-from taktus.adapters.driven.connectors.github.server import Config, Connector
+from taktus_connectors.github.app import AppConfig, AppTokens
+from taktus_connectors.github.server import Config, Connector
 
 type Json = dict[str, Any]
 

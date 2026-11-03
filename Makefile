@@ -46,7 +46,11 @@ PARALLEL ?= -n auto --maxprocesses=8
 # Without it, every test runs. `make verify` passes BASE; CI's lane `test` passes it on a pull
 # request and not on a push to `main`.
 GATES := architecture conformance governance exactness rehearsal
-TEST_TARGETS = $(if $(BASE),$(shell python3 tools/lanes.py --base $(BASE) --tests $(foreach g,$(GATES),--exclude tests/$(g))),tests)
+# The tests that a file `make generate` writes is the one committed; `make check` runs them always.
+GENERATED_FRESH := tests/adapters/rest/test_openapi.py \
+	tests/composition/test_shipped.py::test_the_list_of_what_the_release_ships_is_what_make_generate_writes \
+	tests/components/reporting/test_run_level.py::test_the_web_apps_fixtures_are_what_make_generate_writes
+TEST_TARGETS =$(if $(BASE),$(shell python3 tools/lanes.py --base $(BASE) --tests $(foreach g,$(GATES),--exclude tests/$(g))),tests)
 
 .PHONY: test
 test: env ## Unit and domain tests — everything under tests/ that is not a gate, or with BASE only what the change selects; PARALLEL= runs them in one process
@@ -83,6 +87,12 @@ images: env need-docker ## Build the test images whose content changed; REBUILD=
 gate-contracts: need-uv ## Schemas are valid 2020-12, examples validate, must-fail examples fail
 	$(UV) run tools/validate_contracts.py
 
+# A breaking change of a published contract fails unless its major version rises (ADR-0171, #396).
+# With no release yet nothing is published; the change is then reported against BASE.
+.PHONY: gate-compat
+gate-compat: need-uv need-git ## Contracts against the last release: a breaking change fails unless the major version rises
+	$(UV) run tools/contract_compat.py --base $(or $(BASE),origin/main)
+
 .PHONY: gate-arch
 gate-arch: env ## Adapter obligation, component boundaries, no product names in the core
 	$(UV) run lint-imports
@@ -98,6 +108,13 @@ gate-conformance: env ## Contract conformance suite, both contracts: starts the 
 .PHONY: helm
 helm: ## Install the pinned helm into .tools/bin, for the chart's tests (deploy/k8s/chart)
 	tools/install_helm.sh
+
+# The image workflow scans and signs with the pinned grype and cosign (ADR-0173);
+# `make image-tools` installs the same versions into .tools/bin, to scan an image by hand:
+# tools/scan_image.sh <image>@sha256:<digest>.
+.PHONY: image-tools
+image-tools: ## Install the pinned vulnerability scanner and signing tool into .tools/bin (ADR-0173)
+	tools/install_image_tools.sh
 
 .PHONY: gate-governance
 gate-governance: env ## Anchors hold, limits never breach, least privilege; the chart, rendered with helm (`make helm`), and the image workflow
@@ -172,26 +189,43 @@ db-down: need-docker ## Stop the development database; its data volume stays
 # image and waits until readiness answers. `down` stops the containers; every volume stays.
 # `up-dev` layers the reference worker over it (compose.reference-worker.yml), in its own
 # image, for trying a bundle out; the control plane image carries no worker (DEC-0011).
+# Each first writes the operator's further connectors from deploy/docker/connectors.json into
+# compose.connectors.yml (connectors.py) and lays it over the rest when it exists.
 COMPOSE := deploy/docker/compose.yml
 COMPOSE_WORKER := deploy/docker/compose.reference-worker.yml
+COMPOSE_CONNECTORS := deploy/docker/compose.connectors.yml
+WITH_CONNECTORS = $$(test -f $(COMPOSE_CONNECTORS) && echo -f $(COMPOSE_CONNECTORS))
 
 .PHONY: up
 up: need-docker ## Bring Taktus up: two containers, migrations applied, ready
 	deploy/docker/secrets.sh
-	docker compose -f $(COMPOSE) up --build --detach --wait
+	python3 deploy/docker/connectors.py
+	docker compose -f $(COMPOSE) $(WITH_CONNECTORS) up --build --detach --wait
+
+# The one command of a first install on one machine (UC-10.4, ADR-0136 §6): what `up` does,
+# then the first tenant and its administrator, then a clock that runs until the first rehearsal
+# has finished, and the time it measured (deploy/docker/start.py). NAME= names the tenant.
+.PHONY: start
+start: need-docker ## Install on one machine in one command: up, the first tenant and its key, and the clock to a first rehearsed process
+	python3 deploy/docker/start.py $(if $(NAME),--name "$(NAME)")
 
 .PHONY: up-dev
 up-dev: need-docker ## The same, plus the reference worker in its own image, for development
 	deploy/docker/secrets.sh
-	docker compose -f $(COMPOSE) -f $(COMPOSE_WORKER) up --build --detach --wait
+	python3 deploy/docker/connectors.py
+	docker compose -f $(COMPOSE) -f $(COMPOSE_WORKER) $(WITH_CONNECTORS) up --build --detach --wait
 
 .PHONY: down
 down: need-docker ## Stop the containers, with or without the reference worker; the volumes stay
-	docker compose -f $(COMPOSE) -f $(COMPOSE_WORKER) down
+	docker compose -f $(COMPOSE) -f $(COMPOSE_WORKER) $(WITH_CONNECTORS) down
 
 .PHONY: verify-compose
 verify-compose: need-docker ## From nothing: up with the reference worker, the control plane image checked for worker code, a run end to end, the container killed and restarted, the run resumed
 	deploy/docker/verify.sh
+
+.PHONY: verify-first-process
+verify-first-process: need-docker ## From nothing, without a person: install, gallery, proposal, rehearsal; fails above ten minutes (deploy/docker/first-process.sh)
+	deploy/docker/first-process.sh
 
 .PHONY: verify-upgrade
 verify-upgrade: need-docker ## The previous release with a run in every state, upgraded to this checkout; every run resumes at its boundary (TAKTUS_UPGRADE_FROM, _IMAGE, _WORKER_IMAGE; ADR-0124)
@@ -231,6 +265,11 @@ status: need-uv ## Print what is needed from the owner, from the register: the l
 .PHONY: check
 check: need-uv ## The fast local check before a commit: lint, types, architecture, documentation and register gates, and the unit tests (under 60 s)
 	$(MAKE) lint gate-arch gate-docs gate-decisions gate-adrs gate-status
+	@# What `make generate` writes is committed, so its freshness is checked on every change (NTC-0243).
+	$(UV) run pytest -q -p no:randomly $(GENERATED_FRESH)
+	@# A change to the web app runs its types and tests too: no unit test lane holds them (NTC-0250).
+	@if git diff --name-only "$$(git merge-base $(or $(BASE),origin/main) HEAD)" -- web/ | grep -q .; then \
+		$(MAKE) gate-web; else echo "check: the change touches no file of the web app"; fi
 	@targets="$$(python3 tools/lanes.py --base $(or $(BASE),origin/main) --tests --within tests/components --within tests/tools --within tests/contract)"; \
 	if [ -z "$$targets" ]; then echo "check: the change selects no unit test"; exit 0; fi; \
 	$(UV) run pytest -q -p no:randomly $$targets
@@ -256,4 +295,4 @@ reserve: need-uv need-git ## Reserve a record number on the remote before writin
 	@$(UV) run tools/reserve.py $(if $(ID),--id $(ID),--kind $(KIND))
 
 .PHONY: gates
-gates: lint gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases gate-web gate-selftest test timing rehearse ## Everything CI runs
+gates: lint gate-contracts gate-compat gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases gate-web gate-selftest test timing rehearse ## Everything CI runs

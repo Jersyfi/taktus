@@ -1,0 +1,14 @@
+{
+  "seq": 88,
+  "ts": "2026-10-30T09:05:00Z",
+  "kind": "agent.called",
+  "prev_hash": "sha256:7a2c9e4b1d6f3a8c5e0b7d2f9a4c1e6b3d8f5a0c7e2b9d4f1a6c3e8b5d0f7a2c",
+  "hash": "sha256:1e6b3d8f5a0c7e2b9d4f1a6c3e8b5d0f7a2c9e4b1d6f3a8c5e0b7d2f9a4c1e6b",
+  "refs": {
+    "tenant": "acme",
+    "agent_id": "inbox:sales@1",
+    "run_id": "run_5c2e",
+    "actor": "idn_7f3a2c"
+  },
+  "outcome": "fewest_rights"
+}

@@ -173,6 +173,8 @@ class Right(StrEnum):
     """Answer a decision request addressed to the person, and confirm its reading."""
     TAKE_OVER = "agent.take-over"
     """Take over a running step, and hand its result back."""
+    STEER = "agent.steer"
+    """Send a message to a running step (ADR-0156 §7)."""
 
 
 class RoleRights(Value):

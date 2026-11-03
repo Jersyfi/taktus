@@ -7,7 +7,8 @@ name: nightly
 # - the chart installed into a real cluster (kind), its database migrated, the instance ready;
 # - the backup and the restore by hand, against a real database and the backup image;
 # - an upgrade from the newest release before `main` to `main`, every run resuming at its boundary;
-# - the scale tests: listing 2 000 runs, the ledger's reads at 500 000 entries.
+# - the scale tests: listing 2 000 runs, the ledger's reads at 500 000 entries;
+# - a first rehearsed process from nothing, without a person, within ten minutes (ADR-0136 §7).
 #
 # `report` reads the run: a red job opens the issue "nightly is red" with priority high, or adds
 # to it; a green run closes it. A job red twice in a row is marked there, and is mended, or
@@ -26,6 +27,8 @@ on:
     paths:
       - .github/workflows/nightly.yml
       - deploy/k8s/kind.sh
+      - deploy/docker/first-process.sh
+      - deploy/docker/start.py
 
 permissions:
   contents: read
@@ -125,11 +128,20 @@ jobs:
           TAKTUS_REQUIRE_DATABASE: "1"
         run: make timing
 
+  first-process:
+    if: github.repository == 'Jersyfi/taktus' && (github.event_name == 'pull_request' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: a first rehearsed process, from nothing, measured
+        run: make verify-first-process
+
   # Reads the run and keeps the issue "nightly is red": opened with priority high, or added to,
   # when a job is red; closed when every job is green. Not on a pull request: the ring of `main`
   # is what the issue is about.
   report:
-    needs: [conformance, kind, backup, upgrade, scale]
+    needs: [conformance, kind, backup, upgrade, scale, first-process]
     if: always() && github.repository == 'Jersyfi/taktus' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5

@@ -31,6 +31,13 @@ from taktus.components.governance.domain.model.incident import (
     WatchConfiguration,
     shipped_watch,
 )
+from taktus.components.governance.domain.model.messages import (
+    CaseAnswer,
+    MessageRules,
+    case_key,
+    shipped_rules,
+)
+from taktus.components.governance.domain.model.org_units import OrgUnitQuota
 from taktus.components.governance.domain.model.residency import ResidencyRule, shipped_rule
 from taktus.components.governance.domain.model.sources import (
     SourceDeclaration,
@@ -46,27 +53,49 @@ from taktus.components.governance.domain.model.stages import (
     StageState,
     StageView,
 )
+from taktus.components.governance.domain.model.subjects import (
+    Erased,
+    Exported,
+    HeldObject,
+    HeldStep,
+    Holding,
+    RequestKind,
+    RequestRefused,
+    RequestState,
+    SubjectRequest,
+)
 
 __all__ = [
     "AnchorConfiguration",
     "BlueprintStages",
     "CapacityReport",
     "CapacityThresholds",
+    "CaseAnswer",
     "Ceiling",
     "Condition",
     "CorrectionLimits",
     "Decided",
     "Egress",
+    "Erased",
+    "Exported",
     "Figures",
     "Finding",
     "Happening",
+    "HeldObject",
+    "HeldStep",
+    "Holding",
     "Incident",
     "IncidentKind",
     "IncidentState",
     "Lowered",
+    "MessageRules",
+    "OrgUnitQuota",
     "Outcome",
     "Proposed",
     "Rate",
+    "RequestKind",
+    "RequestRefused",
+    "RequestState",
     "ResidencyRule",
     "ResultRef",
     "RunActivity",
@@ -79,11 +108,14 @@ __all__ = [
     "StageView",
     "Status",
     "StorageStore",
+    "SubjectRequest",
     "Unit",
     "WatchConfiguration",
+    "case_key",
     "shipped_declaration",
     "shipped_default",
     "shipped_limits",
     "shipped_rule",
+    "shipped_rules",
     "shipped_watch",
 ]

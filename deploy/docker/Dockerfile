@@ -3,11 +3,13 @@
 # Built from the repository root:  docker build -f deploy/docker/Dockerfile .
 # The build stage installs the project into a virtual environment with uv, from the lock file,
 # without the development tools. The runtime stage carries the checkout the environment points
-# at — src/, the migrations, the contracts, the examples — and nothing else: no build tool, no
+# at — src/, the migrations, the contracts, the examples, the gallery — and nothing else: no build tool, no
 # compiler, no secret, and no worker. A worker executes foreign code; the control plane image
 # contains none of it, so that a compromised control plane finds no execution primitive ready
 # to hand (DEC-0011). Workers have their own images (workers/*/Dockerfile) and are reached
-# through the execution port. tests/architecture holds this file to that.
+# through the execution port. Nor does it carry a connector: each connector is an image of its
+# own (connectors/Dockerfile), reached over MCP, and src/ holds only the port's side of it
+# (ADR-0158). tests/architecture holds this file to both.
 # Secrets reach the container as files (TAKTUS_*_FILE).
 # The web app is built in a stage of its own, from its lock file, and only its static build is
 # carried over: the runtime image holds no Node and no package of the web app's (ADR-0063). The
@@ -31,10 +33,13 @@ COPY src ./src
 COPY contracts ./contracts
 COPY migrations ./migrations
 COPY examples ./examples
+# The gallery a person chooses a first process from (ADR-0136 §1).
+COPY blueprints/gallery ./blueprints/gallery
 RUN uv sync --frozen --no-dev
 
 FROM python:3.13-slim-bookworm AS runtime
-ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 TAKTUS_STATE_DIR=/var/lib/taktus
+ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 TAKTUS_STATE_DIR=/var/lib/taktus \
+    TAKTUS_GALLERY_DIRECTORY=/app/blueprints/gallery
 # The user is pinned by number, 999: the chart runs the image as that number under runAsNonRoot
 # (deploy/k8s/chart/values.yaml, securityContext), and it must own what the image owns.
 RUN groupadd --system --gid 999 taktus \

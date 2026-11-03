@@ -57,6 +57,7 @@ from taktus.components.run.domain.model import (
     StepState,
 )
 from taktus.components.run.domain.service import provenance
+from taktus.components.run.ports import OrgUnits
 from taktus.composition.roles import said
 from taktus.ports.identity import ServedTenants
 from taktus.ports.objectstore import ObjectStore
@@ -138,7 +139,9 @@ class World:
         park_after: float | None = None,
         workers: list[tuple[str, Worker]] | None = None,
         takeover_seconds: float = 8 * 3600.0,
+        org_units: OrgUnits | None = None,
     ) -> None:
+        self.org_units = org_units
         self.park_after = park_after
         self.takeover_seconds = takeover_seconds
         self.worker = worker or FakeWorker()
@@ -186,9 +189,17 @@ class World:
                 takeover_lease_seconds=self.takeover_seconds,
             ),
             stops=self.stops,
+            org_units=self.org_units,
         )
 
-    async def submit(self, *definitions: tuple[Step, dict[str, Any]], tenant: str = TENANT) -> Run:
+    async def submit(
+        self,
+        *definitions: tuple[Step, dict[str, Any]],
+        tenant: str = TENANT,
+        org_unit: str | None = None,
+        budget: Limits = BUDGET,
+        actor: str = "idn_t",
+    ) -> Run:
         steps = tuple(step for step, _ in definitions)
         plan = Plan(
             id=self.ids.new("pln"),
@@ -198,16 +209,17 @@ class World:
             steps=steps,
             results_in=PlanResult.RUN,
             status=PlanStatus.COMMISSIONED,
-            commissioned=Commissioned(by="idn_t", at=self.clock.now()),
+            commissioned=Commissioned(by=actor, at=self.clock.now()),
         )
         return await self.engine.submit(
             StartRun(
                 plan=plan,
                 work={step.id: work for step, work in definitions},
-                budget=BUDGET,
+                budget=budget,
                 process_version="p@1",
-                actor="idn_t",
+                actor=actor,
                 tenant=tenant,
+                org_unit=org_unit,
             )
         )
 
@@ -241,6 +253,7 @@ class World:
                 wait_cap_seconds=wait_cap,
                 on_outcome=on_outcome,
                 outcomes_kept=outcomes_kept,
+                org_units=self.org_units,
             ),
         )
         self.tasks.append(asyncio.create_task(runner.run()))

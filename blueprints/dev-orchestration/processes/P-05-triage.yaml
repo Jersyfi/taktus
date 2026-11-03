@@ -31,7 +31,7 @@
 # README.md.
 
 id: p05-triage
-version: "1"
+version: "2"
 name: P-05 Triage of contributions
 autonomy:
   level: 3
@@ -72,6 +72,7 @@ steps:
     fallback:
       when: the connector serving repository.issues is unavailable
       to: human
+      role: owner
     work:
       rule: connector
       operation: repository.issues.read
@@ -93,6 +94,7 @@ steps:
     fallback:
       when: the connector serving repository.files is unavailable
       to: human
+      role: owner
     work:
       rule: connector
       operation: repository.files.read
@@ -160,6 +162,7 @@ steps:
     fallback:
       when: the answer fails the check, or the model serving the purpose triage is unavailable
       to: human
+      role: owner
     depends_on: [screen, versions]
     work:
       # Judged only where no pattern found spam.
@@ -217,6 +220,7 @@ steps:
     fallback:
       when: the connector serving repository.issues is unavailable
       to: human
+      role: owner
     depends_on: [classification]
     work:
       when:
@@ -243,6 +247,7 @@ steps:
     fallback:
       when: the connector serving repository.issues is unavailable
       to: human
+      role: owner
     depends_on: [classification, read-contribution]
     work:
       when:
@@ -300,6 +305,7 @@ steps:
     fallback:
       when: the connector serving repository.issues is unavailable
       to: human
+      role: owner
     depends_on: [compose-decline, accept]
     work:
       when:

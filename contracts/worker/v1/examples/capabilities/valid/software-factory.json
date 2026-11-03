@@ -1,0 +1,28 @@
+{
+  "contract": "worker/v1",
+  "version": "0.1.0",
+  "data_location": "eu",
+  "capabilities": ["change.implement"],
+  "consumption": {
+    "kinds": ["currency"],
+    "currencies": ["eur"]
+  },
+  "supports": {
+    "native_pause": false,
+    "steering": false,
+    "handover": false,
+    "step_boundary_signal": true,
+    "streaming_events": true,
+    "estimate": true
+  },
+  "max_concurrent_assignments": 4,
+  "estimator": {
+    "kind": "fixed",
+    "estimate": {
+      "confidence": "low",
+      "currency": {"eur": 2.0},
+      "wall_seconds": 1800,
+      "steps": 5
+    }
+  }
+}

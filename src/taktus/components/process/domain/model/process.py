@@ -50,6 +50,10 @@ class InputDeclaration(Value):
     it then names what stands in for it, under `$otherwise` (ADR-0053)."""
 
 
+SKILL_NAME = r"[a-z0-9]+(-[a-z0-9]+)*"
+"""The open format's skill name, as a step names it (ADR-0113 §1)."""
+
+
 class Process(Value):
     """A named process. The version that runs is `active_version`; the versions are bundles."""
 
@@ -359,6 +363,7 @@ class ProcessVersion(Value):
     def _valid_graph(self) -> ProcessVersion:
         findings = validate_graph(self.steps)
         findings.extend(self._evaluation_findings())
+        findings.extend(self._skill_findings())
         findings.extend(
             f"`open_work` names the kind {kind!r}; a kind is a lowercase token such as "
             "pull_requests"
@@ -420,6 +425,38 @@ class ProcessVersion(Value):
         if findings:
             raise InvalidProcess(tuple(findings))
         return self
+
+    def _skill_findings(self) -> list[str]:
+        """A step names its skills as a list of skill names, each once (ADR-0113 §2)."""
+        findings: list[str] = []
+        for step_id, work in self.work.items():
+            if "skills" not in work:
+                continue
+            named = work["skills"]
+            if not isinstance(named, list | tuple) or not all(
+                isinstance(n, str) and re.fullmatch(SKILL_NAME, n) for n in named
+            ):
+                findings.append(
+                    f"the step {step_id!r} names its skills under `work.skills` as a list of "
+                    "skill names: lowercase letters, digits and single hyphens"
+                )
+            elif len(set(named)) != len(named):
+                findings.append(f"the step {step_id!r} names a skill twice under `work.skills`")
+        return findings
+
+    def skills_used(self) -> dict[str, tuple[StepId, ...]]:
+        """The steps that name each skill, by skill name (ADR-0162 §3)."""
+        used: dict[str, list[StepId]] = {}
+        for step in self.steps:
+            for name in (self.work.get(step.id) or {}).get("skills") or ():
+                used.setdefault(name, []).append(step.id)
+        return {name: tuple(steps) for name, steps in sorted(used.items())}
+
+    def exact_for(self, skill: str) -> bool:
+        """Whether an `exact` step uses the skill: its floor is then higher (DEC-0028)."""
+        return any(
+            self.step(step_id).exactness == "exact" for step_id in self.skills_used().get(skill, ())
+        )
 
     def _evaluation_findings(self) -> list[str]:
         """Why the declared evaluation cannot hold against this version (ADR-0134 §1)."""

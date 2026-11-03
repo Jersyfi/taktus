@@ -5,7 +5,8 @@ Every fixture under contracts/worker/v1/examples/transcript/valid/ must break no
 every fixture under invalid/W-NN-*.json must break exactly the check its name carries. The same
 holds for the capacity probes under examples/capacity-probe/ and W-15, the unknown-id probes
 under examples/unknown-id-probe/ and W-16, and the repeated-id probes under
-examples/repeated-id-probe/ and W-17. This is
+examples/repeated-id-probe/ and W-17, and the relay probes under examples/relay-probe/ and W-21.
+This is
 what makes the fixtures known good or known bad, and it is the test that pinned the rules when
 they moved out of tools/validate_contracts.py (DEC-0003).
 """
@@ -23,6 +24,7 @@ import pytest
 from taktus.conformance.findings import Violation
 from taktus.conformance.rules import (
     capacity_violations,
+    relay_violations,
     repeated_id_violations,
     stream_violations,
     unknown_id_violations,
@@ -43,28 +45,47 @@ def load(path: Path) -> Json:
         return result
 
 
+def violations_of(transcript: Json) -> list[Violation]:
+    """The stream rules against a transcript, with the messages it posted and whether it asked
+    for a handover (W-19, W-20)."""
+    return stream_violations(
+        transcript["assignment"],
+        transcript["estimate"],
+        transcript["events"],
+        messages=transcript.get("messages", []),
+        handover_requested=transcript.get("handover_requested", False),
+    )
+
+
 @pytest.mark.parametrize("path", VALID, ids=[p.stem for p in VALID])
 def test_valid_transcript_breaks_no_rule(path: Path) -> None:
-    transcript = load(path)
-    assert not stream_violations(
-        transcript["assignment"], transcript["estimate"], transcript["events"]
-    )
+    assert not violations_of(load(path))
 
 
 @pytest.mark.parametrize("path", INVALID, ids=[p.stem for p in INVALID])
 def test_invalid_transcript_breaks_its_check(path: Path) -> None:
     match = re.match(r"(W-\d{2})-", path.name)
     assert match is not None
-    transcript = load(path)
-    violations = stream_violations(
-        transcript["assignment"], transcript["estimate"], transcript["events"]
-    )
+    violations = violations_of(load(path))
     assert match.group(1) in {v.check for v in violations}, [str(v) for v in violations]
 
 
 def test_every_stream_check_has_a_fixture() -> None:
     named = {p.name[:4] for p in INVALID}
-    assert named == {"W-03", "W-04", "W-05", "W-06", "W-07", "W-10", "W-11", "W-13", "W-14", "W-18"}
+    assert named == {
+        "W-03",
+        "W-04",
+        "W-05",
+        "W-06",
+        "W-07",
+        "W-10",
+        "W-11",
+        "W-13",
+        "W-14",
+        "W-18",
+        "W-19",
+        "W-20",
+    }
 
 
 PROBES = TRANSCRIPTS.parent / "capacity-probe"
@@ -91,6 +112,7 @@ def test_the_capacity_rule_has_fixtures() -> None:
 ID_PROBES = [
     ("unknown-id-probe", unknown_id_violations, "W-16"),
     ("repeated-id-probe", repeated_id_violations, "W-17"),
+    ("relay-probe", relay_violations, "W-21"),
 ]
 ID_CASES = [
     (path, rule, check if path.parent.name == "invalid" else None)

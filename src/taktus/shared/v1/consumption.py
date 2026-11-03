@@ -71,6 +71,21 @@ def add_tokens_by_model(
     return summed
 
 
+class Compression(Value):
+    """Consumption.json#/$defs/compression: a compression of the model's input within a step —
+    the input tokens it would have sent without it, and what it sent (#449)."""
+
+    before: int = Field(ge=0)
+    after: int = Field(ge=0)
+
+    @property
+    def saved(self) -> int:
+        return self.before - self.after
+
+    def plus(self, other: Compression) -> Compression:
+        return Compression(before=self.before + other.before, after=self.after + other.after)
+
+
 QUANTITIES = (
     "tokens_in",
     "tokens_out",
@@ -94,6 +109,11 @@ class ConsumptionQuantities(Value):
     compute_seconds: float | None = Field(default=None, ge=0)
     resource_class: ResourceClass | None = None
     storage_bytes: int | None = Field(default=None, ge=0)
+    turns: int | None = Field(default=None, ge=0)
+    """The calls to a language model an agent made within the step. Not priced and not limited:
+    it tells where the tokens went, and alone makes no consumption (#449)."""
+    compression: Compression | None = None
+    """Where a compression of the model's input ran: its input before and after (#449)."""
 
     @model_validator(mode="after")
     def _compute_names_its_class(self) -> ConsumptionQuantities:

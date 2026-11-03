@@ -1,0 +1,17 @@
+# The secret scan's configuration (tools/scan_secrets.sh): gitleaks' default rules, and one
+# exception (NTC-0259). The catalogue contract's examples carry Ed25519 public keys: the half
+# of a key that is published, never a secret (ADR-0175). gitleaks' generic rule cannot tell one
+# from a token. The exception holds only where both are true: the file is an example of the
+# catalogue contract, and the value found is exactly one public key's 43 characters. A longer
+# value there, and the same value in any other file, are still found.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "Ed25519 public keys in the catalogue contract's examples"
+condition = "AND"
+paths = ['''^contracts/catalogue/v1/examples/''']
+regexes = ['''^[A-Za-z0-9_-]{43}$''']

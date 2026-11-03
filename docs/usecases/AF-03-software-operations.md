@@ -6,8 +6,9 @@ support and development. Taktus runs its operation, process by process. In norma
 the business needs no staff for it. People set the goals, the limits and the budgets, carry the
 liability and sign.
 
-This is the second tenant and the case Taktus proves itself on (DEC-0199). `1.0.0` is complete
-only when it holds (§9).
+This is the second tenant and the case Taktus proves itself on (DEC-0199). The business
+introduces Taktus on its own instance once `1.0.0-beta` meets its conditions for going live; its
+stages run after that and hold no release back (DEC-0222, §9).
 
 ---
 
@@ -242,7 +243,7 @@ The business runs today without Taktus. Taktus is introduced into it in six stag
 opens only when the previous one measurably holds** (UC-9.6). A stage that stops holding is
 reported, and the processes it raised fall back by rule.
 
-| Stage | Name | What is added | What people still do | Opens when | Milestone |
+| Stage | Name | What is added | What people still do | Opens when | Built by |
 |---|---|---|---|---|---|
 | 0 | The control loop | the daily report (B-9.01); first routines for pull requests, errors and triage (B-7.01, B-7.04, B-1.05) | read every day and intervene | the tenant is created and its first processes registered at level 1–2 | `0.4.0` |
 | 1 | Operation without handwork | watchers for cost, errors, model credit, payment reconciliation, back office, deadlines (§4.1, §4.2, B-6.01, §4.5, B-10.01) | handle only deviations | stage 0 held for four weeks: the report ran every day, and every proposal was decided by a person | `0.5.0` |
@@ -316,15 +317,15 @@ follows (#447).
 | repository service: issues, pull requests, pipelines | §4.7, §4.8, B-1.11, B-1.12 | yes (`github` connector) |
 | chat | the report, decision requests, steering | yes |
 | mail and helpdesk: receive, draft, send | §4.3, B-10.03 | mail received and sent over IMAP and SMTP (`mail` connector); drafts and a helpdesk: no |
-| cloud billing export, monitoring and logs | §4.1 | metrics by query (`prometheus` connector) and an HTTP check (`httpcheck` connector); billing export and logs: no |
-| error tracking | B-1.04, B-1.05, B-7.01 | no |
-| payment providers and the product's entitlements | B-3.04, §4.6 | no |
-| model providers' credit and use | B-2.01 | no |
+| cloud billing export, monitoring and logs | §4.1 | metrics by query (`prometheus` connector), an HTTP check (`httpcheck` connector) and the daily cost by service (`billing.costs`); logs: no |
+| error tracking | B-1.04, B-1.05, B-7.01 | issues read (`errors.issues`) |
+| payment providers and the product's entitlements | B-3.04, §4.6 | subscriptions read (`payments.subscriptions`); the product's entitlements: no |
+| model providers' credit and use | B-2.01 | the cost per day (`models.costs`); the credit left: no |
 | app stores: reviews, submission, beta, staged rollout | B-3.09, §4.8 | no |
 | deployment targets with rollback | B-8.05, B-8.06 | no |
 | customer system and feedback portal | B-5.05, B-3.07, B-9.04 | no |
 | an analytics copy without personal fields | B-9.02, B-9.06 | no |
-| accounting export | B-6.06, B-10.03 | no |
+| accounting export | B-6.06, B-10.03 | incoming invoices read from an inbox in EN 16931 (`documents.invoices`), orders read, bookings proposed and released payments submitted through a generic accounting interface (`accounting.orders`, `accounting.bookings`, `payment.release`; UC-15.8, UC-04); an export of outgoing invoices: no |
 | a browser for synthetic flows | B-1.06, B-7.08, B-7.09 | a worker; not built |
 | social media and forum search | B-3.10 | no |
 
@@ -332,7 +333,8 @@ follows (#447).
 
 ## 9. When this case holds
 
-`1.0.0` is complete only when all of the following hold (DEC-0199):
+The case holds when all of the following hold (DEC-0199). Since DEC-0222 they measure the
+business's introduction, which runs after `1.0.0-beta`; they are not a condition of a release:
 
 - the business installed its instance from the documentation, and upgraded it at every
   release since without losing a run and without the project's help (#445);

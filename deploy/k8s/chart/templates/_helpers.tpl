@@ -51,27 +51,110 @@ app.kubernetes.io/component: {{ .component }}
 {{- end -}}
 
 {{/*
-An image reference whose tag is a version. `latest`, an empty tag and a moving tag of that kind
-are refused at render time: what runs must be what was released. Call with (dict "what" "image"
+An image reference whose tag is a version, or the full commit hash an image of `main` carries
+(ADR-0173 §1): forty lowercase hexadecimal characters, which name one commit and are never pushed
+twice. `latest`, an empty tag and a moving tag of that kind are refused at render time: what runs
+must be what was released. With `.image.digest` (`sha256:` and 64 hexadecimal characters) the
+reference is `<repository>:<tag>@<digest>`, and the runtime pulls the digest (ADR-0173 §7).
+`images.requireDigest` refuses a reference without one. Call with (dict "root" $ "what" "image"
 "image" .Values.image).
 */}}
 {{- define "taktus.image" -}}
 {{- $repository := required (printf "%s.repository is required" .what) .image.repository -}}
 {{- $tag := toString (required (printf "%s.tag is required: the released version, never latest" .what) .image.tag) -}}
-{{- if not (regexMatch "^v?[0-9]+(\\.[0-9]+)*([-+._][0-9A-Za-z.-]+)?$" $tag) -}}
+{{- if not (or (regexMatch "^v?[0-9]+(\\.[0-9]+)*([-+._][0-9A-Za-z.-]+)?$" $tag) (regexMatch "^[0-9a-f]{40}$" $tag)) -}}
 {{- fail (printf "%s.tag %q is not a version; a tag such as latest moves under a running instance" .what $tag) -}}
 {{- end -}}
-{{- printf "%s:%s" $repository $tag -}}
+{{- printf "%s:%s%s" $repository $tag (include "taktus.digestSuffix" (dict "root" .root "what" (.digestWhat | default (printf "%s.digest" .what)) "digest" .image.digest)) -}}
 {{- end -}}
 
-{{/* An image given as one reference (repository:tag), held to the same rule. */}}
+{{/*
+`@<digest>` for a digest given, empty for none; fails a digest of another form, and a missing
+one under `images.requireDigest` (ADR-0173 §7). Call with (dict "root" $ "what" "image" "digest" "…").
+*/}}
+{{- define "taktus.digestSuffix" -}}
+{{- $digest := toString (.digest | default "") -}}
+{{- if $digest -}}
+{{- if not (regexMatch "^sha256:[0-9a-f]{64}$" $digest) -}}
+{{- fail (printf "%s %q is not a digest: sha256: and 64 lowercase hexadecimal characters" .what $digest) -}}
+{{- end -}}
+{{- printf "@%s" $digest -}}
+{{- else if and .root .root.Values.images .root.Values.images.requireDigest -}}
+{{- fail (printf "%s is not given, and images.requireDigest refers to every image by its digest (ADR-0173 §7)" .what) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+An image given as one reference (repository:tag, optionally followed by @sha256:<digest>), held
+to the same rule. A reference by digest alone (repository@sha256:<digest>) needs no tag: a digest
+cannot move. Call with (dict "root" $ "what" "execution.image" "ref" …).
+*/}}
 {{- define "taktus.imageRef" -}}
 {{- $ref := toString .ref -}}
+{{- $digest := "" -}}
+{{- if contains "@" $ref -}}
+{{- $found := regexFind "@sha256:[0-9a-f]{64}$" $ref -}}
+{{- if not $found -}}
+{{- fail (printf "%s %q: what follows @ is not a digest: sha256: and 64 lowercase hexadecimal characters" .what $ref) -}}
+{{- end -}}
+{{- $digest = trimPrefix "@" $found -}}
+{{- $ref = trimSuffix $found $ref -}}
+{{- end -}}
 {{- $parts := regexFind ":[^:/]+$" $ref -}}
+{{- if and (not $parts) $digest -}}
+{{- printf "%s@%s" $ref $digest -}}
+{{- else -}}
 {{- if not $parts -}}
 {{- fail (printf "%s %q names no tag; give the version explicitly" .what $ref) -}}
 {{- end -}}
-{{- include "taktus.image" (dict "what" .what "image" (dict "repository" (trimSuffix $parts $ref) "tag" (trimPrefix ":" $parts))) -}}
+{{- include "taktus.image" (dict "root" .root "what" .what "digestWhat" (printf "%s digest" .what) "image" (dict "repository" (trimSuffix $parts $ref) "tag" (trimPrefix ":" $parts) "digest" $digest)) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+The connectors this release ships, each an image of its own (ADR-0158): the directories under
+connectors/taktus_connectors/ that run as a module. tests/governance/test_chart.py holds this
+list to that directory.
+*/}}
+{{- define "taktus.shippedConnectors" -}}
+accounting anthropic aws bookstack einvoice github httpcheck mail openai prometheus sentry slack stripe vendor
+{{- end -}}
+
+{{/*
+A shipped connector's image (ADR-0158): `<connectors.imagePrefix>-<name>`, by default beside the
+control plane's as `<image.repository>-connector-<name>`, at the control plane's tag, because a
+release builds and pushes them together (.github/workflows/images.yml), pinned by
+`connectors.digests.<name>` where it is given (ADR-0173 §7). Call with
+(dict "root" $ "name" "github").
+*/}}
+{{- define "taktus.connectorImage" -}}
+{{- $shipped := splitList " " (include "taktus.shippedConnectors" .root) -}}
+{{- if not (has .name $shipped) -}}
+{{- fail (printf "%q is no connector this release ships; it ships %s" .name (join ", " $shipped)) -}}
+{{- end -}}
+{{- $repository := required "image.repository is required" .root.Values.image.repository -}}
+{{- $prefix := .root.Values.connectors.imagePrefix | default (printf "%s-connector" $repository) -}}
+{{- $digest := index (.root.Values.connectors.digests | default dict) .name | default "" -}}
+{{- include "taktus.image" (dict "root" .root "what" "image" "digestWhat" (printf "connectors.digests.%s" .name) "image" (dict "repository" (printf "%s-%s" $prefix .name) "tag" .root.Values.image.tag "digest" $digest)) -}}
+{{- end -}}
+
+{{/*
+The shipped connector an entry of `connectors.others` runs: its `connector`, or the `module` an
+earlier release ran from the control plane's image — `taktus.adapters.driven.connectors.<name>`
+— which now runs from the connector's own image, so that an installed instance's values keep
+working (ADR-0158). Empty for an entry with an image of its own.
+*/}}
+{{- define "taktus.otherConnectorName" -}}
+{{- if .connector -}}
+{{- .connector -}}
+{{- else if .module -}}
+{{- $module := toString .module -}}
+{{- $found := regexFind "^(taktus\\.adapters\\.driven\\.connectors|taktus_connectors)\\.[a-z][a-z0-9_]*$" $module -}}
+{{- if not $found -}}
+{{- fail (printf "connectors.others %s: module %q is no shipped connector's; give `connector: <name>`, or an image of its own" .name $module) -}}
+{{- end -}}
+{{- last (splitList "." $module) -}}
+{{- end -}}
 {{- end -}}
 
 {{/* A unit's variables (ADR-0090), a map, as TAKTUS_EXECUTION_UNIT_ENV reads them: NAME=value
@@ -123,6 +206,12 @@ the pairs. Which names are refused is the daemon's to say, at its start. */}}
 {{- $g := .Values.execution.gateway -}}
 {{- $files = append $files (dict "volume" "gateway-key" "secret" (include "taktus.gatewayKeySecret" .) "key" (include "taktus.gatewayKeyKey" .) "dir" "/run/secrets/taktus/gateway-key" "variable" "TAKTUS_EXECUTION_GATEWAY_KEY_FILE") -}}
 {{- end -}}
+{{- if eq (include "taktus.objectStore" .) "s3" -}}
+{{- $o := .Values.objectStore -}}
+{{- $secret := required "objectStore.secret is required with objectStore.kind: s3: the Secret holding the store's credential" $o.secret -}}
+{{- $files = append $files (dict "volume" "object-store-id" "secret" $secret "key" (required "objectStore.accessKeyIdKey is required" $o.accessKeyIdKey) "dir" "/run/secrets/taktus/object-store-id" "variable" "TAKTUS_OBJECT_STORE_ACCESS_KEY_ID_FILE") -}}
+{{- $files = append $files (dict "volume" "object-store-key" "secret" $secret "key" (required "objectStore.secretKeyKey is required" $o.secretKeyKey) "dir" "/run/secrets/taktus/object-store-key" "variable" "TAKTUS_OBJECT_STORE_SECRET_KEY_FILE") -}}
+{{- end -}}
 {{- range .Values.credentials -}}
 {{- $parameter := required "credentials[].parameter is required" .parameter -}}
 {{- $dir := default (printf "/run/secrets/taktus/%s" $parameter) .mountPath -}}
@@ -166,13 +255,131 @@ seccompProfile:
 {{- printf "http://%s-connector-chat:%v/mcp" (include "taktus.fullname" .) .Values.connectors.chat.port -}}
 {{- end -}}
 
-{{- /* The profile: `standard` or `small`; anything else fails the render. */ -}}
+{{/*
+Every connector of `connectors.others`, checked: renders nothing and fails on the first entry
+that cannot be deployed as written (README §2). A name is the deployment's suffix and a
+capability its label in TAKTUS_CONNECTORS: each is unique, and neither repeats a built-in one.
+*/}}
+{{- define "taktus.checkConnectors" -}}
+{{- $names := list "repository" "chat" -}}
+{{- $labels := list -}}
+{{- if .Values.connectors.repository.enabled }}{{- $labels = append $labels "channel.repo" -}}{{- end -}}
+{{- if .Values.connectors.chat.enabled }}{{- $labels = append $labels "channel.chat" -}}{{- end -}}
+{{- range .Values.connectors.others -}}
+{{- $name := required "connectors.others[].name is required" .name -}}
+{{- if not (regexMatch "^[a-z][a-z0-9]*(-[a-z0-9]+)*$" $name) -}}
+{{- fail (printf "connectors.others: %q is not a connector name: lowercase letters and digits, words joined by hyphens" $name) -}}
+{{- end -}}
+{{- if gt (len $name) 40 -}}
+{{- fail (printf "connectors.others: %q is longer than 40 characters" $name) -}}
+{{- end -}}
+{{- if has $name $names -}}
+{{- fail (printf "connectors.others: %q is named twice, or is a built-in connector's name" $name) -}}
+{{- end -}}
+{{- $names = append $names $name -}}
+{{- $label := required (printf "connectors.others %s: capability is required: its label in TAKTUS_CONNECTORS" $name) .capability -}}
+{{- if not (regexMatch "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$" $label) -}}
+{{- fail (printf "connectors.others %s: capability %q is not a dotted lowercase label" $name $label) -}}
+{{- end -}}
+{{- if has $label $labels -}}
+{{- fail (printf "connectors.others %s: capability %q is another connector's label already" $name $label) -}}
+{{- end -}}
+{{- $labels = append $labels $label -}}
+{{- $given := 0 -}}
+{{- range list .connector .module .image -}}{{- if . }}{{- $given = add1 $given -}}{{- end -}}{{- end -}}
+{{- if gt $given 1 -}}
+{{- fail (printf "connectors.others %s: give one of connector, module or image, not both" $name) -}}
+{{- end -}}
+{{- if eq $given 0 -}}
+{{- fail (printf "connectors.others %s: connector, module or image is required" $name) -}}
+{{- end -}}
+{{- if .image -}}
+{{- $_ := include "taktus.imageRef" (dict "root" $ "what" (printf "connectors.others %s image" $name) "ref" .image) -}}
+{{- else -}}
+{{- $_ := include "taktus.connectorImage" (dict "root" $ "name" (include "taktus.otherConnectorName" .)) -}}
+{{- end -}}
+{{- $port := required (printf "connectors.others %s: port is required" $name) .port -}}
+{{- if or (lt (int $port) 1) (gt (int $port) 65535) -}}
+{{- fail (printf "connectors.others %s: port %v is not a port" $name $port) -}}
+{{- end -}}
+{{- $credentials := list -}}
+{{- range .credentials -}}
+{{- $credential := required (printf "connectors.others %s: credentials[].name is required" $name) .name -}}
+{{- if not (regexMatch "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$" $credential) -}}
+{{- fail (printf "connectors.others %s: credential %q is not a parameter name such as PAYMENTS_TOKEN" $name $credential) -}}
+{{- end -}}
+{{- if has $credential $credentials -}}
+{{- fail (printf "connectors.others %s: credential %s is named twice" $name $credential) -}}
+{{- end -}}
+{{- $credentials = append $credentials $credential -}}
+{{- $_ := required (printf "connectors.others %s: credential %s needs secret" $name $credential) .secret -}}
+{{- $_ := required (printf "connectors.others %s: credential %s needs key" $name $credential) .key -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/* A connector of `connectors.others` as TAKTUS_CONNECTORS names it: `label=url`. Call with (dict "root" $ "c" .). */}}
+{{- define "taktus.otherConnectorEntry" -}}
+{{- printf "%s=http://%s-connector-%s:%v/mcp" .c.capability (include "taktus.fullname" .root) .c.name .c.port -}}
+{{- end -}}
+
+{{- /* The profile: `standard`, `small` or `ha`; anything else fails the render. */ -}}
 {{- define "taktus.profile" -}}
 {{- $p := .Values.profile | default "standard" -}}
-{{- if not (has $p (list "standard" "small")) -}}
-{{- fail (printf "profile must be standard or small, not %q" $p) -}}
+{{- if not (has $p (list "standard" "small" "ha")) -}}
+{{- fail (printf "profile must be standard, small or ha, not %q" $p) -}}
 {{- end -}}
 {{- $p -}}
+{{- end -}}
+
+{{- /* The object store's adapter: `filesystem` or `s3` (ADR-0165). */ -}}
+{{- define "taktus.objectStore" -}}
+{{- $k := .Values.objectStore.kind | default "filesystem" -}}
+{{- if not (has $k (list "filesystem" "s3")) -}}
+{{- fail (printf "objectStore.kind must be filesystem or s3, not %q" $k) -}}
+{{- end -}}
+{{- $k -}}
+{{- end -}}
+
+{{- /*
+What the profile `ha` and the S3-compatible store require (ADR-0165 §3, §4); rendered nowhere,
+included where the configuration is rendered so that a wrong combination fails the render.
+*/ -}}
+{{- define "taktus.checkProfile" -}}
+{{- $s3 := eq (include "taktus.objectStore" .) "s3" -}}
+{{- if eq (include "taktus.profile" .) "ha" -}}
+{{- if not $s3 -}}
+{{- fail "profile ha requires objectStore.kind: s3: the filesystem store is one ReadWriteOnce volume, which pins every role to one node" -}}
+{{- end -}}
+{{- if .Values.database.deploy -}}
+{{- fail "profile ha requires database.deploy: false: the chart's own database is one replica. Give an external server with a standby replica and write-ahead log archiving (README §2)" -}}
+{{- end -}}
+{{- if not (has .Values.ha.antiAffinity (list "preferred" "required")) -}}
+{{- fail (printf "ha.antiAffinity must be preferred or required, not %q" .Values.ha.antiAffinity) -}}
+{{- end -}}
+{{- if lt (int .Values.ha.replicas) 2 -}}
+{{- fail "ha.replicas must be at least 2" -}}
+{{- end -}}
+{{- end -}}
+{{- if $s3 -}}
+{{- $o := .Values.objectStore -}}
+{{- if not (regexMatch "^https?://" ($o.endpoint | default "")) -}}
+{{- fail "objectStore.endpoint is required with objectStore.kind: s3: the store's http(s) address" -}}
+{{- end -}}
+{{- $_ := required "objectStore.bucket is required with objectStore.kind: s3" $o.bucket -}}
+{{- if and .Values.backup.enabled .Values.backup.objects -}}
+{{- fail "backup.objects must be false with objectStore.kind: s3: there is no state volume to archive, and the bucket is off the node already" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{- /* How many replicas a role runs: its own, and in the profile ha at least ha.replicas. */ -}}
+{{- define "taktus.replicas" -}}
+{{- if eq (include "taktus.profile" .root) "ha" -}}
+{{- max (int .spec.replicas) (int .root.Values.ha.replicas) -}}
+{{- else -}}
+{{- .spec.replicas -}}
+{{- end -}}
 {{- end -}}
 
 {{- /* The role label of the pod that serves the API. */ -}}

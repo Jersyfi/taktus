@@ -36,6 +36,7 @@ from typing import Any
 import uvicorn
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
+from mcp.server.transport_security import TransportSecuritySettings
 from mcp_types import ToolAnnotations
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -150,7 +151,14 @@ def app(state: State, tokens: set[str]) -> Starlette:
         return JSONResponse(state.document())
 
     server.custom_route("/_fake/state", methods=["GET"])(fake_state)
-    starlette = server.streamable_http_app(streamable_http_path="/mcp")
+    # The loopback names, as the library allows by default, and the name a connector in its own
+    # image reaches the host by (tests/conformance/test_connector_v1_images.py, ADR-0158).
+    security = TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=["127.0.0.1:*", "localhost:*", "[::1]:*", "host.docker.internal:*"],
+        allowed_origins=["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"],
+    )
+    starlette = server.streamable_http_app(streamable_http_path="/mcp", transport_security=security)
     starlette.add_middleware(Bearer, tokens=tokens, state=state)
     return starlette
 

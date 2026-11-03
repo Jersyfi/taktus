@@ -5,6 +5,7 @@ password is a file from a Secret created before the install; the chart never gen
 carries one. An uninstall leaves the volume: the ledger is never deleted without asking.
 */ -}}
 {{- if .Values.database.deploy }}
+{{- $archive := include "taktus.pointInTime" . -}}
 apiVersion: v1
 kind: Service
 metadata:
@@ -60,9 +61,32 @@ spec:
           type: RuntimeDefault
       containers:
         - name: postgres
-          image: {{ include "taktus.image" (dict "what" "database.image" "image" .Values.database.image) }}
+          {{- if $archive }}
+          # Point-in-time recovery (ADR-0174 §1): the backup image is the database's own image with
+          # the tools that archive its log; the server is the same. Every finished segment goes to
+          # the store, a segment at least every archiveTimeoutSeconds.
+          image: {{ include "taktus.image" (dict "root" $ "what" "backup.image" "image" .Values.backup.image) }}
+          command: ["docker-entrypoint.sh"]
+          args:
+            - postgres
+            - -c
+            - archive_mode=on
+            - -c
+            - archive_command=python3 /usr/local/bin/taktus-backup archive-wal %p %f
+            - -c
+            - archive_timeout={{ int .Values.backup.pointInTime.archiveTimeoutSeconds }}
+            - -c
+            - hba_file=/etc/taktus/database/pg_hba.conf
+          {{- else }}
+          image: {{ include "taktus.image" (dict "root" $ "what" "database.image" "image" .Values.database.image) }}
+          {{- end }}
           imagePullPolicy: IfNotPresent
           env:
+            {{- if $archive }}
+            {{- include "taktus.backupStoreEnv" . | nindent 12 }}
+            - name: TAKTUS_BACKUP_WORK_DIR
+              value: /tmp
+            {{- end }}
             - name: POSTGRES_DB
               value: {{ .Values.database.name | quote }}
             - name: POSTGRES_USER
@@ -98,7 +122,21 @@ spec:
             - name: database-password
               mountPath: /run/secrets/taktus/database-password
               readOnly: true
+            {{- if $archive }}
+            - name: backup-store
+              mountPath: /run/secrets/taktus/backup-store
+              readOnly: true
+            - name: database-hba
+              mountPath: /etc/taktus/database
+              readOnly: true
+            {{- end }}
       volumes:
+        {{- if $archive }}
+        {{- include "taktus.backupStoreVolume" . | nindent 8 }}
+        - name: database-hba
+          configMap:
+            name: {{ include "taktus.fullname" . }}-database-hba
+        {{- end }}
         - name: run
           emptyDir: {}
         - name: tmp

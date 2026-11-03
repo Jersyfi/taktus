@@ -56,7 +56,9 @@ from taktus.ports.worker import (
     Estimate,
     EstimateRequest,
     Event,
+    HandoverRequest,
     NoEstimator,
+    SteeringMessage,
     StopRequest,
     WorkerAtCapacity,
     WorkerError,
@@ -163,6 +165,14 @@ class LaunchedWorker:
 
     async def stop(self, assignment_id: AssignmentId, request: StopRequest) -> AssignmentState:
         return await self._of(assignment_id).worker.stop(assignment_id, request)
+
+    async def steer(self, assignment_id: AssignmentId, message: SteeringMessage) -> AssignmentState:
+        return await self._of(assignment_id).worker.steer(assignment_id, message)
+
+    async def hand_over(
+        self, assignment_id: AssignmentId, request: HandoverRequest
+    ) -> AssignmentState:
+        return await self._of(assignment_id).worker.hand_over(assignment_id, request)
 
     async def artifacts(self, assignment_id: AssignmentId) -> ArtifactList:
         running = self._of(assignment_id)

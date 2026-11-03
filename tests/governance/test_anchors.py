@@ -350,7 +350,7 @@ def test_a_capability_pattern_matches_segment_by_segment(
 # --- an anchored act halts the run at the step boundary, at every level --------------------------
 
 
-@pytest.mark.parametrize("level", [1, 2, 3])
+@pytest.mark.parametrize("level", [1, 2, 3, 4])
 async def test_no_autonomy_level_overrides_an_anchor(level: AutonomyLevel) -> None:
     w = await World(call("write", WRITE), level=level).setup()
     run = await w.start()
@@ -363,6 +363,51 @@ async def test_no_autonomy_level_overrides_an_anchor(level: AutonomyLevel) -> No
     kinds = await w.kinds(run)
     assert "step.anchored:write:legal" in kinds
     assert not any(k.startswith("step.awaiting") for k in kinds), "the anchor asked first"
+
+
+def correcting(id: str) -> tuple[Step, dict[str, Any]]:
+    """A step that corrects a result that has left the system: it uses the correction act."""
+    step, work = rule(id)
+    return step.model_copy(update={"requires": ("correction.execute",)}), work
+
+
+@pytest.mark.parametrize("kind", ["legal", "strategic", "correction"])
+async def test_a_level_four_run_halts_at_each_anchor_with_a_decision_request(kind: str) -> None:
+    """UC-7.1 §2, UC-15.5, UC-4.12: unattended in execution, anchored in direction and in
+    outward correction. Each anchor halts a level-4 run at the step's boundary with a request
+    of its class, and the rest of the run goes on."""
+    configured = {
+        "legal": CONFIGURED,
+        "strategic": {
+            "anchors": [
+                LEGAL_WRITE,
+                CORRECTION,
+                anchor("anc-direction", "strategic", actions=[READ]),
+            ]
+        },
+        "correction": CONFIGURED,
+    }[kind]
+    act = {
+        "legal": call("act", WRITE),
+        "strategic": call("act", READ),
+        "correction": correcting("act"),
+    }[kind]
+    w = await World(rule("prep"), act, rule("report"), level=4, configuration=configured).setup()
+    run = await w.start()
+    assert run.state is RunState.WAITING_HUMAN and run.cause is Cause.PERSON
+    assert states(run) == {
+        "prep": StepState.SUCCEEDED,
+        "act": StepState.WAITING_HUMAN,
+        "report": StepState.SUCCEEDED,
+    }
+    assert w.connector.calls == [], "nothing of the anchored step started"
+    (request_id,) = requests_of(run, "act")
+    request = await w.request(request_id)
+    assert request.status is DecisionStatus.OPEN
+    assert str(request.request.class_) == kind
+    kinds = await w.kinds(run)
+    assert f"step.anchored:act:{kind}" in kinds
+    assert not any(k.startswith(("step.admitted:act", "step.started:act")) for k in kinds)
 
 
 async def test_the_halt_is_at_the_boundary_and_the_rest_of_the_run_continues() -> None:
@@ -693,3 +738,72 @@ async def test_an_anchor_s_halt_is_booked_to_wait_human_and_read_as_the_decider_
     assert await accounts.own(TENANT, STARTER) == ()
     (own,) = await accounts.own(TENANT, DECIDER)
     assert own == decided
+
+
+# --- a risk class carries a level: a ceiling across the tenant's processes (ADR-0170) ----------
+
+
+CEILED = {
+    "anchors": [LEGAL_WRITE, CORRECTION],
+    "risk_classes": {"records": ["fake.records.*"], "everything": ["fake.*"]},
+    "levels": {"records": 2, "everything": 3},
+}
+
+
+async def test_a_step_using_an_action_of_a_risk_class_runs_at_most_at_its_level() -> None:
+    """UC-7.1 §2: a level per risk class, the lowest holding. The process runs at level 4; a
+    read of the class `records`, set to level 2 by the tenant, waits for a person while the
+    rest of the run continues."""
+    w = await World(
+        rule("prep"), call("read", READ), rule("report"), level=4, configuration=CEILED
+    ).setup()
+    run = await w.start()
+    assert run.state is RunState.WAITING_HUMAN and run.cause is Cause.PERSON
+    assert states(run) == {
+        "prep": StepState.SUCCEEDED,
+        "read": StepState.WAITING_HUMAN,
+        "report": StepState.SUCCEEDED,
+    }
+    # `fake.records.*` covers what lies below the capability, `fake.*` the capability itself;
+    # the lowest ceiling that covers an action holds it.
+    assert run.actions == {"fake.records": 3, READ: 2}
+    read = run.step_run("read")
+    assert read.reason is not None and f"level 2, held by the action {READ}" in read.reason
+    assert "step.awaiting:read:confirmation" in await w.kinds(run)
+    run = await w.engine.confirm(
+        ConfirmSteps(run_id=run.id, steps=("read",), actor=DECIDER, tenant=TENANT)
+    )
+    assert run.state is RunState.FINISHED
+
+
+async def test_a_ceiling_never_raises_a_level_and_a_rehearsal_takes_on_none() -> None:
+    w = await World(call("read", READ), level=1, configuration=CEILED).setup()
+    run = await w.start()
+    assert run.actions == {}, "a ceiling above the run's own level holds nothing"
+    w = await World(call("read", READ), level=4, configuration=CEILED).setup()
+    rehearsed = await w.start(rehearsal=True)
+    assert rehearsed.actions == {}
+
+
+def test_a_level_for_a_risk_class_the_configuration_does_not_define_is_refused() -> None:
+    with pytest.raises(ValidationError, match="never hold"):
+        AnchorConfiguration.model_validate(
+            {
+                "id": TENANT,
+                "tenant": TENANT,
+                "anchors": [LEGAL_WRITE, CORRECTION],
+                "levels": {"money": 2},
+            }
+        )
+
+
+async def test_the_tenant_s_levels_are_stored_and_read_back_with_its_anchors() -> None:
+    w = await World(configuration=None).setup()
+    stored = await w.decisions.configure.execute(
+        ConfigureAnchors(tenant=TENANT, document=CEILED, actor=STARTER)
+    )
+    assert stored.levels == {"records": 2, "everything": 3}
+    assert await w.decisions.anchors.ceilings(TENANT, (READ, "fake.other.read", "x.y")) == {
+        READ: 2,
+        "fake.other.read": 3,
+    }

@@ -1,0 +1,227 @@
+{
+  "assignment": {
+    "assignment_id": "asg_01J8RT1U3V5W7X9Y1Z3A5B7C9DF",
+    "task": {
+      "goal": "Run the four steps of the default work.",
+      "acceptance": [
+        "the stream ends with assignment.finished"
+      ]
+    },
+    "context": {
+      "workspace": {
+        "kind": "none"
+      },
+      "handover": {
+        "contract": "worker/v1",
+        "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+        "checkpoint_ref": "ckpt/asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE/prepare",
+        "task": {
+          "goal": "Run the four steps of the default work.",
+          "acceptance": [
+            "the stream ends with assignment.finished"
+          ]
+        },
+        "summary": "2 of 4 step(s) done: inspect, prepare. Remaining: run, report.",
+        "steps": [
+          {
+            "step_id": "inspect",
+            "kind": "shell",
+            "summary": "inspect the host"
+          },
+          {
+            "step_id": "prepare",
+            "kind": "shell",
+            "summary": "write the plan"
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "plan",
+            "kind": "plan",
+            "digest": "sha256:ed87dd0c3489106c00695b74686b177186c1238c3fbd97c7be049edfc3a89769",
+            "media_type": "text/plain",
+            "size_bytes": 36
+          }
+        ],
+        "messages": [],
+        "resume": {
+          "plan": [
+            "inspect",
+            "prepare",
+            "run",
+            "report"
+          ],
+          "next": 2
+        }
+      }
+    },
+    "frame": {
+      "autonomy_level": 2,
+      "allowed_tools": [
+        "shell.script"
+      ],
+      "allowed_hosts": [],
+      "max_steps": 10
+    },
+    "limits": {
+      "compute": {
+        "seconds": 60,
+        "resource_class": "cpu.small"
+      }
+    },
+    "callback": {
+      "events": "sse"
+    }
+  },
+  "estimate": {
+    "confidence": "low",
+    "compute_seconds": 0.9,
+    "resource_class": "cpu.small",
+    "wall_seconds": 2,
+    "steps": 3
+  },
+  "events": [
+    {
+      "assignment_id": "asg_01J8RT1U3V5W7X9Y1Z3A5B7C9DF",
+      "seq": 1,
+      "ts": "2026-10-23T10:00:01Z",
+      "type": "step.started",
+      "step_id": "prepare",
+      "kind": "shell",
+      "summary": "write the plan"
+    },
+    {
+      "assignment_id": "asg_01J8RT1U3V5W7X9Y1Z3A5B7C9DF",
+      "seq": 2,
+      "ts": "2026-10-23T10:00:02Z",
+      "type": "tool.called",
+      "step_id": "prepare",
+      "tool": "shell.script",
+      "arguments_digest": "sha256:e74b51dfe36f9a4c83bfecdb7ad9f597fd228fff4c1b96c117602ab686148e1a",
+      "effect": "local"
+    },
+    {
+      "assignment_id": "asg_01J8RT1U3V5W7X9Y1Z3A5B7C9DF",
+      "seq": 3,
+      "ts": "2026-10-23T10:00:03Z",
+      "type": "artifact.produced",
+      "step_id": "prepare",
+      "artifact_id": "plan",
+      "kind": "plan",
+      "digest": "sha256:ed87dd0c3489106c00695b74686b177186c1238c3fbd97c7be049edfc3a89769",
+      "media_type": "text/plain",
+      "size_bytes": 36,
+      "uri": "/v1/assignments/asg_01J8RT1U3V5W7X9Y1Z3A5B7C9DF/artifacts/plan"
+    },
+    {
+      "assignment_id": "asg_01J8RT1U3V5W7X9Y1Z3A5B7C9DF",
+      "seq": 4,
+      "ts": "2026-10-23T10:00:04Z",
+      "type": "consumption.reported",
+      "step_id": "prepare",
+      "compute_seconds": 0.3,
+      "resource_class": "cpu.small"
+    },
+    {
+      "assignment_id": "asg_01J8RT1U3V5W7X9Y1Z3A5B7C9DF",
+      "seq": 5,
+      "ts": "2026-10-23T10:00:05Z",
+      "type": "step.boundary",
+      "step_id": "prepare",
+      "checkpoint_ref": "ckpt/asg_01J8RT1U3V5W7X9Y1Z3A5B7C9DF/prepare"
+    },
+    {
+      "assignment_id": "asg_01J8RT1U3V5W7X9Y1Z3A5B7C9DF",
+      "seq": 6,
+      "ts": "2026-10-23T10:00:06Z",
+      "type": "step.started",
+      "step_id": "run",
+      "kind": "shell",
+      "summary": "compute the answer"
+    },
+    {
+      "assignment_id": "asg_01J8RT1U3V5W7X9Y1Z3A5B7C9DF",
+      "seq": 7,
+      "ts": "2026-10-23T10:00:07Z",
+      "type": "tool.called",
+      "step_id": "run",
+      "tool": "shell.script",
+      "arguments_digest": "sha256:1e7cbde0e53f0e27f4c23d2ea4717044b8e7fea4b5dea3caa976fa3e8f763785",
+      "effect": "local"
+    },
+    {
+      "assignment_id": "asg_01J8RT1U3V5W7X9Y1Z3A5B7C9DF",
+      "seq": 8,
+      "ts": "2026-10-23T10:00:08Z",
+      "type": "consumption.reported",
+      "step_id": "run",
+      "compute_seconds": 0.3,
+      "resource_class": "cpu.small"
+    },
+    {
+      "assignment_id": "asg_01J8RT1U3V5W7X9Y1Z3A5B7C9DF",
+      "seq": 9,
+      "ts": "2026-10-23T10:00:09Z",
+      "type": "step.boundary",
+      "step_id": "run",
+      "checkpoint_ref": "ckpt/asg_01J8RT1U3V5W7X9Y1Z3A5B7C9DF/run"
+    },
+    {
+      "assignment_id": "asg_01J8RT1U3V5W7X9Y1Z3A5B7C9DF",
+      "seq": 10,
+      "ts": "2026-10-23T10:00:10Z",
+      "type": "step.started",
+      "step_id": "report",
+      "kind": "shell",
+      "summary": "write the result"
+    },
+    {
+      "assignment_id": "asg_01J8RT1U3V5W7X9Y1Z3A5B7C9DF",
+      "seq": 11,
+      "ts": "2026-10-23T10:00:11Z",
+      "type": "tool.called",
+      "step_id": "report",
+      "tool": "shell.script",
+      "arguments_digest": "sha256:67b1356d878c73cf007a1432c5ba6abbaff775c15d715226d0acb7804fe02ba9",
+      "effect": "local"
+    },
+    {
+      "assignment_id": "asg_01J8RT1U3V5W7X9Y1Z3A5B7C9DF",
+      "seq": 12,
+      "ts": "2026-10-23T10:00:12Z",
+      "type": "artifact.produced",
+      "step_id": "report",
+      "artifact_id": "result",
+      "kind": "report",
+      "digest": "sha256:030550eacb3582998a3b9c4657a0bf21dcf24efce95fcc9716b4b070cdbc42f1",
+      "media_type": "text/plain",
+      "size_bytes": 11,
+      "uri": "/v1/assignments/asg_01J8RT1U3V5W7X9Y1Z3A5B7C9DF/artifacts/result"
+    },
+    {
+      "assignment_id": "asg_01J8RT1U3V5W7X9Y1Z3A5B7C9DF",
+      "seq": 13,
+      "ts": "2026-10-23T10:00:13Z",
+      "type": "consumption.reported",
+      "step_id": "report",
+      "compute_seconds": 0.3,
+      "resource_class": "cpu.small"
+    },
+    {
+      "assignment_id": "asg_01J8RT1U3V5W7X9Y1Z3A5B7C9DF",
+      "seq": 14,
+      "ts": "2026-10-23T10:00:14Z",
+      "type": "step.boundary",
+      "step_id": "report",
+      "checkpoint_ref": "ckpt/asg_01J8RT1U3V5W7X9Y1Z3A5B7C9DF/report"
+    },
+    {
+      "assignment_id": "asg_01J8RT1U3V5W7X9Y1Z3A5B7C9DF",
+      "seq": 15,
+      "ts": "2026-10-23T10:00:15Z",
+      "type": "assignment.finished",
+      "outcome": "succeeded",
+      "summary": "3 step(s) completed"
+    }
+  ]
+}

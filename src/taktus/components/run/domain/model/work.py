@@ -1,15 +1,17 @@
 """What a step does when it runs, typed per method, read from the bundle's `work` data.
 
-Five kinds are executable in this version. A `rule` step evaluates one of the built-in rules
+Six kinds are executable in this version. A `rule` step evaluates one of the built-in rules
 (`domain.service.rules`) — a constant, a verified artifact, a machine check, the ready standard
 of a backlog task, the backlog in its order, the roadmap held against the backlog, spam by
-fixed patterns, a contribution's class held to what may be answered, a text template, what a
+fixed patterns, an input screened for injection or personal data, a contribution's class held to
+what may be answered, a text template, what a
 pattern names in a list of texts, a title in the Conventional Commits form — or
 calls a connector operation (`rule: connector`, ADR-0024). A `wait` step waits for a duration
 through the clock, or for an external state read through a connector. A `worker`
 step hands a task to an execution unit behind the worker contract; an `ml` step does too, a
 prediction with its model pinned by digest, and goes to its fallback when the model is unsure
-(ADR-0076). An `llm` step asks a model through the model port. Every other method has no
+(ADR-0076). An `llm` step asks a model through the model port. A `statistics` step computes
+one of the built-in statistics (`domain.service.statistics`, ADR-0151). Every other method has no
 executor yet and is refused before the run starts, so that a run never stops in the middle for a
 reason that was known at the beginning.
 
@@ -30,7 +32,8 @@ connector call's `input`, the values of a template, a check or a prompt — an o
   or null while none has (ADR-0097) — and `keys.<step-id>`, the idempotency key that step's
   current attempt carries to a connector, the first attempt's while it has not started, so
   that an earlier step can ask whether what a later one will write is already its own
-  (ADR-0099);
+  (ADR-0099) — and `exactness`, the exactness statement of the run's version as the process
+  component renders it, which a report carries unchanged (UC-6.9, ADR-0152);
 - `{"$input": "<name>", "$otherwise": <value>}` — that input where the run was given it, and
   the value otherwise. The value may itself be a `$from` reference: an input the bundle
   declares `required: false` can then stand in for what a step produces, so that whoever
@@ -64,6 +67,34 @@ work may carry three keys of its own, read by `control_of` and never part of the
   source, through reads only, no host at all, and reads only what analytic steps produced. Its
   source is one the tenant declares free of personal fields. `analytic: true` is a step that
   reads no source of its own.
+
+**An outward message** (ADR-0142). Two more keys hold what a connector step sends:
+
+- `message: {text, checks, check, classification?, case?}` — the step sends a message under
+  the frame: `checks` are named conditions, in the shape of a `check` rule's, every one of which
+  must hold for the message to be sent; `check` is the independent check, a step of its own
+  that answers `send` or `reject`; `classification` the step whose answer says whether the
+  message promises a date, a feature or legal advice; `case` the case a person may answer in,
+  one of the run's inputs; `text` the field of the input the label is added to;
+- `recipients` — whom an outward step addresses, as a list, a text or a count: more than the
+  tenant's limit waits for a person, at every level.
+
+**An outside participant** (ADR-0155). A `human` step's work names a role outside the
+organisation that answers in its own channel: `participant`, the role; `channel`, the channel
+the answer arrives in; `thread`, the conversation it is expected in, usually a `$from` on the
+step that asked; `options`, the words the answer is read as, by rule, where it is not free text.
+
+**A person of the organisation** (ADR-0167 §1). Any other `human` step is performed by a person
+of the step's role: its work is empty or names the `task` in a sentence. The run waits for that
+person at every level, addressed to the role, and the step hands on no result of Taktus's.
+
+**How a step's checks are carried out** (ADR-0152). The checks a step declares from the
+catalogue (`Step.checks`, UC-4.13) run when its value is computed, before it counts:
+
+- `checking: {select?, reads?: {<capability>: {operation, input?, select?, credentials?}}}` —
+  `select` the part of the result the checks judge; `reads` the operation through which a
+  reconciliation reads its total, or an agreement the second system's value, at the moment of
+  the check, with the credentials it names.
 """
 
 from __future__ import annotations
@@ -77,7 +108,7 @@ from base64 import b64decode, b64encode
 from collections.abc import Mapping
 from typing import Annotated, Any, Literal
 
-from pydantic import Field, TypeAdapter, ValidationError, model_validator
+from pydantic import Field, StringConstraints, TypeAdapter, ValidationError, model_validator
 
 from taktus.components.run.domain.model.errors import UnsupportedWork
 from taktus.ports.connector import CaseScope
@@ -223,6 +254,32 @@ class SpamRule(Value):
 CLASSES = ("defect", "feature", "spam")
 
 
+SCREENS = ("injection", "personal_data")
+"""The checks of the input screen, one row of the catalogue each (UC-7.9)."""
+
+
+class ScreenRule(Value):
+    """An input checked before a model or a worker reads it (UC-7.9): `text` is a string or a
+    list of strings, read as one; `checks` name which of `injection` and `personal_data` to run.
+
+    `injection` looks for fixed phrases that address a model instead of the process; `personal_data`
+    for email addresses, IBANs and long phone numbers. A hit fails the step: nothing leaves it,
+    the failure names the check and never the text found, and the run goes to a person. A text
+    no check finds is the step's result as `{"screened": [...]}`. The same text gives the same
+    verdict every time, but a pattern list is no guarantee: the step is `tolerant` at best,
+    never `exact`, and what no pattern names passes."""
+
+    rule: Literal["screen"]
+    text: Any
+    checks: tuple[Literal["injection", "personal_data"], ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _each_check_once(self) -> ScreenRule:
+        if len(set(self.checks)) != len(self.checks):
+            raise ValueError("checks lists a check twice")
+        return self
+
+
 class ClassificationRule(Value):
     """A contribution's class, read from a judgement and held to what may be answered
     (UC-1.9, ADR-0088). `answer` is a text of lines `class: …`, `version: …`, `summary: …`, or
@@ -359,6 +416,20 @@ class Expectation(Value):
     says: str | None = Field(default=None, min_length=1)
 
 
+class InvoiceRule(Value):
+    """An incoming invoice's amounts computed again by the calculation rules of EN 16931, and
+    the invoice matched against what was ordered (`domain.service.invoices`, ADR-0169).
+    `invoice` is a reading of the invoice's business terms, as the documents connector gives
+    it; `order` a reading of the order or contract it names, as the accounting connector gives
+    it; both usually references. Any difference fails the step and names itself; the result is
+    the amounts to book and to pay, each as decimal text, recomputed in decimal arithmetic. The
+    same readings always give the same result: admissible for `exact`."""
+
+    rule: Literal["invoice"]
+    invoice: Any
+    order: Any
+
+
 class ConnectorRule(Value):
     """The result is what one connector operation answered: its output, the effect it reported
     and what it consumed (`contracts/connector/v1` §5). The operation's capability — every
@@ -392,13 +463,34 @@ type RuleWork = Annotated[
     | BacklogRule
     | RoadmapRule
     | SpamRule
+    | ScreenRule
     | ClassificationRule
     | TemplateRule
     | ExtractRule
     | CommitTitleRule
+    | InvoiceRule
     | ConnectorRule,
     Field(discriminator="rule"),
 ]
+
+
+class DeviationStatistic(Value):
+    """The newest day of a series against the median of the days before it, by group
+    (`domain.service.statistics`, ADR-0151). `days` is the series, usually a reference to a
+    costs reading: each day `{"date", "total"?, "groups": [{"group", "amount"}]}`, amounts as
+    decimal text. `window` is how many days before the newest the medians are taken over;
+    `minimum` how many there must be for a median to be computed at all. The result is exact:
+    the same series always gives the same figures, computed in decimal arithmetic."""
+
+    statistic: Literal["deviation"]
+    days: Any
+    window: int = Field(default=28, ge=1, le=366)
+    minimum: int = Field(default=7, ge=1, le=366)
+
+
+type StatisticsWork = DeviationStatistic
+"""What a `statistics` step computes. One statistic in this version; the next joins it as a
+union discriminated by `statistic`."""
 
 
 class WaitUntil(Value):
@@ -424,6 +516,40 @@ class WaitWork(Value):
     until: WaitUntil | None = None
 
 
+class ParticipantWork(Value):
+    """A `human` step answered by a participant outside the organisation, in the thread a step
+    before it opened (ADR-0155). Names a role, never a person; the answer is reflected back and
+    confirmed in the thread before the step ends (ADR-0008)."""
+
+    participant: str = Field(pattern=r"^[a-z][a-z0-9_-]*$")
+    """The participant's role: `supplier`, `client`, `authority`."""
+    channel: Capability
+    """The channel whose intake carries the answer, and whose `<channel>.reply` reflects it."""
+    thread: Any
+    """The thread the answer is expected in: a text once resolved, typically
+    `{"$from": "<the step that asked>", "$select": "<its thread token>"}`."""
+    options: tuple[str, ...] = Field(default=(), max_length=20)
+    """Where given, the answer is read as exactly one of these words; otherwise as free text."""
+
+    @model_validator(mode="after")
+    def _options_are_words(self) -> ParticipantWork:
+        for option in self.options:
+            if not re.fullmatch(r"[^\s]{1,40}", option):
+                raise ValueError(f"an option is one word of at most 40 characters: {option!r}")
+        if len({o.casefold() for o in self.options}) != len(self.options):
+            raise ValueError("the options differ from each other, case-blind")
+        return self
+
+
+class HumanWork(Value):
+    """A `human` step a person of the organisation performs (ADR-0167 §1). The run waits for a
+    person of the step's role to perform it and report it performed, at every autonomy level;
+    the step hands on no result of Taktus's (ADR-0018). Names no person."""
+
+    task: str | None = Field(default=None, min_length=1)
+    """What the person does, in a sentence; None where the step's reason says it."""
+
+
 class WorkerWork(Value):
     task: Task
     max_steps: int = Field(default=100, ge=1)
@@ -437,6 +563,9 @@ class WorkerWork(Value):
     capacity_ceiling_seconds: int | None = Field(default=None, ge=1)
     """How long the step may wait for a free place at its worker before it ends with cause
     `capacity` and the run escalates (ADR-0037). None takes the engine's default."""
+    data_class: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_-]*$")
+    """The class of the data the assignment carries, as the process declares it: the tenant's
+    residency rule for that class decides which workers may be handed the step (ADR-0157)."""
 
 
 PREDICT = "ml.predict"
@@ -643,7 +772,16 @@ def threshold(step: Step) -> Threshold:
     return Threshold(value=float(matched.group(2)), inclusive=matched.group(1) == "<=")
 
 
-type Work = RuleWork | WaitWork | WorkerWork | MlWork | LlmWork
+type Work = (
+    RuleWork
+    | WaitWork
+    | WorkerWork
+    | MlWork
+    | LlmWork
+    | StatisticsWork
+    | ParticipantWork
+    | HumanWork
+)
 
 WHEN = "when"
 ASK = "ask"
@@ -651,7 +789,26 @@ ON_ESCALATION = "on_escalation"
 EMPTY_WHEN_SKIPPED = "empty_when_skipped"
 SCOPE = "scope"
 ANALYTIC = "analytic"
-CONTROL_KEYS = frozenset({WHEN, ASK, ON_ESCALATION, EMPTY_WHEN_SKIPPED, SCOPE, ANALYTIC})
+MESSAGE = "message"
+RECIPIENTS = "recipients"
+CHECKING = "checking"
+SKILLS = "skills"
+"""The skills a step uses, by name (ADR-0113 §2): handed to it in its brief, at the version the
+run pinned (ADR-0162 §5)."""
+CONTROL_KEYS = frozenset(
+    {
+        WHEN,
+        ASK,
+        ON_ESCALATION,
+        EMPTY_WHEN_SKIPPED,
+        SCOPE,
+        ANALYTIC,
+        MESSAGE,
+        RECIPIENTS,
+        CHECKING,
+        SKILLS,
+    }
+)
 
 
 class Ask(Value):
@@ -680,9 +837,74 @@ class Analytic(Value):
         return {} if given is True else given
 
 
+class Message(Value):
+    """The frame of an outward message (ADR-0142): what the run holds a message step to before
+    it sends. The checks are named, and each is a condition over earlier results; the step
+    named by `check` checks the draft against the raw tool results on its own."""
+
+    text: str = Field(default="text", min_length=1)
+    """The field of the operation's input that is the message's text: the label is added to
+    it, as a paragraph of its own after the text."""
+    checks: dict[str, Condition] = Field(min_length=1)
+    check: StepId
+    classification: StepId | None = None
+    """The step whose answer classifies the message as a promise or not. None: the message
+    cannot be classified, and is held for a person."""
+    case: str | None = Field(default=None, min_length=1)
+    """The case a person may answer in, resolved from the run's inputs. None: the step's scope
+    subject, where it has one."""
+
+    @model_validator(mode="after")
+    def _named(self) -> Message:
+        for name in self.checks:
+            if not re.fullmatch(r"[a-z][a-z0-9_]*", name):
+                raise ValueError(f"a check is named by a lowercase token, not {name!r}")
+        return self
+
+
+class CheckRead(Value):
+    """How a check reads its source at the moment of the check (ADR-0152): the operation under
+    the check's `source` capability, its input with references, the part of the output that is
+    the total or the second system's value, and the credentials of the requesting identity the
+    read names, as any connector call names them (ADR-0169)."""
+
+    operation: str = Field(pattern=r"^[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*){2,}$")
+    input: dict[str, Any] = Field(default_factory=dict)
+    select: str | None = Field(default=None, min_length=1)
+    credentials: tuple[CredentialReference, ...] = ()
+
+    @property
+    def capability(self) -> str:
+        return self.operation.rsplit(".", 1)[0]
+
+
+class Checking(Value):
+    """What the checks a step declares are applied to, and how they read (ADR-0152). `select`
+    names the part of the step's result the checks judge, the whole result without it; `reads`
+    names, per capability a reconciliation or an agreement reads through, the operation that
+    reads it. The declaration of the checks themselves is the step's (`Step.checks`); this is
+    only how the run carries them out."""
+
+    select: str | None = Field(default=None, min_length=1)
+    reads: dict[Capability, CheckRead] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _under_its_capability(self) -> Checking:
+        for capability, read in self.reads.items():
+            if read.capability != capability:
+                raise ValueError(
+                    f"the read for {capability!r} calls {read.operation!r}, an operation of "
+                    "another capability"
+                )
+        return self
+
+
+type SkillName = Annotated[str, StringConstraints(pattern=r"^[a-z0-9]+(-[a-z0-9]+)*$")]
+
+
 class Control(Value):
     """When a step runs, whom it asks first and what it may see: the keys of a step's work that
-    are not what the step does (ADR-0088, ADR-0097, ADR-0130)."""
+    are not what the step does (ADR-0088, ADR-0097, ADR-0130, ADR-0142)."""
 
     when: tuple[Condition, ...] = ()
     ask: Ask | None = None
@@ -696,11 +918,21 @@ class Control(Value):
     """The case the step serves, with its subject resolved from the run's inputs (ADR-0130)."""
     analytic: Analytic | None = None
     """The step analyses, and its frame holds nothing outward (ADR-0130)."""
+    message: Message | None = None
+    """The step sends a message under the frame of ADR-0142."""
+    recipients: Any = None
+    """Whom an outward step addresses, with references; None: one recipient (ADR-0142 §6)."""
+    checking: Checking | None = None
+    """What the step's declared checks judge, and how they read their sources (ADR-0152)."""
+    skills: tuple[SkillName, ...] = ()
+    """The skills the step uses, by name (ADR-0162 §5)."""
 
     @model_validator(mode="after")
     def _a_step_on_escalation_asks_nobody(self) -> Control:
         if self.scope is not None and self.analytic is not None:
             raise ValueError("a step serves a case or analyses, never both")
+        if self.analytic is not None and (self.message is not None or self.recipients is not None):
+            raise ValueError("an analytic step speaks to nobody outside: it sends no message")
         if self.on_escalation and self.ask is not None:
             raise ValueError("a step that runs on escalation asks nobody")
         if self.empty_when_skipped and not self.when:
@@ -716,6 +948,12 @@ class Control(Value):
         found: list[Any] = [condition.value for condition in self.when]
         if self.ask is not None:
             found.append(self.ask.values)
+        if self.message is not None:
+            found.extend(check.value for check in self.message.checks.values())
+        if self.recipients is not None:
+            found.append(self.recipients)
+        if self.checking is not None:
+            found.extend(read.input for read in self.checking.reads.values())
         return found
 
 
@@ -729,6 +967,8 @@ def control_of(
         return Control()
     if SCOPE in given and (why := not_from_intake(given[SCOPE])) is not None:
         raise UnsupportedWork(step.id, f"work.scope: {why}")
+    if MESSAGE in given and (why := case_not_from_intake(given[MESSAGE])) is not None:
+        raise UnsupportedWork(step.id, f"work.message.case: {why}")
     try:
         return Control.model_validate(resolve_inputs(given, inputs or {}))
     except ValidationError as error:
@@ -763,6 +1003,21 @@ def not_from_intake(scope: Any) -> str | None:
     return None
 
 
+def case_not_from_intake(message: Any) -> str | None:
+    """Why a message's `case` does not name the case from the run's inputs, or None. The case
+    is what a person answers in, and a step's output never chooses it: one `$input`, with a
+    `$select` at most, as a scope's subject (ADR-0142 §2)."""
+    if not isinstance(message, Mapping) or "case" not in message:
+        return None
+    case = message["case"]
+    if not isinstance(case, Mapping) or INPUT not in case or not set(case) <= {INPUT, SELECT}:
+        return (
+            "the case is one of the run's inputs, as its intake gave it — {$input: <name>} — "
+            "never a step's result, the run's record or a default"
+        )
+    return None
+
+
 _RULE: TypeAdapter[RuleWork] = TypeAdapter(RuleWork)
 
 
@@ -784,6 +1039,10 @@ def parse_work(
             if given is None:
                 raise UnsupportedWork(step.id, "a rule step names its rule under `work`")
             return _RULE.validate_python(given)
+        if step.method is Method.STATISTICS:
+            if given is None:
+                raise UnsupportedWork(step.id, "a statistics step names its statistic under `work`")
+            return DeviationStatistic.model_validate(given)
         if step.method is Method.WAIT:
             return WaitWork.model_validate(given or {})
         if step.method is Method.WORKER:
@@ -818,6 +1077,12 @@ def parse_work(
             if given is None:
                 raise UnsupportedWork(step.id, "an llm step carries its prompt under `work`")
             return LlmWork.model_validate(given)
+        if step.method is Method.HUMAN and given is not None and "participant" in given:
+            # A participant outside the organisation answers in its own channel (ADR-0155).
+            return ParticipantWork.model_validate(given)
+        if step.method is Method.HUMAN:
+            # A person of the organisation performs it, in the step's role (ADR-0167 §1).
+            return HumanWork.model_validate(given or {})
     except ValidationError as error:
         first = error.errors()[0]
         where = ".".join(str(p) for p in first["loc"])
@@ -969,7 +1234,7 @@ def referenced_values(work: Work) -> list[Any]:
         return [work.issues, work.open_records]
     if isinstance(work, RoadmapRule):
         return [work.roadmap, work.issues]
-    if isinstance(work, SpamRule):
+    if isinstance(work, SpamRule | ScreenRule):
         return [work.text]
     if isinstance(work, ClassificationRule):
         return [work.answer, work.screened, work.versions]
@@ -977,8 +1242,12 @@ def referenced_values(work: Work) -> list[Any]:
         return [work.values]
     if isinstance(work, ExtractRule):
         return [work.values, work.excluding]
+    if isinstance(work, DeviationStatistic):
+        return [work.days]
     if isinstance(work, CommitTitleRule):
         return [work.title, work.number, work.labels, work.files, work.proposal]
     if isinstance(work, WaitWork) and work.until is not None:
         return [work.until.input]
+    if isinstance(work, ParticipantWork):
+        return [work.thread]
     return []

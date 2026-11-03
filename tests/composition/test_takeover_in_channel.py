@@ -255,3 +255,61 @@ def test_the_words_are_read_by_a_rule() -> None:
     assert rules.takeover_act("take over run_1", book) is None
     assert rules.takeover_act("hand back tko_1", book) is None
     assert rules.takeover_act("please take over run_1 build now", book) is None
+
+
+async def test_a_message_to_a_running_step_is_read_back_and_sent_only_on_yes() -> None:
+    """ADR-0156 §7: `nachricht <run> <step>: <text>` is read back with its text and asked only on
+    the same person's `ja`; a step whose worker takes no message is refused with the reason."""
+    worker = slow_worker()
+    worker.steering = True
+    world = World(worker=worker)
+    run = await world.submit(work("w"))
+    runner = world.runner("r1")
+    await running(world, run.id, "w")
+    chat = await given(world)
+
+    read = await chat.say(f"nachricht {run.id} w: nimm den zweiten Spiegel")
+    assert read is not None and read.outcome == ASKED
+    assert '"nimm den zweiten Spiegel"' in chat.last and f"Lauf {run.id}" in chat.last
+    assert "step.message_asked" not in await world.kinds(run.id), "nothing before the yes"
+    other = await chat.say("ja", who=OUTSIDER)
+    assert other is None or other.outcome != TAKEN, "only the person who asked confirms"
+
+    sent = await chat.say("ja")
+    assert sent is not None and sent.outcome == TAKEN
+    assert "Geschickt als msg_" in chat.last
+    await until(lambda: len(runner.outcomes) == 1)
+    await world.stop(runner)
+    assert [m.text for _, m in world.worker.messages] == ["nimm den zweiten Spiegel"]
+    async with world.persistence.transaction(TENANT):
+        entries = list(await world.ledger.entries(TENANT, run.id))
+    (asked,) = [e for e in entries if e.kind == "step.message_asked"]
+    assert asked.refs.actor == OWNER
+
+
+async def test_a_message_the_worker_cannot_take_is_refused_with_its_reason() -> None:
+    world = World(worker=slow_worker())
+    run = await world.submit(work("w"))
+    runner = world.runner("r1")
+    await running(world, run.id, "w")
+    chat = await given(world)
+    await chat.say(f"nachricht {run.id} w: halt")
+    refused = await chat.say("ja")
+    await until(lambda: len(runner.outcomes) == 1)
+    await world.stop(runner)
+    assert refused is not None and refused.outcome == REFUSED
+    assert "Nicht geschickt" in chat.last and "declares no steering" in chat.last
+    assert world.worker.messages == []
+
+
+def test_a_message_to_a_step_is_read_by_its_rule() -> None:
+    book = Phrasebook.model_validate(ShippedPhrasebooks().shipped("de"))
+    act = rules.takeover_act("Nachricht run_1 w: nimm: den zweiten", book)
+    assert act is not None and (act.kind, act.run, act.step, act.result) == (
+        "steer",
+        "run_1",
+        "w",
+        "nimm: den zweiten",
+    )
+    assert rules.takeover_act("nachricht run_1: ohne Schritt", book) is None
+    assert rules.takeover_act("nachricht run_1 w:", book) is None

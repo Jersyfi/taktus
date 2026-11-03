@@ -21,7 +21,7 @@ definition is complete, so that an old reference stays findable.
 - **Blueprint-level cases** — one whole business function run by Taktus — are numbered
   `UC-<nn>` with two digits and no dot, and live with their blueprint: `UC-01` is
   `AF-01-dev-orchestration.md`, `UC-02` is `AF-02-it-operations.md`, `UC-03` is
-  `AF-03-software-operations.md`.
+  `AF-03-software-operations.md`, `UC-04` is `AF-04-invoice-to-payment.md`.
 
 ## Where the definition and the repository disagree
 
@@ -66,7 +66,7 @@ next free number of its area: `UC-6.11` the owner-facing channel; `UC-6.12` the 
 `UC-13.6` readable documentation beyond the repository. Numbered when a task needed a requirement
 no use case stated, the next free number of its area: `UC-4.14` a process starts on what happens
 in a tool (#76, DEC-0124); `UC-1.9` a contribution from a person Taktus does not know is triaged
-for the owner (#245, DEC-0175); `UC-4.15` a person changes a process in dialogue, and rolls it back (DEC-0186). `UC-4.19` a person takes over a running step and hands the result back (DEC-0195 W3, NTC-0223), the next free number of its area. `UC-1.11` a person's own agent reaches Taktus, with the rights of their role (DEC-0195 W5, NTC-0225), the next free number of its area. `UC-6.14` the work inside a step is seen as it happens, and shared by role (DEC-0195 W8, NTC-0229), the next free number of its area. `UC-10.4` a first rehearsed process in ten minutes, measured (DEC-0195 W4, NTC-0231), the next free number of its area. Numbered for the
+for the owner (#245, DEC-0175); `UC-4.15` a person changes a process in dialogue, and rolls it back (DEC-0186). `UC-4.19` a person takes over a running step and hands the result back (DEC-0195 W3, NTC-0223), the next free number of its area. `UC-1.11` a person's own agent reaches Taktus, with the rights of their role (DEC-0195 W5, NTC-0225), the next free number of its area. `UC-6.14` the work inside a step is seen as it happens, and shared by role (DEC-0195 W8, NTC-0229), the next free number of its area. `UC-10.4` a first rehearsed process in ten minutes, measured (DEC-0195 W4, NTC-0231), the next free number of its area. `UC-1.12` an outside participant answers through their own channel (#337, NTC-0241), the next free number of its area. Numbered for the features of DEC-0190 built in concept mode (DEC-0222), each the next free number of its area: `UC-4.20` a human step and a fallback to a person name a role (F2, NTC-0237); `UC-7.8` one register of everything that acts for a tenant (F4, NTC-0238); `UC-6.16` what breaks if an adapter goes, and where a wrong result went (F5, NTC-0239); `UC-9.7` a process shows how it really runs (F6, NTC-0240). Numbered for package B (DEC-0222), each the next free number of its area: `UC-1.13` a person sees what they may ask Taktus for (F9, #340, NTC-0247); `UC-15.6` the organisation is seen as value streams (F1, #338, NTC-0248). Numbered for package C (DEC-0222), each the next free number of its area: `UC-15.7` a role's profile is derived from the processes (F3, #344, NTC-0253); `UC-7.11` departments share the runners fairly and hold their quotas (#343, NTC-0254); `UC-4.23` a BPMN model comes in as a plan draft and a process goes out as BPMN (#345); `UC-15.8` invoices in an open standard are read, and proposed into the organisation's own books (NTC-0252); and the blueprint-level `UC-04`, from an incoming invoice to its payment (#402, NTC-0251). Numbered for the
 software business the owner accepted as the second tenant (DEC-0199, NTC-0210), each the next
 free number of its area: `UC-4.16` an expected run that does not happen is an incident;
 `UC-4.17` deadlines and response limits are rules of the process; `UC-4.18` a change is held to
@@ -74,8 +74,17 @@ its evaluation cases, and drift is measured; `UC-6.13` signals against corridors
 corrections are counted, and a level falls by rule; `UC-7.6` an outward message is labelled,
 checked and held; `UC-7.7` a step sees only the data of its case; `UC-8.12` a cap on open work
 and a stop to repetition; `UC-9.6` introduced in stages, each opened on evidence. The
-blueprint-level `UC-03` was numbered with them. Issue #402 had named its own future case
+blueprint-level `UC-03` was numbered with them. `UC-7.9` an input check is a visible step, not a hidden filter (#336, DEC-0190), the next free number of its area. 
+`UC-14.4` every connector ships as an image of its own (#339, ADR-0158), the next free number of
+its area, built with package B in concept mode (DEC-0222).
+`UC-14.6` a catalogue of signed adapters and bundles, in three tiers (#348, NTC-0256), the
+number package D gave it, built in concept mode (DEC-0222).
+Numbered for package B (DEC-0222), each the next free number of its area: `UC-4.21` a person
+steers a running worker step (#624, NTC-0244); `UC-4.22` a worker that only connects outbound
+serves the runs of every instance (#625, NTC-0245). Issue #402 had named its own future case
 `AF-03`; that case, if it is needed, is `UC-04`.
+`UC-14.5` a foreign agent becomes a worker through an A2A binding (#349, ADR-0172), the next
+free number of its area, built with package D in concept mode (DEC-0222).
 
 ## Numbers of the definition with no file of their own
 

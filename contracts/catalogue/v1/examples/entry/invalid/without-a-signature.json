@@ -1,0 +1,15 @@
+{
+  "id": "connector-mail",
+  "kind": "image",
+  "tier": "reference",
+  "version": "1.0.0",
+  "summary": "Sends and reads mail over the mail capability.",
+  "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "family": "connector",
+  "contract": "connector/v1",
+  "capabilities": [
+    "mail.send",
+    "mail.read"
+  ],
+  "image": "registry.example/taktus-connector-mail"
+}

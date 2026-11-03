@@ -4,10 +4,10 @@ title: Taktus proposes processes
 component: process
 epic: E4
 serves: [P2, P9, P14]
-state: specified
+state: building
 version: 0.6.0
-tests: []
-adrs: {ADR-0004: ffdb1f1537f5, ADR-0015: 3a42705e5561}
+tests: [tests/composition/test_skills.py::test_corrections_that_recur_at_one_step_become_a_draft_that_names_no_person, tests/composition/test_skills.py::test_a_skill_that_no_using_process_can_evaluate_stays_a_draft]
+adrs: {ADR-0004: ffdb1f1537f5, ADR-0015: 3a42705e5561, ADR-0162: 543844829afb}
 supersedes: null
 ---
 
@@ -49,3 +49,10 @@ in step 3, roadmap `0.6.0`); method selection (ADR-0004); the protective rule th
 person belongs to that person (ADR-0015, principle 14). The version is `0.6.0`, where the skill
 lifecycle arrives; proposals without draft skills could come earlier, and the roadmap does not name
 them. Definition `UC-4.4`.
+
+## 5. What is proven so far
+
+A step corrected in at least three distinct runs — `step.corrected`, or a proposal decided as
+corrected — becomes a draft skill, once, whose origin names the runs and the step and no person
+(ADR-0162 §8). A draft enters the skill lifecycle and goes no further without a passed round.
+Not built: the proposals of processes themselves — their list, their order and their reasons.

@@ -12,15 +12,14 @@ the digest of the identifier and the name, never the name (ADR-0006). No other t
 written: an entry there would tell one tenant that another exists.
 
 `served` answers which tenants the instance serves now. It reads the registry each time it is
-asked; every role asks it on every round. `TAKTUS_TENANTS`, while it is still accepted, narrows
-the answer to the tenants it names (`narrowed_to`).
+asked; every role asks it on every round, and every role serves the whole registry. The
+variable that once narrowed it, `TAKTUS_TENANTS`, is gone (ADR-0104 §7, #517).
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Sequence
 from typing import Any
 
 from taktus.ports.clock import Clock, Identifiers
@@ -75,14 +74,12 @@ class TenantRegistry(ServedTenants):
         ledger: Ledger,
         clock: Clock,
         ids: Identifiers,
-        narrowed_to: Sequence[Tenant] | None = None,
     ) -> None:
         self._store = store
         self._work = work
         self._ledger = ledger
         self._clock = clock
         self._ids = ids
-        self._narrowed_to = None if narrowed_to is None else frozenset(narrowed_to)
 
     async def create(self, name: str, *, by: str | None = None) -> TenantEntry:
         """A new tenant with a generated identifier, and its first ledger entry."""
@@ -109,11 +106,7 @@ class TenantRegistry(ServedTenants):
 
     async def every(self) -> tuple[TenantEntry, ...]:
         """The tenants this instance serves, with their names, oldest first."""
-        return tuple(
-            entry
-            for entry in await self._store.every()
-            if self._narrowed_to is None or entry.id in self._narrowed_to
-        )
+        return tuple(await self._store.every())
 
     async def served(self) -> tuple[Tenant, ...]:
         return tuple(entry.id for entry in await self.every())

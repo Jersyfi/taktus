@@ -8,13 +8,23 @@ adapter or the composition root (docs/architecture/project-structure.md §3).
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
-from taktus.components.accounting.application.service import CostOfRunHandler, TaktRateHandler
-from taktus.components.catalog.application.service import RunConformanceHandler
+from taktus.components.accounting.application.service import (
+    CostOfRunHandler,
+    SpendHandler,
+    TaktRateHandler,
+)
+from taktus.components.catalog.application.service import (
+    AgentCatalog,
+    RunConformanceHandler,
+    SkillCatalog,
+)
+from taktus.components.catalog.domain.model import InvalidSkill, Round, SkillVersion
 from taktus.components.command.application.service import CommissionPlanHandler
 from taktus.components.governance.application.service import (
     AnchorsInForce,
@@ -22,7 +32,11 @@ from taktus.components.governance.application.service import (
     Corrections,
     ExpectedRuns,
     ReportCapacityHandler,
+    ResultDefects,
     Stages,
+    SubjectRequests,
+    TenantMessages,
+    TenantOrgUnits,
     TenantResidency,
     TenantSources,
 )
@@ -32,7 +46,7 @@ from taktus.components.process.application.service.deactivate import DeactivateP
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
-from taktus.components.process.domain.model import ProcessVersion
+from taktus.components.process.domain.model import Evaluation, ProcessVersion
 from taktus.components.reporting.application.service import (
     Alerts,
     BrokenInterfaces,
@@ -88,10 +102,51 @@ class CatalogueEntry:
     """The digest of the manifest it serves the vendor's server under; None without one."""
 
 
+@dataclass(frozen=True)
+class ShippedConnector:
+    """One connector the release ships, as `taktusctl conformance list` prints it by capability:
+    its name, what it serves, and the image it is shipped as — None for one that runs inside
+    the control plane (ADR-0158)."""
+
+    name: str
+    capabilities: tuple[str, ...]
+    image: str | None
+
+
 class Catalogue(Protocol):
     async def entries(self, tenant: Tenant) -> list[CatalogueEntry]:
         """Every adapter the instance is configured with, with its maturity."""
         ...
+
+    def shipped(self) -> list[ShippedConnector]:
+        """Every connector the release ships, configured here or not."""
+        ...
+
+
+class CatalogueIndexActs(Protocol):
+    """What `taktusctl catalogue` asks of the catalogue the composition root wires (ADR-0175).
+    The rows and results are the composition's; the command prints their fields."""
+
+    async def listed(self, tenant: Tenant) -> tuple[list[Any], list[Any]]: ...
+
+    async def install(
+        self,
+        tenant: Tenant,
+        catalogue: str,
+        entry_id: str,
+        *,
+        actor: str,
+        adapter: str | None = None,
+    ) -> Any: ...
+
+
+class CatalogueAuthor(Protocol):
+    """What an author signs an index with (`taktusctl catalogue sign`, `key`). The seed is
+    read from a file by the command and never printed."""
+
+    def key(self, seed: bytes) -> str: ...
+
+    def sign(self, index: Path, seed: bytes) -> list[str]: ...
 
 
 @dataclass(frozen=True)
@@ -119,6 +174,8 @@ class Services:
     `taktusd` runs; false in memory, where nothing else executes."""
     cost: CostOfRunHandler | None = None
     """What a run cost, recomputed from the ledger at its price table (`taktusctl cost`)."""
+    spend: SpendHandler | None = None
+    """Where a run or a process spent, per step, and two runs side by side (#449)."""
     takt_rate: TaktRateHandler | None = None
     """A tenant's Takt consumption and rate over the window of the table in force
     (`taktusctl cost` without a run)."""
@@ -145,6 +202,8 @@ class Services:
     conformance record`, ADR-0044)."""
     catalogue: Catalogue | None = None
     """Every configured adapter with its maturity (`taktusctl conformance list`, ADR-0117)."""
+    catalogue_index: CatalogueIndexActs | None = None
+    """The catalogue's entries, verified and installed (`taktusctl catalogue`, ADR-0175)."""
     deactivate: DeactivateProcessHandler | None = None
     """A process is switched off: its triggers no longer start runs (`taktusctl deactivate`)."""
     measures: StepMeasures | None = None
@@ -171,11 +230,20 @@ class Services:
     corrections: Corrections | None = None
     """The decisions on proposals counted per process and action class, and the tenant's
     correction limits (`taktusctl corrections`, ADR-0110)."""
+    defects: ResultDefects | None = None
+    """A result reported wrong, bounded, decided on by rule and planned for (`taktusctl
+    defect`, ADR-0153)."""
     residency: TenantResidency | None = None
     """The tenant's residency rule, shown and set (`taktusctl residency`, ADR-0116)."""
     sources: TenantSources | None = None
     """The tenant's declaration of its sources, shown and changed (`taktusctl sources`,
     ADR-0130)."""
+    messages: TenantMessages | None = None
+    """The tenant's rules for outward messages and the cases a person answered in
+    (`taktusctl messages`, `taktusctl case`, ADR-0142)."""
+    org_units: TenantOrgUnits | None = None
+    """The tenant's quotas per organisational unit, shown and set (`taktusctl units`,
+    ADR-0166)."""
     deadlines: DeadlineKeeper | None = None
     """The tenant's open deadlines and its working time (`taktusctl deadline`, ADR-0133)."""
     stops: Stops | None = None
@@ -187,6 +255,69 @@ class Services:
     stages: Stages | None = None
     """The tenant's introduction in stages: declared, shown and opened by a person
     (`taktusctl stage`, ADR-0137)."""
+    skills: SkillActs | None = None
+    """The skill lifecycle: registered, evaluated, approved and shown (`taktusctl skill`,
+    ADR-0162)."""
+    subjects: SubjectRequests | None = None
+    """Data-protection requests, prepared, carried out by a person and withdrawn
+    (`taktusctl subject`, ADR-0176)."""
+    evidence: Evidence | None = None
+    """The evidence of what is processed, generated from configuration and the ledger
+    (`taktusctl evidence`, ADR-0176)."""
+    agents: AgentActs | None = None
+    """Shared agents with role profiles: called, their core evaluated (`taktusctl agent`,
+    ADR-0163)."""
+
+
+class Evidence(Protocol):
+    async def evidence(self, tenant: Tenant) -> dict[str, Any]:
+        """What is processed for the tenant, where, by which adapter and kept how long, as
+        one JSON document (ADR-0176 §8)."""
+        ...
+
+
+class SkillActs(Protocol):
+    """What `taktusctl skill` asks of the skill lifecycle the composition root wires."""
+
+    @property
+    def catalog(self) -> SkillCatalog: ...
+
+    async def register_directory(
+        self, tenant: str, root: Path, version: str, by: str | None = None
+    ) -> tuple[list[SkillVersion], list[tuple[Path, InvalidSkill]]]: ...
+
+    async def start_round(self, tenant: str, skill_id: str, key: str | None = None) -> Round: ...
+
+    async def approve(self, tenant: str, skill_id: str, by: str | None) -> SkillVersion: ...
+
+    async def produce(self, tenant: str, skill_id: str, by: str | None = None) -> SkillVersion: ...
+
+    async def takeover(self, tenant: str, process_id: str) -> list[dict[str, Any]]: ...
+
+    async def look(self, tenant: str) -> None: ...
+
+
+class AgentActs(Protocol):
+    """What `taktusctl agent` asks of the shared agents the composition root wires."""
+
+    @property
+    def catalog(self) -> AgentCatalog: ...
+
+    async def call(
+        self,
+        tenant: str,
+        agent: str,
+        *,
+        identity: str,
+        inputs: Mapping[str, Any] | None = None,
+        role: str | None = None,
+    ) -> Run: ...
+
+    async def evaluate_core(self, tenant: str, core_id: str) -> list[Evaluation]: ...
+
+    async def advance_core(self, tenant: str, core_id: str) -> list[str]: ...
+
+    async def usage(self, tenant: str, agent: str) -> list[dict[str, Any]]: ...
 
 
 @dataclass(frozen=True)
@@ -220,6 +351,10 @@ class Wiring(Protocol):
         """Open the capacity report against the state where it is configured — no worker, no
         connector: looking at the platform starts nothing. Raises `NotOperable` as
         `services` does."""
+        ...
+
+    def catalogue_author(self) -> CatalogueAuthor:
+        """What an author signs a catalogue's index with: no state, no database."""
         ...
 
     def guides(self, *, directory: Path) -> AbstractAsyncContextManager[GuidesServices]:

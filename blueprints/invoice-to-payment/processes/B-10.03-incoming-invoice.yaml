@@ -1,0 +1,208 @@
+# B-10.03 Incoming invoice — the first process of the invoice-to-payment blueprint (UC-04): an
+# incoming electronic invoice read, matched against what was ordered or contracted, its amounts
+# computed again and held `exact`, a booking proposed into the organisation's own accounting
+# system, and the payment released by a person (UC-03 B-10.03 and B-6.06, ADR-0169).
+#
+# The invoice is a document of the organisation's inbox folder, read as the business terms of
+# EN 16931 through `documents.invoices` (the documents connector). What was ordered is read from
+# the accounting system through `accounting.orders`. The `invoice` rule computes every amount
+# again in decimal arithmetic and matches the invoice against the order; any difference halts
+# the step and goes to a person, who sees each difference. No model touches an amount.
+#
+# Taktus keeps no books. The booking is a proposal through `accounting.bookings`, which a person
+# of the organisation posts in the accounting system. The payment is handed to the system's
+# payment run through `payment.release`, which the shipped legal anchor names: before that step
+# the run halts at every level, and a person decides (ADR-0042). The system pays the account it
+# holds for the supplier, never one the invoice names; the rule has checked that the two agree.
+#
+# Not to be used for a tenant before its legal-anchor catalogue is reviewed for its
+# jurisdiction by a tax adviser, the review recorded with its date (DEC-0029).
+#
+# By hand, for one document of the inbox:
+#
+#     uv run taktusctl run --process blueprints/invoice-to-payment/processes/B-10.03-incoming-invoice.yaml \
+#         --input document=<the document's file name in the inbox>
+#
+# A tenant may cap the booking and the payment for all its processes by a risk class with a
+# level (`taktusctl anchors set`, ADR-0170). Switching this process off
+# (`taktusctl deactivate --process b-10-03-incoming-invoice`) changes nothing in the books.
+
+id: b-10-03-incoming-invoice
+version: "1"
+name: B-10.03 Incoming invoice
+autonomy:
+  level: 3
+  reason: >
+    reading the invoice and the order and computing every amount need nobody: the reads change
+    nothing, and the amounts are a rule's, recomputed in decimal and matched against the order,
+    any difference going to a person. What leaves the system is held lower: each booking
+    proposal is confirmed by a person (the action accounting.bookings at level 2), and the
+    payment release is a legal anchor at every level
+  toward_next: >
+    level 4 would let Taktus heal a failed read on its own; it needs the documents and the
+    accounting connectors at verified for the tenant's own systems, and a quarter of runs whose
+    incidents a person checked against the accounting system (UC-7.1)
+  actions:
+    accounting.bookings:
+      level: 2
+      reason: >
+        a booking proposal reaches the organisation's books; a person confirms each until the
+        proposals are shown not to need it
+      toward_next: >
+        the tenant's conditions for a raise, counted for this action alone: twenty decisions
+        over four weeks with a rate of correction and rejection below five percent over seven
+        and over twenty-eight days (ADR-0110, NTC-0215)
+  history: 20
+author: the repository
+reason: an incoming invoice checked and proposed for booking without a person reading it, and paid only on a person's release (UC-03 B-10.03, UC-04)
+
+inputs:
+  document:
+    description: the incoming invoice's file name in the organisation's inbox folder
+    example: invoice-ubl.xml
+
+# A read is one request, the order one, each write two.
+limits:
+  quota: { units: 10 }
+
+steps:
+  - id: read-invoice
+    method: rule
+    reason: the document is read as its EN 16931 business terms, each amount as the document's decimal text
+    rejected:
+      - method: llm
+        why: a structured invoice is read field by field; a model would only add a chance of a wrong field
+    exactness: sourced
+    fallback:
+      when: the connector serving documents.invoices is unavailable, or the document is no invoice it reads
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: documents.invoices.read
+      input:
+        document: { $input: document }
+      credentials:
+        - { name: DOCUMENTS_TOKEN, injected_as: env }
+
+  - id: read-order
+    method: rule
+    reason: what was ordered or contracted under the invoice's reference is read from the accounting system as it holds it
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the invoice names no order the accounting system holds, or its connector is unavailable
+      to: human
+      role: owner
+    depends_on: [read-invoice]
+    work:
+      rule: connector
+      operation: accounting.orders.read
+      input:
+        reference: { $from: read-invoice, $select: output.order_reference }
+      credentials:
+        - { name: ACCOUNTING_TOKEN, injected_as: env }
+
+  - id: check
+    method: rule
+    reason: >
+      every amount is computed again by the calculation rules of EN 16931, in decimal, and the
+      invoice is matched against the order; the same readings always give the same result, and
+      any difference halts the step and names itself
+    rejected:
+      - method: llm
+        why: an amount held exact may not come from a language model (CLAUDE.md §4)
+      - method: statistics
+        why: the check is fixed arithmetic over one document, not a statistic of a series
+    exactness: exact
+    # The rule itself compares every amount the invoice states with what its parts give, and the
+    # invoice with its order. The checks then hold the result to two things outside the rule: the
+    # net and the tax it computed sum to the total with tax the document states, read again at
+    # the moment of the check; and the rule gives the same result again over the same readings.
+    checks:
+      - kind: reconciliation
+        subject: the net and the tax to book
+        total: the total with tax the invoice states
+        source: documents.invoices
+      - { kind: recomputation, subject: "the amounts to book and to pay" }   # provisional: DEC-0173
+    fallback:
+      when: an amount does not hold, or the invoice differs from its order
+      to: human
+      role: owner
+    depends_on: [read-invoice, read-order]
+    work:
+      rule: invoice
+      invoice: { $from: read-invoice, $select: output }
+      order: { $from: read-order, $select: output }
+      checking:
+        select: amounts
+        reads:
+          documents.invoices:
+            operation: documents.invoices.read
+            input:
+              document: { $input: document }
+            select: totals.with_tax
+            credentials:
+              - { name: DOCUMENTS_TOKEN, injected_as: env }
+
+  - id: propose-booking
+    method: rule
+    reason: the checked amounts are handed to the accounting system as a booking proposal, marked so that a repeat proposes nothing twice
+    rejected:
+      - method: worker
+        why: a proposal is one call of a declared operation; a worker would add an actor where none is needed
+    exactness: sourced
+    fallback:
+      when: the connector serving accounting.bookings is unavailable or refuses the proposal
+      to: human
+      role: owner
+    depends_on: [check]
+    work:
+      rule: connector
+      operation: accounting.bookings.propose
+      input:
+        document: { $from: check, $select: document }
+        digest: { $from: read-invoice, $select: output.digest }
+        order: { $from: check, $select: order }
+        supplier: { $from: check, $select: supplier }
+        currency: { $from: check, $select: currency }
+        issue_date: { $from: check, $select: issue_date }
+        due_date: { $from: check, $select: due_date }
+        account: { $from: check, $select: account }
+        cost_centre: { $from: check, $select: cost_centre }
+        net: { $from: check, $select: net }
+        tax: { $from: check, $select: tax }
+        gross: { $from: check, $select: gross }
+        taxes: { $from: check, $select: taxes }
+      credentials:
+        - { name: ACCOUNTING_TOKEN, injected_as: env }
+
+  - id: release-payment
+    method: rule
+    reason: >
+      a payment a person released is handed to the accounting system's payment run, its amount
+      the rule's; the step is under the legal anchor of a payment release and waits for a
+      person's decision at every level
+    rejected:
+      - method: worker
+        why: a release is one call of a declared operation, and its decision is a person's, not a worker's
+    exactness: sourced
+    fallback:
+      when: the connector serving payment.release is unavailable or refuses the payment
+      to: human
+      role: owner
+    depends_on: [propose-booking]
+    work:
+      rule: connector
+      operation: payment.release.submit
+      input:
+        document: { $from: check, $select: document }
+        supplier: { $from: check, $select: supplier }
+        currency: { $from: check, $select: currency }
+        amount: { $from: check, $select: payable }
+        due_date: { $from: check, $select: due_date }
+        booking: { $from: propose-booking, $select: output.id }
+      credentials:
+        - { name: ACCOUNTING_TOKEN, injected_as: env }

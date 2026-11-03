@@ -31,7 +31,14 @@ from taktus.ports.connector import (
     Result,
 )
 from taktus.ports.connector import Cause as ConnectorCause
-from taktus.ports.model import Calculability, Completion, ModelError, Prompt, ResolvedModel
+from taktus.ports.model import (
+    Calculability,
+    Completion,
+    ModelError,
+    Permitted,
+    Prompt,
+    ResolvedModel,
+)
 from taktus.ports.worker import (
     ArtifactList,
     ArtifactProduced,
@@ -42,8 +49,12 @@ from taktus.ports.worker import (
     Estimate,
     EstimateRequest,
     Event,
+    HandoverRefused,
+    HandoverRequest,
     Outcome,
     ResolvedWorker,
+    SteeringMessage,
+    SteeringRefused,
     StopRequest,
     Supports,
     Task,
@@ -269,6 +280,10 @@ class ReplayModelPool:
         resolved = await self.resolve(purpose)
         return [] if resolved is None else [resolved]
 
+    async def bound(self, adapter: str) -> ResolvedModel | None:
+        """A replay binds nothing: it answers every purpose from its recording."""
+        return None
+
 
 # --- worker ---------------------------------------------------------------------------------
 
@@ -407,6 +422,12 @@ class ReplayWorker:
     async def stop(self, assignment_id: str, request: StopRequest) -> AssignmentState:
         return await self.state(assignment_id)
 
+    async def steer(self, assignment_id: str, message: SteeringMessage) -> AssignmentState:
+        raise SteeringRefused(f"{PREFIX}: a recording answers as it was recorded, unsteered")
+
+    async def hand_over(self, assignment_id: str, request: HandoverRequest) -> AssignmentState:
+        raise HandoverRefused(f"{PREFIX}: a recording hands nothing over")
+
     async def artifacts(self, assignment_id: str) -> ArtifactList:
         _, answer = self._held(assignment_id)
         return ArtifactList(
@@ -440,7 +461,11 @@ class ReplayWorkerPool:
         self._recording = recording
         self._worker = ReplayWorker(recording, directory)
 
-    async def resolve(self, required: Sequence[Capability]) -> ResolvedWorker | None:
+    async def resolve(
+        self, required: Sequence[Capability], permitted: Permitted = "anywhere"
+    ) -> ResolvedWorker | None:
+        """The worker the recording names. `permitted` is not held again: the recorded run
+        was routed under the rule as it stood, and a replay sends nothing (ADR-0157)."""
         for _, answer in self._recording.answers("worker"):
             if set(required) <= set(answer.capabilities):
                 return ResolvedWorker(

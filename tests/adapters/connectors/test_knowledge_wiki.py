@@ -18,9 +18,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from taktus_connectors.bookstack import declaration
+from taktus_connectors.bookstack.server import Config, Connector, build_server
 
-from taktus.adapters.driven.connectors.bookstack import declaration
-from taktus.adapters.driven.connectors.bookstack.server import Config, Connector, build_server
 from taktus.adapters.driven.connectors.mcp import McpActionConnector
 from taktus.adapters.driving.cli.guides_command import rendered
 from taktus.components.knowledge.application.service import PublishGuides, PublishGuidesHandler

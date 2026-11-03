@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A fake mail server: IMAP and SMTP on two ports, and a small HTTP interface for the tests.
 
-The mail connector under `src/taktus/adapters/driven/connectors/mail/` speaks IMAP and SMTP
+The mail connector under `connectors/taktus_connectors/mail/` speaks IMAP and SMTP
 through the standard library's clients. This fake answers the part of both protocols those
 clients use, in plain text without TLS, and keeps every mailbox in memory. It exists so that the
 connector can be exercised in CI without a network, an account or a secret: the conformance

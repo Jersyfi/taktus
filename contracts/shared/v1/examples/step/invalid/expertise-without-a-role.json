@@ -1,0 +1,7 @@
+{
+  "id": "approve-leave",
+  "method": "human",
+  "reason": "a leave request is decided by a person",
+  "rejected": [],
+  "expertise": ["the team's rota"]
+}

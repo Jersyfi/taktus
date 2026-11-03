@@ -305,7 +305,7 @@ trap stop EXIT INT TERM
     else
         export TAKTUS_REPOSITORY_APP_ID TAKTUS_CREDENTIAL_REPOSITORY_APP_KEY_FILE
     fi
-    exec uv run python -m taktus.adapters.driven.connectors.github \
+    exec uv run python -m taktus_connectors.github \
         --port "$connector_port" --repository "$repository"
 ) >"$logs/connector.log" 2>&1 &
 pids="$pids $!"

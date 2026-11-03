@@ -1,0 +1,21 @@
+{
+  "id": "prov_01j8x9c3",
+  "run_id": "run_01j8x9c0",
+  "step_id": "draft-change",
+  "process_version": "change@3",
+  "method": "worker",
+  "exactness": "free",
+  "adapter": "worker.script",
+  "adapter_version": "0.1.0",
+  "inputs": [
+    {
+      "kind": "message",
+      "ref": "msg_01j8x9c2",
+      "digest": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+      "observed_at": "2026-10-30T10:00:05Z"
+    }
+  ],
+  "outputs": ["output-1"],
+  "ledger_seq": 9,
+  "recorded_at": "2026-10-30T10:00:07Z"
+}

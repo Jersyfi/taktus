@@ -13,4 +13,14 @@ whether something *broke* or only quality and cost *changed* — or record *unte
 process uses it — restore it, and record the result, with the configuration it was taken
 under, here and in the ledger. The rules that decide a verdict are the domain service; what a
 run of the process observed comes from outside the component, through the loopback connector.
+
+**Skills** (ADR-0162): a version of a `SKILL.md` kept beside its file — origin, stage, rounds,
+measurements — moving draft, evaluated, approved, production, retired, every stage in the
+ledger; approval by a person at levels 1 to 3 and by rule at level 4 after n passed rounds, with
+a floor no configuration goes below (DEC-0028, NTC-0246); a fallback by rule. Whose own use a
+draft was drawn from is kept apart from every score (`SkillOwnership`).
+
+**Shared agents** (ADR-0163): one versioned core and role profiles versioned apart that only
+narrow it; a profile resolved from the caller's roles, the fewest rights where several apply; a
+core change held until every profile's evaluation passed.
 """

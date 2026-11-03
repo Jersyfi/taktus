@@ -4,7 +4,7 @@
 	triggers the first read, so that no change falls between reading and following (ADR-0055 §6).
 	A running worker step can be taken over here, and its result handed back (UC-4.19, ADR-0128):
 	the page sends the ask and the result, reads the state of every held take-over, and shows
-	what the level says of each. Below it, the trace inside each worker step: what its worker
+	what the level says of each. A running worker step can be sent a message (ADR-0156). Below it, the trace inside each worker step: what its worker
 	reported, live, and shared with a role (UC-6.14, ADR-0135). Both routes of a run draw this
 	page: `#/runs/<run>` and `#/runs/<run>/steps/<step>`, the link a share hands on.
 -->
@@ -15,6 +15,8 @@
 	import { followLevel } from './live';
 	import { motion } from './motion.svelte';
 	import RunView from './RunView.svelte';
+	import SteeringPanel from './SteeringPanel.svelte';
+	import { messageSaid, sendMessage } from './steering';
 	import TakeoverPanel from './TakeoverPanel.svelte';
 	import TracePanel from './TracePanel.svelte';
 	import { askTakeover, handBack, handBackRefused, readState, type Asked } from './takeover';
@@ -28,6 +30,7 @@
 	let states: Record<string, TakeoverState> = $state({});
 	let message: string | null = $state(null);
 	let busy = $state(false);
+	let steered: string | null = $state(null);
 	let now = $state(new Date());
 	let stop: AbortController | null = null;
 
@@ -99,6 +102,14 @@
 		} else message = `Not taken over: ${answer.problem.detail || answer.problem.title}`;
 	}
 
+	async function steer(step: string, text: string) {
+		busy = true;
+		const answer = await sendMessage(base(), runId, step, text);
+		busy = false;
+		if (!answer.ok && answer.problem.status === 401) signedIn = false;
+		else steered = messageSaid(answer.ok, step, answer.ok ? '' : answer.problem.detail || answer.problem.title);
+	}
+
 	async function giveBack(takeover: string, result: unknown) {
 		busy = true;
 		const answer = await handBack(base(), runId, takeover, result);
@@ -122,6 +133,7 @@
 	<RunView level={shown} motionAllowed={motion.allowed}>
 		{#snippet acts()}
 			<TakeoverPanel level={shown} {asked} {states} {message} {busy} {now} onTakeOver={takeOver} onHandBack={giveBack} />
+			<SteeringPanel level={shown} said={steered} {busy} onSend={steer} />
 			<TracePanel level={shown} base={base()} {named} motionAllowed={motion.allowed} onRefused={() => (signedIn = false)} />
 		{/snippet}
 	</RunView>

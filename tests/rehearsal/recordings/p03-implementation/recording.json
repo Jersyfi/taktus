@@ -114,7 +114,7 @@
     }
   ],
   "process": "p03-implementation",
-  "process_version": "p03-implementation@22",
+  "process_version": "p03-implementation@23",
   "run_id": "run_aeecd19b041956951876",
   "state": "finished",
   "steps": [
@@ -281,9 +281,9 @@
         "operation": "repository.comments.create",
         "outcome": "succeeded",
         "request": {
-          "digest": "sha256:dd82f916bb8016b035d73e4642c409b5047d9599d9f06ab7e94c060ffeb43f54",
+          "digest": "sha256:ca285e06c695324739fb57e2db60426b004b06268b919aacb07171f516ce8c83",
           "parts": {
-            "input.body": "sha256:5d8d1a22006f55934918d6e9faec1f0099df7d25dcb2c93de2b7698ca206de61",
+            "input.body": "sha256:a9a689d29c273872f3a3212ad8ae96fd61f665db2cf298b3e91a258d0840a788",
             "input.number": "sha256:d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35",
             "operation": "sha256:71db048f3ab8337d0e089a4abd747d1602a47aa52c6f7d028876f01e452b58fb"
           }

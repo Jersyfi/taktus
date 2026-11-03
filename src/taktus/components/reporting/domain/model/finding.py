@@ -126,15 +126,19 @@ LEVELS: tuple[str, ...] = ("off", "review", "automatic")
 
 ADAPTER_PATTERN = r"^[a-z][a-z0-9_-]*$"
 NAME_PATTERN = r"^[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)+$"
+IMAGE_PATTERN = r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+"""An image's name without its registry and its tag: the release's version is the tag."""
 
 
 class ShippedAdapter(Value):
     """One adapter the release ships: its name, the capabilities it offers and, for a
-    connector, the operations."""
+    connector, the operations and the image it is shipped as — None for one that runs inside
+    the control plane (ADR-0158)."""
 
     name: str = Field(pattern=ADAPTER_PATTERN)
     capabilities: tuple[str, ...] = ()
     operations: tuple[str, ...] = ()
+    image: str | None = Field(default=None, pattern=IMAGE_PATTERN)
 
 
 class Shipped(Value):

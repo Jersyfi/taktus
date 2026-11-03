@@ -91,6 +91,14 @@ spec:
       ports:
         - { protocol: TCP, port: {{ .Values.connectors.chat.port }} }
     {{- end }}
+    {{- range .Values.connectors.others }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "taktus.selector" (dict "root" $ "component" (printf "connector-%s" .name)) | nindent 14 }}
+      ports:
+        - { protocol: TCP, port: {{ .port }} }
+    {{- end }}
     {{- with $np.apiServer.cidrs }}
     - to:
         {{- range . }}

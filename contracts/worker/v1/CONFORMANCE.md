@@ -5,7 +5,8 @@ and reports back over a stream of events — and wants to know whether it satisf
 You do not need to know anything else about Taktus to follow it.
 
 The *conformance suite* is a program that talks to your worker exactly as Taktus would, and
-reports, for each of seventeen numbered checks, whether your worker did what the contract requires.
+reports, for each of twenty-one numbered checks, whether your worker did what the contract
+requires.
 The contract itself is in [README.md](README.md) in this directory; the checks are its section 7.
 
 ---
@@ -60,6 +61,18 @@ uv run taktusctl conformance run --contract worker/v1 --endpoint http://localhos
 
 (Set the variable before starting the worker so that both processes carry it.)
 
+**A worker that only connects outbound.** A worker in a network that admits no inbound
+connection fetches its requests from the control plane instead (README §8). The suite then
+serves that binding itself, waits for your worker to connect, and runs every check over it:
+
+```
+uv run taktusctl conformance run --contract worker/v1 --listen 127.0.0.1:9100 &
+python3 workers/script/worker.py --connect http://127.0.0.1:9100/relay
+```
+
+Start your worker with the base `http://<host>:<port>/relay`. Only then does the suite run
+W-21; against an endpoint, W-21 is `pending`.
+
 ---
 
 ## 3. What the suite does to your worker
@@ -106,9 +119,18 @@ runs `printf` with a value only that run knows, and expects it back as the artif
 `after-output`, byte for byte, after every step of your work. `after-command-failing` runs
 `false`, and expects the assignment to end `failed` without that artifact.
 
+Then come the contract's two optional extensions (README §6). `steered` is your work again: when
+its first step starts, the suite sends a message, and the same message once more. A worker that
+declares `supports.steering` answers both `202` and reports `message.received` once, at the next
+boundary. A worker that does not declare it refuses the message. `handed-over` is your work
+again, with a handover requested when its first step starts. A worker that declares
+`supports.handover` ends at the next boundary with a `handover.state` artifact, and the suite
+continues the work from that document as `continued`. A worker that does not declare it refuses
+the request, and its work runs on.
+
 ---
 
-## 4. The eighteen checks in plain words
+## 4. The twenty-one checks in plain words
 
 | Check | In plain words | If it fails, fix this |
 |---|---|---|
@@ -131,6 +153,9 @@ runs `printf` with a value only that run knows, and expects it back as the artif
 | **W-17** | When a new assignment carries an id you already hold, running or finished, you answer `409` with a problem body and start nothing. The assignment of that id stays the first one: the same `accepted_at`, its stream not begun again, its outcome unchanged. Taktus relies on that answer: it may post an id a second time when it does not know whether the first post arrived, and a `409` tells it to continue the assignment you hold (ADR-0038). | Before anything else, look up the `assignment_id` of `POST /v1/assignments`. When you hold it, answer `409` with a JSON body with `title` and `status: 409`, and leave the assignment you hold as it is. A finished assignment is still held: the suite repeats `main` after it finished. |
 | **W-18** | When the task names a command after the work, you run it once your work is done, as your last step, in your workspace. What it prints on its standard output becomes the artifact the task names, byte for byte. When it exits with anything but 0, the assignment fails and that artifact does not exist. Taktus relies on it: P-03 has the repository's own generator run on the change, and appends what it printed to the pull request's description (ADR-0053). | Run `after.command` as a program with its arguments, without a shell and without any credential in its environment, after your last step of the work. Publish its standard output unchanged as `after.artifact`. Start no step after it. On a non-zero exit, end `failed` and publish nothing under that id. |
 | **W-18**, before | When the task names a command before the work, you run it in your prepared workspace as your first step, before any step of the work. What it writes becomes the artifact the task names. When it exits with anything but 0, the assignment fails and the work does not start. Taktus relies on it: P-03 has the repository's checks installed in the workspace, so that the agent runs them before the pipeline does (ADR-0100). | Run `before.command` as a program with its arguments, without a shell and without any credential in its environment, once the workspace is prepared and before your first step of the work. Publish its standard output and error output as `before.artifact`, also when it fails. On a non-zero exit, end `failed` and start no further step. |
+| **W-19** | A message sent to your running assignment is taken in at a boundary, never in the middle of a step, and only once, even when it arrives twice. If you do not offer steering, you refuse the message and change nothing. Taktus relies on it: a person can correct a running step, and the step's record says which steps had the correction (ADR-0139). | Declaring `supports.steering`: answer `POST /v1/assignments/{id}/messages` with `202` and the state, keep the message, and emit `message.received` with its `message_id` right after the next `step.boundary`, once per id. Give it to the steps after that boundary. Not declaring it: answer with a problem, `400` or above. |
+| **W-20** | A handover stops your assignment at the next boundary, as a stop does, and leaves a document from which another instance of your worker, another worker or a person continues. If you do not offer handover, you refuse the request and your work runs on. Taktus relies on it: a person who takes a running step over receives what your worker knew (ADR-0128, ADR-0139). | Declaring `supports.handover`: after the boundary, produce one artifact of kind `handover.state` whose bytes validate against `Worker.json#/$defs/Handover`, naming the assignment, the boundary's checkpoint and every artifact so far, and end `stopped` with `handover` naming it. An assignment whose `context.handover` carries the document must start no step it lists as done and produce no artifact it lists. Not declaring it: answer with a problem, `400` or above. |
+| **W-21** | Connected outbound, you answer every request the suite relays to you exactly once, with its status. | Answer each request at `<base>/answers/{request_id}` once, with the header `Relay-Status`, and never for an id you were not given. |
 
 The report attributes a malformed event to the check that owns that event type: a bad
 `arguments_digest` is a W-09 failure, a bad `consumption.reported` a W-04 failure, and so on. Base
@@ -172,6 +197,8 @@ what would make it conclusive. The common cases:
 | W-14 | `main` used no more of any quantity than you estimated, so no limit your estimate fits can be crossed; or the `tight` run finished its work before a step remained to be withheld | nothing is wrong with an estimate that holds. To see the halt, start your worker so that it underestimates — the reference worker has `--estimate-factor 0.5` — or give it a task that uses more than it expects |
 | W-15 | a held assignment finished before the suite had filled your places, or before you answered one more, so you may have had a free place; or you answered an assignment of the probe with something other than `201` before your places were full; or you declare more than sixteen places, the most the suite fills | make your default work last longer than posting that many assignments takes, or give a task that does (`--task`); run the suite against an idle worker; for the conformance run, start your worker so that it declares sixteen places or fewer — the reference worker has `--max-concurrent` |
 | W-17 | you turned away the fresh assignment the suite meant to repeat, so no running assignment could be repeated; or `main` did not finish, so no finished one could | run the suite against an idle worker; fix the failure that kept `main` from finishing |
+| W-19 / W-20 | the assignment had finished before the message or the handover arrived, or it carried no boundary at all | make the default work take more than a moment, or supply a task with several steps; fix W-05 first |
+| W-21 | no request was relayed, because no worker connected | start your worker with `--connect` to the base the suite prints, before its connect timeout of a minute |
 
 A check that failed can leave later checks inconclusive: without a boundary there is nothing a
 stop can land on, without a stopped run there is nothing to resume. Fix the failure first.
@@ -180,7 +207,8 @@ stop can land on, without a stopped run there is nothing to resume. Fix the fail
 
 ## 7. What a pass means
 
-A worker whose report shows seventeen `passed` and one `pending` satisfies the numbered checks. A
+A worker whose report shows nineteen `passed` and two `pending` — W-12, and W-21 against an
+endpoint — satisfies the numbered checks. Over the outbound binding, W-21 passes too. A
 W-14 that stays *inconclusive* because your worker's estimate always held is no failure; it
 means the halt was not observed.
 

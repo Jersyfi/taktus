@@ -38,8 +38,10 @@ from taktus.components.process.domain.service import exactness
 from taktus.shared.v1 import Check, CheckKind, ExactnessClass, Step
 
 ROOT = Path(__file__).resolve().parents[2]
-BUNDLES = sorted((ROOT / "examples" / "processes").glob("*.yaml")) + sorted(
-    (ROOT / "blueprints").glob("*/processes/*.yaml")
+BUNDLES = (
+    sorted((ROOT / "examples" / "processes").glob("*.yaml"))
+    + sorted((ROOT / "blueprints").glob("*/processes/*.yaml"))
+    + sorted((ROOT / "blueprints" / "gallery").glob("*/processes/*.yaml"))  # ADR-0136
 )
 CHECK_EXAMPLES = ROOT / "contracts" / "shared" / "v1" / "examples" / "check" / "valid"
 EXAMPLE = ROOT / "examples" / "processes" / "six-times-seven.yaml"

@@ -56,7 +56,7 @@ async def test_the_suite_wrote_one_page_per_key(start_knowledge_connector: Start
 
 def test_every_runtime_check_has_a_fault() -> None:
     broken = {check for _, check in FAULTS}
-    assert broken == set(CHECKS) - {"C-07", "C-08", "C-10"}, (
+    assert broken == set(CHECKS) - {"C-07", "C-08", "C-10", "C-11"}, (
         "C-07 and C-08 are about an intake, which the connector has not; C-10 has no runtime fault"
     )
 

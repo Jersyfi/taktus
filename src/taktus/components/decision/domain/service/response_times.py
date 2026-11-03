@@ -66,7 +66,9 @@ def read(
     department_of: Callable[[str], str | None],
 ) -> ResponseTimes:
     """What `reader` may see of the response times in `entries`. `department_of` places a
-    decider in a department; a decider it cannot place is counted in no department."""
+    decider in a department; a decider it cannot place is counted in no department. A decision a
+    rule took is nobody's response time, and is left out (ADR-0161)."""
+    entries = [e for e in entries if e.rule is None]
     own = tuple(
         Own(request_id=e.request_id, run_id=e.run_id, seconds=seconds(e))
         for e in entries

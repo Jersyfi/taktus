@@ -56,8 +56,8 @@ from taktus.shared.v1 import Command
 from .conftest import CHAT_WRITE, ChatService, Service
 
 ROOT = Path(__file__).resolve().parents[3]
-CHAT_PAYLOADS = ROOT / "src/taktus/adapters/driven/connectors/slack/payloads"
-REPOSITORY_PAYLOADS = ROOT / "src/taktus/adapters/driven/connectors/github/payloads"
+CHAT_PAYLOADS = ROOT / "connectors/taktus_connectors/slack/payloads"
+REPOSITORY_PAYLOADS = ROOT / "connectors/taktus_connectors/github/payloads"
 CHAT = "channel.chat"
 REPOSITORY = "channel.repo"
 INSTRUCTION = "Turn issue 412 into a pull request at level 3"
@@ -116,7 +116,7 @@ def connectors(chat_service: ChatService, service: Service, tmp_path: Path) -> I
     for name, module, args, env in [
         (
             "chat",
-            "taktus.adapters.driven.connectors.slack",
+            "taktus_connectors.slack",
             ["--target", chat_service.url],
             {
                 CHAT_WRITE: chat_service.write_value,
@@ -125,7 +125,7 @@ def connectors(chat_service: ChatService, service: Service, tmp_path: Path) -> I
         ),
         (
             "repository",
-            "taktus.adapters.driven.connectors.github",
+            "taktus_connectors.github",
             ["--target", service.url, "--repository", "placeholder-owner/placeholder-repo"],
             {"REPOSITORY_WEBHOOK_SECRET": repo_secret},
         ),

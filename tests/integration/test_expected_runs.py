@@ -21,6 +21,7 @@ from .test_time_triggers import (
     SETTLE,
     Daemon,
     ManualClock,
+    _armed,
     daemons,
     eventually,
     registered,
@@ -59,7 +60,9 @@ async def test_the_scheduler_stopped_for_one_process_raises_exactly_one_incident
     wired = daemon.wired
     await registered(wired, tenant, fired)
     await registered(wired, tenant, stopped)
-    await asyncio.sleep(SETTLE)
+    # The fired process's trigger arms when the scheduler first sees it, at the time it sees
+    # it: the clock moves to the slot only once it has, or the slot is never due.
+    await eventually(lambda: _armed(wired, tenant))
 
     clock.current = datetime(2026, 10, 18, 11, 0, 30, tzinfo=UTC)
     await eventually(lambda: _ended(wired, tenant))

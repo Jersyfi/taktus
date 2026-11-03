@@ -20,7 +20,7 @@ from taktus.components.ledger.application.service import ChainedLedger
 
 
 def registry(
-    persistence: MemoryPersistence | None = None, narrowed_to: tuple[str, ...] | None = None
+    persistence: MemoryPersistence | None = None,
 ) -> tuple[TenantRegistry, MemoryPersistence, ChainedLedger]:
     persistence = persistence or MemoryPersistence()
     clock = FakeClock()
@@ -31,7 +31,6 @@ def registry(
         ledger=ledger,
         clock=clock,
         ids=FakeIdentifiers(),
-        narrowed_to=narrowed_to,
     )
     return made, persistence, ledger
 
@@ -80,12 +79,12 @@ async def test_a_name_is_required_short_and_printable_and_the_tenant_must_exist(
     assert await tenants.served() == ("default",), "nothing was created by a refusal"
 
 
-async def test_the_deprecated_list_narrows_the_registry_and_adds_nothing() -> None:
-    tenants, _, _ = registry(narrowed_to=("tnt_0002", "absent"))
+async def test_every_tenant_of_the_registry_is_served_and_nothing_narrows_it() -> None:
+    tenants, _, _ = registry()
     first = await tenants.create("First")
     second = await tenants.create("Second")
     assert (first.id, second.id) == ("tnt_0001", "tnt_0002")
-    assert await tenants.served() == ("tnt_0002",)
+    assert await tenants.served() == ("default", "tnt_0001", "tnt_0002")
 
 
 async def test_the_registry_survives_a_restart_through_the_snapshot(tmp_path: Path) -> None:

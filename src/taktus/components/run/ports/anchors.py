@@ -10,7 +10,7 @@ import each other.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from typing import Protocol
@@ -28,6 +28,12 @@ class Anchors(Protocol):
         """The tenant's anchors that name the act of a step of `process` using `actions` —
         its capabilities, the connector operation it calls or waits on, that operation's
         capability."""
+        ...
+
+    async def ceilings(self, tenant: Tenant, actions: Sequence[str]) -> Mapping[str, int]:
+        """The ceiling a risk class of the tenant sets on each of `actions` it covers: no step
+        that uses the action runs above it (ADR-0170). An action no class with a level covers
+        is absent."""
         ...
 
 
@@ -79,6 +85,9 @@ class Verdict(Value):
     modified: bool = False
     """The reading that took effect carries modifications beside the option: what a rule that
     applies only the option as proposed must not apply (ADR-0114 §2)."""
+    by_rule: bool = False
+    """A rule from precedent a person adopted took the decision, not a person (ADR-0161): it is
+    no person's confirmation of the step."""
 
 
 class Decisions(Protocol):

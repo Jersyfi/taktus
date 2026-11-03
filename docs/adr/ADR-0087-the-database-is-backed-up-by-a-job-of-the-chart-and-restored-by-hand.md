@@ -2,7 +2,7 @@
 
 **Status:** accepted · makes ADR-0013 C hold for an installed instance (issue #67, roadmap
 `0.1.0`) · amended 2026-10-18 (#322): the object store is archived beside the dump · amended
-2026-10-18 by ADR-0106 (#323): every run records its outcome in the database
+2026-10-18 by ADR-0106 (#323): every run records its outcome in the database · amended 2026-10-31 by ADR-0174 (#346): point-in-time recovery as an option, and the restore drill S-03
 
 ## Context
 ADR-0013 C requires that Taktus is repairable without Taktus: a manual way to restore an earlier

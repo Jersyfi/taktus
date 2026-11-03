@@ -19,6 +19,15 @@ from taktus.components.governance.application.service.expected_runs import (
     UnknownIncident,
     Watch,
 )
+from taktus.components.governance.application.service.messages import (
+    ConfigureMessages,
+    TenantMessages,
+)
+from taktus.components.governance.application.service.org_units import (
+    OrgUnitQuotaRefused,
+    SetOrgUnitQuota,
+    TenantOrgUnits,
+)
 from taktus.components.governance.application.service.repetition import (
     Repetitions,
     RepetitionSeen,
@@ -31,6 +40,11 @@ from taktus.components.governance.application.service.report_capacity import (
 from taktus.components.governance.application.service.residency import (
     ConfigureResidency,
     TenantResidency,
+)
+from taktus.components.governance.application.service.result_defects import (
+    Assessment,
+    ReportDefect,
+    ResultDefects,
 )
 from taktus.components.governance.application.service.signal_incidents import (
     RaiseRed,
@@ -45,17 +59,25 @@ from taktus.components.governance.application.service.stages import (
     Stages,
     StagesRefused,
 )
+from taktus.components.governance.application.service.subjects import (
+    Confirmed,
+    PrepareRequest,
+    SubjectRequests,
+)
 
 __all__ = [
     "AnchorsInForce",
     "AnchorsRefused",
+    "Assessment",
     "BreachSeen",
     "CloseIncident",
     "ConfigureAnchors",
     "ConfigureAnchorsHandler",
     "ConfigureCorrections",
+    "ConfigureMessages",
     "ConfigureResidency",
     "ConfigureWatch",
+    "Confirmed",
     "Corrections",
     "DatabaseStore",
     "DecisionMade",
@@ -64,14 +86,22 @@ __all__ = [
     "Drifts",
     "ExpectedRuns",
     "Looked",
+    "OrgUnitQuotaRefused",
+    "PrepareRequest",
     "RaiseRed",
     "RepetitionSeen",
     "Repetitions",
     "ReportCapacity",
     "ReportCapacityHandler",
+    "ReportDefect",
+    "ResultDefects",
+    "SetOrgUnitQuota",
     "SignalIncidents",
     "Stages",
     "StagesRefused",
+    "SubjectRequests",
+    "TenantMessages",
+    "TenantOrgUnits",
     "TenantResidency",
     "TenantSources",
     "UnknownIncident",

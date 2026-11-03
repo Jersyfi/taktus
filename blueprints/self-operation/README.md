@@ -8,7 +8,7 @@ first process is the check of the product's own central claim.
 |---|---|---|
 | **S-01 Removal test** — one integration is withheld, the processes that use it are exercised, the verdict is recorded | **runs** weekly | [`processes/S-01-removal-test.yaml`](processes/S-01-removal-test.yaml) |
 | S-02 Takeover test — a person runs a process by hand from its instructions | `0.5.0` | — |
-| S-03 Restore drill — an earlier version is restored without Taktus and the ledger chain verified | `1.0.0` | — |
+| **S-03 Restore drill** — the newest backup restored without Taktus, into a server of its own, and every tenant's ledger chain verified against the heads taken before | **runs** weekly, from the chart (`backup.drill.enabled`), not from Taktus | — by design: see below |
 | S-04 Load measurement — how many concurrent runs one instance carries | `1.0.0` | — |
 | **S-05 Guides** — the administration guide and the guide for users, rendered from the repository and put into the knowledge system; a hand edit is kept and reported | **runs** daily | [`processes/S-05-guides.yaml`](processes/S-05-guides.yaml) |
 | **S-06 Maturation** — every step measured, and a step on a language model proposed a trained model where the evidence holds; never applied | **runs** weekly | [`processes/S-06-maturation.yaml`](processes/S-06-maturation.yaml) |
@@ -192,6 +192,27 @@ verdicts to the reasons above. `tests/integration/test_dev_orchestration.py` run
 P-01 to P-03 registered, for the repository connector, the coding worker and the model they
 use: each ends *changed*, every step through a person, because every step those integrations
 serve names a person as its fallback (issue #90, `blueprints/dev-orchestration/README.md`).
+
+## S-03 Restore drill
+
+ADR-0013 C asks that Taktus can be repaired without Taktus, and that the way to do it is
+exercised. The drill exercises it (ADR-0174 §3, UC-10.5). It is the one process of this blueprint
+that **Taktus does not run**: a drill that needs Taktus to run would show nothing about repairing
+Taktus without it. It has no bundle. The chart's scheduler starts it, from the backup image, which
+holds no code of Taktus (`deploy/backup/`, `backup.py drill`).
+
+**What one run does.** It restores the newest backup into a database server of its own pod — the
+dump, or with point-in-time recovery the newest base backup and the archived log up to the latest
+moment the archive reaches — with archiving off and no network address, and never connects to the
+instance's database. It recomputes every tenant's ledger chain by the ledger's published rule and
+checks that each head the backup's manifest names is in it with its hash. It measures the
+machine's part of the restore against `backup.drill.restoreMinutes`. It writes its report to the
+store, `drills/taktus-<time>.drill.json`, and its Job fails on any finding.
+
+**By hand** — the takeover test of this process. A person restores a backup by the steps of
+`deploy/k8s/README.md` §11, into a database of their own, and compares every tenant's heads with
+the manifest's. Or runs the same drill with `docker run <backup image> drill`, off the instance,
+with the private key from their own store where the backups are encrypted.
 
 ## S-05 Guides
 

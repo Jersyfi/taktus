@@ -1,0 +1,73 @@
+# The small business's first process from the gallery (UC-10.4, ADR-0136): invoices to follow up.
+#
+# Two rule steps. A rule step produces its value by a fixed rule; none of them needs a worker, a
+# connector or a language model, so the process runs on an instance straight after its install
+# and its rehearsal runs to its end. Its choices are the inputs its weekly trigger gives. Reading
+# the open invoices themselves needs the business's accounting system, connected afterwards.
+
+id: invoice-follow-up
+version: "1"
+name: Invoices to follow up
+autonomy:
+  level: 2
+  reason: >
+    it is a first process: a person confirms each step before it starts, and sees what it does
+  toward_next: >
+    the accounting system connected, and a few weeks of reminders nobody had to correct
+author: the repository
+reason: every week, the reminder to follow up the invoices that are past the payment term
+
+limits:
+  compute: { seconds: 10, resource_class: cpu.small }
+
+inputs:
+  business:
+    description: The name of your business
+    example: the bakery
+  term:
+    description: Your payment term, in days
+    example: "14"
+  contact:
+    description: Who sends the reminders
+    example: the accounts desk
+
+triggers:
+  - schedule: weekly
+    inputs:
+      business: the bakery
+      term: "14"
+      contact: the accounts desk
+
+steps:
+  - id: check
+    method: rule
+    reason: whether the payment term is a number of days is a fact of its text; nothing needs judgement
+    rejected:
+      - method: llm
+        why: a fact of a text needs no language model
+    exactness: exact
+    checks:
+      - { kind: recomputation, subject: that the payment term is a number of days }
+    work:
+      rule: check
+      conditions:
+        - value: { $input: term }
+          matches: '^[0-9]+$'
+
+  - id: write
+    method: rule
+    reason: the reminder is a fixed form of words filled in with the business's choices
+    rejected:
+      - method: llm
+        why: a fixed form of words needs no language model, and says the same every week
+    exactness: exact
+    checks:
+      - { kind: recomputation, subject: the reminder }
+    depends_on: [check]
+    work:
+      rule: template
+      text: "For ${business}: look at every invoice unpaid for more than ${term} days, and have ${contact} send a friendly reminder."
+      values:
+        business: { $input: business }
+        term: { $input: term }
+        contact: { $input: contact }

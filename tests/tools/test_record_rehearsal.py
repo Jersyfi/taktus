@@ -239,6 +239,29 @@ async def test_the_tool_refuses_a_rehearsal_and_a_known_secret(
         )
 
 
+async def test_a_process_named_takes_its_newest_real_run_never_a_rehearsal(
+    postgres_url: str, tmp_path: Path
+) -> None:
+    """`--process` spares the person who records on the instance the run's identifier: the run
+    of the process that ended outside a rehearsal is taken, and a replay of it is not."""
+    async with stores(postgres_url) as store:
+        tenant, run_id = await real_run(store, tmp_path / "objects")
+    document, files = await record_rehearsal.export(
+        postgres_url, tenant, run_id, tmp_path / "objects", "local", {}
+    )
+    record_rehearsal.write(tmp_path / "recording", document, files)
+    async with stores(postgres_url) as store:
+        await replay(BUNDLE, tmp_path / "recording", store)
+    assert await record_rehearsal.latest(postgres_url, tenant, "recorded") == run_id
+    with pytest.raises(record_rehearsal.Refused, match="no run of elsewhere"):
+        await record_rehearsal.latest(postgres_url, tenant, "elsewhere")
+
+
+def test_a_version_reference_is_read_as_its_number() -> None:
+    assert record_rehearsal.version_of("p03-implementation@20") == 20
+    assert record_rehearsal.version_of("unversioned") == 0
+
+
 def test_an_output_directory_that_is_not_empty_is_refused(tmp_path: Path) -> None:
     (tmp_path / "kept").write_text("an earlier recording", encoding="utf-8")
     environment = {"TAKTUS_DATABASE_URL": "postgresql://nobody@127.0.0.1:1/none"}

@@ -35,7 +35,9 @@ from sqlalchemy import (
     Identity,
     Index,
     Integer,
+    LargeBinary,
     MetaData,
+    Numeric,
     PrimaryKeyConstraint,
     Table,
     Text,
@@ -180,6 +182,7 @@ anchor_configuration = Table(
     Column("id", Text, nullable=False),  # the tenant: one configuration each
     Column("anchors", JSONB, nullable=False),
     Column("risk_classes", JSONB, nullable=False),
+    Column("levels", JSONB),  # the ceiling of each risk class (ADR-0170); NULL: none
     _at("configured_at", nullable=True),
     Column("configured_by", Text),
     PrimaryKeyConstraint("tenant", "id"),
@@ -217,6 +220,18 @@ register_entry = Table(
     _at("decided_at"),
     PrimaryKeyConstraint("tenant", "id"),
 )
+
+decision_rule = Table(
+    "decision_rule",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("status", Text, nullable=False),
+    _at("created_at"),
+    Column("rule", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per rule from precedent a tenant was proposed (ADR-0161)."""
 
 owner_channel = Table(
     "owner_channel",
@@ -266,6 +281,64 @@ evaluation = Table(
     Column("evaluation", JSONB, nullable=False),
     PrimaryKeyConstraint("tenant", "id"),
     Index("evaluation_process", "tenant", "process_id"),
+)
+
+# --- skills and shared agents (ADR-0162, ADR-0163) ----------------------------------------------
+
+skill_version = Table(
+    "skill_version",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("name", Text, nullable=False),
+    Column("stage", Text, nullable=False),
+    _at("registered_at"),
+    Column("skill", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+    Index("skill_version_name", "tenant", "name"),
+)
+
+skill_ownership = Table(
+    "skill_ownership",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("owner", Text, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""Whose own use a skill version was drawn from, apart from its scores (ADR-0162 §1)."""
+
+skill_policy = Table(
+    "skill_policy",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("policy", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+
+agent_core = Table(
+    "agent_core",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("agent", Text, nullable=False),
+    Column("state", Text, nullable=False),
+    _at("proposed_at"),
+    Column("core", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+
+role_profile = Table(
+    "role_profile",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("agent", Text, nullable=False),
+    Column("role", Text, nullable=False),
+    _at("set_at"),
+    Column("profile", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
 )
 
 corrected_case = Table(
@@ -340,6 +413,19 @@ stage_plan = Table(
     PrimaryKeyConstraint("tenant", "id"),
 )
 """One row per tenant that declared its stages (ADR-0137). A stage's state is the ledger's."""
+
+value_stream = Table(
+    "value_stream",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),  # <stream>@<revision>
+    Column("stream", Text, nullable=False),
+    Column("revision", Integer, nullable=False),
+    _at("declared_at"),
+    Column("definition", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per revision of a value stream (ADR-0159 §4); a revision is never overwritten."""
 
 deadline = Table(
     "deadline",
@@ -427,6 +513,76 @@ source_declaration = Table(
     PrimaryKeyConstraint("tenant", "id"),
 )
 """One row per tenant that declared its sources (ADR-0130)."""
+
+subject_request = Table(
+    "subject_request",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("kind", Text, nullable=False),  # access, rectification, erasure, portability
+    Column("state", Text, nullable=False),  # prepared, carried_out, withdrawn
+    _at("created_at"),
+    Column("request", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per data-protection request (ADR-0176); never deleted, its state moves on."""
+
+message_rules = Table(
+    "message_rules",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    _at("configured_at"),
+    Column("rules", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per tenant that configured its rules for outward messages (ADR-0142)."""
+
+catalogue_installation = Table(
+    "catalogue_installation",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),  # the adapter identifier, or process.<id> for a bundle
+    _at("installed_at"),
+    Column("installation", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per entry a tenant installed from a catalogue, with its origin (ADR-0175)."""
+
+org_unit_quota = Table(
+    "org_unit_quota",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),  # the unit
+    _at("configured_at"),
+    Column("quota", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per unit a tenant set a quota for (ADR-0166)."""
+
+org_unit_spend = Table(
+    "org_unit_spend",
+    metadata,
+    _tenant(),
+    Column("org_unit", Text, nullable=False),
+    Column("month", Text, nullable=False),
+    Column("currency", Text, nullable=False),
+    Column("committed", Numeric, nullable=False),
+    PrimaryKeyConstraint("tenant", "org_unit", "month", "currency"),
+)
+"""What a unit's runs committed in a month, per currency (ADR-0166)."""
+
+case_answer = Table(
+    "case_answer",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("process", Text, nullable=False),
+    _at("answered_at"),
+    Column("answer", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per case of a process a person answered in (ADR-0142 §9)."""
 
 # --- the trace inside a step (ADR-0135) -----------------------------------------------------
 
@@ -600,6 +756,11 @@ run = Table(
     Column("rehearsal", Boolean, nullable=False),  # ADR-0030
     Column("actions", JSONB, nullable=False, server_default=text("'{}'::jsonb")),  # ADR-0039
     Column("deadlines", JSONB),  # the copy of its version's deadlines (ADR-0133)
+    Column("bindings", JSONB),  # purposes bound to one model for this run alone (ADR-0149)
+    Column("skills", JSONB),  # the skill versions the run pinned (ADR-0162)
+    Column("profile", Text),  # the role profile of a shared agent it serves (ADR-0163)
+    Column("org_unit", Text),  # the unit it runs for (ADR-0166)
+    Column("org_unit_month", Text),  # the month it committed its budget to its unit's quota
     Column("state", Text, nullable=False),
     Column("cause", Text),
     Column("reason", Text),
@@ -636,6 +797,7 @@ step_run = Table(
     Column("confirmed_by", Text),  # ADR-0039
     Column("block", JSONB),  # ADR-0043
     Column("anchoring", JSONB),  # ADR-0042
+    Column("messages", JSONB),  # ADR-0156
     PrimaryKeyConstraint("tenant", "run_id", "step_id"),
     ForeignKeyConstraint(
         ["tenant", "run_id"], ["run.tenant", "run.id"], ondelete="CASCADE", name="step_run_run"
@@ -706,7 +868,14 @@ ledger_entry = Table(
     Column("duration_seconds", Float),  # how long a run took, on run.ended (ADR-0107)
     Column("content_digest", Text),
     Column("rehearsal", Boolean),  # true on every entry of a rehearsal run (ADR-0030)
-    PrimaryKeyConstraint("tenant", "seq"),
+    # The entry's place in its chain, `tenant` on a run's entry on the tenant's chain, an
+    # anchor's bound, and the chain's name: the run, or "" for the tenant's (ADR-0164).
+    Column("chain_seq", BigInteger),
+    Column("chain", Text),
+    Column("through", BigInteger),
+    Column("on_chain", Text, nullable=False, server_default=text("''")),
+    # Partitioned by month of `ts` (migration 0091), so the key carries it.
+    PrimaryKeyConstraint("tenant", "seq", "ts"),
     Index("ledger_entry_run", "tenant", text("(refs ->> 'run_id')")),
     # A process's entries of a kind, by time: what the watcher of expected runs reads
     # (ADR-0107).
@@ -722,6 +891,8 @@ ledger_entry = Table(
     # The entries of some kinds, in sequence order, without the others (ADR-0105).
     Index("ledger_entry_kind", "tenant", "kind", "seq"),
     Index("ledger_entry_kind_ts", "tenant", "kind", "ts"),
+    # The newest entry of a chain (ADR-0164).
+    Index("ledger_entry_chain", "tenant", "on_chain", "seq"),
 )
 
 ledger_projection = Table(
@@ -764,6 +935,8 @@ provenance = Table(
     PrimaryKeyConstraint("tenant", "id"),
     UniqueConstraint("tenant", "run_id", "step_id", name="provenance_once_per_step_run"),
     Index("provenance_run", "tenant", "run_id"),
+    # The steps that served a subject's cases, found without reading the rest (ADR-0176 §2).
+    Index("provenance_scope_subject", "tenant", text("(scope ->> 'subject')")),
 )
 
 # --- queue and outbox (ADR-0002) — created now, used from the daemon on --------------------
@@ -784,6 +957,9 @@ job = Table(
     Column("takeover_by", Text),  # ADR-0128
     Column("takeover_step", Text),
     _at("held_until", nullable=True),
+    Column("messages", JSONB),  # ADR-0156
+    Column("org_unit", Text),  # the unit the run runs for (ADR-0166)
+    _at("quota_held_since", nullable=True),  # first skipped for its unit's quota
     PrimaryKeyConstraint("tenant", "id"),
     Index(
         "job_available",
@@ -804,6 +980,39 @@ outbox = Table(
     _at("published_at", nullable=True),
     PrimaryKeyConstraint("tenant", "id"),
     Index("outbox_unpublished", "tenant", "id", postgresql_where=text("published_at IS NULL")),
+)
+
+# The instance's own, not a tenant's (ADR-0156 §1): the outbound binding's requests in flight.
+# Row security admits only a transaction that sets `RELAY_SETTING`.
+worker_relay = Table(
+    "worker_relay",
+    metadata,
+    Column("request_id", Text, primary_key=True),
+    Column("worker", Text, nullable=False),
+    Column("envelope", JSONB, nullable=False),
+    _at("created_at"),
+    _at("taken_at", nullable=True),
+    Column("status", Integer),
+    Column("content_type", Text),
+    Column("ended", Boolean, nullable=False, server_default=text("false")),
+    Column("answers", Integer, nullable=False, server_default=text("0")),
+    Index(
+        "worker_relay_waiting", "worker", "created_at", postgresql_where=text("taken_at IS NULL")
+    ),
+)
+
+worker_relay_chunk = Table(
+    "worker_relay_chunk",
+    metadata,
+    Column(
+        "request_id",
+        Text,
+        ForeignKey("worker_relay.request_id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("seq", Integer, nullable=False),
+    Column("body", LargeBinary, nullable=False),
+    PrimaryKeyConstraint("request_id", "seq"),
 )
 
 # Every table the application touches, for the grants and the row-level security policies.
@@ -838,3 +1047,7 @@ REGISTRY_SETTING = "taktus.registry"
 """The session setting the registry's own policy reads (migration 0053, ADR-0104): `on`, and
 every row of `tenant` is visible for reading. Only the tenant store's `every` sets it, in a
 transaction of its own."""
+
+RELAY_SETTING = "taktus.relay"
+"""The session setting the relay's own policy reads (migration 0087, ADR-0156): `on`, and the
+outbound binding's tables are visible. Only the relay store sets it, in transactions of its own."""

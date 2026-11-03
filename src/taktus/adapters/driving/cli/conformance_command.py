@@ -1,6 +1,7 @@
 """`taktusctl conformance record`: the instance runs an adapter's conformance suite against the
 endpoint its configuration resolves for it, and records what it found (ADR-0044).
-`taktusctl conformance list` prints every configured adapter with its maturity (ADR-0117).
+`taktusctl conformance list` prints every configured adapter with its maturity (ADR-0117), and
+by capability every connector the release ships with the image it is shipped as (ADR-0158).
 
 The command names the adapter identifier and nothing else that the record could rest on: no
 endpoint, no report, no verdict, no date. The endpoint is the configuration's; the outcome is
@@ -24,7 +25,12 @@ from taktus.adapters.driving.cli.run_command import (
     DEFAULT_WORKER,
     resolve_identity,
 )
-from taktus.adapters.driving.cli.wiring import CatalogueEntry, NotOperable, Wiring
+from taktus.adapters.driving.cli.wiring import (
+    CatalogueEntry,
+    NotOperable,
+    ShippedConnector,
+    Wiring,
+)
 from taktus.components.catalog.application.service import RunConformance
 from taktus.components.catalog.domain.model import AdapterMaturity
 from taktus.components.catalog.ports import NotConfigured, NotRunnable
@@ -143,14 +149,14 @@ def listing(
     wiring: Wiring = ctx.obj
     where = Path(os.path.expanduser(state_dir))
 
-    async def act() -> list[CatalogueEntry]:
+    async def act() -> tuple[list[CatalogueEntry], list[ShippedConnector]]:
         async with wiring.services(state_dir=where, worker_endpoint=worker) as services:
             if services.catalogue is None:
                 raise NotOperable("this instance keeps no catalogue of its adapters")
-            return await services.catalogue.entries(tenant)
+            return await services.catalogue.entries(tenant), services.catalogue.shipped()
 
     try:
-        entries = asyncio.run(act())
+        entries, shipped = asyncio.run(act())
     except NotOperable as error:
         typer.echo(f"error: {error}", err=True)
         raise typer.Exit(code=EXIT_NOT_RUN) from error
@@ -166,3 +172,17 @@ def listing(
             )
         for gap in entry.missing:
             typer.echo(f"  missing: {gap}")
+    typer.echo("shipped with this release, by capability:")
+    for line in shipped_by_capability(shipped):
+        typer.echo(f"  {line}")
+
+
+def shipped_by_capability(shipped: list[ShippedConnector]) -> list[str]:
+    """One line per capability: every shipped connector that serves it, with its image, or
+    `inside the control plane` for one that runs there (ADR-0158)."""
+    serving: dict[str, list[str]] = {}
+    for connector in shipped:
+        where = f"image {connector.image}" if connector.image else "inside the control plane"
+        for capability in connector.capabilities:
+            serving.setdefault(capability, []).append(f"{connector.name} ({where})")
+    return [f"{capability}  {', '.join(serving[capability])}" for capability in sorted(serving)]

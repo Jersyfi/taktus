@@ -148,8 +148,10 @@ def test_llm_work() -> None:
         (Method.ML, None, "names its rows"),
         (Method.ML, {}, "requires ml.predict"),
         (Method.NEURAL, {}, "no executor for method neural"),
-        (Method.STATISTICS, {}, "no executor for method statistics"),
-        (Method.HUMAN, {}, "no executor for method human"),
+        (Method.STATISTICS, None, "names its statistic"),
+        (Method.STATISTICS, {"statistic": "forecast", "days": []}, "work.statistic"),
+        (Method.STATISTICS, {"statistic": "deviation", "days": [], "window": 0}, "work.window"),
+        (Method.HUMAN, {"task": ""}, r"work\.task"),
         (Method.RULE, {"rule": "constant", "value": {"$input": "nope"}}, "no input 'nope'"),
     ],
 )

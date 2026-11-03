@@ -1,0 +1,16 @@
+{
+  "contract": "worker/v1",
+  "data_location": "us-east",
+  "capabilities": ["change.implement"],
+  "consumption": {
+    "kinds": ["currency"],
+    "currencies": ["eur"]
+  },
+  "supports": {
+    "native_pause": false,
+    "step_boundary_signal": true,
+    "streaming_events": true,
+    "estimate": true
+  },
+  "max_concurrent_assignments": 1
+}

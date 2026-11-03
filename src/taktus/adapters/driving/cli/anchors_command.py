@@ -2,7 +2,8 @@
 
 `set` stores a tenant's anchors from a JSON file: `anchors`, a list in the shape of
 `contracts/shared/v1/Anchor.json`, and `risk_classes`, a map from a risk class to the tool
-actions it covers. A configuration that leaves the legal or the correction class empty, or
+actions it covers, and `levels`, the ceiling of a risk class (ADR-0170).
+A configuration that leaves the legal or the correction class empty, or
 selects a risk class it does not define, is refused and nothing is stored: exit code 2. `show`
 prints the anchors in force: the tenant's configuration, or the shipped default it holds while
 it configured none.

@@ -1,16 +1,30 @@
 name: images
 
-# The release images: on a version tag, the control plane image, one image per worker that
-# ships with the project (workers/*/Dockerfile; DEC-0011) and the backup's (ADR-0087), pushed
-# to the registry the repository variable IMAGE_REGISTRY names, tagged with the version. Without
-# the variable nothing is built and nothing is pushed; the run says so.
+# Every image Taktus publishes (ADR-0173): the control plane image, one image per worker that
+# ships with the project (workers/*/Dockerfile; DEC-0011), one image per connector that ships
+# with it (a stage of connectors/Dockerfile each; ADR-0158) and the backup's (ADR-0087), pushed
+# to the registry the repository variable IMAGE_REGISTRY names. Without the variable nothing is
+# built and nothing is pushed; the run says so.
 #
-# CI never deploys. Putting a version into operation is `helm upgrade --install`, run by a person
-# or by another instance (ADR-0013 D, deploy/k8s/README.md §3).
+# - On a version tag `v<version>`, every image is published under the version.
+# - On a push to `main`, every image is published under the full commit hash: the images the
+#   development instance runs (ADR-0020). A newer push cancels the build of an older one.
+#
+# Each image is pushed by its digest alone, scanned for vulnerabilities from the registry once
+# per platform (tools/scan_image.sh: a fixed vulnerability of severity high or above fails),
+# and only then tagged and signed — keyless, through this workflow's own identity, with no key
+# and no secret. An image that fails its scan carries no tag and no signature. The job `proof`
+# first scans a known-vulnerable image and fails unless that scan fails on findings: a scanner
+# that cannot fail builds nothing. The job `record` writes every digest into the run's summary
+# and its artefact `images`, with the chart's values that pin them (tools/image_digests.py).
+#
+# CI never deploys, and this is not a release process (M3.6). Putting a version into operation
+# is `helm upgrade --install`, run by a person or by another instance (ADR-0013 D,
+# deploy/k8s/README.md §3).
 #
 # Repository settings the owner keeps (NEED-0014), none of them in this file:
-#   vars.IMAGE_REGISTRY         the registry and namespace, e.g. <registry>/<owner>; unset: nothing runs
-#   vars.IMAGE_PLATFORMS        the platforms to build for; linux/amd64 when unset
+#   vars.IMAGE_REGISTRY         the registry and namespace, e.g. <registry>/<owner>; unset: nothing is built
+#   vars.IMAGE_PLATFORMS        the platforms to build for, comma separated; linux/amd64 when unset
 #   vars.IMAGE_REGISTRY_USER    who pushes; the workflow's actor when unset
 #   secrets.IMAGE_REGISTRY_TOKEN  the push credential; the workflow's own token when unset, which
 #                               reaches the repository service's own registry only
@@ -18,9 +32,19 @@ name: images
 on:
   push:
     tags: ["v*"]
+    branches: [main]
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref == 'refs/heads/main' }}
 
 permissions:
   contents: read
+
+env:
+  # Known-vulnerable, pinned by its digest: fixed critical vulnerabilities in apk-tools and musl
+  # (ADR-0173 §4). Should the databases ever drop them, `proof` fails and names it.
+  PROOF_IMAGE: alpine:3.10.0@sha256:ca1c944a4f8486a153024d9965aafbe24f5723c1d5c02f4964c045a16d19dc54
 
 jobs:
   registry:
@@ -28,34 +52,51 @@ jobs:
     timeout-minutes: 5
     outputs:
       enabled: ${{ steps.check.outputs.enabled }}
-      version: ${{ steps.check.outputs.version }}
+      tag: ${{ steps.check.outputs.tag }}
     steps:
       - id: check
         env:
           REGISTRY: ${{ vars.IMAGE_REGISTRY }}
+          REF: ${{ github.ref }}
           TAG: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
         run: |
           if [ -z "$REGISTRY" ]; then
             echo "::notice::IMAGE_REGISTRY is not set: no image is built and nothing is pushed"
             echo "enabled=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          version="${TAG#v}"
-          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'; then
-            echo "::error::$TAG is not a version tag (vMAJOR.MINOR.PATCH)"
-            exit 1
+          if [ "$REF" = "refs/heads/main" ]; then
+            tag="$COMMIT"
+          else
+            tag="${TAG#v}"
+            if ! printf '%s' "$tag" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'; then
+              echo "::error::$TAG is not a version tag (vMAJOR.MINOR.PATCH)"
+              exit 1
+            fi
           fi
           echo "enabled=true" >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  # Publishes nothing and needs no registry: the scanner must fail a known-vulnerable image
+  # before it is trusted to pass one of ours.
+  proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: tools/install_image_tools.sh
+      - run: tools/scan_image.sh --expect-findings "$PROOF_IMAGE"
 
   build:
-    needs: registry
+    needs: [registry, proof]
     if: needs.registry.outputs.enabled == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: write
+      id-token: write    # the identity the keyless signature is issued for; no key, no secret
     strategy:
       fail-fast: false
       matrix:
@@ -74,10 +115,59 @@ jobs:
           # The database's scheduled backup (ADR-0087): the database's image and three tools.
           - name: taktus-backup
             dockerfile: deploy/backup/Dockerfile
+          # Every connector, an image of its own (ADR-0158): its stage of connectors/Dockerfile,
+          # named taktus-connector-<its directory under connectors/>, as the chart pulls it.
+          - name: taktus-connector-accounting
+            dockerfile: connectors/Dockerfile
+            target: accounting
+          - name: taktus-connector-anthropic
+            dockerfile: connectors/Dockerfile
+            target: anthropic
+          - name: taktus-connector-aws
+            dockerfile: connectors/Dockerfile
+            target: aws
+          - name: taktus-connector-bookstack
+            dockerfile: connectors/Dockerfile
+            target: bookstack
+          - name: taktus-connector-einvoice
+            dockerfile: connectors/Dockerfile
+            target: einvoice
+          - name: taktus-connector-github
+            dockerfile: connectors/Dockerfile
+            target: github
+          - name: taktus-connector-httpcheck
+            dockerfile: connectors/Dockerfile
+            target: httpcheck
+          - name: taktus-connector-mail
+            dockerfile: connectors/Dockerfile
+            target: mail
+          - name: taktus-connector-openai
+            dockerfile: connectors/Dockerfile
+            target: openai
+          - name: taktus-connector-prometheus
+            dockerfile: connectors/Dockerfile
+            target: prometheus
+          - name: taktus-connector-sentry
+            dockerfile: connectors/Dockerfile
+            target: sentry
+          - name: taktus-connector-slack
+            dockerfile: connectors/Dockerfile
+            target: slack
+          - name: taktus-connector-stripe
+            dockerfile: connectors/Dockerfile
+            target: stripe
+          - name: taktus-connector-vendor
+            dockerfile: connectors/Dockerfile
+            target: vendor
+    env:
+      IMAGE: ${{ vars.IMAGE_REGISTRY }}/${{ matrix.name }}
+      TAG: ${{ needs.registry.outputs.tag }}
+      PLATFORMS: ${{ vars.IMAGE_PLATFORMS || 'linux/amd64' }}
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
+      - run: tools/install_image_tools.sh
       - id: login
         env:
           REGISTRY: ${{ vars.IMAGE_REGISTRY }}
@@ -87,14 +177,70 @@ jobs:
           registry: ${{ steps.login.outputs.host }}
           username: ${{ vars.IMAGE_REGISTRY_USER || github.actor }}
           password: ${{ secrets.IMAGE_REGISTRY_TOKEN || secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
+      # Pushed by its digest alone: nothing names it until its scan passed. The base image is
+      # pulled fresh, so that a fix published upstream reaches this build.
+      - id: build
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ${{ matrix.dockerfile }}
-          platforms: ${{ vars.IMAGE_PLATFORMS || 'linux/amd64' }}
-          push: true
-          tags: ${{ vars.IMAGE_REGISTRY }}/${{ matrix.name }}:${{ needs.registry.outputs.version }}
+          target: ${{ matrix.target }}
+          platforms: ${{ env.PLATFORMS }}
+          pull: true
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ needs.registry.outputs.version }}
+            org.opencontainers.image.version=${{ needs.registry.outputs.tag }}
+      - name: scan
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: tools/scan_image.sh "$IMAGE@$DIGEST" "$PLATFORMS"
+      - name: tag
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: docker buildx imagetools create --tag "$IMAGE:$TAG" "$IMAGE@$DIGEST"
+      - name: sign
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: .tools/bin/cosign sign --yes "$IMAGE@$DIGEST"
+      - name: record
+        env:
+          NAME: ${{ matrix.name }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p digests
+          printf '{"name": "%s", "repository": "%s", "tag": "%s", "digest": "%s"}\n' \
+            "$NAME" "$IMAGE" "$TAG" "$DIGEST" > "digests/$NAME"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.name }}
+          path: digests/${{ matrix.name }}
+          retention-days: 1
+
+  # What was published, by digest, even when another image of the run failed.
+  record:
+    needs: [registry, build]
+    if: ${{ !cancelled() && needs.registry.outputs.enabled == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: digest-*
+          path: digests
+          merge-multiple: true
+      - run: |
+          python3 tools/image_digests.py --in digests --out images
+          {
+            echo '## Images by digest'
+            echo
+            echo '```yaml'
+            cat images/digests.values.yaml
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: images
+          path: images/

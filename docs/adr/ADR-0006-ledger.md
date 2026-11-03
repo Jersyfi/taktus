@@ -1,6 +1,6 @@
 # ADR-0006 — The ledger as a content-free hash chain
 
-**Status:** accepted · amended 2026-10-18 (ADR-0105): a projection derived from the ledger, which records the last sequence number it read and is rebuilt from the ledger at any time, is allowed; the ledger stays the one source
+**Status:** accepted · amended 2026-10-18 (ADR-0105): a projection derived from the ledger, which records the last sequence number it read and is rebuilt from the ledger at any time, is allowed; the ledger stays the one source · amended 2026-10-31 (ADR-0164): each run has its own chain, anchored in the tenant's chain
 
 ## Context
 The activity log carries three jobs at once: compliance evidence, the basis for every metric, and
@@ -20,6 +20,14 @@ computes from a second source.
 ## Consequences
 - Fault analysis goes via referenced artifacts. Intended.
 - There are never two truths about what happened.
+
+## Amendment — a chain per run (2026-10-31)
+
+ADR-0164 changes what a link is. An entry is linked to the entry before it in its run's chain,
+or in the tenant's chain when it references no run. The heads of the run chains are anchored in
+the tenant's chain as a Merkle root. The hash rule keeps its form; every entry written before
+keeps its hash and its place on the tenant's chain. The ledger is still content-free, still the
+single source of every metric, and still never edited.
 
 ## Where this promise ends
 

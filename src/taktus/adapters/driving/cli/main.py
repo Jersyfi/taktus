@@ -9,12 +9,15 @@ the ledger (ADR-0044); `conformance list` prints every configured adapter with i
 and says which connectors serve a vendor's MCP server and under which manifest (ADR-0117).
 `run` and `submit` drive the control plane: `run` executes a bundle in this process, `submit`
 queues it for the daemon. `capacity` reports what the platform has left
-and the date a person must act by. `cost` recomputes what a run cost from the ledger. `prices
-import` turns an open model price list into a new price table version, a file, and lists what
-it could not map (#327). `identity`
+and the date a person must act by. `catalogue` lists, installs and signs the entries of a
+catalogue of signed adapters and bundles (ADR-0175). `cost` recomputes what a run cost from
+the ledger. `prices import` turns an open model price list into a new price table version, a
+file, and lists what it could not map (#327). `identity`
 adds identities, sets their roles, and lists and revokes the links of channel accounts
 (ADR-0040). `tenant` creates, renames and lists the instance's tenants; Taktus generates each
-identifier (ADR-0104). `anchors` configures and shows a tenant's anchors (ADR-0042). `findings`
+identifier (ADR-0104). `first start` creates a new instance's first tenant and its administrator,
+once, and `first rehearsal` says when its first rehearsal finished (ADR-0136). `anchors`
+configures and shows a tenant's anchors (ADR-0042). `findings`
 shows what the instance met that the product lacks, ready to send by hand, and `findings report`
 sends a report a person wrote, once it is checked, shown and confirmed (UC-6.12, ADR-0112).
 `owner-channel` configures and shows where what is needed from the owner reaches them
@@ -27,7 +30,8 @@ of files without overwriting a page edited there (UC-13.6, ADR-0065). `exactness
 exactness statement of a bundle: which checks apply, what they cover, what they do not, and what
 would slip through (UC-6.9, ADR-0082); like `conformance run` it needs no wiring. `bundle
 check` holds bundles to registration's rules with no instance, no database and no login, for a
-repository's own CI (ADR-0113). `maturation`
+repository's own CI (ADR-0113). `bpmn` reads a BPMN model into plan drafts, turns a filled draft
+into a bundle and writes a bundle as BPMN, with no instance either (ADR-0168). `maturation`
 prints every step's measures, records a person's correction of a step's result, and asks for
 proposals to move a step to a trained model (ADR-0084, ADR-0086). `ledger verify` verifies a
 tenant's chain from its last verified checkpoint, or with `--full` from its first entry
@@ -37,12 +41,22 @@ lists every signal judged against its corridor now (ADR-0109). `corrections` pri
 correction rate per process and action class, the levels that fell by rule, and configures
 the tenant's limits (ADR-0110). `residency` shows and sets where the tenant's data may be
 processed, narrowed per data class (ADR-0116). `sources` shows and declares which capabilities
-serve data free of personal fields and which serve personal data (ADR-0130). `deadline` lists
+serve data free of personal fields and which serve personal data (ADR-0130). `subject`
+prepares a data-protection request — access, rectification, erasure, portability — from what
+references its subject, and carries it out for a person who checked the requester's identity;
+`evidence` prints what is processed, where, by which adapter and kept how long (ADR-0176).
+`messages` shows
+and sets the tenant's rules for outward messages, and `case answered` records that a person
+answered in a case, which then gets no more messages (ADR-0142). `units` shows and sets the
+tenant's quotas per organisational unit (ADR-0166). `deadline` lists
 a tenant's open deadlines, ordered by when they fall due, and shows and sets its working time
 (ADR-0133). `trace retention` shows and sets how long the tenant keeps the trace inside a step
 (ADR-0135). `stop` stops every step an adapter serves and prints the confirmation once it
 holds (ADR-0138). `stage` declares a tenant's introduction in stages, shows each with its
-figures and what is missing, and opens one as a person (ADR-0137). The others need
+figures and what is missing, and opens one as a person (ADR-0137). `skill` registers, evaluates,
+approves and puts skills into production, and prints the skill part of a process's takeover
+instructions (ADR-0162). `agent` proposes a shared agent's core, sets its role profiles, calls
+it and draws it (ADR-0163). The others need
 services, which the composition root provides as the typer context object (see `wiring`); the
 console script `taktusctl` therefore starts in `taktus.composition.taktusctl`, and this module
 exposes the application for it.
@@ -60,35 +74,44 @@ from typing import Annotated
 import typer
 
 from taktus.adapters.driving.cli import (
+    agent_command,
     alerts_command,
     anchors_command,
+    bpmn_command,
     bundle_command,
     capacity_command,
+    catalogue_command,
     conformance_command,
     corrections_command,
     cost_command,
     deactivate_command,
     deadline_command,
+    defect_command,
     exactness_command,
     findings_command,
+    first_command,
     guides_command,
     identity_command,
     incident_command,
     interfaces_command,
     ledger_command,
     maturation_command,
+    messages_command,
     owner_channel_command,
     prices_command,
     residency_command,
     resume_command,
     run_command,
     signal_command,
+    skill_command,
     sources_command,
     stage_command,
     stop_command,
+    subject_command,
     submit_command,
     tenant_command,
     trace_command,
+    units_command,
 )
 from taktus.conformance import (
     ConnectorSuiteOptions,
@@ -117,6 +140,8 @@ app.command("resume")(resume_command.resume)
 app.command("deactivate")(deactivate_command.deactivate)
 app.command("exactness")(exactness_command.exactness)
 app.add_typer(bundle_command.bundle, name="bundle")
+app.add_typer(catalogue_command.catalogue, name="catalogue")
+app.add_typer(bpmn_command.bpmn, name="bpmn")
 app.command("capacity")(capacity_command.capacity)
 app.command("cost")(cost_command.cost)
 app.add_typer(prices_command.prices, name="prices")
@@ -125,16 +150,25 @@ app.command("interfaces")(interfaces_command.interfaces)
 app.command("alerts")(alerts_command.alerts)
 app.add_typer(identity_command.identity, name="identity")
 app.add_typer(tenant_command.tenant, name="tenant")
+app.add_typer(first_command.first, name="first")
 app.add_typer(anchors_command.anchors, name="anchors")
 app.add_typer(incident_command.incident, name="incident")
 app.add_typer(signal_command.signal, name="signal")
 app.add_typer(corrections_command.corrections, name="corrections")
+app.add_typer(defect_command.defect, name="defect")
 app.add_typer(residency_command.residency, name="residency")
 app.add_typer(sources_command.sources, name="sources")
+app.add_typer(subject_command.subject, name="subject")
+app.command("evidence")(subject_command.evidence)
+app.add_typer(messages_command.messages, name="messages")
+app.add_typer(messages_command.case, name="case")
+app.add_typer(units_command.units, name="units")
 app.add_typer(deadline_command.deadline, name="deadline")
 app.add_typer(stop_command.stop, name="stop")
 app.add_typer(trace_command.trace, name="trace")
 app.add_typer(stage_command.stage, name="stage")
+app.add_typer(skill_command.skill, name="skill")
+app.add_typer(agent_command.agent, name="agent")
 app.add_typer(owner_channel_command.owner_channel, name="owner-channel")
 app.add_typer(guides_command.guides, name="guides")
 app.add_typer(maturation_command.maturation, name="maturation")
@@ -164,9 +198,18 @@ def conformance_run(
             "--endpoint",
             help="Where the adapter listens: the base URL of a worker, the MCP URL of a "
             "connector (for example http://localhost:9100/mcp), the base URL that serves "
-            "/chat/completions for a model.",
+            "/chat/completions for a model. Not with --listen.",
         ),
-    ],
+    ] = "",
+    listen: Annotated[
+        str | None,
+        typer.Option(
+            "--listen",
+            help="worker/v1 only, instead of --endpoint: host:port where the suite serves the "
+            "outbound binding at /relay and waits for the worker to connect to it "
+            "(contracts/worker/v1/README.md §8).",
+        ),
+    ] = None,
     json_path: Annotated[
         Path | None,
         typer.Option("--json", help="Write the machine-readable report to this file."),
@@ -251,6 +294,14 @@ def conformance_run(
             f"unknown contract {contract!r}; known: {', '.join(sorted(CONTRACTS))}", err=True
         )
         raise typer.Exit(code=2)
+    if listen is not None and (contract != "worker/v1" or endpoint):
+        typer.echo(
+            "--listen serves the worker/v1 outbound binding, and replaces --endpoint", err=True
+        )
+        raise typer.Exit(code=2)
+    if listen is None and not endpoint:
+        typer.echo("--endpoint is needed, or --listen for a worker that connects", err=True)
+        raise typer.Exit(code=2)
     report: Report
     if contract == "model/v1":
         if model is None:
@@ -307,6 +358,7 @@ def conformance_run(
             worker_log=adapter_log,
             timeout=timeout,
             idle_timeout=idle_timeout,
+            listen=listen,
         )
         report = asyncio.run(run_suite(options))
     if json_path is not None:

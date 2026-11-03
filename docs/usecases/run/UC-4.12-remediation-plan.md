@@ -4,10 +4,10 @@ title: Remediation plan
 component: run
 epic: E4
 serves: [P6, P10, P11, P12]
-state: specified
+state: building
 version: 0.5.0
-tests: []
-adrs: {ADR-0008: e6a4e033abd4, ADR-0013: 1da224cdeaf4, ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b}
+tests: [tests/governance/test_result_defects.py::test_a_plan_for_results_inside_the_system_runs_without_a_halt, tests/governance/test_result_defects.py::test_every_result_that_left_gets_an_outward_correction_after_it_is_produced_again, tests/governance/test_result_defects.py::test_every_plan_step_says_what_a_person_needs_to_carry_it_out_without_taktus, tests/governance/test_result_defects.py::test_a_correction_that_cannot_be_made_at_once_says_so, tests/governance/test_anchors.py::test_a_level_four_run_halts_at_each_anchor_with_a_decision_request]
+adrs: {ADR-0008: e6a4e033abd4, ADR-0013: 1da224cdeaf4, ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0153: 5c2e05c4a6d7, ADR-0160: 34e64cb9d5ce}
 supersedes: null
 ---
 
@@ -78,3 +78,14 @@ requirement is unchanged except in one place: the first text recorded "who" exec
 hand in the incident, while UC-6.8 says an incident never names a person. The incident now names
 the role, and the identity stays in the activity log; that change is the owner's and stands, by
 DEC-0069. No version of the definition has this use case.
+
+## 5. What is proven so far
+
+The plan is produced from the impact analysis (ADR-0153): a plan for results inside the system
+has no outward step; every result that left gets an outward correction after the step that
+produces it again; every step names the system, the record, the value before and after, the
+order and how to tell it is done, as text a person carries out without Taktus; a correction that
+cannot be made at once says so — by the named tests. The correction anchor halts a level-4 run
+before a step that uses the correction act, with a request of class `correction` (ADR-0160). Not
+built: the plan executed as a process by the run engine, and so the halt before its own outward
+correction, and the new provenance record of a result produced again.
