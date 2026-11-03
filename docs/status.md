@@ -34,6 +34,9 @@ different milestones never edit the same paragraph (#392):
 
 How the project itself is run — how the owner is asked, the register, the gates, the vision
 layer, the reviews — is `docs/status/project.md`.
+What the product provides for each stage of the second tenant's introduction, and what it does
+not yet, is `blueprints/software-operations/README.md`; the stages themselves are the
+business's (DEC-0201).
 
 A file under `docs/status/` takes a new paragraph where its subject puts it, not at the end.
 A paragraph that opens with a bold lead starts an entry, and the entries follow the alphabetical

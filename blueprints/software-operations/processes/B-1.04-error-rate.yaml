@@ -1,0 +1,109 @@
+# B-1.04 Error rate — UC-03 §4.1: the error rate of the business's server functions is read
+# from its metrics store every fifteen minutes, through the capability `metrics.series`, and
+# judged against its corridor; a rate above it is an incident (UC-6.13, UC-4.14).
+#
+# The query is the tenant's: the rate of errors per function as its metrics store computes it,
+# for example the share of failed calls over the last fifteen minutes by function. The rule
+# `filter` takes the function with the highest rate from the store's own reading, with its
+# value; no model touches the figure, and the same reading always gives the same answer
+# (`exact`).
+#
+# The judgement is the tenant's corridor on the step `worst` and the value `first.values.0.value`:
+#
+#     uv run taktusctl signal configure errors.function_rate --process b-1-04 \
+#         --step worst --select first.values.0.value --bounds median --direction above \
+#         --yellow 1.5 --red 3 --fresh 1h \
+#         --role <role> --case <where an error rate is worked>
+#
+# with the store's own history as the baseline once there are enough runs, or `--bounds fixed`
+# with the tenant's thresholds from the first run. The function behind a red value stands in
+# the result of `worst`, under `first.labels`.
+#
+# Not built here: tying the errors to the last deployment, and opening the fix pull request of
+# the target level. The deployment is not read by any connector yet (UC-03 §8); the fix is the
+# implementation process's (B-7.03), on an issue a person or B-1.05 files. Releasing a hotfix
+# stays with a person.
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-1.04-error-rate.yaml \
+#         --input 'query=sum by (function) (rate(function_errors_total[15m]))'
+#
+# Switching it off (`taktusctl deactivate --process b-1-04`) changes nothing at the store.
+
+id: b-1-04
+version: "1"
+name: B-1.04 Error rate
+autonomy:
+  level: 1
+  reason: >
+    the process only reads the metrics store and takes its highest value by a fixed rule;
+    nothing leaves the system, so at level 1 every step runs and none acts; the judgement is
+    the tenant's corridor, and a red value reaches a person at once as an incident; it starts
+    at level 1, observing, as UC-03 starts every process at level 1 or 2 when its stage opens
+  toward_next: >
+    stage 1 of the tenant's plan open, and four weeks of runs whose incidents a person checked
+    against the store and found right; then Taktus proposes the next level, up to the target
+    UC-03 names once the fix pull request is part of it (UC-7.1, UC-9.6)
+author: the repository
+reason: the error rate of the server functions watched without a person reading the dashboards (UC-03 B-1.04)
+
+triggers:
+  - schedule: "*/15 * * * *"
+    inputs:
+      query: sum by (function) (rate(function_errors_total[15m]))
+
+inputs:
+  query:
+    description: >
+      the tenant's query for the error rate per function, in the store's query language; each
+      series it answers is one function
+    example: sum by (function) (rate(function_errors_total[15m]))
+
+limits:
+  quota: { units: 2 }
+
+steps:
+  - id: read-rates
+    method: rule
+    reason: the store's figures are read verbatim, each value as the store gave it
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving metrics.series is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: metrics.series.query
+      input:
+        query: { $input: query }
+      credentials:
+        - { name: METRICS_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the store answered more series than were read" }
+
+  - id: worst
+    method: rule
+    reason: >
+      the function with the highest rate is a fixed ordering of the store's own figures; a
+      value the store could not give as a number is left out, never read as zero
+    rejected:
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+      - method: statistics
+        why: taking the largest of the values is an ordering, not a statistic of a series
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the function with the highest rate }
+    depends_on: [read-rates]
+    work:
+      rule: filter
+      items: { $from: read-rates, $select: output.series }
+      all:
+        - { field: values.0.value, at_least: 0 }
+      order: values.0.value
+      descending: true
+      limit: 1

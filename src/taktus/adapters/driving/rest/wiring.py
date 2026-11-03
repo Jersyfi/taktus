@@ -24,7 +24,7 @@ from taktus.components.decision.application.service import (
     AnswerRequestHandler,
     ConfirmRequestHandler,
 )
-from taktus.components.governance.application.service import Corrections
+from taktus.components.governance.application.service import Corrections, Stages
 from taktus.components.governance.domain.model import Incident
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.process.application.service.proposals import Proposals
@@ -481,6 +481,12 @@ class RestServices(Protocol):
     @property
     def takeovers(self) -> Takeovers:
         """A running step taken over and handed back (ADR-0128)."""
+        ...
+
+    @property
+    def stages(self) -> Stages:
+        """A tenant's introduction in stages: the view and a stage opened by a person
+        (ADR-0137, ADR-0191)."""
         ...
 
     @property

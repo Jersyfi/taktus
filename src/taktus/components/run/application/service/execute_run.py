@@ -204,6 +204,7 @@ from taktus.components.run.domain.model import (
     DeviationStatistic,
     Ended,
     ExtractRule,
+    FilterRule,
     HumanWork,
     InvoiceRule,
     LlmWork,
@@ -4761,6 +4762,9 @@ class RunEngine:
         if isinstance(work, ExtractRule):
             (values, excluding), read = await self._resolved(run, [work.values, work.excluding])
             return rules.extract(work, values, excluding), Trace(inputs=read), None, None
+        if isinstance(work, FilterRule):
+            (items, excluding), read = await self._resolved(run, [work.items, work.excluding])
+            return rules.filter_items(work, items, excluding), Trace(inputs=read), None, None
         if isinstance(work, CommitTitleRule):
             (title, number, labels, files, proposal), read = await self._resolved(
                 run, [work.title, work.number, work.labels, work.files, work.proposal]

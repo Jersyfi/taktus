@@ -2832,6 +2832,99 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /stages:
+    get:
+      tags:
+      - stages
+      summary: The tenant's introduction in stages, with the evidence of each
+      description: 'Every stage of the tenant''s plan, in the order they open: its state, its condition
+        in words, the figures the rule read from the ledger, what is missing, and each process it adds
+        with its active version, its level and what it did within the window (ADR-0137, ADR-0191). Computed
+        at the moment of the request, never entered. For the holders of the plan''s responsible role.
+        No figure names a person.'
+      operationId: stages_stages_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The stages.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: You do not hold the plan's responsible role.
+          content:
+            application/problem+json: {}
+        '404':
+          description: The tenant declared no stages, or no such stage.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /stages/{stage_id}/open:
+    post:
+      tags:
+      - stages
+      summary: Open a stage
+      description: Opens the stage for you, once every stage before it is open, the one before it holds
+        by its rule, and every process it adds runs for the tenant with current takeover instructions
+        (ADR-0137 §3, ADR-0191 §1). Taktus never opens a stage by itself. A refusal is recorded with its
+        reason.
+      operationId: open_stage_stages__stage_id__open_post
+      parameters:
+      - name: stage_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Stage Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The stage, opened.
+          content:
+            application/json:
+              schema: {}
+        '409':
+          description: The stage may not open now; the reason is given.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: You do not hold the plan's responsible role.
+          content:
+            application/problem+json: {}
+        '404':
+          description: The tenant declared no stages, or no such stage.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
   /runs/{run_id}/steps/{step_id}/messages:
     post:
       tags:

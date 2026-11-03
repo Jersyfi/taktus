@@ -1,0 +1,25 @@
+{
+  "anchors": [
+    {
+      "id": "anc-money",
+      "class": "legal",
+      "act": "moving money: a payment release, a refund, a credit, goodwill or any other act under the capabilities that move money (UC-03 §6; not legally reviewed for any jurisdiction, DEC-0029)",
+      "applies_to": { "actions": ["payment.*"] },
+      "decider": { "role": "owner" }
+    },
+    {
+      "id": "anc-legal",
+      "class": "legal",
+      "act": "a legally binding act: a signature, a filing, a termination, a notification, a contract, an answer to an authority (UC-03 §6; not legally reviewed for any jurisdiction, DEC-0029)",
+      "applies_to": { "actions": ["legal.*"] },
+      "decider": { "role": "owner" }
+    },
+    {
+      "id": "anc-correction",
+      "class": "correction",
+      "act": "correct a result that has left the system (ADR-0022)",
+      "applies_to": { "actions": ["correction.*"] },
+      "decider": { "role": "owner" }
+    }
+  ]
+}

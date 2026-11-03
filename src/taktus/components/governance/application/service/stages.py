@@ -8,11 +8,13 @@ holds a condition looser than its blueprint, or would leave a process above its 
 stored plan is `stages.configured`, with its digest and who declared it.
 
 **Opened.** Only a person opens a stage, and only once every earlier stage is open, the one
-before it holds by its rule, and every process it adds has current takeover instructions. A
+before it holds by its rule, every process it adds runs for the tenant — an active version —
+and has current takeover instructions (ADR-0191 §1). A
 refusal is `stage.refused` with the reason as outcome; an opening is `stage.opened` with the
 person as actor.
 
-**Looked at.** The elected scheduler looks at every open stage. One whose condition holds is
+**Looked at.** The elected scheduler looks at every open stage. A stage holds while its
+condition holds and every process it adds runs for the tenant (ADR-0191 §1). One that holds is
 `stage.held`; one that held and no longer does is `stage.fell`, and every process it adds falls
 to the ceiling the stage's absence leaves it: an incident of kind `stage.fell`, and
 `autonomy.lowered` with the new level, as a level falls by rule (ADR-0110). Then the next stage,
@@ -42,6 +44,8 @@ from taktus.components.governance.domain.model.stages import (
     STAGE_ID,
     BlueprintStages,
     Ceiling,
+    ProcessEvidence,
+    Stage,
     StagePlan,
     StageRecord,
     StageState,
@@ -52,6 +56,7 @@ from taktus.components.governance.domain.service.corrections import LOWERED, lev
 from taktus.components.governance.ports.stages import (
     Identities,
     ProcessLevels,
+    RunningLevel,
     StageReports,
     TakeoverInstructions,
 )
@@ -62,6 +67,8 @@ from taktus.shared.v1 import LedgerEntry, LedgerRefs
 
 RAISED = "incident.raised"
 APPROVAL = "a person's approval"
+NOT_RUN = "runs no version of "
+"""How the view says a process of the stage has no active version for the tenant."""
 
 
 class StagesRefused(Exception):
@@ -261,6 +268,8 @@ class Stages:
                 entries = await self._ledger.of_kinds(tenant, rule.FIGURE_KINDS, since=min(starts))
         views: list[StageView] = []
         for position, stage in enumerate(plan.stages):
+            running = {p: await self._levels.running(tenant, p) for p in stage.processes}
+            unrun = [f"{tenant} {NOT_RUN}{p}" for p, r in running.items() if r is None]
             record = records.get(stage.id, StageRecord())
             before = views[-1] if views else None
             previous = records.get(plan.stages[position - 1].id) if position else None
@@ -270,7 +279,7 @@ class Stages:
                 or record.proposed_at >= previous.changed_at
             )
             if record.state is StageState.CLOSED or record.opened_at is None:
-                missing = await self._opening_lacks(tenant, stage.processes, before)
+                missing = await self._opening_lacks(tenant, stage.processes, before, unrun)
                 views.append(
                     StageView(
                         stage=stage,
@@ -279,17 +288,16 @@ class Stages:
                         holds=False,
                         missing=tuple(missing),
                         proposed=proposed,
+                        processes=_evidence(stage, running, None),
                     )
                 )
                 continue
+            since = rule.window_start(stage.condition, record.opened_at, now)
             figures = rule.figures(
-                entries,
-                stage.processes,
-                opened_at=record.opened_at,
-                since=rule.window_start(stage.condition, record.opened_at, now),
-                now=now,
+                entries, stage.processes, opened_at=record.opened_at, since=since, now=now
             )
-            unmet = rule.unmet(stage.condition, figures)
+            unmet = [*rule.unmet(stage.condition, figures), *unrun]
+            did = rule.per_process(entries, stage.processes, since=since, now=now)
             views.append(
                 StageView(
                     stage=stage,
@@ -300,12 +308,17 @@ class Stages:
                     figures=figures,
                     missing=tuple(unmet),
                     proposed=proposed,
+                    processes=_evidence(stage, running, did),
                 )
             )
         return views
 
     async def _opening_lacks(
-        self, tenant: Tenant, processes: Mapping[str, Any], before: StageView | None
+        self,
+        tenant: Tenant,
+        processes: Mapping[str, Any],
+        before: StageView | None,
+        unrun: Sequence[str],
     ) -> list[str]:
         """What a stage not open lacks to open."""
         missing: list[str] = []
@@ -313,6 +326,7 @@ class Stages:
             missing.append(f"stage {before.stage.id!r} before it is not open")
         elif before is not None and not before.holds:
             missing.extend(f"stage {before.stage.id!r} does not hold: {m}" for m in before.missing)
+        missing.extend(unrun)
         for process_id in processes:
             lacking = await self._instructions.lacking(tenant, process_id)
             if lacking is not None:
@@ -351,6 +365,9 @@ class Stages:
                 by,
                 f"stage {before.stage.id!r} does not hold: " + "; ".join(before.missing),
             )
+        unrun = [m for m in found.missing if NOT_RUN in m and not m.startswith("stage ")]
+        if unrun:
+            await self._refuse(tenant, stage_id, "not_run", by, "; ".join(unrun))
         lacking = [m for m in found.missing if m.startswith("takeover instructions of ")]
         if lacking:
             await self._refuse(tenant, stage_id, "instructions", by, "; ".join(lacking))
@@ -493,6 +510,31 @@ class Stages:
                     outcome=outcome,
                 ),
             )
+
+
+def _evidence(
+    stage: Stage,
+    running: Mapping[str, RunningLevel | None],
+    did: Mapping[str, rule.Did] | None,
+) -> tuple[ProcessEvidence, ...]:
+    """Every process the stage adds, as the view shows it."""
+    shown: list[ProcessEvidence] = []
+    for process_id, granted in stage.processes.items():
+        now = running.get(process_id)
+        counted = rule.Did() if did is None else did.get(process_id, rule.Did())
+        shown.append(
+            ProcessEvidence(
+                process=process_id,
+                version=None if now is None else now.process_version,
+                level=None if now is None else now.level,
+                granted=granted,
+                runs=counted.runs,
+                missed=counted.missed,
+                incidents=counted.incidents,
+                last_finished=counted.last_finished,
+            )
+        )
+    return tuple(shown)
 
 
 def _is_stage_id(text: str) -> bool:
