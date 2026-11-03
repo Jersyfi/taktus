@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 from collections.abc import Mapping
+from decimal import Decimal, InvalidOperation
 from string import Template
 from typing import Any
 
@@ -13,6 +14,7 @@ from taktus.components.run.domain.model.errors import RuleFailed
 from taktus.components.run.domain.model.work import (
     CLASSES,
     BacklogRule,
+    Bound,
     CheckRule,
     ClassificationRule,
     CommitTitleRule,
@@ -20,6 +22,7 @@ from taktus.components.run.domain.model.work import (
     ConstantRule,
     Expectation,
     ExtractRule,
+    FilterRule,
     ReadyRule,
     RoadmapRule,
     ScreenRule,
@@ -392,6 +395,110 @@ def _texts(items: Any, what: str) -> list[str]:
                 f"{_short(item)}"
             )
     return texts
+
+
+def filter_items(rule: FilterRule, items: Any, excluding: Any) -> dict[str, Any]:
+    """The items the rule's conditions keep, less those already marked in `excluding`, ordered
+    and limited (ADR-0192 §1)."""
+    if not isinstance(items, list | tuple):
+        raise RuleFailed(f"items is not a list: {_short(items)}")
+    texts = _within(rule, excluding)
+    kept: list[Any] = []
+    for item in items:
+        if not isinstance(item, Mapping):
+            raise RuleFailed(f"an item is not an object: {_short(item)}")
+        if not all(_holds(b, item) for b in rule.all):
+            continue
+        if rule.any and not any(_holds(b, item) for b in rule.any):
+            continue
+        if rule.marker is not None and texts:
+            marker = _marked(rule.marker, item)
+            if any(marker in text for text in texts):
+                continue
+        kept.append(dict(item))
+    if rule.order is not None:
+        order = rule.order
+        kept.sort(key=lambda item: _sort_key(item, order), reverse=rule.descending)
+    if rule.limit is not None:
+        kept = kept[: rule.limit]
+    result: dict[str, Any] = {"items": kept, "count": len(kept)}
+    if kept:
+        result["first"] = kept[0]
+    return result
+
+
+def _within(rule: FilterRule, excluding: Any) -> list[str]:
+    if excluding is None:
+        return []
+    if not isinstance(excluding, list | tuple):
+        raise RuleFailed(f"excluding is not a list: {_short(excluding)}")
+    texts: list[str] = []
+    for entry in excluding:
+        if isinstance(entry, str):
+            texts.append(entry)
+            continue
+        if rule.within is None or not isinstance(entry, Mapping):
+            raise RuleFailed(f"an entry of excluding is not a text: {_short(entry)}")
+        try:
+            text = select(entry, rule.within)
+        except KeyError:
+            continue
+        if isinstance(text, str):
+            texts.append(text)
+    return texts
+
+
+def _marked(marker: str, item: Mapping[str, Any]) -> str:
+    values = {
+        k: v if isinstance(v, str) else json.dumps(v, ensure_ascii=False) for k, v in item.items()
+    }
+    try:
+        return Template(marker).substitute(values)
+    except (KeyError, ValueError) as error:
+        raise RuleFailed(f"the marker names a field an item does not carry: {error}") from None
+
+
+def _number(value: Any) -> Decimal | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        return Decimal(str(value))
+    except InvalidOperation:
+        return None
+
+
+def _holds(bound: Bound, item: Mapping[str, Any]) -> bool:
+    try:
+        value = select(item, bound.field)
+    except KeyError:
+        return False
+    text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+    if bound.equals is not None and value != bound.equals:
+        return False
+    if bound.matches is not None and re.search(bound.matches, text) is None:
+        return False
+    if bound.not_matches is not None and re.search(bound.not_matches, text) is not None:
+        return False
+    for limit, below in ((bound.at_least, False), (bound.at_most, True)):
+        if limit is None:
+            continue
+        number, bound_number = _number(value), _number(limit)
+        if number is None or bound_number is None:
+            return False
+        if (number > bound_number) if below else (number < bound_number):
+            return False
+    return True
+
+
+def _sort_key(item: Mapping[str, Any], field: str) -> tuple[int, Decimal, str]:
+    try:
+        value = select(item, field)
+    except KeyError:
+        return (0, Decimal(0), "")
+    number = _number(value)
+    if number is not None and not isinstance(value, str):
+        return (1, number, "")
+    return (2, Decimal(0), value if isinstance(value, str) else json.dumps(value))
 
 
 CONVENTIONAL = re.compile(

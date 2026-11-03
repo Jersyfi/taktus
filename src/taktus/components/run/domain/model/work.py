@@ -354,6 +354,59 @@ class FilesType(Value):
         return self
 
 
+class Bound(Value):
+    """One condition over a field of an item of a `filter` rule: equal to something, matching a
+    pattern or not, or a number at least or at most a bound. A value that is not a string is
+    matched as its JSON text; a number is compared in decimal arithmetic."""
+
+    field: str = Field(min_length=1)
+    """A dotted path into the item."""
+    equals: Any | None = None
+    matches: str | None = None
+    not_matches: str | None = None
+    at_least: float | int | str | None = None
+    at_most: float | int | str | None = None
+
+    @model_validator(mode="after")
+    def _names_a_test(self) -> Bound:
+        tests = (self.equals, self.matches, self.not_matches, self.at_least, self.at_most)
+        if all(t is None for t in tests):
+            raise ValueError(f"the condition on {self.field!r} tests nothing")
+        return self
+
+
+class FilterRule(Value):
+    """The items of a list that its conditions keep, ordered and limited (ADR-0192 §1).
+
+    `items` is a list of objects, usually a reference to a reading. An item is kept when every
+    condition of `all` holds and, where `any` is given, at least one of `any`. `marker` composes
+    a text from each item's fields, `${field}`, as a `template` composes its text; an item whose
+    marker occurs in one of the texts of `excluding` is left out — what a person or an earlier
+    run already filed. `excluding` is a list of texts, or of objects whose `within` field is the
+    text. `order` sorts by a field, numbers as numbers; `limit` keeps the first ones.
+
+    The result is `{"items": [...], "count": n, "first": item}`, `first` absent when nothing is
+    kept. A field an item does not carry fails its condition, never the step. The same lists
+    give the same result every time: admissible for `exact`."""
+
+    rule: Literal["filter"]
+    items: Any
+    all: tuple[Bound, ...] = ()
+    any: tuple[Bound, ...] = ()
+    excluding: Any = None
+    marker: str | None = Field(default=None, min_length=1)
+    within: str | None = Field(default=None, min_length=1)
+    order: str | None = Field(default=None, min_length=1)
+    descending: bool = False
+    limit: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def _excluding_needs_a_marker(self) -> FilterRule:
+        if self.excluding is not None and self.marker is None:
+            raise ValueError("`excluding` needs a `marker` to look for in its texts")
+        return self
+
+
 class CommitTitleRule(Value):
     """A title in the Conventional Commits form, `<type>(<scope>): <summary> (#<number>)`, from
     a sentence such as an issue's title (ADR-0101). The type is one of `types`, taken from the
@@ -467,6 +520,7 @@ type RuleWork = Annotated[
     | ClassificationRule
     | TemplateRule
     | ExtractRule
+    | FilterRule
     | CommitTitleRule
     | InvoiceRule
     | ConnectorRule,
@@ -1242,6 +1296,8 @@ def referenced_values(work: Work) -> list[Any]:
         return [work.values]
     if isinstance(work, ExtractRule):
         return [work.values, work.excluding]
+    if isinstance(work, FilterRule):
+        return [work.items, work.excluding]
     if isinstance(work, DeviationStatistic):
         return [work.days]
     if isinstance(work, CommitTitleRule):
