@@ -87,6 +87,13 @@ decision and the plan; `taktusctl defect raise` raises the incident as well.
 - `tests/governance/test_result_defects.py` holds the analysis, the rule, the plan and the
   incident to UC-4.11, UC-4.12, UC-6.8 and ADR-0023.
 
+## Amendment — a correction is assessed by itself (2026-11-04)
+
+ADR-0184. The scheduler raises a result defect for every correction (`step.corrected`) no
+result defect answers yet, every five minutes, as `taktusctl defect raise` would. "No assessment
+starts by itself" below no longer holds for a correction; it still holds for a sample judged
+wrong. A raised defect counts in the quality history a raise of the level reads.
+
 ## Where this promise ends
 
 The analysis reads what the chain recorded; it cannot bound a result produced before it, and

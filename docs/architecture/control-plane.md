@@ -519,8 +519,10 @@ finished that day used, and per run the budget statement it names, for the last 
 takes the whole days of its window from the projection and the two partial days at its ends from
 the ledger through `ledger_entry_kind_ts` (`Ledger.of_kinds(..., since=, until=)`); a run the
 projection no longer knows is read with `Ledger.of_runs`. The measures read `step.corrected`. The quality history of a raise is the
-projection `process.quality.v1`, read by a proposal and by a registration; `autonomy.history` is
-the full computation it equals. With 500 000 entries the history took 9 ms, the Takt rate over
+projection `process.quality.v2`, read by a proposal and by a registration; `autonomy.history` is
+the full computation it equals. A run a result defect was raised against counts as failed in it,
+before or after the run ended (ADR-0184); the scheduler raises a result defect for every
+correction nobody assessed, every five minutes (`composition/defects.py`). With 500 000 entries the history took 9 ms, the Takt rate over
 30 days (7 200 finished steps) 30 ms and the measures 2 ms
 (`tests/integration/test_ledger_at_scale.py`).
 

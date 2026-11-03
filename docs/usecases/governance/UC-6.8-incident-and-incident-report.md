@@ -7,7 +7,7 @@ serves: [P1, P6, P12, P14]
 state: building
 version: 0.5.0
 tests: [tests/governance/test_result_defects.py::test_a_reported_result_raises_one_incident_with_what_the_rule_read]
-adrs: {ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0023: 949c6f4e13af, ADR-0024: 52ba89e4adec, ADR-0029: 37c061ef032a, ADR-0153: 1f4e8c44971d}
+adrs: {ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0023: 949c6f4e13af, ADR-0024: 52ba89e4adec, ADR-0029: 37c061ef032a, ADR-0153: 6be166ccf446}
 supersedes: null
 ---
 

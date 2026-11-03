@@ -2,7 +2,8 @@
 
 A tenant's ledger is generated with every case the history distinguishes: runs of several
 processes that overlap and end in another order than they began, steps that fail, runs that
-escalate, a rehearsal, a run that never ends and entries of a run after it ended. The projection
+escalate, a rehearsal, a run that never ends, entries of a run after it ended, and result
+defects raised against a run while it runs or after it ended (ADR-0184). The projection
 is folded in one pass and in pieces through its stored form, and through the ledger port between
 recordings; each gives the history `autonomy.history` computes from every entry.
 """
@@ -58,6 +59,14 @@ def generated(seed: int, runs: int) -> list[Fact]:
                     Fact(kind="step.finished", refs=refs, outcome="failed", rehearsal=rehearsal)
                 )
                 queue.append(Fact(kind="run.finished", refs=refs, rehearsal=rehearsal))
+        if rng.random() < 0.12:  # a result defect raised against the run, before or after it ended
+            defect = Fact(
+                kind="incident.raised",
+                refs=refs.model_copy(update={"step_id": "s", "incident_id": f"inc_{n}"}),
+                outcome=rng.choice(["continue", "escalate", "stop"]),
+                rehearsal=rehearsal,
+            )
+            queue.insert(rng.randint(1, len(queue)), defect)
         queues.append(queue)
     facts: list[Fact] = []
     live = list(range(runs))
@@ -143,3 +152,30 @@ async def test_the_projection_brought_up_to_date_equals_the_one_rebuilt_from_the
     assert QUALITY.dump(rebuilt) == QUALITY.dump(projected)
     for process in PROCESSES:
         assert projected.history(process) == history(recorded, process)
+
+
+def test_a_result_defect_raised_after_a_clean_run_ended_ends_the_clean_row() -> None:
+    """ADR-0184, #645: a result found wrong after its run ended counts in the quality history,
+    which a raise of the level reads; an incident of another kind does not."""
+
+    def created(n: int) -> Fact:
+        return Fact(kind="run.created", refs=LedgerRefs(run_id=f"run_{n}", process_version="p@1"))
+
+    begun = [created(n) for n in (1, 2, 3)]
+    facts = [
+        *[f for b in begun for f in (b, Fact(kind="run.finished", refs=b.refs))],
+        Fact(
+            kind="incident.raised",
+            refs=begun[1].refs.model_copy(update={"step_id": "pay", "incident_id": "inc_1"}),
+            outcome="continue",
+        ),
+        Fact(
+            kind="incident.raised",
+            refs=begun[2].refs.model_copy(update={"incident_id": "inc_2"}),
+            outcome="red",
+        ),
+    ]
+    entries = chained(facts)
+    found = folded(entries).history("p")
+    assert found == history(entries, "p")
+    assert (found.clean, found.ended, found.last_failed) == (1, 3, "run_2")
