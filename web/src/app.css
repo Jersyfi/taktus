@@ -1,0 +1,273 @@
+/* What every page shares, bound to the design tokens only (ADR-0177 §4). A colour, a duration or
+   an easing written literally here is refused by src/lib/design.test.ts. */
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html {
+	scroll-padding-block-start: calc(var(--layout-appbar-height) + var(--sp-200));
+	-webkit-text-size-adjust: 100%;
+}
+
+/* The page: the canvas under the design system's two ambient tints, the primary hue from the
+   top start corner and the signature from the far end. Geometry is layout; the stops are tokens. */
+body {
+	margin: 0;
+	min-height: 100vh;
+	background:
+		radial-gradient(70rem 40rem at 0% -10%, var(--ambient-primary), transparent 70%),
+		radial-gradient(60rem 36rem at 110% 0%, var(--ambient-signature), transparent 70%),
+		var(--bg-canvas);
+	background-attachment: fixed;
+	color: var(--text-primary);
+	font-family: var(--font-ui);
+	font-size: var(--fs-200);
+	font-weight: var(--fw-text);
+	line-height: var(--lh-normal);
+	font-variant-numeric: tabular-nums;
+	-webkit-font-smoothing: antialiased;
+}
+
+/* Each level opens with a sentence: what is happening, before the picture. */
+h1 {
+	font-family: var(--font-display);
+	font-weight: var(--fw-bold);
+	font-size: clamp(var(--fs-600), 4.2vw, var(--fs-700));
+	line-height: var(--lh-tight);
+	letter-spacing: -0.015em;
+	margin: 0 0 var(--sp-200);
+	text-wrap: balance;
+	max-width: 30ch;
+}
+
+/* A section's name is a label: small, set apart, the subtle ink. */
+h2 {
+	font-family: var(--font-ui);
+	font-size: var(--fs-075);
+	font-weight: var(--fw-semibold);
+	line-height: var(--lh-snug);
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--text-subtle);
+	margin: var(--sp-400) 0 var(--sp-150);
+}
+
+h3 {
+	font-size: var(--fs-300);
+	font-weight: var(--fw-semibold);
+	line-height: var(--lh-snug);
+	margin: var(--sp-300) 0 var(--sp-100);
+}
+
+p {
+	max-width: 72ch;
+}
+
+/* What a page is about, above its sentence: the brand ink, small and set apart. */
+.eyebrow {
+	margin: 0 0 var(--sp-100);
+	font-size: var(--fs-075);
+	font-weight: var(--fw-semibold);
+	letter-spacing: 0.06em;
+	color: var(--text-brand);
+}
+
+.eyebrow a {
+	color: inherit;
+}
+
+a {
+	color: inherit;
+	text-decoration-color: var(--border-default);
+	text-underline-offset: 0.18em;
+	text-decoration-thickness: var(--bw-hairline);
+	transition: text-decoration-color var(--motion-state-duration) var(--motion-state-easing);
+}
+
+a:hover {
+	text-decoration-color: currentColor;
+}
+
+/* A sentence that reads as running text keeps its link in the brand ink. */
+p a,
+li > a:only-child {
+	color: var(--text-brand);
+}
+
+button,
+input,
+select,
+textarea {
+	font: inherit;
+	color: inherit;
+}
+
+/* One button for every page: the surface with a control's border; `primary` the page's one main
+   act in the accent, carrying its glow; `danger` an act that stops something; `quiet` without a
+   border. A scoped style of a page refines it, never redraws it. */
+button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--sp-050);
+	min-height: var(--density-control-md-min);
+	padding: 0 var(--sp-200);
+	border: var(--bw-hairline) solid var(--border-default);
+	border-radius: var(--r-md);
+	background: var(--bg-surface);
+	color: var(--text-primary);
+	font-weight: var(--fw-medium);
+	cursor: pointer;
+	transition:
+		background-color var(--motion-state-duration) var(--motion-state-easing),
+		transform var(--motion-state-duration) var(--motion-state-easing);
+}
+
+button:hover:not(:disabled) {
+	background: var(--bg-surface-hover);
+}
+
+button:active:not(:disabled) {
+	transform: translateY(1px);
+}
+
+button.primary {
+	background: var(--accent-primary);
+	border-color: var(--accent-primary);
+	color: var(--text-inverse);
+	box-shadow: var(--shadow-glow);
+}
+
+button.primary:hover:not(:disabled) {
+	background: var(--accent-primary-hover);
+}
+
+button.danger {
+	border-color: var(--status-danger-border);
+	color: var(--status-danger-text);
+	background: var(--status-danger-surface);
+}
+
+button.quiet {
+	border-color: transparent;
+	background: transparent;
+}
+
+button:disabled {
+	cursor: default;
+	opacity: 0.55;
+	box-shadow: none;
+}
+
+input[type='text'],
+input[type='password'],
+input[type='number'],
+input[type='search'],
+input:not([type]),
+select,
+textarea {
+	background: var(--bg-surface);
+	border: var(--bw-hairline) solid var(--border-default);
+	border-radius: var(--r-md);
+	padding: var(--density-control-md-block) var(--sp-150);
+	min-height: var(--density-control-md-min);
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+	outline: none;
+	border-color: var(--focus-ring);
+	box-shadow: 0 0 0 1px var(--focus-ring);
+}
+
+/* Focus is always visible: a ring at the design system's width and offset. */
+:focus-visible {
+	outline: var(--bw-ring) solid var(--focus-ring);
+	outline-offset: var(--bw-ring);
+	border-radius: var(--r-sm);
+}
+
+code,
+kbd,
+samp {
+	font-family: var(--font-mono);
+	font-size: 0.86em;
+}
+
+::selection {
+	background: var(--accent-primary-subtle);
+}
+
+/* Every level's text equivalent: the same states and figures, set as a quiet list. */
+section.text {
+	margin-top: var(--sp-600);
+}
+
+section.text ol {
+	font-family: var(--font-mono);
+	font-size: var(--fs-075);
+	line-height: 1.8;
+	background: var(--bg-surface-sunken);
+	border-radius: var(--r-lg);
+	box-shadow: var(--shadow-nested);
+	padding: var(--sp-200) var(--sp-250) var(--sp-200) var(--sp-600);
+	overflow-x: auto;
+	color: var(--text-secondary);
+}
+
+table {
+	border-collapse: collapse;
+	font-size: var(--fs-100);
+}
+
+th {
+	text-align: start;
+	font-weight: var(--fw-semibold);
+	color: var(--text-subtle);
+}
+
+th,
+td {
+	padding: var(--sp-100) var(--sp-150);
+	border-bottom: var(--bw-hairline) solid var(--border-subtle);
+}
+
+details > summary {
+	cursor: pointer;
+}
+
+hr {
+	border: none;
+	border-top: var(--bw-hairline) solid var(--border-subtle);
+}
+
+/* Under reduced motion — the system's or the reader's — the frame moves nothing. The glyphs keep
+   their own still marks (ADR-0059 §2). */
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		transition-duration: var(--dur-instant) !important;
+		scroll-behavior: auto !important;
+	}
+}
+
+:root[data-motion='reduced'] *,
+:root[data-motion='reduced'] *::before,
+:root[data-motion='reduced'] *::after {
+	transition-duration: var(--dur-instant) !important;
+}
+
+.sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}

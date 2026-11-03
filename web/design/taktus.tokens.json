@@ -1,0 +1,77 @@
+{
+  "$description": "Taktus's own tokens beside the owner's design system (ADR-0177 §2), in the W3C DTCG format of tokens.json. Every value is a reference to a primitive of tokens.json, never a literal. 'family' is the hue a method family's cell takes on top of its form (ADR-0059, M1.20): the form carries the distinction, the hue repeats it. 'chart' is the series of a chart (ADR-0148). The raspberry signature is not used here: it carries no system meaning.",
+  "semantic": {
+    "light": {
+      "family": {
+        "reproducible": {
+          "hue": { "$type": "color", "$value": "{primitive.color.sky.600}", "$description": "rule, statistics, ml and neural: a crisp, beaded membrane." },
+          "surface": { "$type": "color", "$value": "{primitive.color.sky.100}" }
+        },
+        "variable": {
+          "hue": { "$type": "color", "$value": "{primitive.color.violet.600}", "$description": "llm and worker: the design system's AI tint." },
+          "surface": { "$type": "color", "$value": "{primitive.color.violet.100}" }
+        },
+        "person": {
+          "hue": { "$type": "color", "$value": "{primitive.color.mint.700}", "$description": "human: a soft membrane that breathes." },
+          "surface": { "$type": "color", "$value": "{primitive.color.mint.100}" }
+        },
+        "waiting": {
+          "hue": { "$type": "color", "$value": "{primitive.color.neutral.600}", "$description": "wait: a dormant spore that never moves." },
+          "surface": { "$type": "color", "$value": "{primitive.color.neutral.150}" }
+        },
+        "alert": {
+          "hue": { "$type": "color", "$value": "{primitive.color.danger.600}", "$description": "a failure, an incident, a red signal." },
+          "surface": { "$type": "color", "$value": "{primitive.color.danger.100}" }
+        }
+      },
+      "chart": {
+        "series": {
+          "1": { "$type": "color", "$value": "{primitive.color.indigo.600}" },
+          "2": { "$type": "color", "$value": "{primitive.color.amber.700}" }
+        },
+        "kind": {
+          "input": { "$type": "color", "$value": "{primitive.color.sky.600}" },
+          "cache_write": { "$type": "color", "$value": "{primitive.color.violet.600}" },
+          "cache_read": { "$type": "color", "$value": "{primitive.color.mint.700}" },
+          "output": { "$type": "color", "$value": "{primitive.color.amber.700}" }
+        }
+      }
+    },
+    "dark": {
+      "family": {
+        "reproducible": {
+          "hue": { "$type": "color", "$value": "{primitive.color.sky.400}" },
+          "surface": { "$type": "color", "$value": "{primitive.color.sky.950}" }
+        },
+        "variable": {
+          "hue": { "$type": "color", "$value": "{primitive.color.violet.400}" },
+          "surface": { "$type": "color", "$value": "{primitive.color.violet.950}" }
+        },
+        "person": {
+          "hue": { "$type": "color", "$value": "{primitive.color.mint.400}" },
+          "surface": { "$type": "color", "$value": "{primitive.color.mint.950}" }
+        },
+        "waiting": {
+          "hue": { "$type": "color", "$value": "{primitive.color.neutral.500}" },
+          "surface": { "$type": "color", "$value": "{primitive.color.neutral.825}" }
+        },
+        "alert": {
+          "hue": { "$type": "color", "$value": "{primitive.color.danger.400}" },
+          "surface": { "$type": "color", "$value": "{primitive.color.danger.950}" }
+        }
+      },
+      "chart": {
+        "series": {
+          "1": { "$type": "color", "$value": "{primitive.color.indigo.400}" },
+          "2": { "$type": "color", "$value": "{primitive.color.amber.400}" }
+        },
+        "kind": {
+          "input": { "$type": "color", "$value": "{primitive.color.sky.400}" },
+          "cache_write": { "$type": "color", "$value": "{primitive.color.violet.400}" },
+          "cache_read": { "$type": "color", "$value": "{primitive.color.mint.400}" },
+          "output": { "$type": "color", "$value": "{primitive.color.amber.400}" }
+        }
+      }
+    }
+  }
+}

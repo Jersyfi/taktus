@@ -71,30 +71,13 @@
 	.chart {
 		margin: 0 0 2rem;
 		max-width: 52rem;
-		/* The reference categorical order, validated for both surfaces (dataviz palette). */
-		--series-1: #2a78d6;
-		--series-2: #eb6834;
-		--kind-input: #2a78d6;
-		--kind-cache_write: #eb6834;
-		--kind-cache_read: #1baf7a;
-		--kind-output: #eda100;
-	}
-	@media (prefers-color-scheme: dark) {
-		.chart {
-			--series-1: #3987e5;
-			--series-2: #d95926;
-			--kind-input: #3987e5;
-			--kind-cache_write: #d95926;
-			--kind-cache_read: #199e70;
-			--kind-output: #c98500;
-		}
 	}
 	figcaption {
 		font-size: 0.8rem;
 		font-weight: 500;
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
-		color: var(--ink-2);
+		color: var(--text-secondary);
 		margin-bottom: 0.6rem;
 	}
 	.legend {
@@ -105,7 +88,7 @@
 		padding: 0;
 		margin: 0 0 0.8rem;
 		font-size: 0.85rem;
-		color: var(--ink-2);
+		color: var(--text-secondary);
 	}
 	.legend li {
 		display: flex;
@@ -128,14 +111,14 @@
 		align-items: center;
 	}
 	.step {
-		font-family: var(--mono);
+		font-family: var(--font-mono);
 		font-size: 0.8rem;
 		overflow-wrap: anywhere;
 	}
 	.bars {
 		display: grid;
 		gap: 3px;
-		border-left: 1px solid var(--line);
+		border-left: 1px solid var(--border-subtle);
 		padding-left: 2px;
 	}
 	.track {
@@ -154,11 +137,11 @@
 	}
 	.bar[data-series='1'],
 	.swatch[data-series='1'] {
-		background: var(--series-1);
+		background: var(--chart-series-1);
 	}
 	.bar[data-series='2'],
 	.swatch[data-series='2'] {
-		background: var(--series-2);
+		background: var(--chart-series-2);
 	}
 	.bar.split {
 		background: none;
@@ -169,23 +152,23 @@
 	}
 	.part[data-kind='input'],
 	.swatch[data-kind='input'] {
-		background: var(--kind-input);
+		background: var(--chart-kind-input);
 	}
 	.part[data-kind='cache_write'],
 	.swatch[data-kind='cache_write'] {
-		background: var(--kind-cache_write);
+		background: var(--chart-kind-cache_write);
 	}
 	.part[data-kind='cache_read'],
 	.swatch[data-kind='cache_read'] {
-		background: var(--kind-cache_read);
+		background: var(--chart-kind-cache_read);
 	}
 	.part[data-kind='output'],
 	.swatch[data-kind='output'] {
-		background: var(--kind-output);
+		background: var(--chart-kind-output);
 	}
 	.value {
 		font-size: 0.8rem;
-		color: var(--ink-2);
+		color: var(--text-secondary);
 		white-space: nowrap;
 	}
 </style>
