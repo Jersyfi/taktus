@@ -77,15 +77,8 @@
 </section>
 
 <style>
-	.eyebrow {
-		font-size: 0.75rem;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: var(--ink-3);
-		margin: 0 0 0.5rem;
-	}
 	.muted {
-		color: var(--ink-2);
+		color: var(--text-secondary);
 		font-size: 0.84rem;
 	}
 	.scroll {
@@ -107,17 +100,17 @@
 		min-width: 9rem;
 	}
 	td {
-		background: var(--paper-2);
+		background: var(--bg-surface);
 		border-radius: 10px;
 		padding: 0.35rem;
 		min-width: 8rem;
 	}
 	.lane.role td {
-		background: color-mix(in oklch, var(--person) 8%, var(--paper-2));
+		background: color-mix(in oklch, var(--family-person) 8%, var(--bg-surface));
 	}
 	.units {
 		display: block;
-		color: var(--ink-3);
+		color: var(--text-subtle);
 		font-size: 0.76rem;
 	}
 	.chip {
@@ -125,25 +118,25 @@
 		margin: 0.15rem;
 		padding: 0.15rem 0.45rem;
 		border-radius: 999px;
-		border: 1px solid var(--line);
-		background: var(--paper);
+		border: 1px solid var(--border-subtle);
+		background: var(--bg-canvas);
 	}
 	.chip.method-llm,
 	.chip.method-worker {
-		border-color: var(--variable);
+		border-color: var(--family-variable);
 	}
 	.chip.method-human {
-		border-color: var(--person);
+		border-color: var(--family-person);
 	}
 	.chip.fallback {
 		border-style: dashed;
-		color: var(--ink-2);
+		color: var(--text-secondary);
 	}
 	.chip.crossing {
-		outline: 2px solid var(--alert);
+		outline: 2px solid var(--family-alert);
 	}
 	.texts {
-		color: var(--ink-2);
+		color: var(--text-secondary);
 		font-size: 0.82rem;
 	}
 </style>

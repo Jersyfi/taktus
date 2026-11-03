@@ -55,10 +55,6 @@
 		flex: 1 1 16rem;
 	}
 	input,
-	button {
-		font: inherit;
-		padding: 0.4rem 0.6rem;
-	}
 	.hint {
 		flex-basis: 100%;
 		font-size: 0.85rem;

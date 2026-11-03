@@ -57,14 +57,14 @@ export const MEMBRANES = new Set(['beaded', 'fluid', 'soft', 'dormant', 'tissue'
 
 /** The hue a membrane takes on top of its form: the family's, or the ink's. */
 export const HUES: Record<string, string> = {
-	beaded: 'var(--reproducible)',
-	fluid: 'var(--variable)',
-	soft: 'var(--person)',
-	dormant: 'var(--waiting)',
-	tissue: 'var(--ink-2)',
-	crystal: 'var(--ink)',
-	root: 'var(--ink-2)',
-	signal: 'var(--ink-2)'
+	beaded: 'var(--family-reproducible)',
+	fluid: 'var(--family-variable)',
+	soft: 'var(--family-person)',
+	dormant: 'var(--family-waiting)',
+	tissue: 'var(--text-secondary)',
+	crystal: 'var(--text-primary)',
+	root: 'var(--text-secondary)',
+	signal: 'var(--text-secondary)'
 };
 
 /** A nucleus, as a list of drawn parts in a box of 100: one per method kind. */

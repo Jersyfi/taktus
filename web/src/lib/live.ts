@@ -42,6 +42,8 @@ export interface FollowLevel<T> {
 	onAbsent: () => void;
 	onRefused: () => void;
 	onConnected?: (connected: boolean) => void;
+	/** Each change the stream delivered, before the level is read again (ADR-0178 §3). */
+	onChange?: () => void;
 	fetcher?: typeof fetch;
 	sleep?: (ms: number) => Promise<void>;
 }
@@ -78,7 +80,10 @@ export async function followLevel<T>(options: FollowLevel<T>): Promise<void> {
 		fetcher,
 		...(options.sleep ? { sleep: options.sleep } : {}),
 		...(options.onConnected ? { onConnected: options.onConnected } : {}),
-		onEvent: () => void rereader.request()
+		onEvent: (event) => {
+			if (event.kind === 'change') options.onChange?.();
+			void rereader.request();
+		}
 	});
 	if (ended.reason === 'refused' && ended.status === 401) refuse();
 	options.signal.removeEventListener('abort', stopBoth);

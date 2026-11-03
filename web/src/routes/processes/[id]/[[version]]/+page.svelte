@@ -4,6 +4,7 @@
 	(ADR-0063). Without a version in the address, the active version is drawn.
 -->
 <script lang="ts">
+	import { frame } from '../../../../lib/frame.svelte';
 	import { onDestroy } from 'svelte';
 	import { page } from '$app/state';
 	import { surface } from '../../../../lib/api';
@@ -31,6 +32,7 @@
 		const path = `levels/processes/${encodeURIComponent(processId)}${
 			version ? `?version=${encodeURIComponent(version)}` : ''
 		}`;
+		frame.follow();
 		void followLevel<ProcessLevel>({
 			base: surface(location.href),
 			path,
@@ -47,10 +49,17 @@
 			onRefused: () => {
 				signedIn = false;
 			},
-			onConnected: (open) => (connected = open)
+			onConnected: (open) => {
+				connected = open;
+				frame.connected(open);
+			},
+			onChange: () => frame.changed()
 		});
 	});
-	onDestroy(() => stop?.abort());
+	onDestroy(() => {
+		stop?.abort();
+		frame.leave();
+	});
 </script>
 
 {#if !signedIn}
@@ -58,7 +67,7 @@
 {:else if absent}
 	<p>No process {processId}{version ? `@${version}` : ''} you may see.</p>
 {:else if level}
-	<p class="status" aria-live="polite">{connected ? 'Live.' : 'Reconnecting…'}</p>
+	<p class="sr-only" aria-live="polite">{connected ? 'Live.' : 'Reconnecting…'}</p>
 	<ProcessView {level} motionAllowed={motion.allowed} />
 {:else}
 	<p class="status">Reading process {processId}…</p>
@@ -66,7 +75,7 @@
 
 <style>
 	.status {
-		color: var(--muted);
+		color: var(--text-secondary);
 		font-size: 0.9rem;
 	}
 </style>

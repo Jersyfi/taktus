@@ -79,6 +79,36 @@ describe('a level followed live', () => {
 		expect(refused).toBe(true);
 	});
 
+	it('tells each change the stream delivered, and not its snapshot (ADR-0178 §3)', async () => {
+		let opened = 0;
+		const fetcher = (async (url: URL) => {
+			if (url.pathname.endsWith('/changes')) {
+				opened += 1;
+				if (opened > 1) return new Response(null, { status: 401 });
+				return stream(
+					'event: snapshot\nid: h1\ndata: {"position":"h1","scope":{"kind":"run","id":"run_example"},"runs":[]}\n\n' +
+						'event: change\nid: h2\ndata: {"position":"h2","run":"run_example","kind":"step.admitted","recorded_at":"t","state":{"run":"running"}}\n\n' +
+						'event: change\nid: h3\ndata: {"position":"h3","run":"run_example","kind":"run.finished","recorded_at":"t","state":{"run":"finished"}}\n\n'
+				);
+			}
+			return json(LEVEL);
+		}) as unknown as typeof fetch;
+		let changes = 0;
+		await followLevel<RunLevel>({
+			base: new URL('https://h.test/x/'),
+			path: 'levels/runs/run_example',
+			scope: { run: 'run_example' },
+			signal: new AbortController().signal,
+			onLevel: () => {},
+			onAbsent: () => {},
+			onRefused: () => {},
+			onChange: () => (changes += 1),
+			fetcher,
+			sleep: () => new Promise((r) => setTimeout(r, 5))
+		});
+		expect(changes).toBe(2);
+	});
+
 	it('tells a level the reader may not see as absent', async () => {
 		let absent = false;
 		const fetcher = (async (url: URL) =>

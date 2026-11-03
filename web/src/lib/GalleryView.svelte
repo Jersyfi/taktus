@@ -109,26 +109,19 @@
 </section>
 
 <style>
-	.eyebrow {
-		font-size: 0.75rem;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: var(--ink-3);
-		margin: 0 0 0.5rem;
-	}
 	.muted {
-		color: var(--ink-2);
+		color: var(--text-secondary);
 		font-size: 0.9rem;
 	}
 	.blueprint {
-		border: 1px solid var(--line);
+		border: 1px solid var(--border-subtle);
 		border-radius: 18px;
 		padding: 1rem 1.2rem;
 		margin: 1rem 0;
 		max-width: 52rem;
 	}
 	.process {
-		border-top: 1px solid var(--line);
+		border-top: 1px solid var(--border-subtle);
 		padding-top: 0.75rem;
 		margin-top: 0.75rem;
 	}
@@ -136,7 +129,7 @@
 		padding-left: 1.2rem;
 	}
 	.refused {
-		color: var(--ink-3);
+		color: var(--text-subtle);
 	}
 	form {
 		display: grid;
@@ -150,29 +143,13 @@
 	input {
 		font: inherit;
 		padding: 0.5rem 0.75rem;
-		border: 1px solid var(--line);
+		border: 1px solid var(--border-subtle);
 		border-radius: 10px;
-		background: var(--paper);
-		color: var(--ink);
-	}
-	button {
-		font: inherit;
-		border: 1px solid var(--ink);
-		border-radius: 10px;
-		padding: 0.45rem 0.9rem;
-		cursor: pointer;
-		justify-self: start;
-	}
-	button.primary {
-		background: var(--ink);
-		color: var(--paper);
-	}
-	button:disabled {
-		opacity: 0.5;
-		cursor: default;
+		background: var(--bg-canvas);
+		color: var(--text-primary);
 	}
 	.message {
-		background: var(--paper-2);
+		background: var(--bg-surface);
 		border-radius: 12px;
 		padding: 0.7rem 0.9rem;
 		max-width: 46rem;
