@@ -77,13 +77,6 @@
 </section>
 
 <style>
-	.eyebrow {
-		font-size: 0.75rem;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: var(--ink-3);
-		margin: 0 0 0.5rem;
-	}
 	.entries {
 		list-style: none;
 		padding: 0;
@@ -91,12 +84,12 @@
 		gap: 0.8rem;
 	}
 	.entries > li {
-		background: var(--paper-2);
+		background: var(--bg-surface);
 		border-radius: 18px;
 		padding: 0.9rem 1rem;
 	}
 	h2 {
-		font-family: var(--serif);
+		font-family: var(--font-display);
 		margin: 0 0 0.3rem;
 	}
 	form {
@@ -112,19 +105,15 @@
 	input {
 		font: inherit;
 		padding: 0.35rem 0.5rem;
-		border: 1px solid var(--line);
+		border: 1px solid var(--border-subtle);
 		border-radius: 8px;
-		background: var(--paper);
-		color: var(--ink);
+		background: var(--bg-canvas);
+		color: var(--text-primary);
 		max-width: 100%;
-	}
-	button {
-		justify-self: start;
-		font: inherit;
 	}
 	.ways,
 	.muted {
-		color: var(--ink-2);
+		color: var(--text-secondary);
 		font-size: 0.86rem;
 	}
 	code {

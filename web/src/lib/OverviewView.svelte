@@ -12,14 +12,35 @@
 	import Graph from './Graph.svelte';
 	import { chosen } from './motion.svelte';
 	import { processLink, runLink } from './links';
+	import type { Snippet } from 'svelte';
 	import type { OverviewLevel } from './types';
 
-	let { level, motionAllowed }: { level: OverviewLevel; motionAllowed: boolean } = $props();
+	let {
+		level,
+		motionAllowed,
+		lead,
+		between,
+		after
+	}: {
+		level: OverviewLevel;
+		motionAllowed: boolean;
+		/** Under the sentence: the state of the page's stream (ADR-0178 §3). */
+		lead?: Snippet;
+		/** Before what runs: what waits for the reader. */
+		between?: Snippet;
+		/** After what runs, before the text equivalent. */
+		after?: Snippet;
+	} = $props();
 </script>
 
 <section class="overview" aria-labelledby="overview-title">
-	<p class="eyebrow">Overview</p>
-	<h1 id="overview-title">{level.summary}</h1>
+	<header class="hero">
+		<p class="eyebrow">Today</p>
+		<h1 id="overview-title">{level.summary}</h1>
+		{@render lead?.()}
+	</header>
+	{@render between?.()}
+	<h2 class="what-runs">What runs</h2>
 	{#each level.areas as area (area.id)}
 		<section class="area" aria-label="Area {area.name}" data-area={area.id}>
 			<div class="area-head">
@@ -38,7 +59,11 @@
 								<a href={processLink(process.active_version ? `${process.id}@${process.active_version}` : process.id)}
 									>{process.name}</a>
 								{#if process.autonomy_level !== undefined}
-									<span class="level" title="Autonomy level {process.autonomy_level}">L{process.autonomy_level}</span>
+									<span class="level" title="Autonomy level {process.autonomy_level}"
+										><span class="steps" aria-hidden="true"
+											>{#each [1, 2, 3, 4] as n (n)}<span class:on={n <= (process.autonomy_level ?? 0)}></span>{/each}</span
+										>L{process.autonomy_level}</span
+									>
 								{/if}
 							</div>
 							{#if process.cells?.length}
@@ -68,6 +93,8 @@
 		</section>
 	{/each}
 
+	{@render after?.()}
+
 	<section class="text" aria-label="The overview as text">
 		<h2>As text</h2>
 		<ol>
@@ -86,60 +113,89 @@
 </section>
 
 <style>
-	.eyebrow {
-		font-size: 0.75rem;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: var(--ink-3);
-		margin: 0 0 0.5rem;
+	.hero {
+		position: relative;
+		padding: var(--sp-300) 0 var(--sp-400);
+		margin-bottom: var(--sp-300);
+	}
+	/* The beat under the sentence: the signature into the primary hue, the Takt of the page. */
+	.hero::after {
+		content: '';
+		position: absolute;
+		inset-inline-start: 0;
+		inset-block-end: 0;
+		width: min(100%, 22rem);
+		height: 4px;
+		border-radius: var(--r-full);
+		background: linear-gradient(to right, var(--accent-signature), var(--accent-primary) 60%, transparent);
 	}
 	h1 {
-		max-width: 24ch;
-		margin-bottom: 2rem;
+		font-size: clamp(var(--fs-600), 5.4vw, var(--fs-800));
+		max-width: 22ch;
+		margin-bottom: var(--sp-200);
+	}
+	.what-runs {
+		margin-top: var(--sp-600);
 	}
 	.area {
-		margin-bottom: 2.5rem;
+		margin-bottom: var(--sp-500);
 	}
 	.area-head {
 		display: flex;
 		align-items: baseline;
-		gap: 1rem;
+		gap: var(--sp-200);
 		flex-wrap: wrap;
+	}
+	.area-head h2 {
+		margin: 0;
+		font-family: var(--font-display);
+		font-size: var(--fs-500);
+		font-weight: var(--fw-bold);
+		letter-spacing: -0.01em;
+		text-transform: none;
+		color: var(--text-primary);
 	}
 	.figures,
 	.meta {
-		color: var(--ink-2);
-		font-size: 0.85rem;
-		margin: 0.15rem 0;
+		color: var(--text-secondary);
+		font-size: var(--fs-075);
+		margin: var(--sp-025) 0;
+		font-family: var(--font-mono);
 	}
-	/* The body: every process an organ of soft tissue; one that works stands out a little. */
+	/* The body: every process an organ, raised on the canvas; one that works carries a ring. */
 	.organs {
 		list-style: none;
 		padding: 0;
+		margin: var(--sp-200) 0 0;
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
-		gap: 0.9rem;
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+		align-items: start;
+		gap: var(--sp-200);
 	}
 	.organ {
-		border-radius: 28px;
-		padding: 1.1rem 1.25rem 1rem;
-		background:
-			radial-gradient(80% 90% at 30% 20%, color-mix(in oklch, var(--reproducible) 4%, transparent), transparent 70%),
-			var(--paper-2);
+		position: relative;
+		border-radius: var(--r-xl);
+		padding: var(--sp-200) var(--sp-250);
+		background: var(--bg-surface);
+		box-shadow: var(--shadow-raised);
+		border: var(--bw-hairline) solid var(--border-subtle);
 		min-width: 0;
+		overflow: hidden;
 	}
 	.organ.busy {
+		border-color: var(--family-reproducible);
 		background:
-			radial-gradient(80% 90% at 30% 20%, color-mix(in oklch, var(--reproducible) 7%, transparent), transparent 70%),
-			color-mix(in oklch, var(--paper-2) 70%, var(--paper));
-		box-shadow: inset 0 0 0 1px var(--line);
+			radial-gradient(120% 80% at 0% 0%, var(--family-reproducible-surface), transparent 60%),
+			var(--bg-surface);
 	}
 	.head {
 		display: flex;
 		justify-content: space-between;
-		gap: 0.6rem;
+		gap: var(--sp-100);
 		align-items: baseline;
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
+		font-size: var(--fs-300);
+		line-height: var(--lh-snug);
 	}
 	.head a {
 		text-decoration: none;
@@ -148,30 +204,58 @@
 		text-decoration: underline;
 	}
 	.level {
-		font-family: var(--mono);
-		font-size: 0.72rem;
-		font-weight: 400;
-		color: var(--ink-2);
-		border: 1px solid var(--line);
-		border-radius: 6px;
-		padding: 0 0.35rem;
+		display: inline-flex;
+		align-items: center;
+		gap: var(--sp-050);
+		font-family: var(--font-mono);
+		font-size: var(--fs-075);
+		font-weight: var(--fw-regular);
+		color: var(--text-secondary);
+		flex: none;
+	}
+	/* The level as four steps, filled up to it; the figure beside it says the same. */
+	.steps {
+		display: inline-flex;
+		align-items: flex-end;
+		gap: 2px;
+		height: 12px;
+	}
+	.steps span {
+		width: 3px;
+		border-radius: var(--r-xs);
+		background: var(--border-subtle);
+	}
+	.steps span:nth-child(1) {
+		height: 40%;
+	}
+	.steps span:nth-child(2) {
+		height: 60%;
+	}
+	.steps span:nth-child(3) {
+		height: 80%;
+	}
+	.steps span:nth-child(4) {
+		height: 100%;
+	}
+	.steps span.on {
+		background: var(--accent-primary);
 	}
 	.running {
 		list-style: none;
 		padding: 0;
-		margin: 0.5rem 0 0;
+		margin: var(--sp-100) 0 0;
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.4rem;
+		gap: var(--sp-050);
 	}
 	.running li {
 		display: flex;
-		gap: 0.35rem;
+		gap: var(--sp-050);
 		align-items: center;
-		font-size: 0.8rem;
-		padding: 0.15rem 0.6rem 0.15rem 0.2rem;
-		border-radius: 999px;
-		background: var(--paper);
-		border: 1px solid var(--line);
+		font-size: var(--fs-075);
+		padding: var(--sp-025) var(--sp-150) var(--sp-025) var(--sp-025);
+		border-radius: var(--r-full);
+		background: var(--bg-canvas);
+		border: var(--bw-hairline) solid var(--border-subtle);
 	}
 </style>

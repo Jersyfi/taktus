@@ -9,6 +9,7 @@
 	page: `#/runs/<run>` and `#/runs/<run>/steps/<step>`, the link a share hands on.
 -->
 <script lang="ts">
+	import { frame } from './frame.svelte';
 	import { onDestroy } from 'svelte';
 	import { surface } from './api';
 	import SignInForm from './SignInForm.svelte';
@@ -50,6 +51,7 @@
 		asked = null;
 		const controller = new AbortController();
 		stop = controller;
+		frame.follow();
 		void followLevel<RunLevel>({
 			base: base(),
 			path: `levels/runs/${encodeURIComponent(runId)}`,
@@ -66,10 +68,17 @@
 			onRefused: () => {
 				signedIn = false;
 			},
-			onConnected: (open) => (connected = open)
+			onConnected: (open) => {
+				connected = open;
+				frame.connected(open);
+			},
+			onChange: () => frame.changed()
 		});
 	});
-	onDestroy(() => stop?.abort());
+	onDestroy(() => {
+		stop?.abort();
+		frame.leave();
+	});
 
 	// The time left on a held take-over moves without a change on the stream.
 	$effect(() => {
@@ -128,7 +137,7 @@
 {:else if absent}
 	<p>No run {runId} you may see.</p>
 {:else if level}
-	<p class="status" aria-live="polite">{connected ? 'Live.' : 'Reconnecting…'}</p>
+	<p class="sr-only" aria-live="polite">{connected ? 'Live.' : 'Reconnecting…'}</p>
 	{@const shown = level}
 	<RunView level={shown} motionAllowed={motion.allowed}>
 		{#snippet acts()}
@@ -143,7 +152,7 @@
 
 <style>
 	.status {
-		color: var(--muted);
+		color: var(--text-secondary);
 		font-size: 0.9rem;
 	}
 </style>

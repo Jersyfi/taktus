@@ -84,18 +84,11 @@
 </section>
 
 <style>
-	.eyebrow {
-		font-size: 0.75rem;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: var(--ink-3);
-		margin: 0 0 0.5rem;
-	}
 	h1 {
 		max-width: 34ch;
 	}
 	.muted {
-		color: var(--ink-2);
+		color: var(--text-secondary);
 		font-size: 0.86rem;
 		margin: 0.2rem 0;
 	}
@@ -111,14 +104,14 @@
 		padding: 0.55rem 0.8rem;
 		margin: 0.4rem 0;
 		border-radius: 14px;
-		background: var(--paper-2);
+		background: var(--bg-surface);
 	}
 	/* What breaks carries a solid edge, what degrades a dashed one: not colour alone. */
 	.edges.breaks li {
-		border-left: 4px solid var(--alert);
+		border-left: 4px solid var(--family-alert);
 	}
 	.edges.degrades li {
-		border-left: 4px dashed var(--variable);
+		border-left: 4px dashed var(--family-variable);
 	}
 	.flow li {
 		position: relative;
@@ -130,13 +123,13 @@
 		left: -0.9rem;
 		top: -0.5rem;
 		bottom: 50%;
-		border-left: 1.5px solid var(--line);
-		border-bottom: 1.5px solid var(--line);
+		border-left: 1.5px solid var(--border-subtle);
+		border-bottom: 1.5px solid var(--border-subtle);
 		width: 0.7rem;
 	}
 	.flow li.origin {
 		margin-left: 0;
-		box-shadow: inset 0 0 0 1.5px var(--ink);
+		box-shadow: inset 0 0 0 1.5px var(--text-primary);
 	}
 	.flow li.origin::before {
 		display: none;
@@ -146,8 +139,8 @@
 		font-size: 0.72rem;
 		border-radius: 999px;
 		padding: 0 0.5rem;
-		border: 1.5px solid var(--alert);
-		color: var(--alert);
+		border: 1.5px solid var(--family-alert);
+		color: var(--family-alert);
 	}
 	.counts {
 		display: flex;
@@ -155,13 +148,13 @@
 		flex-wrap: wrap;
 	}
 	.counts dt {
-		color: var(--ink-3);
+		color: var(--text-subtle);
 		font-size: 0.75rem;
 	}
 	.counts dd {
 		margin: 0;
 		font-size: 1.4rem;
-		font-family: var(--serif);
+		font-family: var(--font-display);
 	}
 	.places li {
 		display: flex;
@@ -169,7 +162,7 @@
 		flex-wrap: wrap;
 	}
 	.places li.outside {
-		box-shadow: inset 0 0 0 1.5px var(--alert);
+		box-shadow: inset 0 0 0 1.5px var(--family-alert);
 	}
 	a {
 		color: inherit;

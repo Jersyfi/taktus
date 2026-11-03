@@ -30,60 +30,65 @@
 
 <style>
 	.operation-lines {
-		margin: 2.5rem 0;
+		margin: var(--sp-600) 0 var(--sp-400);
 	}
 	.sentence {
-		font-family: var(--serif);
-		font-size: 1.35rem;
-		line-height: 1.25;
-		margin: 0 0 0.9rem;
+		font-family: var(--font-display);
+		font-size: var(--fs-500);
+		font-weight: var(--fw-bold);
+		line-height: var(--lh-tight);
+		margin: 0 0 var(--sp-200);
 	}
 	ul {
 		list-style: none;
 		padding: 0;
 		margin: 0;
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
-		gap: 0.6rem;
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+		gap: var(--sp-150);
 	}
 	a {
 		display: grid;
-		grid-template-columns: auto auto 1fr;
+		grid-template-columns: auto 1fr;
+		column-gap: var(--sp-150);
+		row-gap: var(--sp-050);
 		align-items: baseline;
-		gap: 0.6rem;
+		height: 100%;
 		text-decoration: none;
-		padding: 0.75rem 1rem;
-		border-radius: 18px;
-		background: var(--paper-2);
+		padding: var(--sp-200);
+		border-radius: var(--r-lg);
+		background: var(--bg-surface);
+		border: var(--bw-hairline) solid var(--border-subtle);
 	}
 	a:hover .label {
 		text-decoration: underline;
 	}
 	.look a {
-		box-shadow: inset 0 0 0 1.5px color-mix(in oklch, var(--alert) 55%, var(--line));
+		background: var(--status-danger-surface);
+		border-color: var(--status-danger-border);
 	}
 	/* A ring is calm; a filled dot needs a look. The hue repeats the form, never replaces it. */
 	.mark {
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
-		border: 1.5px solid var(--ink-3);
+		width: 10px;
+		height: 10px;
+		border-radius: var(--r-full);
+		border: var(--bw-thick) solid var(--text-subtle);
 		align-self: center;
 	}
 	.look .mark {
-		border-color: var(--alert);
-		background: var(--alert);
+		border-color: var(--status-danger-accent);
+		background: var(--status-danger-accent);
 	}
 	.label {
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 	}
 	.text {
-		color: var(--ink-2);
-		font-size: 0.88rem;
+		grid-column: 2;
+		color: var(--text-secondary);
+		font-size: var(--fs-100);
 	}
-	@media (max-width: 760px) {
-		ul {
-			grid-template-columns: 1fr;
-		}
+	.look .text,
+	.look .label {
+		color: var(--status-danger-text);
 	}
 </style>

@@ -106,23 +106,16 @@
 </section>
 
 <style>
-	.eyebrow {
-		font-size: 0.75rem;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: var(--ink-3);
-		margin: 0 0 0.5rem;
-	}
 	h1 {
 		max-width: 28ch;
 	}
 	.level,
 	.muted {
-		color: var(--ink-2);
+		color: var(--text-secondary);
 		font-size: 0.88rem;
 	}
 	.message {
-		background: var(--paper-2);
+		background: var(--bg-surface);
 		border-radius: 12px;
 		padding: 0.6rem 0.9rem;
 		max-width: 46rem;
@@ -137,11 +130,11 @@
 	.lack {
 		border-radius: 24px;
 		padding: 1rem 1.2rem;
-		background: var(--paper-2);
+		background: var(--bg-surface);
 	}
 	/* A candidate may leave: an outline on top of its tag, never colour alone. */
 	.lack.candidate {
-		box-shadow: inset 3px 0 0 var(--ink);
+		box-shadow: inset 3px 0 0 var(--text-primary);
 	}
 	.lack p {
 		margin: 0.3rem 0;
@@ -153,22 +146,22 @@
 		align-items: baseline;
 	}
 	.tag {
-		font-family: var(--mono);
+		font-family: var(--font-mono);
 		font-size: 0.7rem;
-		border: 1px solid var(--ink-2);
+		border: 1px solid var(--text-secondary);
 		border-radius: 5px;
 		padding: 0 0.35rem;
 		white-space: nowrap;
 	}
 	.withheld {
 		font-size: 0.85rem;
-		color: var(--alert);
+		color: var(--family-alert);
 	}
 	details pre {
 		white-space: pre-wrap;
-		font-family: var(--mono);
+		font-family: var(--font-mono);
 		font-size: 0.78rem;
-		background: var(--paper);
+		background: var(--bg-canvas);
 		border-radius: 10px;
 		padding: 0.75rem;
 	}
@@ -182,26 +175,8 @@
 		flex-wrap: wrap;
 		margin-top: 0.5rem;
 	}
-	button {
-		font: inherit;
-		border: 1px solid var(--line);
-		background: var(--paper);
-		color: var(--ink);
-		border-radius: 10px;
-		padding: 0.4rem 0.9rem;
-		cursor: pointer;
-	}
-	button.primary {
-		background: var(--ink);
-		color: var(--paper);
-		border-color: var(--ink);
-	}
-	button:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
 	.reading {
-		background: var(--paper);
+		background: var(--bg-canvas);
 		border-radius: 14px;
 		padding: 0.8rem 1rem;
 		margin-top: 0.5rem;

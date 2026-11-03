@@ -89,18 +89,11 @@
 </section>
 
 <style>
-	.eyebrow {
-		font-size: 0.75rem;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: var(--ink-3);
-		margin: 0 0 0.5rem;
-	}
 	h1 {
 		max-width: 34ch;
 	}
 	.muted {
-		color: var(--ink-2);
+		color: var(--text-secondary);
 		font-size: 0.86rem;
 		margin: 0.2rem 0;
 	}
@@ -110,17 +103,17 @@
 		gap: 0.6rem;
 	}
 	.tiles div {
-		background: var(--paper-2);
+		background: var(--bg-surface);
 		border-radius: 18px;
 		padding: 0.7rem 0.9rem;
 	}
 	.tiles dt {
-		color: var(--ink-3);
+		color: var(--text-subtle);
 		font-size: 0.75rem;
 	}
 	.tiles dd {
 		margin: 0;
-		font-family: var(--serif);
+		font-family: var(--font-display);
 		font-size: 1.6rem;
 	}
 	.designed {
@@ -132,13 +125,13 @@
 		margin: 1.2rem 0 0.6rem;
 	}
 	.designed li {
-		border: 1.5px solid var(--reproducible);
+		border: 1.5px solid var(--family-reproducible);
 		border-radius: 999px;
 		padding: 0.1rem 0.7rem;
 	}
 	.designed li + li::before {
 		content: '→ ';
-		color: var(--ink-3);
+		color: var(--text-subtle);
 	}
 	.paths,
 	.waiting,
@@ -152,16 +145,16 @@
 		padding: 0.5rem 0.8rem;
 		margin: 0.4rem 0;
 		border-radius: 14px;
-		background: var(--paper-2);
+		background: var(--bg-surface);
 		overflow: hidden;
 	}
 	.paths li.designed {
-		box-shadow: inset 0 0 0 1.5px var(--reproducible);
+		box-shadow: inset 0 0 0 1.5px var(--family-reproducible);
 	}
 	.bar {
 		position: absolute;
 		inset: 0 auto 0 0;
-		background: color-mix(in oklch, var(--reproducible) 12%, transparent);
+		background: color-mix(in oklch, var(--family-reproducible) 12%, transparent);
 	}
 	.paths p {
 		position: relative;
@@ -172,17 +165,17 @@
 		border-radius: 999px;
 		padding: 0 0.5rem;
 		margin-right: 0.3rem;
-		border: 1px solid var(--line);
+		border: 1px solid var(--border-subtle);
 	}
 	.mark.fell_back {
-		border-color: var(--person);
+		border-color: var(--family-person);
 	}
 	.mark.retried {
 		border-style: dashed;
 	}
 	.mark.ended {
-		border-color: var(--alert);
-		color: var(--alert);
+		border-color: var(--family-alert);
+		color: var(--family-alert);
 	}
 	.waiting li {
 		margin: 0.5rem 0;
@@ -196,16 +189,16 @@
 		max-width: 28rem;
 	}
 	.part {
-		background: var(--waiting);
+		background: var(--family-waiting);
 	}
 	.part.wait {
-		background: var(--person);
+		background: var(--family-person);
 	}
 	.part.limit {
-		background: var(--variable);
+		background: var(--family-variable);
 	}
 	.proposals li {
-		border-left: 3px solid var(--ink);
+		border-left: 3px solid var(--text-primary);
 		padding-left: 0.7rem;
 		margin: 0.6rem 0;
 	}

@@ -97,13 +97,6 @@
 </section>
 
 <style>
-	.eyebrow {
-		font-size: 0.75rem;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: var(--ink-3);
-		margin: 0 0 0.5rem;
-	}
 	.meta {
 		margin: 0.15rem 0 0;
 		opacity: 0.75;
@@ -117,10 +110,10 @@
 	.autonomy {
 		margin: 1rem 0 1.5rem;
 		padding: 0.9rem 1.1rem;
-		border: 1px solid var(--line);
+		border: 1px solid var(--border-subtle);
 		border-radius: 14px;
 		max-width: 56rem;
-		color: var(--ink-2);
+		color: var(--text-secondary);
 	}
 	.autonomy p {
 		margin: 0.2rem 0;
@@ -139,6 +132,6 @@
 		padding: 0.2rem 0;
 	}
 	.state {
-		color: var(--muted);
+		color: var(--text-secondary);
 	}
 </style>

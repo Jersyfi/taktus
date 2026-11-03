@@ -9,6 +9,7 @@ build/
 src/taktus/shared/generated/
 web/build/
 web/.svelte-kit/
+web/src/lib/generated/tokens.css
 node_modules/
 
 # environment — never commit a secret value

@@ -207,28 +207,21 @@
 		margin-top: 2rem;
 		max-width: 52rem;
 	}
-	.eyebrow {
-		font-family: var(--mono);
-		font-size: 0.72rem;
-		letter-spacing: 0.04em;
-		color: var(--ink-3);
-		margin: 0 0 0.35rem;
-	}
 	.muted {
-		color: var(--ink-2);
+		color: var(--text-secondary);
 	}
 	.mono,
 	pre {
-		font-family: var(--mono);
+		font-family: var(--font-mono);
 		font-size: 0.82rem;
 	}
 	.said {
-		background: var(--paper-2);
+		background: var(--bg-surface);
 		border-radius: 12px;
 		padding: 0.6rem 0.9rem;
 	}
 	.card {
-		border: 1px solid var(--line);
+		border: 1px solid var(--border-subtle);
 		border-radius: 14px;
 		padding: 0.9rem 1.1rem;
 		margin: 0.6rem 0;
@@ -238,8 +231,8 @@
 	}
 	/* A step a person holds carries the person family's hue: the one colour this page adds. */
 	.card.held {
-		border-color: var(--person);
-		box-shadow: inset 3px 0 0 var(--person);
+		border-color: var(--family-person);
+		box-shadow: inset 3px 0 0 var(--family-person);
 	}
 	.card[data-standing='lapsed'],
 	.card[data-standing='refused'] {
@@ -251,13 +244,13 @@
 	.bar {
 		height: 4px;
 		border-radius: 2px;
-		background: var(--paper-2);
+		background: var(--bg-surface);
 		overflow: hidden;
 	}
 	.bar span {
 		display: block;
 		height: 100%;
-		background: var(--person);
+		background: var(--family-person);
 	}
 	.state {
 		display: grid;
@@ -278,7 +271,7 @@
 	}
 	pre {
 		margin: 0;
-		background: var(--paper-2);
+		background: var(--bg-surface);
 		border-radius: 10px;
 		padding: 0.6rem 0.8rem;
 		overflow-x: auto;
@@ -292,11 +285,11 @@
 	td {
 		text-align: left;
 		padding: 0.2rem 0.6rem 0.2rem 0;
-		border-bottom: 1px solid var(--line);
+		border-bottom: 1px solid var(--border-subtle);
 	}
 	th {
 		font-weight: 500;
-		color: var(--ink-2);
+		color: var(--text-secondary);
 	}
 	.result {
 		display: flex;
@@ -311,18 +304,18 @@
 	}
 	textarea {
 		font: inherit;
-		font-family: var(--mono);
+		font-family: var(--font-mono);
 		font-size: 0.85rem;
 		padding: 0.5rem 0.7rem;
-		border: 1px solid var(--line);
+		border: 1px solid var(--border-subtle);
 		border-radius: 10px;
-		background: var(--paper);
-		color: var(--ink);
+		background: var(--bg-canvas);
+		color: var(--text-primary);
 		resize: vertical;
 	}
 	.reading,
 	.confirm {
-		background: var(--paper-2);
+		background: var(--bg-surface);
 		border-radius: 12px;
 		padding: 0.75rem 0.9rem;
 		margin-top: 0.6rem;
@@ -334,7 +327,7 @@
 		gap: 0.5rem;
 	}
 	.offers li {
-		border: 1px solid var(--line);
+		border: 1px solid var(--border-subtle);
 		border-radius: 14px;
 		padding: 0.7rem 1rem;
 		display: flex;
@@ -350,25 +343,6 @@
 		display: flex;
 		gap: 0.5rem;
 		flex-wrap: wrap;
-	}
-	button {
-		font: inherit;
-		border: 1px solid var(--line);
-		background: var(--paper);
-		color: var(--ink);
-		border-radius: 10px;
-		padding: 0.4rem 0.9rem;
-		cursor: pointer;
-		align-self: flex-start;
-	}
-	button.primary {
-		background: var(--ink);
-		color: var(--paper);
-		border-color: var(--ink);
-	}
-	button:disabled {
-		opacity: 0.5;
-		cursor: default;
 	}
 	@media (max-width: 760px) {
 		.state {

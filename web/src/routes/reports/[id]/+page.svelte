@@ -79,12 +79,12 @@
 
 <style>
 	.lead {
-		font-family: var(--serif);
+		font-family: var(--font-display);
 		font-size: 1.4rem;
 		margin: 0 0 1rem;
 	}
 	.muted {
-		color: var(--ink-2);
+		color: var(--text-secondary);
 		font-size: 0.85rem;
 	}
 </style>

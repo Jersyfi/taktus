@@ -86,19 +86,19 @@
 		text-align: left;
 		vertical-align: top;
 		padding: 0.4rem 0.6rem;
-		border-bottom: 1px solid var(--line);
+		border-bottom: 1px solid var(--border-subtle);
 	}
 	td {
 		display: table-cell;
 	}
 	td code {
 		display: block;
-		font-family: var(--mono);
+		font-family: var(--font-mono);
 		font-size: 0.75rem;
-		color: var(--ink-2);
+		color: var(--text-secondary);
 	}
 	tbody th {
-		font-family: var(--mono);
+		font-family: var(--font-mono);
 		font-weight: 400;
 	}
 	tbody th .mark {

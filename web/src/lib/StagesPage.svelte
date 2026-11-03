@@ -6,6 +6,7 @@
 	role. The link leads to the run level, for a reader who may see it.
 -->
 <script lang="ts">
+	import { frame } from './frame.svelte';
 	import { onDestroy } from 'svelte';
 	import { surface } from './api';
 	import { followLevel } from './live';
@@ -26,6 +27,7 @@
 		stop?.abort();
 		const controller = new AbortController();
 		stop = controller;
+		frame.follow();
 		void followLevel<StageView>({
 			base: surface(location.href),
 			path: `levels/runs/${encodeURIComponent(runId)}/stages`,
@@ -42,10 +44,17 @@
 			onRefused: () => {
 				signedIn = false;
 			},
-			onConnected: (open) => (connected = open)
+			onConnected: (open) => {
+				connected = open;
+				frame.connected(open);
+			},
+			onChange: () => frame.changed()
 		});
 	});
-	onDestroy(() => stop?.abort());
+	onDestroy(() => {
+		stop?.abort();
+		frame.leave();
+	});
 </script>
 
 {#if !signedIn}
@@ -53,7 +62,7 @@
 {:else if absent}
 	<p>No run {runId} you may see.</p>
 {:else if view}
-	<p class="status" aria-live="polite">{connected ? 'Live.' : 'Reconnecting…'}</p>
+	<p class="sr-only" aria-live="polite">{connected ? 'Live.' : 'Reconnecting…'}</p>
 	<section aria-labelledby="stages-title">
 		<h1 id="stages-title">{view.summary}</h1>
 		<ol class="stages">
@@ -74,7 +83,7 @@
 
 <style>
 	.status {
-		color: var(--muted);
+		color: var(--text-secondary);
 		font-size: 0.9rem;
 	}
 	.stages {
@@ -87,7 +96,7 @@
 		padding: 0.4rem 0;
 	}
 	li.ahead {
-		color: var(--muted);
+		color: var(--text-secondary);
 	}
 	li.current .name {
 		font-weight: 600;

@@ -103,21 +103,14 @@
 </section>
 
 <style>
-	.eyebrow {
-		font-size: 0.75rem;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: var(--ink-3);
-		margin: 0 0 0.5rem;
-	}
 	.muted {
-		color: var(--ink-2);
+		color: var(--text-secondary);
 		font-size: 0.88rem;
 	}
 	.id {
-		font-family: var(--mono);
+		font-family: var(--font-mono);
 		font-size: 0.78rem;
-		color: var(--ink-3);
+		color: var(--text-subtle);
 	}
 	.list {
 		list-style: none;
@@ -130,7 +123,7 @@
 		gap: 0.75rem;
 		align-items: baseline;
 		padding: 0.6rem 0;
-		border-bottom: 1px solid var(--line);
+		border-bottom: 1px solid var(--border-subtle);
 	}
 	form {
 		display: flex;
@@ -151,37 +144,14 @@
 	input {
 		font: inherit;
 		padding: 0.4rem 0.6rem;
-		border: 1px solid var(--line);
+		border: 1px solid var(--border-subtle);
 		border-radius: 10px;
-		background: var(--paper);
-		color: var(--ink);
-	}
-	button {
-		font: inherit;
-		border: 1px solid var(--line);
-		background: var(--paper);
-		color: var(--ink);
-		border-radius: 10px;
-		padding: 0.4rem 0.9rem;
-		cursor: pointer;
-	}
-	button.quiet {
-		margin-left: auto;
-		font-size: 0.82rem;
-		padding: 0.2rem 0.7rem;
-	}
-	button.primary {
-		background: var(--ink);
-		color: var(--paper);
-		border-color: var(--ink);
-	}
-	button:disabled {
-		opacity: 0.5;
-		cursor: default;
+		background: var(--bg-canvas);
+		color: var(--text-primary);
 	}
 	.reading,
 	.message {
-		background: var(--paper-2);
+		background: var(--bg-surface);
 		border-radius: 14px;
 		padding: 0.8rem 1rem;
 		margin-top: 1rem;

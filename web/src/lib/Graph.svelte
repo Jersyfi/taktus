@@ -113,9 +113,9 @@
 	.tissue {
 		border-radius: 18px;
 		background:
-			radial-gradient(60% 80% at 20% 30%, color-mix(in oklch, var(--reproducible) 5%, transparent), transparent 70%),
-			radial-gradient(50% 70% at 85% 70%, color-mix(in oklch, var(--variable) 4%, transparent), transparent 70%),
-			var(--paper-2);
+			radial-gradient(60% 80% at 20% 30%, color-mix(in oklch, var(--family-reproducible) 5%, transparent), transparent 70%),
+			radial-gradient(50% 70% at 85% 70%, color-mix(in oklch, var(--family-variable) 4%, transparent), transparent 70%),
+			var(--bg-surface);
 		padding: 1.5rem;
 		overflow: auto;
 		overscroll-behavior: contain;
@@ -140,32 +140,32 @@
 	}
 	.wall {
 		fill: none;
-		stroke: var(--ink-3);
+		stroke: var(--text-subtle);
 		stroke-opacity: 0.1;
 		stroke-width: 7;
 		stroke-linecap: round;
 	}
 	.core {
 		fill: none;
-		stroke: var(--ink-3);
+		stroke: var(--text-subtle);
 		stroke-opacity: 0.5;
 		stroke-width: 1.2;
 	}
 	/* Into a running step a vessel carries that step's motion, and only then. */
 	.core.flow-pulse {
-		stroke: var(--reproducible);
+		stroke: var(--family-reproducible);
 		stroke-opacity: 0.95;
 		stroke-dasharray: 2 10;
 		animation: flow-pulse 1.2s linear infinite;
 	}
 	.core.flow-shimmer {
-		stroke: var(--variable);
+		stroke: var(--family-variable);
 		stroke-opacity: 0.95;
 		stroke-dasharray: 3 7 1 11;
 		animation: flow-shimmer 3.1s cubic-bezier(0.6, 0.1, 0.3, 0.9) infinite;
 	}
 	.core.flow-swell {
-		stroke: var(--person);
+		stroke: var(--family-person);
 		stroke-opacity: 0.95;
 		stroke-dasharray: 6 14;
 		animation: flow-swell 4.2s ease-in-out infinite;
@@ -198,7 +198,7 @@
 		font-weight: 600;
 	}
 	.note {
-		color: var(--ink-2);
+		color: var(--text-secondary);
 		font-size: 0.72rem;
 	}
 </style>
