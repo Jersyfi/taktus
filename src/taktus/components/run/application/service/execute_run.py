@@ -4793,10 +4793,23 @@ class RunEngine:
         held = promised is not None and promised.how == budgeting.HELD
         return self._options.prices if held else None
 
+    def _token_table(self, run: Run) -> PriceTable | None:
+        """The table the run's currency budget holds the money of tokens at, after a step as
+        before it; None where the run limits no currency or no table is configured. Without a
+        table an `llm` step is never admitted under a currency budget (`_demand`)."""
+        if run.budget.currency is None:
+            return None
+        return self._options.prices
+
     def _spent(self, run: Run) -> ConsumptionQuantities:
-        """What the run used and reserved, with the money of its compute seconds at the table
-        where its currency budget holds it: money follows from the record, never stored."""
+        """What the run used and reserved, with the money of its compute seconds and of the
+        tokens of every step that recorded no money at the table where its currency budget
+        holds them: money follows from the record, never stored (#235)."""
         consumed = run.consumed()
+        tokens_table = self._token_table(run)
+        if tokens_table is not None:
+            tokens, _ = run.tokens_without_money()
+            consumed = budgeting.with_token_money(consumed, tokens, tokens_table)[0]
         table = self._compute_table(run)
         if table is None:
             return consumed
@@ -4828,6 +4841,19 @@ class RunEngine:
             return None
         if not quantities.compute_seconds and not quantities.currency:
             return None
+        tokens_table = self._token_table(run)
+        if tokens_table is not None:
+            tokens, unattributed = run.tokens_without_money()
+            missing = budgeting.with_token_money(quantities, tokens, tokens_table)[1]
+            if unattributed or missing:
+                named = [
+                    f"the tokens of {step} without the model that used them"
+                    for step in unattributed
+                ] + list(missing)
+                return (
+                    f"the budget limits money and the price table {tokens_table.version} cannot "
+                    "price " + ", ".join(named) + ": what is left of the budget cannot be computed"
+                )
         promised = budgeting.compute_money(run.budget, self._options.prices)
         table = self._compute_table(run)
         if table is None:

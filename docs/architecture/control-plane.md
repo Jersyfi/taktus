@@ -234,7 +234,10 @@ follow:
   DEC-0202). A currency budget holds the
   money of compute seconds at the run's price table, and gives a worker the compute ceiling that
   money buys; under it, compute the table does not price is refused, not admitted as free
-  (ADR-0005, fourth amendment). When a budget is set, the run
+  (ADR-0005, fourth amendment). An `llm` step's money is held after the step as before it:
+  admission reserves it at the table, and once the step ends its recorded tokens are priced at
+  the same table at every boundary, never stored on the step; money a step reported itself is
+  not priced again from its tokens (#235). When a budget is set, the run
   records what it can promise per kind — exactly per step, as an estimate, only as a share of a
   subscription's time window, or not at all — derived from what each model adapter declares it
   can compute (`contracts/model/v1`), as `budget.set`.
