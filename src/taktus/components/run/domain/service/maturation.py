@@ -63,9 +63,12 @@ class Case(Value):
     run_id: str = Field(min_length=1)
     features: Mapping[str, float] = Field(default_factory=dict)
     """The numbers the step read, by the dotted path of the value that held them."""
+    texts: Mapping[str, str] = Field(default_factory=dict)
+    """The texts the step read, by the dotted path of the value that held them: the ML bench
+    embeds them before a classifier learns from them (ADR-0183, UC-4.25)."""
     left_out: tuple[str, ...] = ()
-    """The values the step read that are not numbers: a classifier on them needs embeddings
-    (#210), so they are named and not learned from."""
+    """The values the step read that are neither numbers nor text — a truth value, a list of
+    them — named and not learned from."""
     result: str
     """What the step produced: the answer's text for a language model, the result's digest for
     every other method."""
@@ -129,6 +132,36 @@ def numbers(value: Any, path: str = "") -> tuple[dict[str, float], tuple[str, ..
     return found, tuple(left_out)
 
 
+def readings(
+    value: Any, path: str = ""
+) -> tuple[dict[str, float], dict[str, str], tuple[str, ...]]:
+    """The numbers and the texts a step read, by the dotted path of each, and the paths of what
+    it read that is neither (ADR-0183). A text is a string with a character that is not white
+    space; an empty one is left out, as is a truth value or a number that is not finite."""
+    found: dict[str, float] = {}
+    texts: dict[str, str] = {}
+    left_out: list[str] = []
+    if isinstance(value, Mapping):
+        for key in sorted(value):
+            inner, words, rest = readings(value[key], f"{path}.{key}" if path else str(key))
+            found.update(inner)
+            texts.update(words)
+            left_out.extend(rest)
+    elif isinstance(value, list | tuple):
+        for index, item in enumerate(value):
+            inner, words, rest = readings(item, f"{path}.{index}" if path else str(index))
+            found.update(inner)
+            texts.update(words)
+            left_out.extend(rest)
+    elif isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value):
+        found[path or "value"] = float(value)
+    elif isinstance(value, str) and value.strip():
+        texts[path or "value"] = value
+    elif value is not None:
+        left_out.append(path or "value")
+    return found, texts, tuple(left_out)
+
+
 def measure(
     process_version: str,
     step_id: str,
@@ -170,13 +203,16 @@ class Candidacy(Value):
     """Cases per label."""
     features: tuple[str, ...] = ()
     """The numbers every case gives, which a training learns from."""
+    texts: tuple[str, ...] = ()
+    """The texts every case gives, which the bench embeds before a training learns from them
+    (ADR-0183)."""
     left_out: tuple[str, ...] = ()
 
 
 def candidacy(method: Method, cases: Sequence[Case]) -> Candidacy:
     """Whether a step on a language model has the cases a trained classifier needs: at most
     `MAX_CLASSES` classes, at least `MIN_CASES` labelled cases, `MIN_PER_CLASS` in every class,
-    and the same numbers in every case. Every shortfall is named."""
+    and the same numbers and texts in every case. Every shortfall is named."""
     findings: list[str] = []
     if method is not Method.LLM:
         findings.append(f"the step runs on {method}; only a step on llm is proposed a move")
@@ -190,20 +226,19 @@ def candidacy(method: Method, cases: Sequence[Case]) -> Candidacy:
     small = [f"{label!r} ({n})" for label, n in classes.items() if n < MIN_PER_CLASS]
     if small and len(classes) <= MAX_CLASSES:
         findings.append(f"fewer than {MIN_PER_CLASS} cases in class(es) {', '.join(small)}")
-    shapes = {tuple(sorted(case.features)) for case in cases}
-    features = next(iter(shapes)) if len(shapes) == 1 else ()
+    shapes = {(tuple(sorted(case.features)), tuple(sorted(case.texts))) for case in cases}
+    features, texts = next(iter(shapes)) if len(shapes) == 1 else ((), ())
     if len(shapes) > 1:
-        findings.append("the cases do not all give the same numbers to learn from")
-    elif cases and not features:
-        findings.append(
-            "the step reads no number to learn from: a classifier on text needs embeddings (#210)"
-        )
+        findings.append("the cases do not all give the same numbers and texts to learn from")
+    elif cases and not features and not texts:
+        findings.append("the step reads no number and no text to learn from")
     left_out = tuple(sorted({name for case in cases for name in case.left_out}))
     return Candidacy(
         candidate=not findings,
         findings=tuple(findings),
         classes=classes,
         features=features,
+        texts=texts,
         left_out=left_out,
     )
 
@@ -229,15 +264,25 @@ def split(cases: Sequence[Case], seed: int = 0) -> tuple[tuple[Case, ...], tuple
     return tuple(sorted(train, key=key)), tuple(sorted(held, key=key))
 
 
-def dataset(cases: Sequence[Case], features: Sequence[str], *, labelled: bool) -> bytes:
+def dataset(
+    cases: Sequence[Case],
+    features: Sequence[str],
+    *,
+    labelled: bool,
+    texts: Sequence[str] = (),
+) -> bytes:
     """The cases as the ML bench reads them: a CSV with a header row, a number in every feature
-    column and, where `labelled`, the label last."""
+    column, then every text column, which the bench embeds (ADR-0183), and, where `labelled`,
+    the label last."""
     out = io.StringIO()
     writer = csv.writer(out, lineterminator="\n")
-    writer.writerow([column(f) for f in features] + ([LABEL] if labelled else []))
+    header = [column(f) for f in features] + [column(t) for t in texts]
+    writer.writerow(header + ([LABEL] if labelled else []))
     for case in cases:
         writer.writerow(
-            [repr(float(case.features[f])) for f in features] + ([case.label] if labelled else [])
+            [repr(float(case.features[f])) for f in features]
+            + [case.texts[t] for t in texts]
+            + ([case.label] if labelled else [])
         )
     return out.getvalue().encode("utf-8")
 
@@ -358,6 +403,8 @@ class Proposal(Value):
     features: tuple[str, ...]
     left_out: tuple[str, ...]
     evidence: Evidence
+    texts: tuple[str, ...] = ()
+    """The texts the model reads, each embedded by the encoder its file carries (ADR-0183)."""
     model: str
     """The candidate as `name@version`."""
     threshold: float = FALLBACK_AT
@@ -371,10 +418,11 @@ class Proposal(Value):
     def situation(self) -> str:
         classes = ", ".join(f"{label} ({n})" for label, n in self.classes.items())
         left_out = (
-            f" It does not read {', '.join(self.left_out)}, which are not numbers."
+            f" It does not read {', '.join(self.left_out)}, which are neither numbers nor text."
             if self.left_out
             else ""
         )
+        read = [*self.features, *(f"the text of {t}, embedded on the bench" for t in self.texts)]
         e = self.evidence
         return (
             f"Step {self.step_id} of {self.process_version} runs on a language model. Across "
@@ -384,7 +432,7 @@ class Proposal(Value):
             f"from its training. Measured per case, the language model costs "
             f"{money(e.llm_cost_per_case, e.currency)} and the trained model "
             f"{money(e.ml_cost_per_case, e.currency)}. Trained twice on the same cases, the "
-            f"model has the same digest. It reads {', '.join(self.features)}.{left_out} The "
+            f"model has the same digest. It reads {', '.join(read)}.{left_out} The "
             f"model is {self.model}, digest {e.digest}, kept by run {self.training_run}; the "
             f"trial is run {self.trial_run}.{self._scored()}"
         )
@@ -543,7 +591,11 @@ def moved_step(
         "work": {
             **control,
             "model": {"base64": b64encode(model).decode("ascii"), "digest": e.digest},
-            "dataset": {"values": prompt.get("values") or {}, "features": list(proposal.features)},
+            "dataset": {
+                "values": prompt.get("values") or {},
+                "features": list(proposal.features),
+                **({"texts": list(proposal.texts)} if proposal.texts else {}),
+            },
             "fallback": prompt,
             "evaluation": evaluation_of(proposal, request_id),
         },

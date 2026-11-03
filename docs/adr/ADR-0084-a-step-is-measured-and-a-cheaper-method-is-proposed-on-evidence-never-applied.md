@@ -144,6 +144,16 @@ what it proposes. Applying an accepted proposal is #218.
 - No migration: corrections and verdicts are ledger entries, proposals are decision requests.
 - Nothing calls the handlers on a schedule or from the command line yet: #229.
 
+## Amendment — a text is learned from through an embedding (2026-11-04)
+
+ADR-0183 lets the ML bench embed text with a neural encoder it trains and pins. Section 3 reads,
+since then: the values a step's prompt was rendered from give **numbers** and **texts**; a
+case's texts are learned from through the bench's embedding; a step is a candidate when every
+case gives the same numbers and texts, and at least one of either. Only a value that is neither
+— a truth value, an empty string — is named in the proposal and not learned from. *Where this
+promise ends* reads the same way: a step whose prompt reads text is a candidate, and the
+embedding's own limits are ADR-0183's.
+
 ## Where this promise ends
 The floor is UC-4.24's, and a number moves only with a change of the use case. The
 evidence is the held-out cases, which were labelled by the language model where no person

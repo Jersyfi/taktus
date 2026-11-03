@@ -264,6 +264,7 @@
       "capabilities": [
         "data.generate",
         "data.read",
+        "ml.embed",
         "ml.evaluate",
         "ml.predict",
         "ml.train"

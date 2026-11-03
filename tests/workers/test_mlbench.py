@@ -44,7 +44,7 @@ from fakes.ports import free_port
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKER = ROOT / "workers" / "mlbench" / "worker.py"
-TOOLS = ["data.read", "data.generate", "ml.train", "ml.evaluate", "ml.predict"]
+TOOLS = ["data.read", "data.generate", "ml.train", "ml.evaluate", "ml.predict", "ml.embed"]
 
 type Json = dict[str, Any]
 

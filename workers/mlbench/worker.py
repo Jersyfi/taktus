@@ -3,7 +3,7 @@
 worker contract v1.
 
 It is the second proof case of the contract (ADR-0007): progress measured in epochs rather than
-tool calls, compute held in a resource class, the result a model artifact with metrics. Three
+tool calls, compute held in a resource class, the result a model artifact with metrics. Four
 operations, named by `task.inputs.operation`:
 
 - `train` (the default) — read a labelled dataset, split off a held-out share, train a linear
@@ -12,6 +12,9 @@ operations, named by `task.inputs.operation`:
   assignment continues from it to the same model as a run straight through.
 - `evaluate` — measure a model file against a labelled dataset and return the metrics.
 - `predict` — apply a model file to rows and return each row's class with its confidence.
+- `embed` — train a neural encoder on a dataset's text columns from the seed and return the
+  encoder and every row's vector (ADR-0183). `train` embeds the columns `inputs.text` names the
+  same way before it learns, and the model file carries the encoder.
 
 The machine learning itself is `bench.py`; this file is the contract around it. It imports
 nothing from src/taktus: it is a separate deployable, as every worker is.
@@ -57,18 +60,18 @@ import bench
 type Json = dict[str, Any]
 
 CONTRACT = "worker/v1"
-VERSION = "0.1.0"  # this worker's own version, recorded in every model file and in provenance
+VERSION = "0.2.0"  # this worker's own version, recorded in every model file and in provenance
 NAME = "mlbench"
 MAX_CONCURRENT = 2
 AFTER_TIMEOUT = 60
 FETCH_TIMEOUT = 60
 
 READ, GENERATE = "data.read", "data.generate"
-TRAIN, EVALUATE, PREDICT = "ml.train", "ml.evaluate", "ml.predict"
-TOOLS = [READ, GENERATE, TRAIN, EVALUATE, PREDICT]
+TRAIN, EVALUATE, PREDICT, EMBED = "ml.train", "ml.evaluate", "ml.predict", "ml.embed"
+TOOLS = [READ, GENERATE, TRAIN, EVALUATE, PREDICT, EMBED]
 CAPABILITIES = TOOLS
 """What this worker offers; the release's list of what it ships reads it (ADR-0118)."""
-OPERATIONS = ("train", "evaluate", "predict")
+OPERATIONS = ("train", "evaluate", "predict", "embed")
 
 # What a step is expected to cost, in compute seconds, before the estimate factor: a fixed part
 # and a part per value read or passed over (rows times features). Rough on purpose — the
@@ -76,6 +79,10 @@ OPERATIONS = ("train", "evaluate", "predict")
 FIXED_SECONDS = 0.05
 SECONDS_PER_VALUE = 1e-7
 ASSUMED_ROWS, ASSUMED_FEATURES = 10_000, 16  # a dataset behind a URI that declares neither
+# Training an encoder passes its weights over every row once per iteration (ADR-0183): the time
+# is rows times buckets times width times iterations, at about this many seconds each, measured
+# on one core with room to spare.
+SECONDS_PER_ENCODER_OP = 5e-10
 
 DEFAULT_DATASET: Json = {"synthetic": {"rows": 2000, "features": 8, "classes": 3}}
 
@@ -213,6 +220,9 @@ class Job:
     seed: int
     epochs: int
     holdout: float
+    text: tuple[str, ...] = ()
+    """The columns read as text and embedded: for `train` and `embed`. A model to evaluate or
+    predict with names its own."""
 
     @property
     def sources(self) -> list[Source]:
@@ -227,7 +237,7 @@ def job_of(task: Json) -> Job:
     if operation not in OPERATIONS:
         raise TaskError(f"inputs.operation is one of {', '.join(OPERATIONS)}")
     model = None
-    if operation != "train":
+    if operation in ("evaluate", "predict"):
         if "model" not in inputs:
             raise TaskError(f"an {operation} assignment names its model under inputs.model")
         model = source("model", inputs["model"])
@@ -252,7 +262,16 @@ def job_of(task: Json) -> Job:
     label = inputs.get("label")
     if label is not None and not isinstance(label, str):
         raise TaskError("inputs.label names a column")
-    return Job(operation, dataset, model, label, seed, epochs, float(holdout))
+    text = inputs.get("text", [])
+    if not isinstance(text, list) or not all(isinstance(c, str) and c for c in text):
+        raise TaskError("inputs.text names the text columns as a list")
+    if len(set(text)) != len(text):
+        raise TaskError("inputs.text names a column twice")
+    if operation == "embed" and not text:
+        raise TaskError("an embed assignment names its text columns under inputs.text")
+    if operation in ("evaluate", "predict") and text:
+        raise TaskError(f"an {operation} assignment reads the text columns its model names")
+    return Job(operation, dataset, model, label, seed, epochs, float(holdout), tuple(text))
 
 
 # --- plans --------------------------------------------------------------------------------------
@@ -275,7 +294,17 @@ def plan_for(task: Json, job: Job, floor: float) -> list[PlannedStep]:
     rows, width = job.dataset.size()
     values = rows * width
     load = FIXED_SECONDS + values * SECONDS_PER_VALUE
-    steps = [PlannedStep("load", "load", f"read the {job.operation} inputs", None, load)]
+    encoders = (
+        len(job.text)
+        * rows
+        * bench.BUCKETS
+        * bench.WIDTH
+        * bench.ITERATIONS
+        * SECONDS_PER_ENCODER_OP
+    )
+    # A training fits its encoders while it loads; `embed` fits them in a step of its own.
+    first = load + (encoders if job.operation == "train" else 0.0)
+    steps = [PlannedStep("load", "load", f"read the {job.operation} inputs", None, first)]
     if job.operation == "train":
         per_epoch = max(floor, FIXED_SECONDS + values * SECONDS_PER_VALUE)
         steps += [
@@ -294,6 +323,12 @@ def plan_for(task: Json, job: Job, floor: float) -> list[PlannedStep]:
     elif job.operation == "evaluate":
         steps.append(
             PlannedStep("evaluate", "evaluate", "measure the model on the rows", EVALUATE, load)
+        )
+    elif job.operation == "embed":
+        steps.append(
+            PlannedStep(
+                "embed", "embed", "train the encoder, embed every row", EMBED, load + encoders
+            )
         )
     else:
         steps.append(
@@ -795,6 +830,8 @@ class Worker:
                 self._epoch(assignment, step, job, credential)
             elif job.operation == "train":
                 self._finish_training(assignment, step, job, credential)
+            elif job.operation == "embed":
+                self._embed(assignment, step, job, credential)
             elif job.operation == "evaluate":
                 model, x, y = self._held(assignment)
                 if y is None:
@@ -840,8 +877,17 @@ class Worker:
         for src in job.sources:
             read[src.role] = self._read(src, job.seed)
         try:
-            if job.operation == "train":
-                table = bench.parse_csv(read["dataset"], job.label, require_label=True)
+            if job.operation == "embed":
+                table = bench.parse_csv(
+                    read["dataset"], job.label, require_label=False, text=job.text
+                )
+                assignment.work = {"texts": table.texts, "digest": table.digest}
+                rows = len(next(iter(table.texts.values())))
+                message = f"{rows} rows, {len(job.text)} text column(s) to embed"
+            elif job.operation == "train":
+                table = bench.parse_csv(
+                    read["dataset"], job.label, require_label=True, text=job.text
+                )
                 prepared = bench.prepare(table, job.seed, job.holdout)
                 data = self._path(f"data/{assignment.id}", ".npz")
                 np.savez(
@@ -860,6 +906,7 @@ class Worker:
                     "classes": list(prepared.classes),
                     "digest": prepared.digest,
                     "rows": prepared.rows,
+                    "embedders": prepared.embedders,
                     "state": None,
                 }
                 message = (
@@ -868,7 +915,12 @@ class Worker:
                 )
             else:
                 model = bench.load_model(read["model"])
-                table = bench.parse_csv(read["dataset"], model.label, require_label=False)
+                table = bench.parse_csv(
+                    read["dataset"],
+                    model.label,
+                    require_label=False,
+                    text=tuple(sorted(model.text)),
+                )
                 x = bench.columns(model, table)
                 data = self._path(f"data/{assignment.id}", ".npz")
                 arrays = {"x": x} if table.y is None else {"x": x, "y": table.y}
@@ -916,6 +968,7 @@ class Worker:
                 arrays["y_holdout"],
                 str(work["digest"]),
                 int(work["rows"]),
+                dict(work.get("embedders") or {}),
             )
 
     def _held(self, assignment: Assignment) -> tuple[bench.Model, np.ndarray, np.ndarray | None]:
@@ -987,6 +1040,41 @@ class Worker:
             credential,
         )
         self._produce(assignment, step, "model", "model", "application/json", model, None)
+
+    def _embed(
+        self,
+        assignment: Assignment,
+        step: PlannedStep,
+        job: Job,
+        credential: tuple[str, str] | None,
+    ) -> None:
+        """One encoder per text column, trained from the seed on every row, and the rows'
+        vectors through it: the same rows and seed give artifacts with the same digests."""
+        texts: dict[str, list[str]] = assignment.work["texts"]
+        encoders: Json = {
+            "format": "taktus.mlbench.embedders/1",
+            "produced_by": {**self._identity(), "libraries": bench.libraries()},
+            "dataset": {"digest": assignment.work["digest"]},
+            "seed": job.seed,
+            "text": {},
+        }
+        vectors = []
+        for name in sorted(texts):
+            encoder = bench.fit_embedder(texts[name], job.seed)
+            encoders["text"][name] = encoder
+            vectors.append(bench.embed(encoder, texts[name]))
+        self._produce(
+            assignment,
+            step,
+            "embeddings",
+            "dataset",
+            "text/csv",
+            bench.embeddings_csv(np.hstack(vectors)),
+            credential,
+        )
+        self._produce(
+            assignment, step, "embedder", "model", "application/json", _json_bytes(encoders), None
+        )
 
     def _identity(self) -> Json:
         return {"worker": NAME, "version": VERSION}

@@ -119,6 +119,7 @@ class StepMeasures:
         step = run.step(step_run.step_id)
         result = checkpoint.result_digest
         features: dict[str, float] = {}
+        texts: dict[str, str] = {}
         left_out: tuple[str, ...] = ()
         fell_back = False
         if (
@@ -139,7 +140,7 @@ class StepMeasures:
             if not isinstance(produced, Mapping) or not isinstance(produced.get("text"), str):
                 return None
             result = produced["text"].strip()
-            features, left_out = await self._read(run, step_run.step_id)
+            features, texts, left_out = await self._read(run, step_run.step_id)
         label = result
         corrected = corrections.get((run.id, step_run.step_id))
         if corrected is not None:
@@ -155,6 +156,7 @@ class StepMeasures:
         return Case(
             run_id=run.id,
             features=features,
+            texts=texts,
             left_out=left_out,
             result=result,
             label=label,
@@ -166,7 +168,9 @@ class StepMeasures:
             fell_back=fell_back,
         )
 
-    async def _read(self, run: Run, step_id: str) -> tuple[dict[str, float], tuple[str, ...]]:
+    async def _read(
+        self, run: Run, step_id: str
+    ) -> tuple[dict[str, float], dict[str, str], tuple[str, ...]]:
         """The values an `llm` step's prompt was rendered from, resolved as the run resolved
         them: its inputs, and the results of the steps it referenced. A value that cannot be
         read back — an artifact's content, a result no longer stored — is left out."""
@@ -183,8 +187,8 @@ class StepMeasures:
                         results[other.step_id] = json.loads(content)
             values = resolve(values, results, {})
         except (KeyError, TypeError, ValueError):
-            return {}, ("values",)
-        return maturation.numbers(values)
+            return {}, {}, ("values",)
+        return maturation.readings(values)
 
     def _cost(self, used: Consumption | None) -> tuple[float | None, tuple[str, ...]]:
         """The money a step's consumption costs at the price table, or what keeps it from being

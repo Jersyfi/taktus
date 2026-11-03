@@ -263,7 +263,8 @@ async def test_a_steps_measures_are_read_back_from_the_run_history_it_wrote() ->
     step = next(s for s in await w.measures.steps(TENANT) if s.step_id == "classify")
     first = next(c for c in step.cases if c.run_id == runs[0].id)
     assert (first.result, first.label, first.corrected) == ("k0", "k2", True)
-    assert dict(first.features) == {"a": 0.0, "b": 0.0} and first.left_out == ("note",)
+    assert dict(first.features) == {"a": 0.0, "b": 0.0} and dict(first.texts) == {"note": "n"}
+    assert first.left_out == (), "a text is read, to be embedded on the bench (ADR-0183)"
     # No measure names a person: neither who started the runs nor who corrected one.
     text = json.dumps([x.document() for x in measures.values()], default=str)
     assert CORRECTOR not in text and STARTER not in text
@@ -313,8 +314,27 @@ def test_more_than_50_classes_another_method_or_no_numbers_is_no_candidate() -> 
     assert many.findings == ("51 classes, more than 50",)
     rule = maturation.candidacy(Method.RULE, cases({"a": 480, "b": 20}))
     assert rule.findings == ("the step runs on rule; only a step on llm is proposed a move",)
-    text = maturation.candidacy(Method.LLM, cases({"a": 480, "b": 20}, features=()))
-    assert not text.candidate and "embeddings (#210)" in text.findings[0]
+    nothing = maturation.candidacy(Method.LLM, cases({"a": 480, "b": 20}, features=()))
+    assert not nothing.candidate
+    assert nothing.findings == ("the step reads no number and no text to learn from",)
+
+
+def test_a_step_that_reads_only_text_is_a_candidate_and_its_texts_are_named() -> None:
+    """ADR-0183, UC-4.25 requirement 2: a text is learned from through the bench's embedding."""
+    texts = [
+        c.model_copy(update={"texts": {"title": f"about {c.label}"}})
+        for c in cases({"a": 480, "b": 20}, features=())
+    ]
+    found = maturation.candidacy(Method.LLM, texts)
+    assert found.candidate and found.features == () and found.texts == ("title",)
+    data = maturation.dataset(texts[:2], (), labelled=True, texts=("title",)).decode()
+    assert data.splitlines() == ["title,label", "about a,a", "about a,a"]
+    mixed = [texts[0].model_copy(update={"texts": {}}), *texts[1:]]
+    assert maturation.candidacy(Method.LLM, mixed).findings == (
+        "the cases do not all give the same numbers and texts to learn from",
+    )
+    numbers, words, left = maturation.readings({"n": 2, "t": "x", "e": " ", "f": True})
+    assert (numbers, words, left) == ({"n": 2.0}, {"t": "x"}, ("e", "f"))
 
 
 def test_the_held_out_cases_are_a_fifth_of_every_class_drawn_the_same_every_time() -> None:
@@ -415,7 +435,8 @@ async def test_a_candidate_is_trained_tried_and_proposed_to_a_person() -> None:
     assert e.ml_cost_per_case == pytest.approx(0.5 * 0.00002)
     assert e.llm_cost_per_case is not None and e.ml_cost_per_case < e.llm_cost_per_case
     assert proposal.model == maturation.model_ref("classify", e.digest)
-    assert proposal.features == FEATURES and proposal.left_out == ("note",)
+    assert proposal.features == FEATURES and proposal.texts == ("note",)
+    assert proposal.left_out == ()
     (request,) = await w.proposals()
     shaped = request.request
     assert request.id == outcome.request_id and request.decider == "owner"
