@@ -9,6 +9,7 @@ the ledger and the provenance store, and store nothing."""
 
 from __future__ import annotations
 
+import copy
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
@@ -285,6 +286,30 @@ async def test_a_wrong_result_is_followed_forward_across_processes_to_what_left(
     assert view.left == 1 and view.built_on == {"support@1": 1}
     hidden = await world.reads.wrong_result(TENANT, "bill-1", "fetch", frozenset({"support"}))
     assert hidden is None, "a run the reader may not see is answered as none"
+
+
+async def test_the_views_act_on_nothing() -> None:
+    world = await World().registered()
+    async with world.persistence.transaction(TENANT):
+        await world.provenance.append(TENANT, record("p0", "bill-1", "fetch", 1, "billing@1"))
+
+    def held() -> Any:
+        store = world.persistence
+
+        def kept(by_tenant: dict[str, Any]) -> dict[str, Any]:
+            return {tenant: rows for tenant, rows in by_tenant.items() if rows}
+
+        # A read opens a tenant's empty entry; only what an entry holds counts.
+        tables = {name: kept(rows) for name, rows in store._tables.items() if kept(rows)}
+        return copy.deepcopy((tables, kept(store._ledger), kept(store._provenance)))
+
+    before = held()
+    await world.reads.remove(TENANT, "connector.fake", EVERYTHING)
+    await world.reads.remove(TENANT, "model.first", EVERYTHING)
+    await world.reads.wrong_result(TENANT, "bill-1", "fetch", EVERYTHING)
+    await world.reads.residency(TENANT, EVERYTHING)
+    assert held() == before, "no view writes a record, a version, a ledger entry or provenance"
+    assert world.stops.requested == [], "no view stops an adapter"
 
 
 async def test_variants_read_the_projection_and_the_active_version() -> None:
