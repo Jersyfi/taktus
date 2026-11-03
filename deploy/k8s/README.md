@@ -158,6 +158,31 @@ migrate (DEC-0060). An upgrade that changes only the release's image does not re
 database: its pod template carries no label that changes with a release (#237). Until it is done the roles refuse to start against an empty schema and are
 restarted.
 
+**The guides reach the wiki through an entry of `connectors.others`** (#259, UC-13.6). Without
+it, S-05 writes the guides into the directory `env.TAKTUS_KNOWLEDGE_DIRECTORY` names, inside the
+instance (ADR-0066). With it, the wiki connector runs as a deployment of its own, and the instance
+resolves `knowledge.pages` to it before the directory:
+
+```yaml
+connectors:
+  others:
+    - name: knowledge
+      capability: knowledge.pages
+      connector: bookstack
+      port: 9102
+      args: [--target, https://wiki.example]   # the wiki's address, the operator's
+      credentials:
+        - { name: KNOWLEDGE_TOKEN, secret: <the Secret>, key: <its key> }
+```
+
+The chart knows no wiki address; the connector refuses to start without `--target`. The token is
+mounted as the file `TAKTUS_CREDENTIAL_KNOWLEDGE_TOKEN_FILE` names, and only the roles reach the
+connector. Where the instance names its platform (`administration.platform`, ADR-0052), the
+credential is declared about nothing it administers: `administration.administers:
+{KNOWLEDGE_TOKEN: none}`, or S-05 is refused at registration. The wiki itself is the operator's
+(NEED-0021); installing the release is the operator's act (DEC-0179).
+`tests/governance/test_chart.py` renders both cases.
+
 **Tenants are created after the install, not configured** (ADR-0104). The migration creates
 `default`. Every other tenant is created with `taktusctl tenant create NAME`, run in a pod of
 the control plane, which prints the identifier Taktus generated. Every role serves the new
