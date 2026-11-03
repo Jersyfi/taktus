@@ -72,6 +72,26 @@ async def test_a_line_recorded_before_the_cut_is_erased_and_a_later_one_kept(
     assert [x.seq for x in kept] == [2]
 
 
+async def test_an_erased_run_loses_every_line_of_every_step_whatever_its_age(
+    backend: Backend,
+) -> None:
+    # A data-protection erasure (ADR-0176 §3): the run's trace goes, another run's stays.
+    tenant = await backend.tenant()
+    traces = store(backend)
+    other = line(1).model_copy(update={"run_id": "run_2"})
+    async with backend.work.transaction(tenant):
+        await traces.append(tenant, line(1))
+        await traces.append(tenant, line(2, step="b", at=AT - timedelta(days=400)))
+        await traces.append(tenant, other)
+    async with backend.work.transaction(tenant):
+        erased = await traces.erase_run(tenant, "run_1")
+    async with backend.work.transaction(tenant):
+        left = [await traces.lines(tenant, "run_1", s, limit=10) for s in ("a", "b")]
+        kept = await traces.lines(tenant, "run_2", "a", limit=10)
+    assert erased == 2 and left == [[], []]
+    assert [x.seq for x in kept] == [1]
+
+
 async def test_a_trace_is_shared_with_roles_and_a_share_withdrawn(backend: Backend) -> None:
     tenant = await backend.tenant()
     traces = store(backend)

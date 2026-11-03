@@ -87,6 +87,12 @@ images: env need-docker ## Build the test images whose content changed; REBUILD=
 gate-contracts: need-uv ## Schemas are valid 2020-12, examples validate, must-fail examples fail
 	$(UV) run tools/validate_contracts.py
 
+# A breaking change of a published contract fails unless its major version rises (ADR-0171, #396).
+# With no release yet nothing is published; the change is then reported against BASE.
+.PHONY: gate-compat
+gate-compat: need-uv need-git ## Contracts against the last release: a breaking change fails unless the major version rises
+	$(UV) run tools/contract_compat.py --base $(or $(BASE),origin/main)
+
 .PHONY: gate-arch
 gate-arch: env ## Adapter obligation, component boundaries, no product names in the core
 	$(UV) run lint-imports
@@ -102,6 +108,13 @@ gate-conformance: env ## Contract conformance suite, both contracts: starts the 
 .PHONY: helm
 helm: ## Install the pinned helm into .tools/bin, for the chart's tests (deploy/k8s/chart)
 	tools/install_helm.sh
+
+# The image workflow scans and signs with the pinned grype and cosign (ADR-0173);
+# `make image-tools` installs the same versions into .tools/bin, to scan an image by hand:
+# tools/scan_image.sh <image>@sha256:<digest>.
+.PHONY: image-tools
+image-tools: ## Install the pinned vulnerability scanner and signing tool into .tools/bin (ADR-0173)
+	tools/install_image_tools.sh
 
 .PHONY: gate-governance
 gate-governance: env ## Anchors hold, limits never breach, least privilege; the chart, rendered with helm (`make helm`), and the image workflow
@@ -282,4 +295,4 @@ reserve: need-uv need-git ## Reserve a record number on the remote before writin
 	@$(UV) run tools/reserve.py $(if $(ID),--id $(ID),--kind $(KIND))
 
 .PHONY: gates
-gates: lint gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases gate-web gate-selftest test timing rehearse ## Everything CI runs
+gates: lint gate-contracts gate-compat gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases gate-web gate-selftest test timing rehearse ## Everything CI runs

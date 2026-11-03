@@ -60,6 +60,7 @@ from taktus.adapters.driven.postgres import (
     check_schema,
 )
 from taktus.adapters.driven.postgres.url import described
+from taktus.adapters.driven.signing import Ed25519Signatures
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.adapters.driving.cli.wiring import (
     CapacityServices,
@@ -74,6 +75,7 @@ from taktus.components.accounting.application.service import (
 )
 from taktus.components.catalog.application.service import (
     AgentCatalog,
+    CatalogueInstalls,
     RecordRemovalResultHandler,
     RunConformanceHandler,
     SkillCatalog,
@@ -81,6 +83,7 @@ from taktus.components.catalog.application.service import (
 from taktus.components.catalog.domain.model import (
     AdapterMaturity,
     AgentCore,
+    CatalogueInstallation,
     RoleProfile,
     SkillOwnership,
     SkillPolicy,
@@ -92,8 +95,13 @@ from taktus.components.governance.application.service import (
     Drifts,
     ExpectedRuns,
     ResultDefects,
+    SubjectRequests,
 )
-from taktus.components.governance.domain.model import Incident, WatchConfiguration
+from taktus.components.governance.domain.model import (
+    Incident,
+    SubjectRequest,
+    WatchConfiguration,
+)
 from taktus.components.governance.domain.model.anchors import AnchorConfiguration
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.identity.domain.model import (
@@ -126,9 +134,11 @@ from taktus.components.run.application.query import (
 from taktus.components.run.application.service import EngineOptions, RunEngine
 from taktus.components.run.application.service.stops import Stops
 from taktus.components.run.domain.model import AdapterStop, Run
+from taktus.composition.acting import ActingReads
 from taktus.composition.agents import SharedAgents
 from taktus.composition.alerts import alerts
 from taktus.composition.capacity import capacity_report, rules_of
+from taktus.composition.catalogue import CatalogueAuthor, InstanceCatalogueIndex
 from taktus.composition.conformance import InstanceSuites, worker_suites
 from taktus.composition.decisions import decision_wiring
 from taktus.composition.evaluations import Evaluations
@@ -149,6 +159,7 @@ from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.maturation import InstanceMaturation, maturation_wiring
 from taktus.composition.maturity import CatalogMaturities, InstanceCatalogue
 from taktus.composition.moves import MethodMoves
+from taktus.composition.objects import object_store_of
 from taktus.composition.org_units import OrgUnitsOfTheRun
 from taktus.composition.owner_channel import known_secrets, owner_channel_wiring
 from taktus.composition.proposals import InstanceChanges
@@ -158,6 +169,7 @@ from taktus.composition.settings import (
     load_backup_expected_hours,
     load_budget,
     load_capacity,
+    load_catalogue,
     load_connectors,
     load_database_timeouts,
     load_findings,
@@ -165,6 +177,7 @@ from taktus.composition.settings import (
     load_knowledge_directory,
     load_model,
     load_models,
+    load_object_store,
     load_telemetry,
     load_workers,
 )
@@ -172,6 +185,7 @@ from taktus.composition.shipped import load as load_shipped
 from taktus.composition.signals import signal_wiring
 from taktus.composition.skills import CatalogGuidance, SkillLifecycle
 from taktus.composition.stages import stage_wiring
+from taktus.composition.subjects import ProcessingEvidence, RunHoldings
 from taktus.ports.backups import BackupLog
 from taktus.ports.configuration import Configuration, ConfigurationError
 from taktus.ports.org_units import OrgUnitSpends
@@ -252,6 +266,7 @@ class LocalWiring:
             administration = load_administration(self._configuration)
             knowledge_directory = load_knowledge_directory(self._configuration)
             backup_expected_hours = load_backup_expected_hours(self._configuration)
+            object_settings = load_object_store(self._configuration)
         except ConfigurationError as error:
             raise NotOperable(str(error)) from error
         async with (
@@ -372,6 +387,7 @@ class LocalWiring:
                         stores.of(AdapterMaturity),
                         stores.work,
                         Pools(workers, connectors, models),
+                        stores.of(CatalogueInstallation),
                     ),
                     anchors=decisions.anchors,
                     administration=administration,
@@ -567,11 +583,82 @@ class LocalWiring:
                 shape=shape,
                 shipped=load_shipped(),
             )
+            maturities = CatalogMaturities(
+                stores.of(AdapterMaturity), stores.work, pools, stores.of(CatalogueInstallation)
+            )
+            catalogue_settings = load_catalogue(self._configuration)
+            # Data-protection requests reach the store the artifacts live in, which may be a
+            # bucket, not this machine's directory (ADR-0165, ADR-0176).
+            acting = ActingReads(
+                processes=stores.of(Process),
+                versions=stores.of(ProcessVersion),
+                maturities=stores.of(AdapterMaturity),
+                runs=runs,
+                catalogue=InstanceCatalogue(pools, maturities),
+                pools=pools,
+                residency=decisions.residency,
+                stops=stops,
+                blocked=BlockedTime(ledger, objects, stores.work, runs),
+                identities=identities,
+                provenance=stores.provenance_store,
+                ledger=ledger,
+                work=stores.work,
+                clock=clock,
+            )
+            evidence = ProcessingEvidence(
+                register=acting.register,
+                processes=stores.of(Process),
+                versions=stores.of(ProcessVersion),
+                sources=decisions.sources,
+                residency=decisions.residency,
+                ledger=ledger,
+                work=stores.work,
+                clock=clock,
+                traces=stores.traces,
+            )
+            subjects = SubjectRequests(
+                stores.of(SubjectRequest),
+                RunHoldings(
+                    runs=runs,
+                    provenance=stores.provenance_store,
+                    ledger=ledger,
+                    objects=object_store_of(object_settings, state_dir=state_dir, cache_bytes=0),
+                    work=stores.work,
+                    tenants=stores.tenants,
+                    traces=stores.traces,
+                    locations=evidence.locations,
+                ),
+                ledger,
+                stores.work,
+                clock,
+                ids,
+            )
             yield Services(
                 conformance=conformance,
-                catalogue=InstanceCatalogue(
-                    pools,
-                    CatalogMaturities(stores.of(AdapterMaturity), stores.work, pools),
+                catalogue=InstanceCatalogue(pools, maturities),
+                catalogue_index=InstanceCatalogueIndex(
+                    directory=catalogue_settings.directory,
+                    keys=catalogue_settings.keys,
+                    installs=CatalogueInstalls(
+                        Ed25519Signatures(),
+                        stores.of(CatalogueInstallation),
+                        stores.work,
+                        ledger,
+                        objects,
+                        clock,
+                    ),
+                    maturities=maturities,
+                    proposals=Proposals(
+                        stores.of(ProcessVersion),
+                        stores.of(Process),
+                        stores.of(Proposal),
+                        stores.work,
+                        clock,
+                        ids,
+                        administration,
+                    ),
+                    versions=stores.of(ProcessVersion),
+                    work=stores.work,
                 ),
                 deactivate=DeactivateProcessHandler(stores.of(Process), stores.work, ledger),
                 register_version=register_version,
@@ -671,6 +758,8 @@ class LocalWiring:
                 stages=staged.stages,
                 skills=skill_lifecycle,
                 agents=shared_agents,
+                subjects=subjects,
+                evidence=evidence,
             )
             telemetry.shutdown()
 
@@ -703,6 +792,10 @@ class LocalWiring:
                 tenants=await registry.served(),
                 job_memory_bytes=memory_demand(configured),
             )
+
+    def catalogue_author(self) -> CatalogueAuthor:
+        """Signing a catalogue's index needs no state (ADR-0175 §2)."""
+        return CatalogueAuthor(Ed25519Signatures())
 
     @asynccontextmanager
     async def guides(self, *, directory: Path) -> AsyncIterator[GuidesServices]:

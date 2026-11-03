@@ -224,6 +224,12 @@
   ],
   "workers": [
     {
+      "capabilities": [],
+      "image": null,
+      "name": "a2a",
+      "operations": []
+    },
+    {
       "capabilities": [
         "code.edit",
         "code.read",

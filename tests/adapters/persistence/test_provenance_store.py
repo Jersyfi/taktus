@@ -215,3 +215,21 @@ async def test_what_was_built_on_a_step_run_walks_forward_across_runs_in_one_que
         ]
         assert [r.step_id for r in await store.derived(tenant, "r1", "c")] == ["e"]
         assert await store.derived(tenant, "r1", "d") == []
+
+
+async def test_the_records_of_a_subject_s_cases_are_found_by_its_identifier(
+    backend: Backend,
+) -> None:
+    # The steps that served a subject's cases, found through the index (ADR-0176 §2).
+    tenant = await backend.tenant()
+    store = backend.provenance_store
+    async with backend.work.transaction(tenant):
+        await store.append(tenant, record("p1", "r1", "a", 3, scope={"subject": "cust-1"}))
+        await store.append(tenant, record("p2", "r2", "a", 5, scope={"subject": "cust-2"}))
+        await store.append(tenant, record("p3", "r3", "a", 7, scope={"subject": "cust-1"}))
+        await store.append(tenant, record("p4", "r3", "b", 8))
+    async with backend.work.transaction(tenant):
+        found = await store.of_subject(tenant, "cust-1")
+        none = await store.of_subject(tenant, "cust-9")
+    assert [r.id for r in found] == ["p1", "p3"]
+    assert none == []

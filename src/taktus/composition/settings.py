@@ -974,6 +974,36 @@ def load_gallery_directory(configuration: Configuration) -> Path | None:
 
 
 @dataclass(frozen=True)
+class CatalogueSettings:
+    """Where the catalogue's indexes are, and the keys its entries are verified against
+    (ADR-0175). Both are files the operator places; the instance fetches nothing."""
+
+    directory: Path | None = None
+    """`TAKTUS_CATALOGUE_DIRECTORY`: the directory of index files, one `*.json` per index.
+    None: the catalogue is empty."""
+    keys: Path | None = None
+    """`TAKTUS_CATALOGUE_KEYS`: the file of public keys the operator trusts, each for one tier.
+    None: no key is trusted, and no entry is admitted."""
+
+    def effective(self) -> list[tuple[str, str]]:
+        return [
+            ("TAKTUS_CATALOGUE_DIRECTORY", str(self.directory or "")),
+            ("TAKTUS_CATALOGUE_KEYS", str(self.keys or "")),
+        ]
+
+
+def load_catalogue(configuration: Configuration) -> CatalogueSettings:
+    """`TAKTUS_CATALOGUE_DIRECTORY` and `TAKTUS_CATALOGUE_KEYS` (ADR-0175 §1, §3)."""
+    reader = _Reader(configuration)
+    directory = reader.text("catalogue.directory", "").strip()
+    keys = reader.text("catalogue.keys", "").strip()
+    return CatalogueSettings(
+        directory=Path(directory).expanduser() if directory else None,
+        keys=Path(keys).expanduser() if keys else None,
+    )
+
+
+@dataclass(frozen=True)
 class FindingsShape:
     """The shape of the issue a product finding opens (UC-6.12, ADR-0046): its operator's
     configuration, never one repository's form as the product's default (ADR-0092)."""

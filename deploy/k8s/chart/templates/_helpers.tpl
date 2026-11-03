@@ -51,27 +51,64 @@ app.kubernetes.io/component: {{ .component }}
 {{- end -}}
 
 {{/*
-An image reference whose tag is a version. `latest`, an empty tag and a moving tag of that kind
-are refused at render time: what runs must be what was released. Call with (dict "what" "image"
+An image reference whose tag is a version, or the full commit hash an image of `main` carries
+(ADR-0173 §1): forty lowercase hexadecimal characters, which name one commit and are never pushed
+twice. `latest`, an empty tag and a moving tag of that kind are refused at render time: what runs
+must be what was released. With `.image.digest` (`sha256:` and 64 hexadecimal characters) the
+reference is `<repository>:<tag>@<digest>`, and the runtime pulls the digest (ADR-0173 §7).
+`images.requireDigest` refuses a reference without one. Call with (dict "root" $ "what" "image"
 "image" .Values.image).
 */}}
 {{- define "taktus.image" -}}
 {{- $repository := required (printf "%s.repository is required" .what) .image.repository -}}
 {{- $tag := toString (required (printf "%s.tag is required: the released version, never latest" .what) .image.tag) -}}
-{{- if not (regexMatch "^v?[0-9]+(\\.[0-9]+)*([-+._][0-9A-Za-z.-]+)?$" $tag) -}}
+{{- if not (or (regexMatch "^v?[0-9]+(\\.[0-9]+)*([-+._][0-9A-Za-z.-]+)?$" $tag) (regexMatch "^[0-9a-f]{40}$" $tag)) -}}
 {{- fail (printf "%s.tag %q is not a version; a tag such as latest moves under a running instance" .what $tag) -}}
 {{- end -}}
-{{- printf "%s:%s" $repository $tag -}}
+{{- printf "%s:%s%s" $repository $tag (include "taktus.digestSuffix" (dict "root" .root "what" (.digestWhat | default (printf "%s.digest" .what)) "digest" .image.digest)) -}}
 {{- end -}}
 
-{{/* An image given as one reference (repository:tag), held to the same rule. */}}
+{{/*
+`@<digest>` for a digest given, empty for none; fails a digest of another form, and a missing
+one under `images.requireDigest` (ADR-0173 §7). Call with (dict "root" $ "what" "image" "digest" "…").
+*/}}
+{{- define "taktus.digestSuffix" -}}
+{{- $digest := toString (.digest | default "") -}}
+{{- if $digest -}}
+{{- if not (regexMatch "^sha256:[0-9a-f]{64}$" $digest) -}}
+{{- fail (printf "%s %q is not a digest: sha256: and 64 lowercase hexadecimal characters" .what $digest) -}}
+{{- end -}}
+{{- printf "@%s" $digest -}}
+{{- else if and .root .root.Values.images .root.Values.images.requireDigest -}}
+{{- fail (printf "%s is not given, and images.requireDigest refers to every image by its digest (ADR-0173 §7)" .what) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+An image given as one reference (repository:tag, optionally followed by @sha256:<digest>), held
+to the same rule. A reference by digest alone (repository@sha256:<digest>) needs no tag: a digest
+cannot move. Call with (dict "root" $ "what" "execution.image" "ref" …).
+*/}}
 {{- define "taktus.imageRef" -}}
 {{- $ref := toString .ref -}}
+{{- $digest := "" -}}
+{{- if contains "@" $ref -}}
+{{- $found := regexFind "@sha256:[0-9a-f]{64}$" $ref -}}
+{{- if not $found -}}
+{{- fail (printf "%s %q: what follows @ is not a digest: sha256: and 64 lowercase hexadecimal characters" .what $ref) -}}
+{{- end -}}
+{{- $digest = trimPrefix "@" $found -}}
+{{- $ref = trimSuffix $found $ref -}}
+{{- end -}}
 {{- $parts := regexFind ":[^:/]+$" $ref -}}
+{{- if and (not $parts) $digest -}}
+{{- printf "%s@%s" $ref $digest -}}
+{{- else -}}
 {{- if not $parts -}}
 {{- fail (printf "%s %q names no tag; give the version explicitly" .what $ref) -}}
 {{- end -}}
-{{- include "taktus.image" (dict "what" .what "image" (dict "repository" (trimSuffix $parts $ref) "tag" (trimPrefix ":" $parts))) -}}
+{{- include "taktus.image" (dict "root" .root "what" .what "digestWhat" (printf "%s digest" .what) "image" (dict "repository" (trimSuffix $parts $ref) "tag" (trimPrefix ":" $parts) "digest" $digest)) -}}
+{{- end -}}
 {{- end -}}
 
 {{/*
@@ -86,7 +123,8 @@ accounting anthropic aws bookstack einvoice github httpcheck mail openai prometh
 {{/*
 A shipped connector's image (ADR-0158): `<connectors.imagePrefix>-<name>`, by default beside the
 control plane's as `<image.repository>-connector-<name>`, at the control plane's tag, because a
-release builds and pushes them together (.github/workflows/images.yml). Call with
+release builds and pushes them together (.github/workflows/images.yml), pinned by
+`connectors.digests.<name>` where it is given (ADR-0173 §7). Call with
 (dict "root" $ "name" "github").
 */}}
 {{- define "taktus.connectorImage" -}}
@@ -96,7 +134,8 @@ release builds and pushes them together (.github/workflows/images.yml). Call wit
 {{- end -}}
 {{- $repository := required "image.repository is required" .root.Values.image.repository -}}
 {{- $prefix := .root.Values.connectors.imagePrefix | default (printf "%s-connector" $repository) -}}
-{{- include "taktus.image" (dict "what" "image" "image" (dict "repository" (printf "%s-%s" $prefix .name) "tag" .root.Values.image.tag)) -}}
+{{- $digest := index (.root.Values.connectors.digests | default dict) .name | default "" -}}
+{{- include "taktus.image" (dict "root" .root "what" "image" "digestWhat" (printf "connectors.digests.%s" .name) "image" (dict "repository" (printf "%s-%s" $prefix .name) "tag" .root.Values.image.tag "digest" $digest)) -}}
 {{- end -}}
 
 {{/*
@@ -255,7 +294,7 @@ capability its label in TAKTUS_CONNECTORS: each is unique, and neither repeats a
 {{- fail (printf "connectors.others %s: connector, module or image is required" $name) -}}
 {{- end -}}
 {{- if .image -}}
-{{- $_ := include "taktus.imageRef" (dict "what" (printf "connectors.others %s image" $name) "ref" .image) -}}
+{{- $_ := include "taktus.imageRef" (dict "root" $ "what" (printf "connectors.others %s image" $name) "ref" .image) -}}
 {{- else -}}
 {{- $_ := include "taktus.connectorImage" (dict "root" $ "name" (include "taktus.otherConnectorName" .)) -}}
 {{- end -}}

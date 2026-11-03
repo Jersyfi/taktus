@@ -87,6 +87,11 @@ class Traces(Protocol):
         """Every line recorded before `before` deleted; how many."""
         ...
 
+    async def erase_run(self, tenant: Tenant, run_id: str) -> int:
+        """Every line of every step of the run deleted, whenever it was recorded; how many. An
+        erasure of a data subject's run asks it (ADR-0176 §3)."""
+        ...
+
     async def share(self, tenant: Tenant, run_id: str, step_id: str, role: str) -> bool:
         """The step's trace shared with the role; False when it was already."""
         ...

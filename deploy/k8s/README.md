@@ -82,7 +82,8 @@ operator's. The parts that carry a decision:
 | Keys | What they decide |
 |---|---|
 | `namespaces.create` | `false` by default: both namespaces exist before the install, created by whoever may create namespaces, with the labels of section 4. The control plane renders into the release's namespace (`helm --namespace`), the execution units' objects into `execution.namespace`. `true` renders both Namespace objects with those labels, for a cluster where the installing identity may (DEC-0060) |
-| `image.repository`, `image.tag`, `image.pullSecret` | the control plane image; the tag is a version, and `latest` or an empty tag fails the render |
+| `image.repository`, `image.tag`, `image.digest`, `image.pullSecret` | the control plane image; the tag is a version, or the full commit hash of an image of `main`, and `latest` or an empty tag fails the render; `digest` pins it (§3, ADR-0173) |
+| `images.requireDigest` | `true` fails the render of any image without a digest: every image by the one name that cannot move (§3). Off by default |
 | `profile` | `standard` (default): one deployment per role. `small`: one deployment running every role in one process (`TAKTUS_ROLES=all`), sized by `small.resources`, beside the database. `ha`: highly available (ADR-0165), with `ha.replicas`, `ha.minAvailable` and `ha.antiAffinity`. See "Which profile" below |
 | `roles.<role>.replicas`, `.resources` | one deployment per role (ADR-0002), for the `standard` profile; the scheduler is elected, more than one is allowed and idle |
 | `database.deploy`, `.size`, `.storageClass`, `.passwordSecret`/`.passwordKey`, `.urlSecret`/`.urlKey` | a PostgreSQL of its own (DEC-0032) on a volume of 20 Gi (DEC-0033); its password and the instance's connection URL are existing Secrets |
@@ -91,11 +92,14 @@ operator's. The parts that carry a decision:
 | `execution.*` | `kind` (`cluster` for the cluster adapter of section 7, `endpoint` by default), the execution namespace, the jobs' account, the unit's image, the per-job defaults (`defaults.cpuRequestShare` the share of the CPU limit a unit requests, section 7; `defaults.serviceHosts` the hosts a worker's own service needs, section 6; `defaults.unitEnv` the variables a worker's own program needs to start, section 7 — configuration, never a secret), the claim the units' state lives on (`stateClaim`, rendered and kept on uninstall), the egress gateway (`gateway.replicas`, and optionally `gateway.keySecret` with `gateway.keyKey`, an existing Secret in both namespaces that holds its key; without them the chart makes the key and keeps it; section 6), and the egress port, allowed ports and excluded ranges, with `egress.proxyImage` the container adapter's gateway image. `workers[]` names several workers in the order a step is resolved in (`TAKTUS_WORKERS`, ADR-0078): each entry a `name` and what it sets itself — `kind`, `endpoint` (required for kind `endpoint`), `image`, `unitPort`, `cpus`, `cpuRequestShare`, `memoryMb`, `wallSeconds`, `startTimeoutSeconds`, an existing `stateClaim`, `serviceHosts` (`[]` for none), `unitEnv` (`{}` for none) — and the settings above for the rest. A name that is not lowercase words joined by hyphens, a name twice, or an endpoint worker without its endpoint fails the render |
 | `credentials[]` | one entry per parameter of `CREDENTIALS.md`: `parameter`, `secret`, `key`, optional `mountPath`; mounted as a file, its path in `TAKTUS_<PARAMETER>_FILE`. A credential of one of several workers has the parameter `worker.<worker>.credential.<name>`, and only that worker receives it |
 | `administration.platform`, `.administers` | the platform this instance runs on and, per credential parameter, the platforms it administers or `none` — `TAKTUS_PLATFORM`, `TAKTUS_ADMINISTERS` (ADR-0052). A process naming a credential that administers this platform, or one declared about nothing, is refused; with no platform nothing is checked |
+| `connectors.digests` | `<connector>: sha256:<digest>`, each shipped connector's image pinned (§3) |
 | `connectors.imagePrefix` | where the connectors' images are pulled from: each is `<imagePrefix>-<name>` at `image.tag`. Empty, the default: beside the control plane's image, `<image.repository>-connector-<name>` — `taktus-connector-github` beside `taktus`. Every connector the release ships runs from its own image, never from the control plane's (ADR-0158) |
 | `connectors.repository.*` | the repository channel's connector as a deployment of its own, from its own image, acting as Taktus's own app (ADR-0033): the repository it serves, the app's identifier, the Secrets holding the app's key and the webhook secret — mounted as files — and `findings`, which makes it the connector product findings go through. Enabled, it sets `TAKTUS_CONNECTORS` (`channel.repo`) and, with `findings`, `TAKTUS_FINDINGS_CONNECTOR`; it is reached from the roles alone and reaches the name service and the service's API outside the cluster (#66) |
 | `connectors.chat.*` | the chat channel's connector as a deployment of its own, from its own image, as Taktus's own app in the owner's chat workspace (NEED-0018): the Secret holding its bot token and signing secret, mounted as files. Enabled, it adds `channel.chat` to `TAKTUS_CONNECTORS`; it is reached from the roles alone and reaches the name service and the chat service's API outside the cluster (#239) |
 | `connectors.others` | every further connector, one deployment each: the cost, payment and error connectors (ADR-0150), the documents and accounting connectors (ADR-0169), the mail, metrics and check connectors (ADR-0111), or one of an image of its own. Each entry names the connector (`name`, the deployment's suffix), its `capability` — its label in `TAKTUS_CONNECTORS`, where the chart adds `<capability>=http://<release>-connector-<name>:<port>/mcp` — either a shipped `connector` by its name, run from its own image (`stripe`; the `module` an earlier release ran from the control plane's image, `taktus.adapters.driven.connectors.stripe`, names the same one), or an `image` of its own by version, its `port`, `args`, and each credential it reads as `{name, secret, key}`: the parameter of `CREDENTIALS.md`, mounted from that key as a file whose path is in `TAKTUS_CREDENTIAL_<NAME>_FILE`. Optional: `healthPath` (`/health`; empty for none), `egressPorts` (`[443]`) and `resources`. Each is reached from the roles alone, mounts no token, and reaches the name service and addresses outside `execution.egress.exceptCidrs` on its ports. A name, a capability or a credential named twice, two of connector, module and image at once, a connector the release does not ship, or a missing port fails the render |
 | `ingress.*` | off unless `host` is given; `tls.secretName` names an existing certificate Secret, and then nothing is requested; only without it does `tls.issuer` ask the platform's certificate manager, by an annotation on the ingress. The stream of changes, `/changes`, is a long-lived `text/event-stream` response (ADR-0055): an ingress controller that buffers responses holds every change back until its buffer fills, and one that closes idle connections sooner than 15 seconds ends streams between heartbeats. Taktus sends `X-Accel-Buffering: no`; a controller that ignores it is told through `ingress.annotations`. Taktus cannot detect either |
+| `backup.pointInTime.*` | point-in-time recovery (section 11, ADR-0174): off unless `enabled`, which needs `backup.enabled` and `database.deploy`. The database then runs from the backup image, archives every finished segment of its write-ahead log into the backup's store with the store's credential mounted as files, at least every `archiveTimeoutSeconds` (300), and admits the base backup's replication connection with its password; each backup run takes a base backup beside the dump. Its pod changes with every release, because its image is the backup's |
+| `backup.drill.*` | the restore drill S-03 (section 11, ADR-0174): off unless `enabled`; weekly by `schedule`; `restoreMinutes` (60), the machine's part of the recovery time, beyond which the drill fails; `workSize`, where the restored database lives while it runs; with `backup.recipient`, `identitySecret` and `identityKey` name the Secret of the age private key, without which the render fails. It reaches the name service and the store, never the database |
 | `backup.*` | the database's scheduled backup (section 11, ADR-0087): off unless `enabled`; the backup image, released with the instance; the `schedule`, daily by default; `retentionDays`, 30 by default (DEC-0058); `recipient`, an `age` public key, empty for no encryption; the store's `endpoint`, `region`, `bucket`, `prefix`, and the Secret holding its credential with the key of its identifier and of its secret, mounted as files. It reaches the name service, the database and the store on `egressPorts` outside the excluded ranges; the database admits it |
 | `networkPolicy.*` | the name service, the API server's addresses, the ingress controller's namespace, and further egress rules for the hosts the control plane needs (section 5) |
 | `telemetry.otlp.*`, `model.*`, `capacity.*` | as their `TAKTUS_*` variables; `model.outputCap` is `soft` by default, the setting's own default. An endpoint shown to hold the output limit — run M-03 against it — is set to `hard` in the operator's values. The Taktus project's own instance sets `hard`: M-03 passed against its endpoint on 2026-10-01 (research [A4]). That is its operator's value, not the chart's (ADR-0092); `model.usageKinds` the price kinds the endpoint reports, empty for `input,output` — M-04 holds the endpoint to it |
@@ -171,10 +175,26 @@ read-only root filesystem. The control plane's namespace can therefore enforce `
 |---|---|---|
 | `small` | one team or a trial on a cluster; the smallest footprint: the control plane in one pod, plus the database | not highly available: a restart of the pod stops every role until it is back, resuming at the last step boundary. The pod holds Taktus's service-account token, as the runner does. Roles cannot be scaled apart |
 | `standard` | an instance that needs roles scaled or restarted apart | one pod per role |
-
 | `ha` | an instance a business depends on (ADR-0013 A): its roles on several nodes, a node drained without stopping one | at least two pods per role, `ha.replicas`, on separate nodes where the cluster has them (`ha.antiAffinity: preferred`; `required` needs one node more than a role's replicas, or a rolling update cannot place its new pod); a disruption budget per role; an S3-compatible store; an external database, which must run with a standby replica, archive its write-ahead log for point-in-time recovery and keep one address across a failover — a PostgreSQL operator in the cluster or a managed server. The chart cannot see the server and does not check it. The connectors stay one pod each |
 
 For one machine, Docker Compose remains the way; the chart is for a cluster.
+
+**What each profile can lose, and how long it is down** (ADR-0174, UC-10.5). The recovery point
+objective (RPO) is the longest stretch of recent work a loss of the database may take with it.
+The recovery time objective (RTO) is the longest time from the decision to restore until the
+instance works again. The RTO has two parts: a person's — noticing, deciding, carrying out the
+steps of section 11 — which is an objective and is not measured; and the machine's — fetching,
+restoring, replaying, verifying — which every restore drill measures and holds to
+`backup.drill.restoreMinutes`.
+
+| Profile | RPO | RTO | How it is shown |
+|---|---|---|---|
+| `small`, `standard`, daily backup (`backup.enabled`) | 24 hours: the backup's schedule; a backup older than `backup.expectedHours` (26) reaches each owner | 4 hours, of which the machine's part at most `backup.drill.restoreMinutes` (60) | the drill restores the newest dump weekly and verifies every chain |
+| `small`, `standard`, with `backup.pointInTime.enabled` | `backup.pointInTime.archiveTimeoutSeconds`, 5 minutes by default: a segment of the log is archived at least that often | 4 hours, as above, plus the replay of the log since the newest base backup | the drill restores to the latest moment the archive reaches and verifies every chain |
+| `ha` | the external database's: a standby replica loses at most what it had not received; a restore from its archive, what its archive had not received | minutes for a failover to the standby, its operator's; 4 hours for a restore | the chart's drill restores its dumps; the server's own archive and failover are tested by its operator |
+| without a backup | everything since the install | — | nothing, and no owner is told of a missing backup |
+
+The single server (Docker Compose) is in the administration guide's page *Restoring*.
 
 **Moving artifacts from the state volume to an S3-compatible store** keeps every name: the file
 `objects/<hex>` becomes the key `<prefix>/<hex>`. By hand, without Taktus (UC-4.12):
@@ -195,13 +215,32 @@ worker code (DEC-0011); and an image for each connector it ships (`connectors/`)
 carries no connector either (ADR-0158). Multi-stage build from `deploy/docker/Dockerfile`, which already
 exists and is what `make up` uses.
 
-- `.github/workflows/images.yml` runs on a tag `v<version>` and on nothing else. It builds
-  `taktus`, `taktus-worker-script`, `taktus-worker-coding`, `taktus-worker-mlbench`, the backup's
-  image and one `taktus-connector-<name>` per connector, tags each with the version and
-  pushes them to the registry the repository variable `IMAGE_REGISTRY` names. Without the
-  variable it builds nothing, pushes nothing and says so. It has no deploy step, and a test
-  holds it to all three. The variable, and a push credential where the registry is not the
-  repository service's own, are NEED-0014.
+- `.github/workflows/images.yml` runs on a tag `v<version>` and on a push to `main`
+  (ADR-0173). It builds `taktus`, `taktus-worker-script`, `taktus-worker-coding`,
+  `taktus-worker-mlbench`, the backup's image and one `taktus-connector-<name>` per connector,
+  and pushes them to the registry the repository variable `IMAGE_REGISTRY` names. A tag
+  publishes them under the version; `main` under the full commit hash, the images the
+  development instance runs (ADR-0020). Without the variable it builds nothing, pushes nothing
+  and says so. It has no deploy step, and a test holds it to all of this. The variable, and a
+  push credential where the registry is not the repository service's own, are NEED-0014.
+- **Scanned before it is tagged.** Each image is pushed by its digest alone and scanned from the
+  registry, once per platform; a vulnerability of severity `high` or above with a fixed version
+  fails it, and it never gets its tag (`deploy/images/README.md`). Before anything is built, the
+  job `proof` scans a known-vulnerable image and fails unless that scan fails.
+- **Signed without a key.** A passing image is signed with cosign through the workflow's own
+  identity; no key exists and no secret is stored. `deploy/images/README.md` gives the
+  `cosign verify` an operator runs. The chart does not verify signatures.
+- **Recorded by digest.** The run's artefact `images` holds `images.json` and
+  `digests.values.yaml`, the values that pin every image the chart derives from the release:
+
+  ```
+  helm upgrade --install taktus deploy/k8s/chart -f <your values> -f digests.values.yaml
+  ```
+
+  Every image value takes a digest: `image.digest`, `backup.image.digest`,
+  `database.image.digest`, `connectors.digests.<name>`, and `@sha256:<digest>` at the end of an
+  image given as one reference. A pinned image renders as `<repository>:<tag>@<digest>`.
+  `images.requireDigest: true` fails the render of any image without one.
 - The registry is named only by the values key `image.repository`. Which registry, and whether
   the package is public, is the operator's.
 - **Push-based, not pulled.** There is no GitOps controller in the target cluster, so the
@@ -672,6 +711,106 @@ steps against a fresh database.
 
 The restore of an encrypted backup without its private key is impossible, by design. Keep the
 key where a failure of the instance does not reach it.
+
+### Point-in-time recovery
+
+With `backup.pointInTime.enabled` (ADR-0174), the database archives its write-ahead log — its
+own record of every change, in files of 16 MiB called segments — into the backup's store as it
+writes it: `wal/<system identifier>/<segment>`, encrypted where `backup.recipient` is set. The
+system identifier is the number PostgreSQL gave the database cluster when it was created; a
+database restored from a dump is a new cluster with a new number, so it never overwrites the
+segments of the cluster before it. Each backup run then also writes a **base backup**,
+`<name>.base-<system identifier>-<first segment>.tar.gz`: a copy of the database's files that
+holds the segments it needs itself. A base backup and the segments archived after it restore the
+database to any moment between the base backup's end and the newest archived segment. The
+retention keeps the segments the oldest kept base backup needs and deletes those before it.
+
+It is an option, not the default: the smallest install works without it. It costs a second copy
+of the database in the store per backup, the archived log, and the store's credential in the
+database's pod. While the store cannot be reached, the segments wait on the database's volume and
+fill it; the capacity watch sees the database's size grow.
+
+**What it does not bring back.** With `objectStore.kind: filesystem`, the stored files live on
+the state volume and are archived once per backup. A restore to a moment after the backup brings
+back rows that name files written after it; those are on the state volume if it survived, and
+lost with it otherwise. With `objectStore.kind: s3`, the files are off the node already.
+
+### To a chosen moment, by hand
+
+Nothing here needs Taktus either. It needs `rclone`, `age` where the store is encrypted, `tar`
+and the database's own server, of the same major version — all are in the backup image.
+
+1. **Stop everything that writes**, as in step 1 above, and stop the database
+   (`kubectl scale statefulset <release>-database --replicas=0`). Keep its volume.
+2. **Choose the base backup**: the newest one whose manifest's `base.finished` lies before the
+   moment. Copy it out and compare its SHA-256 with the manifest's `base.sha256`, as in step 2;
+   decrypt it as in step 3. Note its system identifier, `base.system_identifier`.
+3. **Unpack it into an empty data directory** — a new volume, or the old one emptied after it
+   was itself copied away — owned by the database's user and closed to others:
+
+   ```bash
+   mkdir -m 700 <data> && tar -xzf <name>.base-<cluster>-<segment>.tar.gz -C <data>
+   touch <data>/recovery.signal
+   ```
+
+4. **Say where the log comes from and where to stop**, at the end of
+   `<data>/postgresql.auto.conf`, with the store's variables of step 2 in the server's
+   environment:
+
+   ```
+   restore_command = 'rclone --config /dev/null copyto :s3:<bucket>/<prefix>/wal/<cluster>/%f %p'
+   recovery_target_time = '2026-10-31 12:00:00+00'
+   recovery_target_action = 'promote'
+   ```
+
+   Where the store is encrypted, the line decrypts as well:
+   `restore_command = 'rclone --config /dev/null cat :s3:<bucket>/<prefix>/wal/<cluster>/%f.age | age --decrypt --identity key.txt --output %p'`.
+   Without `recovery_target_time`, the server replays everything the archive holds.
+5. **Start the server** once, with archiving off, so that the restored server does not write into
+   the archive it reads: `postgres -D <data> -c archive_mode=off`. It replays the log up to the
+   moment and promotes itself; `SELECT pg_is_in_recovery()` answers `f` when it is done. A
+   moment the archive does not reach stops the server with *recovery ended before configured
+   recovery target was reached*: choose an earlier moment, or restore the dump instead.
+6. **Check every tenant's chain** as in step 7 above, against the heads noted at the moment
+   where someone noted them, and at least against the base backup's manifest: each of its heads
+   must be in the chain with its hash.
+7. **Start the release again** with point-in-time recovery enabled. The restored database is on
+   a new timeline and archives from there; the base backup of the next backup run starts the
+   new archive's retention.
+
+`tests/deploy/test_point_in_time.py` runs these steps against a database of its own and holds
+the restored heads to those Taktus's own verification noted at the moment.
+
+### The restore drill, S-03
+
+A restore nobody has carried out is a hope. `backup.drill.enabled` runs the drill weekly
+(ADR-0174 §3), the program's `drill` command from the backup image:
+
+- it restores the newest backup into a database server of its own pod — the dump, or with point-
+  in-time recovery the newest base backup and the archived log to the latest moment it reaches —
+  with archiving off and no network address, and never connects to the instance's database;
+- it recomputes every tenant's ledger chain by the ledger's published rule, without Taktus, and
+  checks that every head of the manifest is in it with its hash;
+- it measures the machine's part of the restore and fails when it took longer than
+  `backup.drill.restoreMinutes`;
+- it writes its report to the store, `drills/taktus-<time>.drill.json`, and fails its Job when
+  the restore failed, a chain did not verify, or a head was missing. A failed drill is seen in the
+  Job's state and the report; the instance is not told of it.
+
+**With encryption, run the drill off the instance.** The drill must decrypt what it restores, so
+in the cluster it needs the private key (`backup.drill.identitySecret`), which encryption keeps
+out of the cluster on purpose. The same drill runs anywhere the backup image runs, with the key
+from the operator's own store:
+
+```bash
+docker run --rm --env-file store.env --env TAKTUS_CREDENTIAL_BACKUP_IDENTITY_FILE=/key/key.txt \
+  --volume "$PWD/key:/key:ro" <backup image> drill [--to <moment>|latest] [--heads heads.json]
+```
+
+`store.env` holds the `TAKTUS_BACKUP_STORE_*` settings and the `_FILE` paths of the store's
+credential, mounted as well. `--heads` names a file of heads noted at the moment —
+`{"<tenant>": {"seq": …, "hash": "sha256:…"}}` — and the drill then requires each tenant's newest
+entry to be exactly that one.
 
 
 ## 12. Rolling back an upgrade

@@ -28,3 +28,10 @@ class ObjectStore(Protocol):
         """The bytes stored under the digest; None when there are none, or when the bytes found
         do not hash to it. Raises `ObjectStoreUnavailable` when the store cannot answer."""
         ...
+
+    async def remove(self, digest: Digest) -> bool:
+        """The object stored under the digest removed; False when there was none. Removing an
+        object that is gone already is not an error, so an erasure that stopped half-way can be
+        carried out again (ADR-0176 §3). Raises `ObjectStoreUnavailable` when the store cannot
+        answer."""
+        ...

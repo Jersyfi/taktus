@@ -64,7 +64,7 @@ CLAIMS: dict[str, tuple[str, ...]] = {
     # documentation freshness, decisions, use cases, ADRs, vision, status.
     "static": (r".*",),
     "decisions": (r".*",),
-    "contracts": (r"api/.*", r"tools/(validate_contracts|generate)\.py"),
+    "contracts": (r"api/.*", r"tools/(validate_contracts|contract_compat|generate)\.py"),
     "web": (r"web/.*",),
     "conformance": (
         r"src/taktus/(conformance|wire|ports|adapters)/.*",
@@ -87,6 +87,7 @@ CLAIMS: dict[str, tuple[str, ...]] = {
         r"\.importlinter",
         r"\.dockerignore",
         r"\.env\.example",
+        r"\.gitleaks\.toml",
     ),
     # The replay of the self-development bundles (ADR-0108): the bundles, the recordings and
     # what replays them. It reaches the core through the composition root, whose import graph
@@ -135,7 +136,7 @@ COMMANDS: dict[str, tuple[str, ...]] = {
         "gate-usecases",
     ),
     "decisions": ("gate-adrs", "gate-vision", "gate-status"),
-    "contracts": ("gate-contracts",),
+    "contracts": ("gate-contracts", "gate-compat"),
     "web": ("gate-web",),
     "conformance": ("gate-conformance",),
     "test": ("test",),

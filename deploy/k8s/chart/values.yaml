@@ -14,9 +14,19 @@ namespaces:
 
 image:
   repository: ""           # where the control plane image is pulled from
-  tag: ""                  # the released version, never `latest`; the install fails without one
+  tag: ""                  # the released version, never `latest`; the install fails without one.
+                           # An image of `main` carries the full commit hash (ADR-0173 §1)
+  digest: ""               # sha256:<64 hex>: pins the image; rendered as <repository>:<tag>@<digest>
   pullPolicy: IfNotPresent
   pullSecret: ""           # name of an existing pull secret; empty when the image is public
+
+# Every image by its digest (ADR-0173 §7). Each image value takes a digest beside its tag —
+# `image.digest`, `backup.image.digest`, `database.image.digest`, `connectors.digests.<name>` —
+# and an image given as one reference may end in `@sha256:<digest>`. The image workflow writes
+# the values that pin one release's images as `digests.values.yaml` (README §3).
+# `requireDigest: true` fails the render of any image without a digest.
+images:
+  requireDigest: false
 
 # The user the control plane's image runs as (deploy/docker/Dockerfile pins it).
 securityContext:
@@ -112,6 +122,7 @@ database:
   image:
     repository: postgres
     tag: "16-alpine"
+    digest: ""             # sha256:<64 hex>; required under images.requireDigest
   storageClass: ""
   size: 20Gi               # DEC-0033: cannot be enlarged on the target's storage class; watched from the first run
   resources:
@@ -132,6 +143,7 @@ backup:
   image:
     repository: ""         # the backup image (deploy/backup/Dockerfile), released with the instance
     tag: ""
+    digest: ""             # sha256:<64 hex>: pins it (ADR-0173 §7)
   schedule: "17 3 * * *"   # daily, 03:17 UTC
   expectedHours: 26        # how old the last successful backup may be before each owner hears it is missing (ADR-0106)
   retentionDays: 30        # a backup older than this is deleted; the newest never is
@@ -154,6 +166,27 @@ backup:
   resources:
     requests: { cpu: 50m, memory: 128Mi }
     limits: { memory: 512Mi }
+  # Point-in-time recovery (ADR-0174, README §11): the database archives its write-ahead log into
+  # the store as it writes it, and each backup run takes a base backup beside the dump. Off by
+  # default; needs `enabled` and `database.deploy`. The database then runs from the backup image
+  # and holds the store's credential.
+  pointInTime:
+    enabled: false
+    archiveTimeoutSeconds: 300   # a segment is archived at least this often: the recovery point objective
+  # The restore drill, S-03 (ADR-0174 §3): the newest backup restored into a server of the drill's
+  # own pod, every tenant's chain verified against the heads taken before; never the instance's
+  # database. With pointInTime, to the latest moment the archive reaches.
+  drill:
+    enabled: false
+    schedule: "47 4 * * 0"       # weekly, Sundays 04:47 UTC
+    restoreMinutes: 60           # the machine's part of the recovery time objective; a slower drill fails
+    identitySecret: ""           # with `recipient`: the Secret holding the age private key — see README §11
+    identityKey: ""
+    workSize: 40Gi               # the restored database lives here while the drill runs
+    activeDeadlineSeconds: 7200
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { memory: 1Gi }
 
 # The migrations: a Job with the control plane's own image, run by the install and by every
 # upgrade before the new version starts. With `database.deploy: true` the first install runs it
@@ -277,6 +310,7 @@ administration:
 # two secrets exist before the install and are mounted as files, like every other.
 connectors:
   imagePrefix: ""          # where the connectors' images are pulled from; empty: beside `image`
+  digests: {}              # <connector>: sha256:<64 hex>, each shipped connector's image pinned (ADR-0173 §7)
   repository:
     enabled: false
     repository: ""         # owner/name of the repository it serves

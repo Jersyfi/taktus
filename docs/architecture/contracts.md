@@ -229,7 +229,8 @@ own count of out-of-memory kills in the unit's cgroup. The engine's flag for suc
 from a separate event that may arrive late or never, so the adapter classifies a memory kill
 from either record (issue #29).
 
-**The container adapter's wall**, per job: a container from the unit's image with no
+**The container adapter's wall**, per job: a container from the unit's image — pulled by its
+digest where its reference ends in `@sha256:<digest>`, by its tag otherwise (ADR-0173 §7) — with no
 capability, no privilege escalation, a process limit, a memory limit without swap and a CPU
 limit — the engine kills on memory, the adapter on the wall clock; an engine that reports it
 cannot limit memory or swap is refused before anything is created; a network of its own,
@@ -294,6 +295,17 @@ engine asks the catalog's record through its maturity port; a rehearsal and the 
 connector, which act on nothing outside, are not held to it (NTC-0079). An integration reaches
 *verified* once the instance has recorded both halves for the configuration that resolves it now;
 until then a real run at level 3 halts at its first step that needs it.
+
+**The catalogue** (ADR-0175, UC-14.6, contract `contracts/catalogue/v1`) is an index over
+signed images and bundles in which an operator finds adapters and process bundles. Its tiers
+follow the table above: an entry states *reference* or *community*; *verified* is never stated
+and is derived from the records above. An instance installs only an entry signed with Ed25519 by
+a key its operator trusts for the entry's tier (`TAKTUS_CATALOGUE_KEYS`), and records it with its
+origin in the ledger as `catalogue.installed` (`taktusctl catalogue install`). For an adapter
+installed from it, a half taken before the installation does not count, so a community adapter
+stays below level 3 until it is verified here. A community bundle becomes a proposal at level 2
+or below. The catalogue runs nothing: the deployment pulls an image by the digest it prints.
+Not the list of processes a person may ask for (`GET /catalogue`, UC-1.13).
 
 The conformance suite is the real asset here — not the adapter code, but the ability to check.
 Without it, "interchangeable" is an assertion.
@@ -381,8 +393,8 @@ schema is valid and carries the `$id` its path prescribes, every example validat
 W-01..W-21 and C-01..C-11 has a fixture (`tools/validate_contracts.py`).
 
 Every schema is identified by `https://taktus.eu/contracts/<family>/v1/<Concept>.json` — its path
-under `contracts/` behind the project's domain. A released v1 schema is immutable; changes become
-v2 (ADR-0019).
+under `contracts/` behind the project's domain. A released schema changes only compatibly, and
+from the freeze not at all; a breaking change becomes v2 (ADR-0019, ADR-0171, §8).
 
 ---
 
@@ -397,6 +409,7 @@ example, not a requirement. The core runs with all of them removed — it simply
 | Worker | `mlbench` | training, evaluation, embeddings, classical ML. The second proof case: hours of runtime, a GPU held, a model artifact returned. Exists (`workers/mlbench/`) for classical models on a CPU: it trains a linear classifier one epoch per step, evaluates it on held-out rows and serves predictions with their confidence, reproducibly at a pinned version, and passes the suite, faults included (#89). Embeddings and a run on an accelerator are #210 |
 | Worker | `claudecode` | the first real coding worker. Exists (`workers/claudecode/`), passes the suite in both authentication modes, faults included, against a stand-in for its agent; a live run needs a credential the operator supplies |
 | Worker | `factory` | a whole software factory behind the contract (ADR-0157, #411): the capability `change.implement`, a change implemented as a whole by a service outside the instance. Exists (`workers/factory/`): generic over a factory's task API — submit, read its state, fetch its change — with a profile mapping one factory's API onto those three calls; a step per stage the factory reports, its cost per step, the change as the coding workers' `changeset`. Its operator declares where the factory stores (`--stores`). Passes the suite, faults included, against a stand-in factory (`tests/fakes/factory_service.py`); withdrawn, the removal test says *changed* with another worker of the capability as its alternative (`tests/integration/test_factory_worker.py`). No product profile is shipped; a live run needs a factory and its credential |
+| Worker | `a2a` | an agent of the open agent-to-agent protocol behind the contract (ADR-0172, #349): the binding of the worker contract to A2A, not a second contract. Exists (`workers/a2a/`): one agent, one capability its operator names by function, the location its operator declares; a step per status change of the agent's task, the seconds it lasted as `compute_seconds`, a steering message sent into the task. Passes the suite, faults included, against a reference agent (`tests/fakes/a2a_agent.py`); withdrawn, the removal test says *changed* (`tests/integration/test_a2a_worker.py`). A live run needs an agent and its credential |
 | Worker | `codex` | the second real coding worker; validates the contract against a second vendor. Exists (`workers/codex/`), offers the four capabilities a coding step requires, passes the suite in both authentication modes, faults included, against a stand-in for its agent; tokens per step come from the agent's session file. With both coding workers in one pool, the removal test withholds either and the step is served by the other (`tests/integration/test_two_coding_workers.py`). An instance configures both in `TAKTUS_WORKERS` (#209, ADR-0078), and the removal test says *changed* for each with the other as its alternative. Its image and live run are #208 |
 | Connector | `github` | repository: issues, pull requests, pipelines, comments, branches, labels, and one file read at a ref — actions and webhook intake. Exists (`connectors/taktus_connectors/github/`), passes the suite against a fake of its service; the example of idempotency: a pull request opened for a step is opened once, proven across a restart of the connector against the fake and, with a credential, against the real service (`tests/adapters/connectors/test_repository_live.py`). Acts as Taktus's own app when configured with the app's identifier and key — the requesting identity behind the name it declares for actions, minting an installation token that lives an hour for its one repository, never stored — and with a token otherwise (ADR-0033); the suite passes in both modes, and against the real service with the scenario it ships, whose pull request comes from the branch its branch write made (#300). A repeated issue create is found at once although the service's issue list lags: the issues above the newest listed number are read one by one (ADR-0024, amendment of 2026-10-12). Reached by the daemon's webhook intake and by the run's connector steps. Reads every secret — the webhook's included — from the file `TAKTUS_CREDENTIAL_<NAME>_FILE` names, and from the variable only without one (DEC-0130); never acts with its own secrets — the app's key, the webhook secret — when a call names them, and names a transport fault by its type alone, as the chat connector does (#267); on a cluster the chart deploys it beside the roles (`deploy/k8s/README.md` §2). A branch it writes
 keeps the mode each file has in the base — an executable a change touches stays executable —
@@ -464,3 +477,38 @@ permissions remain in force, no circumvention.
 **Excluded outright in both tiers:** tools with a surveillance character towards individuals
 (keystroke logging, productivity scoring, location tracking) · tools that bypass source-system
 permissions · tools with no data export for Taktus's own data.
+
+---
+
+## 8. Versions and compatibility
+
+A contract is **published** once a version of Taktus that uses it is released. A release is a
+tag `vMAJOR.MINOR.PATCH` without a pre-release part; a candidate (`-rc.N`) or a beta is none
+(NTC-0255). Before the first release, `v1` may still move (ADR-0019).
+
+From the first release on, a published schema changes **only compatibly** (ADR-0171). Seen from
+an adapter that sends the documents a contract describes or reads them:
+
+- **Compatible:** a property, definition or schema added and not required; a type or enum
+  widened; a bound loosened or removed; a description or example changed; an alternative added
+  to `anyOf` or `oneOf`. In an `openapi.yaml`, a path, operation or component added.
+- **Breaking:** a property, definition or schema removed; a property newly required or no
+  longer required; a type or enum narrowed; a `const`, a bound, a `pattern` or a `format`
+  added or tightened; a changed `$id`, `$ref` or condition; additional properties no longer
+  admitted. Every keyword the check does not classify counts as breaking until it is taught it.
+
+**A breaking change is a new major version under a new `$id`**:
+`contracts/<family>/v2/<Concept>.json` beside `v1`, which stays as it was. A `v1` schema may be
+retired once its successor exists. A breaking change of a published contract is the owner's
+decision (anchor M3.5).
+
+`make gate-compat` (`tools/contract_compat.py`) holds the rule. It compares every schema with
+the same path at the last release tag and fails a breaking change. With no release yet, it
+reports the change against the base and passes. CI runs it in the lane `contracts`, which every
+change under `contracts/` selects. It needs `git` and nothing of the project, so an adapter's
+author can run it on a checkout: `uv run tools/contract_compat.py --baseline <tag>`.
+
+**The freeze** is the owner's act (M3.5): a record `contracts/FREEZE.json` names every file of a
+frozen version with its digest, the date and the decision. Once it exists, `make
+gate-contracts` fails any change to a frozen file, compatible or not, and any file added to a
+frozen version. Not covered: the HTTP API's own compatibility, which `api/openapi.yaml` carries.

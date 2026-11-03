@@ -9,9 +9,10 @@ the ledger (ADR-0044); `conformance list` prints every configured adapter with i
 and says which connectors serve a vendor's MCP server and under which manifest (ADR-0117).
 `run` and `submit` drive the control plane: `run` executes a bundle in this process, `submit`
 queues it for the daemon. `capacity` reports what the platform has left
-and the date a person must act by. `cost` recomputes what a run cost from the ledger. `prices
-import` turns an open model price list into a new price table version, a file, and lists what
-it could not map (#327). `identity`
+and the date a person must act by. `catalogue` lists, installs and signs the entries of a
+catalogue of signed adapters and bundles (ADR-0175). `cost` recomputes what a run cost from
+the ledger. `prices import` turns an open model price list into a new price table version, a
+file, and lists what it could not map (#327). `identity`
 adds identities, sets their roles, and lists and revokes the links of channel accounts
 (ADR-0040). `tenant` creates, renames and lists the instance's tenants; Taktus generates each
 identifier (ADR-0104). `first start` creates a new instance's first tenant and its administrator,
@@ -40,7 +41,11 @@ lists every signal judged against its corridor now (ADR-0109). `corrections` pri
 correction rate per process and action class, the levels that fell by rule, and configures
 the tenant's limits (ADR-0110). `residency` shows and sets where the tenant's data may be
 processed, narrowed per data class (ADR-0116). `sources` shows and declares which capabilities
-serve data free of personal fields and which serve personal data (ADR-0130). `messages` shows
+serve data free of personal fields and which serve personal data (ADR-0130). `subject`
+prepares a data-protection request — access, rectification, erasure, portability — from what
+references its subject, and carries it out for a person who checked the requester's identity;
+`evidence` prints what is processed, where, by which adapter and kept how long (ADR-0176).
+`messages` shows
 and sets the tenant's rules for outward messages, and `case answered` records that a person
 answered in a case, which then gets no more messages (ADR-0142). `units` shows and sets the
 tenant's quotas per organisational unit (ADR-0166). `deadline` lists
@@ -75,6 +80,7 @@ from taktus.adapters.driving.cli import (
     bpmn_command,
     bundle_command,
     capacity_command,
+    catalogue_command,
     conformance_command,
     corrections_command,
     cost_command,
@@ -101,6 +107,7 @@ from taktus.adapters.driving.cli import (
     sources_command,
     stage_command,
     stop_command,
+    subject_command,
     submit_command,
     tenant_command,
     trace_command,
@@ -133,6 +140,7 @@ app.command("resume")(resume_command.resume)
 app.command("deactivate")(deactivate_command.deactivate)
 app.command("exactness")(exactness_command.exactness)
 app.add_typer(bundle_command.bundle, name="bundle")
+app.add_typer(catalogue_command.catalogue, name="catalogue")
 app.add_typer(bpmn_command.bpmn, name="bpmn")
 app.command("capacity")(capacity_command.capacity)
 app.command("cost")(cost_command.cost)
@@ -150,6 +158,8 @@ app.add_typer(corrections_command.corrections, name="corrections")
 app.add_typer(defect_command.defect, name="defect")
 app.add_typer(residency_command.residency, name="residency")
 app.add_typer(sources_command.sources, name="sources")
+app.add_typer(subject_command.subject, name="subject")
+app.command("evidence")(subject_command.evidence)
 app.add_typer(messages_command.messages, name="messages")
 app.add_typer(messages_command.case, name="case")
 app.add_typer(units_command.units, name="units")

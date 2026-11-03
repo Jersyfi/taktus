@@ -14,10 +14,12 @@ from __future__ import annotations
 
 import base64
 import ipaddress
+import json
 import os
 import re
 import shutil
 import subprocess
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -29,6 +31,10 @@ from images import connector_names
 from taktus.adapters.driven.execution.kubernetes.api import PERMITTED
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools"))
+
+import image_digests  # noqa: E402 — a script under tools/, found through the line above
+
 CHART = ROOT / "deploy" / "k8s" / "chart"
 EXAMPLE = ROOT / "deploy" / "k8s" / "values.example.yaml"
 RELEASE_NAMESPACE = "taktus"
@@ -284,7 +290,7 @@ def test_every_image_tag_is_a_version(rendered: list[dict[str, Any]]) -> None:
         config["data"]["TAKTUS_EXECUTION_EGRESS_IMAGE"],
     ]
     for image in images:
-        repository, _, tag = image.rpartition(":")
+        repository, _, tag = image.partition("@")[0].rpartition(":")
         assert repository and "/" not in tag, f"{image} names no tag"
         assert VERSION_TAG.match(tag) and tag != "latest", f"{image}: not a version"
 
@@ -300,6 +306,100 @@ def test_every_image_tag_is_a_version(rendered: list[dict[str, Any]]) -> None:
 )
 def test_a_tag_that_is_not_a_version_is_refused(setting: str) -> None:
     assert "tag" in render_fails(setting)
+
+
+# --- every image by its digest (ADR-0173 §7) ------------------------------------------------
+
+DIGEST = "sha256:" + "0123456789abcdef" * 4
+COMMIT = "0123456789abcdef0123456789abcdef01234567"
+PINNED = (
+    f"image.digest={DIGEST}",
+    f"backup.image.digest={DIGEST}",
+    f"database.image.digest={DIGEST}",
+    f"connectors.digests.github={DIGEST}",
+    f"connectors.digests.slack={DIGEST}",
+    f"execution.image=taktus-worker-coding:0.1.0@{DIGEST}",
+    f"execution.egress.proxyImage=python@{DIGEST}",
+)
+
+
+def every_image(documents: list[dict[str, Any]]) -> list[str]:
+    images = [c["image"] for _, spec in pod_specs(documents) for c in containers(spec)]
+    [config] = of_kind(documents, "ConfigMap")
+    return [
+        *images,
+        config["data"]["TAKTUS_EXECUTION_UNIT"],
+        config["data"]["TAKTUS_EXECUTION_EGRESS_IMAGE"],
+    ]
+
+
+def test_every_image_is_referred_to_by_its_digest_when_the_values_give_one() -> None:
+    images = every_image(render(*PINNED, "images.requireDigest=true"))
+    assert images
+    for image in images:
+        assert image.endswith(f"@{DIGEST}"), f"{image} is not pinned"
+    assert "taktus:0.1.0@" + DIGEST in images, "the tag stays beside the digest, for a reader"
+    assert f"python@{DIGEST}" in images, "a reference by digest alone needs no tag"
+
+
+def test_without_a_digest_an_image_is_referred_to_by_its_tag_as_before(
+    rendered: list[dict[str, Any]],
+) -> None:
+    assert not [image for image in every_image(rendered) if "@" in image]
+
+
+@pytest.mark.parametrize("left_out", range(len(PINNED)))
+def test_require_digest_refuses_any_image_without_one(left_out: int) -> None:
+    sets = [s for i, s in enumerate(PINNED) if i != left_out]
+    message = render_fails(*sets, "images.requireDigest=true")
+    assert "requireDigest" in message, message
+
+
+@pytest.mark.parametrize(
+    "setting",
+    [
+        "image.digest=sha256:short",
+        "image.digest=md5:" + "0" * 32,
+        f"image.digest={DIGEST.upper()}",
+        "connectors.digests.github=latest",
+        "execution.image=taktus-worker-coding:0.1.0@sha256:short",
+        "execution.image=taktus-worker-coding@latest",
+    ],
+)
+def test_a_digest_of_another_form_is_refused(setting: str) -> None:
+    assert "not a digest" in render_fails(setting)
+
+
+def test_an_image_of_main_is_tagged_with_its_commit() -> None:
+    """The development instance runs `main` (ADR-0020); its images carry the full commit hash,
+    which names one commit and is never pushed twice (ADR-0173 §1). A short hash is refused."""
+    images = every_image(render(f"image.tag={COMMIT}"))
+    assert f"taktus:{COMMIT}" in images
+    assert "is not a version" in render_fails(f"image.tag={COMMIT[:12]}x")
+
+
+def test_the_digests_the_image_workflow_records_pin_the_chart(tmp_path: Path) -> None:
+    """`digests.values.yaml`, as tools/image_digests.py writes it from one run, pins every image
+    the chart derives from the release (ADR-0173 §6)."""
+    source = tmp_path / "in"
+    source.mkdir()
+    names = ["taktus", "taktus-backup", *(f"taktus-connector-{n}" for n in connector_names())]
+    for number, name in enumerate(names):
+        digest = f"sha256:{number:064x}"
+        entry = {"name": name, "repository": f"r/{name}", "tag": "0.1.0", "digest": digest}
+        (source / name).write_text(json.dumps(entry), encoding="utf-8")
+    image_digests.record(source, tmp_path / "out")
+    args = ["template", "taktus", str(CHART), "--namespace", RELEASE_NAMESPACE, "-f", str(EXAMPLE)]
+    args += ["-f", str(tmp_path / "out" / "digests.values.yaml")]
+    completed = run_helm(*args)
+    assert completed.returncode == 0, completed.stderr
+    documents = [d for d in yaml.safe_load_all(completed.stdout) if d]
+    images = [c["image"] for _, spec in pod_specs(documents) for c in containers(spec)]
+    derived = [
+        i for i in images if i.startswith(("taktus:", "taktus-backup:", "taktus-connector-"))
+    ]
+    assert derived
+    assert all(re.search(r"@sha256:[0-9a-f]{64}$", i) for i in derived), derived
 
 
 def test_one_deployment_per_role_and_migrations_with_the_same_image(
@@ -1088,6 +1188,133 @@ def test_without_the_backup_nothing_of_it_is_rendered() -> None:
 )
 def test_a_backup_without_its_store_or_its_version_is_refused(setting: str) -> None:
     assert "backup." in render_fails(setting)
+
+
+# --- point-in-time recovery and the restore drill (ADR-0174, #346) -------------------------------
+
+PITR = ("backup.pointInTime.enabled=true",)
+
+
+def _database(documents: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]]:
+    [database] = [
+        d for d in of_kind(documents, "StatefulSet") if d["metadata"]["name"].endswith("-database")
+    ]
+    pod = database["spec"]["template"]["spec"]
+    [container] = pod["containers"]
+    return pod, container
+
+
+def test_point_in_time_recovery_is_off_unless_the_operator_enables_it(
+    rendered: list[dict[str, Any]],
+) -> None:
+    pod, container = _database(rendered)
+    assert container["image"].startswith("postgres:") and "args" not in container
+    assert "backup-store" not in {v["name"] for v in pod["volumes"]}
+    [cron] = of_kind(rendered, "CronJob")
+    [backup] = cron["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"]
+    assert "TAKTUS_BACKUP_POINT_IN_TIME" not in {v["name"] for v in backup["env"]}
+    names = {p["metadata"]["name"] for p in of_kind(rendered, "NetworkPolicy")}
+    assert "taktus-database-archive" not in names
+
+
+def test_with_point_in_time_the_database_archives_its_log_to_the_store_and_reads_files() -> None:
+    documents = render(*PITR, "backup.pointInTime.archiveTimeoutSeconds=120")
+    _, container = _database(documents)
+    assert container["image"] == "taktus-backup:0.1.0", "the database's own image with the tools"
+    assert container["command"] == ["docker-entrypoint.sh"]
+    args = container["args"]
+    assert args[0] == "postgres"
+    assert "archive_mode=on" in args and "archive_timeout=120" in args
+    assert "archive_command=python3 /usr/local/bin/taktus-backup archive-wal %p %f" in args
+    assert "hba_file=/etc/taktus/database/pg_hba.conf" in args
+    env = {v["name"]: v.get("value") for v in container["env"]}
+    assert (
+        env["TAKTUS_CREDENTIAL_BACKUP_STORE_FILE"] == "/run/secrets/taktus/backup-store/secret_key"
+    )
+    assert not any("valueFrom" in v for v in container["env"]), "a secret is a file, never a value"
+    mounts = {m["name"]: m for m in container["volumeMounts"]}
+    assert mounts["backup-store"]["readOnly"] and mounts["database-hba"]["readOnly"]
+    [hba] = [
+        c for c in of_kind(documents, "ConfigMap") if c["metadata"]["name"] == "taktus-database-hba"
+    ]
+    rules = hba["data"]["pg_hba.conf"].splitlines()
+    assert rules[-1].split() == ["host", "replication", "all", "all", "scram-sha-256"]
+    assert not any(
+        r.split()[-1] == "trust" and r.split()[0] == "host" and r.split()[3] == "all" for r in rules
+    )
+    [cron] = of_kind(documents, "CronJob")
+    [backup] = cron["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"]
+    assert {v["name"]: v["value"] for v in backup["env"]}["TAKTUS_BACKUP_POINT_IN_TIME"] == "true"
+    policies = {p["metadata"]["name"]: p["spec"] for p in of_kind(documents, "NetworkPolicy")}
+    archive = policies["taktus-database-archive"]
+    assert archive["policyTypes"] == ["Egress"]
+    _, outside = archive["egress"]
+    assert [p["port"] for p in outside["ports"]] == [443]
+
+
+@pytest.mark.parametrize(
+    ("setting", "message"),
+    [
+        ("backup.enabled=false", "needs backup.enabled"),
+        ("database.deploy=false", "needs database.deploy"),
+    ],
+)
+def test_point_in_time_where_it_cannot_hold_is_refused(setting: str, message: str) -> None:
+    assert message in render_fails(*PITR, setting)
+
+
+def test_the_drill_is_off_by_default_and_a_weekly_job_that_reaches_the_store_alone() -> None:
+    assert [c["metadata"]["name"] for c in of_kind(render(), "CronJob")] == ["taktus-backup"]
+    documents = render("backup.drill.enabled=true")
+    [drill] = [c for c in of_kind(documents, "CronJob") if c["metadata"]["name"] == "taktus-drill"]
+    assert drill["spec"]["schedule"] == "47 4 * * 0"
+    assert drill["spec"]["concurrencyPolicy"] == "Forbid"
+    pod = drill["spec"]["jobTemplate"]["spec"]["template"]["spec"]
+    assert pod["automountServiceAccountToken"] is False
+    [container] = pod["containers"]
+    assert container["image"] == "taktus-backup:0.1.0" and container["args"] == ["drill"]
+    env = {v["name"]: v["value"] for v in container["env"]}
+    assert env["TAKTUS_DRILL_RESTORE_SECONDS"] == "3600"
+    assert "TAKTUS_DATABASE_URL_FILE" not in env, (
+        "the drill never connects to the instance's database"
+    )
+    assert "TAKTUS_CREDENTIAL_BACKUP_IDENTITY_FILE" not in env
+    policies = {p["metadata"]["name"]: p["spec"] for p in of_kind(documents, "NetworkPolicy")}
+    policy = policies["taktus-drill"]
+    assert policy["policyTypes"] == ["Ingress", "Egress"] and "ingress" not in policy
+    dns, outside = policy["egress"]
+    assert {p["port"] for p in dns["ports"]} == {53} and "podSelector" not in str(outside)
+    admitted = [
+        peer["podSelector"]["matchLabels"]["app.kubernetes.io/component"]
+        for peer in policies["taktus-database"]["ingress"][0]["from"]
+    ]
+    assert "drill" not in admitted
+
+
+def test_with_point_in_time_the_drill_restores_to_the_latest_moment() -> None:
+    [drill] = [
+        c for c in of_kind(render(*PITR, "backup.drill.enabled=true"), "CronJob")
+        if c["metadata"]["name"] == "taktus-drill"
+    ]  # fmt: skip
+    [container] = drill["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"]
+    assert container["args"] == ["drill", "--to", "latest"]
+
+
+def test_an_encrypted_backup_s_drill_names_the_private_key_s_secret_or_is_refused() -> None:
+    encrypted = ("backup.drill.enabled=true", "backup.recipient=age1example")
+    assert "backup.drill.identitySecret is required" in render_fails(*encrypted)
+    documents = render(
+        *encrypted, "backup.drill.identitySecret=taktus-backup-key", "backup.drill.identityKey=key"
+    )
+    [drill] = [c for c in of_kind(documents, "CronJob") if c["metadata"]["name"] == "taktus-drill"]
+    pod = drill["spec"]["jobTemplate"]["spec"]["template"]["spec"]
+    [container] = pod["containers"]
+    env = {v["name"]: v["value"] for v in container["env"]}
+    assert (
+        env["TAKTUS_CREDENTIAL_BACKUP_IDENTITY_FILE"] == "/run/secrets/taktus/backup-identity/key"
+    )
+    volumes = {v["name"]: v for v in pod["volumes"]}
+    assert volumes["backup-identity"]["secret"]["secretName"] == "taktus-backup-key"
 
 
 # The highly available profile (ADR-0165, #342): an S3-compatible store and an external database.

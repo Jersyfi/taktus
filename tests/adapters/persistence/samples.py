@@ -14,6 +14,7 @@ import yaml
 from taktus.components.catalog.domain.model import (
     AdapterMaturity,
     AgentCore,
+    CatalogueInstallation,
     Configuration,
     ConformanceResult,
     CoreState,
@@ -778,6 +779,27 @@ def org_unit_quota(tenant: str = "t") -> OrgUnitQuota:
         budget={"eur": 250.0},
         check_every_seconds=600,
         configured_at=AT,
+    )
+
+
+def catalogue_installation(tenant: str = "t") -> CatalogueInstallation:
+    return CatalogueInstallation.model_validate(
+        {
+            "id": "connector.mail",
+            "tenant": tenant,
+            "catalogue": "example",
+            "entry": json.loads(
+                (
+                    Path(__file__).resolve().parents[3]
+                    / "contracts/catalogue/v1/examples/entry/valid/a-reference-connector-image.json"
+                ).read_text(encoding="utf-8")
+            ),
+            "author": "the project",
+            "installed_at": AT,
+            "actor": "idn_ada",
+            "evidence": "sha256:" + "c" * 64,
+            "adapter": "connector.mail",
+        }
     )
 
 

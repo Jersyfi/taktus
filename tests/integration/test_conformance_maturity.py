@@ -12,6 +12,7 @@ service: the suite, the catalog's one writer, the maturity port the engine asks,
 
 from __future__ import annotations
 
+import os
 import threading
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -30,15 +31,27 @@ from taktus.adapters.driven.memory import (
     MemoryRepository,
 )
 from taktus.adapters.driven.models import OpenAiCompatibleModel, StaticModelPool
+from taktus.adapters.driven.signing import Ed25519Signatures
 from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.components.catalog.application.service import (
+    CatalogueInstalls,
+    InstallEntry,
     RecordRemovalResult,
     RecordRemovalResultHandler,
     RunConformance,
     RunConformanceHandler,
 )
-from taktus.components.catalog.domain.model import AdapterMaturity, RemovalResult, Verdict
+from taktus.components.catalog.domain.model import (
+    AdapterMaturity,
+    CatalogueInstallation,
+    IndexEntry,
+    RemovalResult,
+    Tier,
+    TrustedKey,
+    Verdict,
+)
+from taktus.components.catalog.domain.service.catalogue import payload
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.domain.model import ProcessVersion
 from taktus.components.run.application.service import RunEngine, StartRun
@@ -284,3 +297,125 @@ async def test_a_process_starts_the_suite_through_the_loopback(endpoint: str) ->
     assert entry.refs.actor == "idn_s01" and entry.refs.run_id == "run_s01"
     with pytest.raises(UnknownIntegration):
         await loopback.conformance(TENANT, "worker.endpoint", run_id="r", identity="i")
+
+
+async def test_an_adapter_installed_from_the_catalogue_counts_only_what_passed_after(
+    endpoint: str,
+) -> None:
+    """ADR-0175 §5, UC-14.6: the identifier was verified; a community entry is installed behind
+    it; the pass before no longer counts, the step at level 3 is refused, and the same adapter
+    serves it again once both halves passed after the installation."""
+    instance = Instance()
+    configured = instance.pools(endpoint, "fake-model")
+    await instance.conformance(configured, endpoint)
+    await instance.removal(configured)
+    installations = MemoryRepository(instance.persistence, CatalogueInstallation)
+    seed = os.urandom(32)
+    signatures = Ed25519Signatures()
+    unsigned = IndexEntry.model_validate(
+        {
+            "id": "model-endpoint",
+            "kind": "image",
+            "tier": "community",
+            "version": "0.1.0",
+            "summary": "A model endpoint of the community.",
+            "digest": "sha256:" + "f" * 64,
+            "family": "model",
+            "contract": "model/v1",
+            "capabilities": ["reasoning"],
+            "image": "registry.example/acme/model-endpoint",
+        }
+    )
+    entry = IndexEntry.model_validate(
+        {
+            **unsigned.document(),
+            "signature": {
+                "scheme": "ed25519",
+                "key": signatures.public(seed),
+                "value": signatures.sign(seed, payload(unsigned)),
+            },
+        }
+    )
+    await CatalogueInstalls(
+        signatures,
+        installations,
+        instance.persistence,
+        instance.ledger,
+        instance.objects,
+        instance.clock,
+    ).install(
+        InstallEntry(
+            TENANT,
+            "acme",
+            entry,
+            (TrustedKey(key=signatures.public(seed), tier=Tier.COMMUNITY, author="acme"),),
+            "idn_ada",
+            adapter=ADAPTER,
+        )
+    )
+
+    def maturities() -> CatalogMaturities:
+        return CatalogMaturities(instance.records, instance.persistence, configured, installations)
+
+    standing = await maturities().standing(TENANT, ADAPTER)
+    assert standing.maturity == "experimental" and not standing.serves_from_level_three
+    assert "before the entry was installed" in standing.missing[0]
+
+    async def run() -> Run:
+        engine = RunEngine(
+            runs=instance.runs,
+            work=instance.persistence,
+            objects=instance.objects,
+            ledger=instance.ledger,
+            provenance=instance.provenance,
+            workers=configured.workers,
+            connectors=configured.connectors,
+            models=configured.models,
+            clock=instance.clock,
+            ids=instance.ids,
+            telemetry=NoTelemetry(),
+            maturities=maturities(),
+        )
+        plan = Plan(
+            id=instance.ids.new("pln"),
+            command_id="cmd_1",
+            goal="draft at level 3",
+            autonomy_level=3,
+            steps=(STEP,),
+            results_in=PlanResult.RUN,
+            status=PlanStatus.COMMISSIONED,
+            commissioned=Commissioned(by="idn_ada", at=AT),
+        )
+        return await engine.start(
+            StartRun(
+                plan=plan,
+                work=WORK,
+                budget=Limits(compute=ComputeLimit(seconds=10, resource_class="cpu.small")),
+                process_version="draft@1",
+                actor="idn_ada",
+                tenant=TENANT,
+            )
+        )
+
+    refused = await run()
+    assert refused.state is RunState.HALTED and refused.cause is Cause.MATURITY
+
+    await instance.conformance(configured, endpoint)
+    await RecordRemovalResultHandler(
+        instance.records, instance.persistence, instance.ledger, instance.clock
+    ).execute(
+        RecordRemovalResult(
+            RemovalResult(
+                integration=ADAPTER,
+                family="model",
+                verdict=Verdict.CHANGED,
+                tested_at=instance.clock.now(),
+                run_id="run_removal_2",
+                configuration=await configured.configuration(ADAPTER),
+            ),
+            TENANT,
+        )
+    )
+    standing = await maturities().standing(TENANT, ADAPTER)
+    assert standing.maturity == "verified" and standing.serves_from_level_three
+    assert (await run()).state is RunState.FINISHED

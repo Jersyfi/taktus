@@ -54,6 +54,12 @@ def test_a_gate_runs_as_its_make_target_runs_it(gate: str) -> None:
         if "--base" in words:
             words.remove("--base")
             assert "$(if $(BASE),--base $(BASE))" in line, f"{gate}: {line} takes no base"
+        if "--tests" in words:
+            # The self-test's one departure: it runs only the named tests of a use case its
+            # case touches; `make gate-usecases` runs them all (tools/check_usecases.py).
+            at = words.index("--tests")
+            assert words[at + 1] == "changed", f"{gate}: --tests {words[at + 1]}"
+            del words[at : at + 2]
         assert " ".join(words) in line, f"{gate}: {line} does not run {' '.join(words)}"
 
 
