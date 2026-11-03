@@ -106,7 +106,7 @@ repository service, the chat workspace, the password manager, its own cluster an
 connector for a customer's system is proven against its fake and its conformance suite, and its
 first live run is the tenant's. Where the roadmap still asks the project's own instance for such a
 system — the first beta condition, the removal condition of `1.0.0`, the accelerator of #210 — it
-is shown where the system is, provisionally, until DEC-0226 is answered.
+is shown where the system is (DEC-0226).
 
 Nothing else is blocked. Everything not listed here can be built by a session without the
 owner.

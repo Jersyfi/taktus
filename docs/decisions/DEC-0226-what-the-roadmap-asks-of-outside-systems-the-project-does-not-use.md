@@ -5,7 +5,6 @@
 **Raised in:** the session of 2026-11-03, from DEC-0225
 **Issue:** [#669](https://github.com/Jersyfi/taktus/issues/669)
 **Needed by:** before `1.0.0-beta` is prepared
-**Provisional answer:** Option A, marked in `docs/status.md`. Nothing is built on it until you answer.
 
 ## 1. What this is about
 
@@ -77,3 +76,17 @@ Nothing now. The beta waits for the first condition either way.
 ## 7. How to answer
 
 "DEC-0226: Option A.", "DEC-0226: Option B." or your own wording, item by item, in the issue.
+
+## Outcome
+
+**Decided:** 2026-11-03
+**Answer:** Option A. "DEC-0226: Option A." (the owner's words, in the issue).
+**Reasoning given:** none beyond the recommendation.
+**What it changes:**
+
+- `docs/roadmap.md`, the first beta condition: shown on the business's instance against the real service, confirmed by the business; the project's own instance runs the process against the fakes.
+- `docs/roadmap.md`, the removal condition of `1.0.0`: an alternative at a service the project does not use counts once it passes its conformance suite against its stand-in.
+- #210: the accelerator is proven at a tenant that has one; the project proves the bench on an ordinary processor. NEED-0023 is closed.
+- `docs/status.md` no longer calls the three provisional.
+
+**Recorded in:** this pull request
