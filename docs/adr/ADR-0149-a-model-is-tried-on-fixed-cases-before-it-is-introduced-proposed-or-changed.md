@@ -86,6 +86,24 @@ Issue #448, the remainder. What the Consequences left waiting is built, in this 
 - **The surfaces.** `GET /trials`, `GET /trials/offers`, `POST /trials`, `GET /trials/{id}`; the
   web app's *Trials* page with each offer startable, and a trial's report charted per candidate.
 
+## Amendment — an offer declined, and cases a person names (2026-11-04)
+
+Issue #448, the remainder that needed no one outside. Both are built, in this shape.
+
+- **Declining an offer.** A person declines an offer that stands now (`Trials.decline`,
+  `POST /trials/offers/decline`). The ledger records `trial.declined` with the person as actor,
+  the occasion as outcome, and the purpose, the model and the reason by digest. An offer is
+  not shown while a decline of the same purpose, occasion and model was recorded at or after the
+  moment its occasion arose. So an `introduced` offer declined stays declined; a `proposed` one
+  comes back when Taktus proposes the model again; a `changed` one comes back when the version
+  changes again. Only an offer that stands can be declined; an `asked` trial has no offer.
+- **Cases a person names.** `POST /trials` takes `cases`, at most 50: a process of the tenant
+  whose active version asks for the purpose and names its limits, and the inputs of one run.
+  Each runs once per candidate beside the evaluation cases, as `<process>/named-<n>`, marked
+  `named` in the trial. A named case has no target, so it passes on its run's own ending, as an
+  unscored evaluation case does. A case that cannot run refuses the whole trial before any run
+  starts, naming the case.
+
 ## Where this promise ends
 
 - A trial compares what its cases exercise. A candidate that passes them may fail elsewhere.
@@ -96,9 +114,8 @@ Issue #448, the remainder. What the Consequences left waiting is built, in this 
   outward call would show is not seen.
 - Nothing in the instance proposes a model yet. `Trials.propose` is the hook model routing
   (#328) and method maturation call when they do; until then no `proposed` offer appears.
-- An offer cannot be declined: it stands until a trial answers it.
-- The cases a person names beside the evaluation cases (§1) are not built; a trial runs the
-  evaluation cases alone.
+- A declined offer is declined for the whole tenant, not only for the person who declined it.
+- A case a person names is judged by its run's ending alone: it carries no target to score.
 - A case's verdict is the run's own ending: the scorers of ADR-0134 do not run on a trial's
   runs, so a scored verdict does not decide here yet.
 - The spend of a trial is held per run, by the version's limits. A session's allowance (§4) is

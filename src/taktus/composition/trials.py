@@ -10,6 +10,11 @@
   outcome.
 - **Report.** Read from the ledger by `TrialReports` (ADR-0149 §2): per candidate the cases
   passed, money, tokens in and out, wall time, each case's results beside the others'.
+- **Named cases.** A person may name cases beside the evaluation cases: a process that asks for
+  the purpose and the inputs of one run. Each runs on the process's active version, once per
+  candidate, as the evaluation cases do; it has no target, so it passes on its run's ending.
+- **Decline.** A person may decline an offer (`trial.declined`). The offer is not shown again
+  until its occasion arises anew: a model proposed again, or a version that changed again.
 - **Offer.** A trial is offered, never started on its own (ADR-0149 §3): when a purpose's first
   model has never answered a step of the tenant and no trial included it (`introduced`); when
   Taktus proposed another model for a purpose (`proposed`, the ledger's `trial.offered`); and
@@ -32,6 +37,7 @@ from typing import Any, Protocol
 
 from taktus.components.accounting.application.service import (
     OCCASIONS,
+    NamedCase,
     Offer,
     ReportTrial,
     Trial,
@@ -41,7 +47,7 @@ from taktus.components.accounting.application.service import (
     TrialReports,
 )
 from taktus.components.command.application.service import CommissionPlan, CommissionPlanHandler
-from taktus.components.process.domain.model import EvaluationCase, Process, ProcessVersion
+from taktus.components.process.domain.model import Process, ProcessVersion
 from taktus.components.run.application.service import RunEngine, StartRun
 from taktus.components.run.domain.model import LlmWork, Run, RunError, parse_work
 from taktus.composition.evaluations import Evaluations, settled
@@ -58,6 +64,11 @@ CHANNEL = "channel.web"
 STARTED = "trial.started"
 OFFERED = "trial.offered"
 """Taktus proposed another model for a purpose: the occasion `proposed` (ADR-0149 §3)."""
+DECLINED = "trial.declined"
+"""A person declined an offer: it stands no longer until its occasion arises anew."""
+DECLINABLE = ("introduced", "proposed", "changed")
+MAX_NAMED = 50
+"""The most cases a person may name for one trial: each runs once per candidate."""
 STEP_FINISHED = "step.finished"
 
 
@@ -114,8 +125,10 @@ class Trials:
         candidates: Sequence[str],
         by: str,
         occasion: str = "asked",
+        own: Sequence[NamedCase] = (),
     ) -> Trial:
-        """The trial, its runs submitted: each case of the purpose once per candidate."""
+        """The trial, its runs submitted: each case of the purpose once per candidate, the
+        evaluation cases and the cases the person named."""
         if occasion not in OCCASIONS:
             raise TrialError("invalid", f"{occasion!r} is not an occasion: {', '.join(OCCASIONS)}")
         named = list(dict.fromkeys(candidates))
@@ -127,7 +140,10 @@ class Trials:
         placed = await self._identities.identity(tenant, by)
         if placed is None:
             raise TrialError("unknown", f"the identity {by!r} is not known to {tenant!r}")
+        if len(own) > MAX_NAMED:
+            raise TrialError("invalid", f"a trial names at most {MAX_NAMED} cases of its own")
         cases, versions, left_out = await self._cases(tenant, purpose)
+        cases += await self._named(tenant, purpose, own, versions)
         if not cases:
             raise TrialError(
                 "empty",
@@ -146,7 +162,7 @@ class Trials:
         runs: dict[str, dict[str, str]] = {}
         for index, candidate in enumerate(named):
             of_candidate: dict[str, str] = {}
-            for number, (case, evaluated) in enumerate(cases):
+            for number, (case, inputs) in enumerate(cases):
                 version = versions[case.process_version]
                 run = await self._submit(
                     tenant,
@@ -155,7 +171,8 @@ class Trials:
                     placed.org_path,
                     run_id=f"{trial.id}-{index}-{number}",
                     version=version,
-                    case=evaluated,
+                    case_id=case.case,
+                    inputs=inputs,
                     candidate=candidate,
                 )
                 of_candidate[case.key] = run.id
@@ -174,12 +191,52 @@ class Trials:
             )
         return trial
 
+    async def _named(
+        self,
+        tenant: Tenant,
+        purpose: str,
+        named: Sequence[NamedCase],
+        versions: dict[str, ProcessVersion],
+    ) -> list[tuple[TrialCase, Mapping[str, Any]]]:
+        """The cases a person named, each on its process's active version, which must ask for
+        the purpose and name its limits; `versions` gains every version they run on. A case
+        that cannot run is refused before any run starts, naming why."""
+        if not named:
+            return []
+        asking = {v.process_id: v for v in await self._asking(tenant, purpose)}
+        found: list[tuple[TrialCase, Mapping[str, Any]]] = []
+        for number, case in enumerate(named, 1):
+            version = asking.get(case.process)
+            if version is None:
+                raise TrialError(
+                    "invalid",
+                    f"case {number}: {case.process!r} is no active process of this tenant that "
+                    f"asks for {purpose!r}",
+                )
+            if version.limits is None:
+                raise TrialError(
+                    "invalid",
+                    f"case {number}: {version.ref} names no `limits`; a rehearsal needs a budget",
+                )
+            versions[version.ref] = version
+            case_id = f"named-{number}"
+            key = f"{version.process_id}/{case_id}"
+            found.append(
+                (
+                    TrialCase(key=key, process_version=version.ref, case=case_id, named=True),
+                    dict(case.inputs),
+                )
+            )
+        return found
+
     async def _cases(
         self, tenant: Tenant, purpose: str
-    ) -> tuple[list[tuple[TrialCase, EvaluationCase]], dict[str, ProcessVersion], dict[str, str]]:
+    ) -> tuple[
+        list[tuple[TrialCase, Mapping[str, Any]]], dict[str, ProcessVersion], dict[str, str]
+    ]:
         """The evaluation cases of every active version that asks for the purpose, in the order
-        of the processes' identifiers; and the cases left out, with why."""
-        cases: list[tuple[TrialCase, EvaluationCase]] = []
+        of the processes' identifiers, each with its inputs; and the cases left out, with why."""
+        cases: list[tuple[TrialCase, Mapping[str, Any]]] = []
         versions: dict[str, ProcessVersion] = {}
         left_out: dict[str, str] = {}
         for version in await self._asking(tenant, purpose):
@@ -195,7 +252,8 @@ class Trials:
                 continue
             for case in evaluated:
                 key = f"{version.process_id}/{case.id}"
-                cases.append((TrialCase(key=key, process_version=version.ref, case=case.id), case))
+                trial_case = TrialCase(key=key, process_version=version.ref, case=case.id)
+                cases.append((trial_case, case.inputs))
         return cases, versions, left_out
 
     async def _asking(self, tenant: Tenant, purpose: str) -> list[ProcessVersion]:
@@ -218,7 +276,8 @@ class Trials:
         *,
         run_id: str,
         version: ProcessVersion,
-        case: EvaluationCase,
+        case_id: str,
+        inputs: Mapping[str, Any],
         candidate: str,
     ) -> Run:
         """One case run on one candidate, through the one path every run takes. Its identifier
@@ -227,14 +286,14 @@ class Trials:
             existing = await self._runs.get(tenant, run_id)
         if existing is not None:
             return existing
-        goal = f"try {candidate} for {trial.purpose} on the case {case.id} of {version.ref}"
+        goal = f"try {candidate} for {trial.purpose} on the case {case_id} of {version.ref}"
         command = Command(
             id=self._ids.new("cmd"),
             channel=CHANNEL,
             identity=by,
             org_path=tuple(org_path),
             intent=Intent(raw=goal, recognised="model.trial"),
-            context={"inputs": dict(case.inputs), "trial": trial.id},
+            context={"inputs": dict(inputs), "trial": trial.id},
             reply_to=ReplyTo(channel=CHANNEL, address="ledger"),
             received_at=self._clock.now(),
         )
@@ -256,7 +315,7 @@ class Trials:
                 process_version=version.ref,
                 actor=by,
                 tenant=tenant,
-                inputs=dict(case.inputs),
+                inputs=dict(inputs),
                 rehearsal=True,
                 run_id=run_id,
                 actions=dict(version.autonomy.action_levels),
@@ -317,7 +376,68 @@ class Trials:
                 ),
             )
 
+    async def decline(
+        self, tenant: Tenant, purpose: str, occasion: str, model: str, by: str, reason: str
+    ) -> None:
+        """A person declines an offer: it is not offered again until its occasion arises anew —
+        a model proposed again after the decline, or a version that changed after it. The
+        decline is the person's act, recorded with them as its actor; nothing is bound."""
+        if occasion not in DECLINABLE:
+            raise TrialError(
+                "invalid", f"{occasion!r} is no occasion an offer has: {', '.join(DECLINABLE)}"
+            )
+        standing = [
+            o
+            for o in await self.offers(tenant)
+            if (o.purpose, o.occasion, o.model) == (purpose, occasion, model)
+        ]
+        if not standing:
+            raise TrialError(
+                "unknown", f"no trial is offered for {model} and {purpose!r} as {occasion}"
+            )
+        placed = await self._identities.identity(tenant, by)
+        if placed is None:
+            raise TrialError("unknown", f"the identity {by!r} is not known to {tenant!r}")
+        document = {"purpose": purpose, "occasion": occasion, "model": model, "reason": reason}
+        digest = await self._objects.put(_canonical(document))
+        async with self._work.transaction(tenant):
+            await self._ledger.record(
+                tenant,
+                Fact(
+                    kind=DECLINED,
+                    refs=LedgerRefs(tenant=tenant, actor=placed.identity),
+                    outcome=occasion,
+                    content_digest=digest,
+                ),
+            )
+
     async def offers(self, tenant: Tenant) -> list[Offer]:
+        """The trials offered now, less those a person declined since their occasion arose."""
+        found = await self._offered(tenant)
+        async with self._work.transaction(tenant):
+            entries = await self._ledger.of_kinds(tenant, {DECLINED})
+        declined: list[tuple[datetime, str, str, str]] = []
+        for entry in entries:
+            content = (
+                None
+                if entry.content_digest is None
+                else await self._objects.get(entry.content_digest)
+            )
+            if content is None:
+                continue
+            said = json.loads(content)
+            declined.append((entry.ts, said["purpose"], said["occasion"], said["model"]))
+        return [
+            o
+            for o in found
+            if not any(
+                (purpose, occasion, model) == (o.purpose, o.occasion, o.model)
+                and (o.since is None or at >= o.since)
+                for at, purpose, occasion, model in declined
+            )
+        ]
+
+    async def _offered(self, tenant: Tenant) -> list[Offer]:
         """The trials offered now, for every purpose a step of the tenant's active processes
         asks for. An offer stands until a trial of its purpose includes its model, started
         after the occasion."""

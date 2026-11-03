@@ -78,6 +78,7 @@ def test_the_document_is_openapi_3_1_with_the_prefix_as_a_server_variable() -> N
         "/processes/{process_id}/spend",
         "/trials",
         "/trials/offers",
+        "/trials/offers/decline",
         "/trials/{trial_id}",
         "/runs/{run_id}/steps/{step_id}/messages",
         "/runs/{run_id}/steps/{step_id}/takeover",

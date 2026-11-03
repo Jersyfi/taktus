@@ -173,6 +173,17 @@ class TrialCase(Value):
     a case of the same name."""
     process_version: str
     case: str
+    named: bool = False
+    """A case a person named for this trial beside the evaluation cases (ADR-0149 §1): its
+    inputs are the person's, it has no target, so it passes on its run's own ending."""
+
+
+class NamedCase(Value):
+    """A case a person names for a trial: a process of the tenant whose active version asks for
+    the purpose, and the inputs one run of it takes."""
+
+    process: str = Field(min_length=1)
+    inputs: dict[str, object] = Field(default_factory=dict)
 
 
 class Trial(Value):

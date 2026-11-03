@@ -10,6 +10,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequenc
 from typing import Any, Protocol
 
 from taktus.components.accounting.application.service import (
+    NamedCase,
     Offer,
     SpendHandler,
     Trial,
@@ -185,6 +186,7 @@ class TrialActs(Protocol):
         candidates: Sequence[str],
         by: str,
         occasion: str = "asked",
+        own: Sequence[NamedCase] = (),
     ) -> Trial: ...
 
     async def of_tenant(self, tenant: Tenant) -> list[Trial]: ...
@@ -192,6 +194,10 @@ class TrialActs(Protocol):
     async def read(self, tenant: Tenant, trial_id: str) -> TrialRead: ...
 
     async def offers(self, tenant: Tenant) -> list[Offer]: ...
+
+    async def decline(
+        self, tenant: Tenant, purpose: str, occasion: str, model: str, by: str, reason: str
+    ) -> None: ...
 
 
 class Takeovers(Protocol):
