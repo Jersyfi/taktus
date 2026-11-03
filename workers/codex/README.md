@@ -35,7 +35,7 @@ turn's usage.
 it makes to files (`file_change`), and a call of any other tool. When the item completes, the
 worker commits the workspace, writes a checkpoint — the agent's thread, the commit, the step
 count and the artifacts so far — and emits `step.boundary`. A stop lands there: the worker ends
-the agent, and the assignment finishes `stopped` with that checkpoint (W-06). Items that do not
+the agent, and the assignment finishes `stopped` with that checkpoint (W-06). An agent that exits on its own just as it is ended is not a fault: a group already gone, or one whose leader has exited and is not yet reaped — which macOS answers with EPERM — is nothing to signal, and the assignment still finishes `stopped` (#640). Items that do not
 act — the agent's reasoning, its plan, its messages — are no steps.
 
 Before the agent starts, the hosts the task says it needs (`task.inputs.hosts`) are held against
