@@ -156,7 +156,7 @@ from taktus.composition.guides import InstanceGuides, served_directory
 from taktus.composition.interfaces import broken_interfaces
 from taktus.composition.levels import RepositoryLevelRecords, VersionStatements
 from taktus.composition.loopback import Loopback, Pools
-from taktus.composition.maturation import InstanceMaturation, maturation_wiring
+from taktus.composition.maturation import InstanceMaturation, RepositoryScores, maturation_wiring
 from taktus.composition.maturity import CatalogMaturities, InstanceCatalogue
 from taktus.composition.moves import MethodMoves
 from taktus.composition.objects import object_store_of
@@ -475,6 +475,12 @@ class LocalWiring:
                 clock=clock,
                 decisions=decisions.requests,
                 prices=prices,
+                scores=RepositoryScores(
+                    stores.of(ProcessVersion),
+                    stores.of(Evaluation),
+                    stores.of(WatchConfiguration),
+                    stores.work,
+                ),
             )
             loopback.bind(
                 Loopback(

@@ -42,7 +42,7 @@ from taktus.components.run.application.service import (
     ProposeMoves,
 )
 from taktus.components.run.domain.model import RunError
-from taktus.components.run.domain.service.maturation import Measures, MoveReview
+from taktus.components.run.domain.service.maturation import Measures, MoveReview, StepScore
 from taktus.ports.worker import ComputeLimit, Limits
 
 maturation = typer.Typer(
@@ -264,7 +264,9 @@ def moves(
         typer.echo("no step was moved to a trained model yet")
     else:
         typer.echo("\n".join(render_review(m) for m in found))
-    raise typer.Exit(code=1 if any(m.verdict in ("not_cheaper", "unpriced") for m in found) else 0)
+    raise typer.Exit(
+        code=1 if any(m.verdict in ("worse", "not_cheaper", "unpriced") for m in found) else 0
+    )
 
 
 def _run(
@@ -376,6 +378,14 @@ def render_review(m: MoveReview) -> str:
         f"{money(m.cost_per_case)}, fell back {share}  replaced {m.move.replaced} "
         f"{money(m.replaced_cost_per_case)} over {m.replaced_cases} case(s)"
     )
+    if m.score is not None or m.replaced_score is not None:
+
+        def scored(s: StepScore | None) -> str:
+            return "-" if s is None or s.score is None else f"{s.score:.2f}"
+
+        line += (
+            f"\n  on the evaluation cases: {scored(m.score)}, replaced {scored(m.replaced_score)}"
+        )
     if m.rollback_request is not None:
         line += f"\n  proposed for rolling back: request {m.rollback_request}"
     return line

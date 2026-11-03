@@ -12,6 +12,7 @@ from typing import Any
 
 import httpx
 
+from taktus.adapters.driving.rest.proposals import evaluated_view
 from taktus.components.process.application.service.proposals import ProposalError
 from taktus.components.process.domain.model import CorrectedCase, Evaluation, EvaluationCase
 
@@ -131,3 +132,47 @@ async def test_a_proposed_case_is_confirmed_or_rejected_for_the_keys_identity(
         f"{base}/processes/replies/evaluation-cases/cor-2/confirm", json={}, headers=bearer(key)
     )
     assert closed.status_code == 409
+
+
+def test_a_proposal_s_evaluation_is_shown_case_by_case_with_an_override_s_reason_only() -> None:
+    evaluation = Evaluation.model_validate(
+        {
+            "id": "evl_2",
+            "tenant": "acme",
+            "process_id": "replies",
+            "purpose": "change",
+            "version": "replies@1",
+            "proposal": "prp_1",
+            "candidate": "replies@proposal-prp_1",
+            "acting_for": "idn_ada",
+            "cases": [{"id": "late", "targets": {"draft": "Sorry."}}],
+            "scorers": [
+                {
+                    "step": "draft",
+                    "method": "rule",
+                    "reason": "words a rule can count",
+                    "exactness": "exact",
+                    "rule": {"kind": "overlap"},
+                }
+            ],
+            "results": [
+                {"case": "late", "side": "active", "score": 0.9},
+                {"case": "late", "side": "proposed", "score": 0.5},
+            ],
+            "state": "scored",
+            "verdict": "regressed",
+            "tolerance": 0.05,
+            "override": {"reason": "customers asked for shorter replies", "at": AT.isoformat()},
+            "started_at": AT.isoformat(),
+        }
+    )
+    view = evaluated_view(evaluation)
+    assert view["verdict"] == "regressed" and view["tolerance"] == 0.05
+    assert view["scorers"] == [
+        {"step": "draft", "method": "rule", "exactness": "exact", "rule": "overlap"}
+    ]
+    ((late),) = view["cases"]
+    assert (late["active"]["score"], late["proposed"]["score"], late["change"]) == (0.9, 0.5, -0.4)
+    assert set(view["override"]) == {"reason", "at"}
+    assert view["override"]["reason"] == "customers asked for shorter replies"
+    assert "idn_ada" not in str(view), "who acted is the ledger's, never the view's (principle 14)"
