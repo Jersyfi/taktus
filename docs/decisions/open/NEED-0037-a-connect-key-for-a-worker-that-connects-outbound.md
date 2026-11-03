@@ -33,10 +33,11 @@ the item `taktus-connect-key-connected-reference` in the vault `Development`. No
 
 **Step 2 — the instance.** Put the key into the instance's secret store as the connect key of a
 worker named `connected-reference` (`CREDENTIALS.md`, row *Connect key of a connected worker*).
-From 1Password, without the value passing through a file or a screen:
+From 1Password, without the value passing through a file or a screen. Name the account that
+holds the vault, because `op` otherwise asks which of your accounts to use:
 
 ```sh
-op read "op://Development/taktus-connect-key-connected-reference/password" | kubectl --namespace "<control-plane namespace>" create secret generic taktus-connect-connected-reference --from-file=key=/dev/stdin
+op read --account "<your 1Password account>" "op://Development/taktus-connect-key-connected-reference/password" | ssh "<host that runs kubectl>" "kubectl --namespace <control-plane namespace> create secret generic taktus-connect-connected-reference --from-file=key=/dev/stdin"
 ```
 
 Then tell the session in the issue. It adds the worker to the instance's configuration and asks
