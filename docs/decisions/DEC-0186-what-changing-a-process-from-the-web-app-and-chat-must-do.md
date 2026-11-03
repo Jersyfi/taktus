@@ -121,3 +121,11 @@ for that use case instead of one edit now.
 
 "DEC-0186: Option A.", "DEC-0186: Option B." or "DEC-0186: Option C." in issue [#293](https://github.com/Jersyfi/taktus/issues/293).
 A free-text answer is read back as an interpretation and confirmed before it is acted on.
+
+## Outcome
+
+**Decided:** 2026-11-03
+**Answer:** Option A. "DEC-0186: Option A." (the owner's words, in the issue).
+**Reasoning given:** none beyond the recommendation.
+**What it changes:** UC-4.15 is in force as written, in `0.3.0`; the provisional marks go from its section 4 and from ADR-0091's status.
+**Recorded in:** this pull request

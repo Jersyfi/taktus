@@ -65,7 +65,7 @@ be removed by design; the database is the one (ADR-0002), and its removal test i
 drill. The verdict is a rule over what was observed (`components/catalog`,
 `domain/service/removal.py`), never a judgement, which is why the `verdict` step is `exact`.
 Every `exact` step of S-01 and S-05 declares its check: a recomputation from the inputs its
-provenance record names, provisional under DEC-0173 (ADR-0082).
+provenance record names, a row of the catalogue since DEC-0173 (ADR-0082).
 
 **What a verdict was taken under.** Every result carries `configuration`: the adapter that
 served the identifier, the capabilities, purposes or operations it declared, and its version
@@ -322,7 +322,7 @@ instance, so that no person has to start them (ADR-0086, issue #229).
    holds, it raises a proposal as a decision request to the role `owner`. Where it does not,
    the outcome says why. Without a price table, nothing is trained: no cost can be compared.
 3. **nothing-applied** — checks by rule that no outcome was applied and that the count of
-   proposals is a whole number (`exact`, its check a recomputation, provisional under
+   proposals is a whole number (`exact`, its check a recomputation,
    DEC-0173, ADR-0082).
 4. **report** — one line: how many steps were measured, how many could not be priced, how many
    were looked at and how many proposals were raised.
@@ -393,7 +393,7 @@ process of Taktus's own, so that the one variable step is visible and the rest a
 3. **keep** — the instance validates the proposed bundle as registration would, computes its
    difference against the active version field by field, and keeps the proposal. A bundle that
    would not register is kept nowhere: the step fails with every finding, and the run goes to a
-   person (`exact`, its check a recomputation, provisional under DEC-0173, ADR-0082).
+   person (`exact`, its check a recomputation, DEC-0173, ADR-0082).
 
 Steps 1 and 3 are calls of `orchestrator.changes`, served by the loopback connector over
 `composition/proposals.py`. The run acts for the person who asked. Nothing is registered: the

@@ -1,6 +1,6 @@
 # ADR-0091 — A person changes a process through a proposal, a rehearsal and commissioning, and rolls it back as a new version
 
-**Status:** accepted · makes UC-4.15 buildable (DEC-0186, provisionally Option A), for the
+**Status:** accepted · makes UC-4.15 buildable (DEC-0186, Option A), for the
 `0.3.0` criterion *a process can be created, viewed, changed and rolled back entirely from the
 web app and chat*
 

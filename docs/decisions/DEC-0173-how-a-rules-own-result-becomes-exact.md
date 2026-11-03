@@ -122,3 +122,11 @@ refusal narrowed. Either is one change of its own.
 "DEC-0173: Option A." or "DEC-0173: Option B." or "DEC-0173: Option C." — in issue
 [#225](https://github.com/Jersyfi/taktus/issues/225). A free-text answer is read back as an
 interpretation and confirmed before it is acted on.
+
+## Outcome
+
+**Decided:** 2026-11-03
+**Answer:** Option A. "DEC-0173: Option A." (the owner's words, in the issue).
+**Reasoning given:** none beyond the recommendation.
+**What it changes:** The catalogue's sixth row, `recomputation`, is final: the provisional marks go from `contracts/shared/v1/Check.json`, ADR-0082, `blueprints/dev-orchestration/README.md` and the steps that declare it.
+**Recorded in:** this pull request

@@ -20,7 +20,7 @@ class CheckKind(StrEnum):
     APPROVAL = "approval"
     SAMPLING = "sampling"
     RECOMPUTATION = "recomputation"
-    """Provisional under DEC-0173."""
+    """The row DEC-0173 added."""
 
 
 class Reference(StrEnum):

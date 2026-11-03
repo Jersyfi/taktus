@@ -85,6 +85,8 @@ serves the runs of every instance (#625, NTC-0245). Issue #402 had named its own
 `AF-03`; that case, if it is needed, is `UC-04`.
 `UC-14.5` a foreign agent becomes a worker through an A2A binding (#349, ADR-0172), the next
 free number of its area, built with package D in concept mode (DEC-0222).
+`UC-4.24` Taktus proposes a cheaper method for a step (DEC-0164), the next free number of its
+area.
 
 ## Numbers of the definition with no file of their own
 

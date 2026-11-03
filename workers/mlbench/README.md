@@ -16,8 +16,8 @@ learning. It needs the libraries `requirements.txt` pins; in this repository the
 `mlbench` of `pyproject.toml`, at the same versions, which `make install` installs. Its own image
 is `Dockerfile` in this directory, built from the repository root.
 
-The libraries are a provisional answer: which library the bench trains with is the owner's
-decision, asked as DEC-0161 and built on its recommended option until it is answered.
+The libraries are the owner's decision: the bench trains with scikit-learn and NumPy, DEC-0161,
+Option A.
 
 ## Three operations
 

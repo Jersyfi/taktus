@@ -22,7 +22,7 @@
 # an outside pull request is held, open, whatever the owner answers (ADR-0012, DEC-0044).
 #
 # The methods of `screen` and `classify` are the owner's to choose (anchors.taktus.md M3.13);
-# they are a provisional answer under DEC-0180 until he does.
+# he chose them in DEC-0180.
 #
 # Every step an integration serves — a connector call, the model — names a person as its
 # fallback for when that integration is unavailable (issue #90). The engine does not switch to
@@ -113,7 +113,7 @@ steps:
       - method: llm
         why: which headings a text carries is a fact of the text, not a judgement
     exactness: exact
-    checks:   # provisional: DEC-0173
+    checks:   # recomputation: DEC-0173
       - { kind: recomputation, subject: the versions the roadmap names }
     depends_on: [read-roadmap]
     work:
@@ -133,7 +133,7 @@ steps:
       - method: ml
         why: no labelled corpus of this repository's contributions exists yet
     exactness: exact
-    checks:   # provisional: DEC-0173
+    checks:   # recomputation: DEC-0173
       - { kind: recomputation, subject: the spam verdict over the contribution's title and body }
     depends_on: [read-contribution]
     work:
