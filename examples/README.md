@@ -100,7 +100,8 @@ none, `llm` and `worker` name a fallback, `ml` and `neural` pin a model, and `ex
 there, never a person; registration requires it once the tenant's identities hold a role
 (ADR-0146), so the example's fallbacks name `owner`. An `exact` step also declares at least one check from the catalogue
 (`contracts/shared/v1/Check.json`): `verify-answer` declares plausibility bounds, the pattern its
-rule checks (ADR-0082). A bundle that breaks one of them is refused with every finding listed.
+rule checks (ADR-0082); `prepare-commands` declares a recomputation, the row of the catalogue
+DEC-0173 added. A bundle that breaks one of them is refused with every finding listed.
 `uv run taktusctl exactness --process examples/processes/six-times-seven.yaml` prints the
 bundle's exactness statement: which checks apply, what they cover, what they do not cover, and
 what would slip through.
