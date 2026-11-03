@@ -28,22 +28,25 @@ needs a worker that actually connects, and the key that admits it.
 
 ## 4. How to provide it
 
-**Step 1 — the value.** On your machine, write a random value into a file only you can read:
+**Step 1 — the value.** Done by the session on 2026-11-03 under NEED-0040 (DEC-0224): the key is
+the item `taktus-connect-key-connected-reference` in the vault `Development`. Nobody typed or saw it.
+
+**Step 2 — the instance.** Put the key into the instance's secret store as the connect key of a
+worker named `connected-reference` (`CREDENTIALS.md`, row *Connect key of a connected worker*).
+From 1Password, without the value passing through a file or a screen:
 
 ```sh
-umask 077 && openssl rand -hex 32 > "<path of the key file>"
+op read "op://Development/taktus-connect-key-connected-reference/password" | kubectl --namespace "<control-plane namespace>" create secret generic taktus-connect-connected-reference --from-file=key=/dev/stdin
 ```
 
-**Step 2 — the instance.** Put the file into the instance's secret store as the connect key of
-a worker named `connected-reference` (`CREDENTIALS.md`, row *Connect key of a connected
-worker*); the session adds the worker to the instance's configuration and asks you to apply the
-private values in the same way as an install.
+Then tell the session in the issue. It adds the worker to the instance's configuration and asks
+you to apply the private values in the same way as an install.
 
-**Step 3 — the worker.** The session starts the reference worker with
-`TAKTUS_CONNECT_KEY_FILE` pointing at the same file, connected to the instance's address. The
-file never leaves your machine and the instance's secret store.
+**Step 3 — the worker.** The session starts the reference worker with `TAKTUS_CONNECT_KEY_FILE`
+pointing at a file it writes from the vault (`op inject`), connected to the instance's address.
+The key never leaves the vault, that file and the instance's secret store.
 
-**Rotation:** a new value into both places, at once when it may have been seen.
+**Rotation:** a new value in the vault item, then step 2 again with the Secret replaced, at once when it may have been seen.
 
 ## 5. What it must never be
 
