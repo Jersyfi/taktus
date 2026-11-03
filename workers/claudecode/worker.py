@@ -1618,11 +1618,15 @@ class _Run:
 
 
 def _end(process: subprocess.Popen[str], *, force: bool = False) -> None:
+    """The agent and everything it started: it runs in its own session. A group that is already
+    gone is nothing to signal. Nor is one whose leader exited between `poll()` and the signal and
+    is not yet reaped: macOS answers that with EPERM, not ESRCH, and a stop that met it turned
+    into a failed assignment under load (#640)."""
     if process.poll() is not None:
         return
     try:
         os.killpg(process.pid, signal.SIGKILL if force else signal.SIGTERM)
-    except ProcessLookupError:
+    except (ProcessLookupError, PermissionError):
         pass
 
 
