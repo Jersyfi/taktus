@@ -1,0 +1,186 @@
+# B-1.05 New errors — UC-03 §4.1: a new error that reaches many users, or the payment or
+# sign-in path, becomes an issue in the repository service with what the error tracker knows,
+# so that a fix can be worked on it (UC-4.14, UC-01 P-03).
+#
+# Every hour the error tracker's unresolved issues of the hour are read through the capability
+# `errors.issues`, and the open issues of the repository through `repository.issues`. The rule
+# `filter` keeps the errors that reach at least ten users or whose place names a payment or a
+# sign-in path, leaves out each one an open issue already carries the mark of
+# (`errors-issue:<id>`), and takes the one with the most users. One issue per run: the next
+# run takes the next error. The selection is `exact`: the same readings always select the same
+# error, and no model judges it.
+#
+# The issue is filed only after a person confirmed it, at level 2 (UC-03 §5, stage 0). The
+# focused fix pull request of the target level is the implementation process on that issue
+# (B-7.03, `dev-orchestration` P-03); the merge stays with a person (UC-03 §4.1).
+#
+# The thresholds are this version's; a tenant changes them by a version of its own: the number
+# of users under `any`, and the pattern of its payment and sign-in paths.
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-1.05-new-errors.yaml \
+#         --input period=1h
+#
+# Switching it off (`taktusctl deactivate --process b-1-05`) changes nothing at the error
+# tracker or the repository: what it filed stays filed.
+
+id: b-1-05
+version: "1"
+name: B-1.05 New errors
+autonomy:
+  level: 2
+  reason: >
+    the error is selected by a fixed rule over the error tracker's own reading; filing the issue
+    leaves the system, so a person confirms it, as every process of UC-03 starts at level 1 or 2
+    when its stage opens
+  toward_next: >
+    four weeks of issues a person confirmed without changing the selection, and stage 1 of the
+    tenant's plan open; then Taktus proposes level 3 for filing (UC-7.1, UC-9.6); the fix pull
+    request at level 4 is the implementation process's
+author: the repository
+reason: a new error that matters reaches the repository as an issue without a person watching the tracker (UC-03 B-1.05)
+
+triggers:
+  - schedule: hourly
+    inputs:
+      period: 1h
+
+inputs:
+  period:
+    description: the period the errors had events in, a number and m, h, d or w
+    example: 1h
+
+limits:
+  quota: { units: 40 }
+
+steps:
+  - id: read-errors
+    method: rule
+    reason: the error tracker's unresolved issues are read verbatim; nothing to judge
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving errors.issues is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: errors.issues.list
+      input:
+        query: is:unresolved
+        period: { $input: period }
+        sort: user
+        limit: 100
+      credentials:
+        - { name: ERRORS_TOKEN, injected_as: env }
+
+  - id: read-filed
+    method: rule
+    reason: the open issues are read verbatim, so that an error already filed is not filed twice
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.issues is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: repository.issues.list
+      input:
+        state: open
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the open issues were not all read" }
+
+  - id: select
+    method: rule
+    reason: >
+      which error matters is a fixed rule over its figures and its place: at least ten users,
+      or a payment or sign-in path; one an open issue carries the mark of is left out; the one
+      with the most users is taken
+    rejected:
+      - method: llm
+        why: a threshold over a count needs no judgement, and a model's verdict could differ between two runs
+      - method: ml
+        why: no labelled history of which errors were worth an issue exists yet
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the error selected from the two readings }
+    depends_on: [read-errors, read-filed]
+    work:
+      rule: filter
+      items: { $from: read-errors, $select: output.issues }
+      any:
+        - { field: users, at_least: 10 }
+        - { field: culprit, matches: "(?i)(pay|checkout|billing|subscri|sign.?in|log.?in|auth)" }
+      excluding: { $from: read-filed, $select: output.issues }
+      within: body
+      marker: "errors-issue:${id}"
+      order: users
+      descending: true
+      limit: 1
+
+  - id: compose
+    method: rule
+    reason: the issue's text is the tracker's figures between fixed words, with the mark that keeps it from being filed twice
+    rejected:
+      - method: llm
+        why: a fixed composition needs no model
+    exactness: sourced
+    depends_on: [select]
+    work:
+      when:
+        - { value: { $from: select, $select: count }, not_matches: "^0$" }
+      rule: template
+      text: |
+        The error tracker reports a new error that matters: ${title}
+
+        - where: ${culprit}
+        - project: ${project}
+        - users affected: ${users}, events: ${count}
+        - first seen ${first_seen}, last seen ${last_seen}
+        - at the tracker: ${permalink}
+
+        Filed by Taktus, process B-1.05 New errors, once a person confirmed it. A fix is worked
+        on this issue; the merge stays with a person.
+
+        errors-issue:${id}
+      values:
+        title: { $from: select, $select: first.title }
+        culprit: { $from: select, $select: first.culprit }
+        project: { $from: select, $select: first.project }
+        users: { $from: select, $select: first.users }
+        count: { $from: select, $select: first.count }
+        first_seen: { $from: select, $select: first.first_seen }
+        last_seen: { $from: select, $select: first.last_seen }
+        permalink: { $from: select, $select: first.permalink }
+        id: { $from: select, $select: first.id }
+
+  - id: file
+    method: rule
+    reason: opening the issue is an API call; the effect leaves the system, so at level 2 a person confirms it first
+    rejected:
+      - method: worker
+        why: nothing here needs a sandbox or tools
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.issues is unavailable
+      to: human
+      role: owner
+    depends_on: [select, compose]
+    work:
+      when:
+        - { value: { $from: select, $select: count }, not_matches: "^0$" }
+      rule: connector
+      operation: repository.issues.create
+      input:
+        title: { $from: select, $select: first.title }
+        body: { $from: compose }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
