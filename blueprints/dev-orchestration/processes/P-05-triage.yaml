@@ -22,7 +22,7 @@
 # an outside pull request is held, open, whatever the owner answers (ADR-0012, DEC-0044).
 #
 # The methods of `screen` and `classify` are the owner's to choose (anchors.taktus.md M3.13);
-# they are a provisional answer under DEC-0180 until he does.
+# he chose them in DEC-0180.
 #
 # Every step an integration serves — a connector call, the model — names a person as its
 # fallback for when that integration is unavailable (issue #90). The engine does not switch to

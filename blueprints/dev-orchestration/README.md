@@ -144,9 +144,10 @@ summary (`llm`, `tolerant`); the class leaves only through a check (`rule` `clas
 (`rule`, outward); a defect or a feature is put in its version only after the owner approved it
 (`ask`, at every level), and declined, it is closed with the owner's answer (`rule`, outward).
 Nothing merges: an outside pull request stays open whatever the answer (ADR-0012, DEC-0044).
-The methods of the screen and the classification are provisional under DEC-0180; the notice
-the contributing guide carries about it is DEC-0181, and the triage stays off for this
-repository until it is published. `tests/integration/test_triage.py` runs the bundle against
+The methods of the screen and the classification are the owner's, decided in DEC-0180. The
+notice the contributing guide carries about it is DEC-0181's, published in `CONTRIBUTING.md`;
+switching the triage on for this repository (`TAKTUS_TRIAGE` on the instance) is the operator's
+act. `tests/integration/test_triage.py` runs the bundle against
 the fake repository service and a fake model.
 
 ## Their autonomy, with the reason
