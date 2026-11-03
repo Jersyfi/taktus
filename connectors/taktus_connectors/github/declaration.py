@@ -84,6 +84,38 @@ OPERATIONS: list[Json] = [
         "branch and the mark.",
     },
     {
+        "name": "repository.pullrequests.list",
+        "demand": {"quota_units": 111},
+        "capability": "repository.pullrequests",
+        "effect": "read",
+        "summary": "List the pull requests in one state, open unless `state` says closed or "
+        "all, each with its head and the head's commit, its base, whether it is a draft, its "
+        "labels, and its whole hours idle and open at the moment of the reading. With "
+        "`with_state`, the first `limit` (at most 30) also carry `behind` and `ahead` of their "
+        "base, the pipeline's word for their head and the key their head commit carries. At "
+        "most twenty pages of 100; `complete` says whether every one was read.",
+    },
+    {
+        "name": "repository.pullrequests.files",
+        "demand": {"quota_units": 31},
+        "capability": "repository.pullrequests",
+        "effect": "read",
+        "summary": "List the paths one pull request changes at the head commit it names: each "
+        "with its status, its lines added and removed and, with `patches`, its patch; the sums "
+        "and `complete`, false where the service lists more than it answers.",
+    },
+    {
+        "name": "repository.pullrequests.merge",
+        "demand": {"quota_units": 3},
+        "capability": "repository.pullrequests",
+        "effect": "write",
+        "idempotency": "marked",
+        "summary": "Merge one pull request at the head commit `sha` names, by merge or squash, "
+        "the commit message carrying the idempotency key; a repeat finds it in the merge "
+        "commit. Another head, a pull request merged by somebody else or one the service will "
+        "not merge is a conflict.",
+    },
+    {
         "name": "repository.pipelines.read",
         "demand": {"quota_units": 2},
         "capability": "repository.pipelines",
@@ -106,6 +138,15 @@ OPERATIONS: list[Json] = [
         "idempotency": "none",
         "summary": "Start a pipeline for a ref. The target answers with nothing a repeat could "
         "be recognised by; Taktus never repeats this on its own.",
+    },
+    {
+        "name": "repository.pipelines.list",
+        "demand": {"quota_units": 1},
+        "capability": "repository.pipelines",
+        "effect": "read",
+        "summary": "List the pipeline runs in one status, queued, in_progress or completed, "
+        "newest first, at most `limit` (100), each with its head commit and its whole minutes "
+        "since it was created at the moment of the reading.",
     },
     {
         "name": "repository.comments.list",
@@ -155,6 +196,29 @@ OPERATIONS: list[Json] = [
         "`false` plain; an unmarked file keeps the mode it has in the base, and one the base "
         "does not have is a plain file. The commit message carries the idempotency key as a "
         "trailer; a repeat finds the branch and the mark at its head.",
+    },
+    {
+        "name": "repository.branches.update",
+        "demand": {"quota_units": 4},
+        "capability": "repository.branches",
+        "effect": "write",
+        "idempotency": "marked",
+        "summary": "Merge the base into an existing branch through the service's merge "
+        "interface, in one commit whose message carries the idempotency key as a trailer; a "
+        "repeat finds it at the head. A branch that contains its base gets no commit, "
+        "`updated: false`; a conflict writes nothing. With `expected`, another head is a "
+        "conflict before anything is written.",
+    },
+    {
+        "name": "repository.branches.commit",
+        "demand": {"quota_units": 90},
+        "capability": "repository.branches",
+        "effect": "write",
+        "idempotency": "marked",
+        "summary": "Write one commit with the given files onto an existing branch whose head is "
+        "`expected`, the commit the change was made against, the idempotency key as a trailer; "
+        "a repeat finds it among the branch's last twenty first parents. Another head is a "
+        "conflict, and the branch is moved only forward.",
     },
     {
         "name": "repository.refs.create",

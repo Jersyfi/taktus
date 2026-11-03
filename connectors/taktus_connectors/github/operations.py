@@ -34,6 +34,7 @@ import binascii
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote
 
@@ -132,6 +133,7 @@ def issue_output(issue: Json) -> Json:
         "url": str(issue.get("html_url", "")),
         "author": _account(issue.get("user")),
         "created_at": str(issue.get("created_at", "")),
+        "updated_at": str(issue.get("updated_at") or issue.get("created_at", "")),
         "is_pull_request": "pull_request" in issue,
         # The labels by name, sorted; the milestone by its title, or null without one. What the
         # ready standard of a backlog reads besides the body (issue #70).
@@ -144,7 +146,9 @@ def pull_output(pull: Json) -> Json:
     return {
         **issue_output(pull),
         "head": str(pull.get("head", {}).get("ref", "")),
+        "head_sha": str(pull.get("head", {}).get("sha") or "") or None,
         "base": str(pull.get("base", {}).get("ref", "")),
+        "draft": bool(pull.get("draft", False)),
         "merged": bool(pull.get("merged", False)),
     }
 
@@ -1017,6 +1021,345 @@ async def trigger_pipeline(api: Api, input: Json, key: str) -> Outcome:
     )
 
 
+# --- keeping a pull request mergeable (ADR-0193, ADR-0194) -------------------------------------
+
+MAX_WITH_STATE = 30  # how many pull requests `with_state` reads the state of: three requests each
+MAX_FILE_PAGES = 30  # the service lists at most 3000 files of a pull request, 100 to a page
+MAX_PATCH = 20_000  # the characters of one file's patch handed on; longer ones are cut and said so
+WALK = 20  # how many first parents `repository.branches.commit` looks for its key in
+RUN_STATUSES = ("queued", "in_progress", "completed")
+
+
+def _moment(text: Any) -> datetime | None:
+    """A timestamp of the service, ISO 8601 with `Z`, or None when it is none."""
+    if not isinstance(text, str) or not text:
+        return None
+    try:
+        moment = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
+
+
+def _whole(since: Any, now: datetime, seconds: int) -> int | None:
+    """Whole units of `seconds` from a timestamp of the service to now, rounded down; None when
+    the service gave no timestamp. Never negative: a clock a little behind reads zero."""
+    moment = _moment(since)
+    if moment is None:
+        return None
+    return max(0, int((now - moment).total_seconds()) // seconds)
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _read_at(now: datetime) -> str:
+    return now.isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _listed_pull(pull: Json, now: datetime) -> Json:
+    """One pull request of a list: its reading, its labels by name, and its two ages."""
+    return {
+        **pull_output(pull),
+        "updated_at": str(pull.get("updated_at") or pull.get("created_at", "")),
+        "idle_hours": _whole(pull.get("updated_at") or pull.get("created_at"), now, 3600),
+        "open_hours": _whole(pull.get("created_at"), now, 3600),
+    }
+
+
+async def list_pull_requests(api: Api, input: Json, key: str) -> Outcome:
+    """The pull requests in one state — `open` unless `state` says `closed` or `all` — newest
+    first, page by page up to MAX_PAGES pages of 100. With `with_state`, the first `limit` of
+    them (at most MAX_WITH_STATE) carry how far their head is behind and ahead of their base,
+    the pipeline's word for their head and the key their head commit carries (ADR-0193 §1)."""
+    state = input.get("state", "open")
+    if state not in ("open", "closed", "all"):
+        raise invalid("state is open, closed or all")
+    with_state = input.get("with_state", False)
+    if not isinstance(with_state, bool):
+        raise invalid("with_state is true or false")
+    limit = input.get("limit", MAX_WITH_STATE)
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= MAX_WITH_STATE:
+        raise invalid(f"limit is a number from 1 to {MAX_WITH_STATE}")
+    page, next_url = await api.get_page(api.repo("pulls"), {"state": state, "per_page": 100})
+    found: list[Json] = list(page)
+    pages = 1
+    while next_url and pages < MAX_PAGES:
+        page, next_url = await api.get_url(next_url)
+        found.extend(page)
+        pages += 1
+    now = _now()
+    pulls = [_listed_pull(pull, now) for pull in found]
+    complete = next_url is None
+    if with_state:
+        if len(pulls) > limit:
+            complete = False
+        pulls = pulls[:limit]
+        for pull in pulls:
+            pull.update(await _state_of_pull(api, pull))
+    output = {"state": state, "pulls": pulls, "complete": complete, "read_at": _read_at(now)}
+    return Outcome(output, read_effect())
+
+
+async def _state_of_pull(api: Api, pull: Json) -> Json:
+    head, base = str(pull.get("head_sha") or ""), str(pull["base"])
+    if not head:
+        head = await _ref(api, str(pull["head"])) or ""
+    if not head:
+        return {"behind": None, "ahead": None, "pipeline": "none", "head_key": None}
+    compared = await api.get(api.repo(f"compare/{quote(base, safe='')}...{head}"))
+    listed = await api.get(api.repo("actions/runs"), {"head_sha": head, "per_page": MAX_RUNS})
+    runs = [run_output(r) for r in (listed or {}).get("workflow_runs", [])]
+    commit = await api.get(api.repo(f"git/commits/{head}"))
+    return {
+        "head_sha": head,
+        "behind": int(compared.get("behind_by", 0)),
+        "ahead": int(compared.get("ahead_by", 0)),
+        "pipeline": _state_of(runs),
+        "head_key": trailer_of(commit.get("message")),
+    }
+
+
+async def pull_request_files(api: Api, input: Json, key: str) -> Outcome:
+    """The paths a pull request changes, at the head commit the service names for it when it is
+    read: one request for the pull request, one per page of 100 files. `complete` is false when
+    the service has more pages than are read, or lists the most it answers (ADR-0194 §2)."""
+    number = _int(input, "number")
+    patches = input.get("patches", False)
+    if not isinstance(patches, bool):
+        raise invalid("patches is true or false")
+    pull = await api.get(api.repo(f"pulls/{number}"))
+    head = str(pull.get("head", {}).get("sha") or "")
+    page, next_url = await api.get_page(api.repo(f"pulls/{number}/files"), {"per_page": 100})
+    listed: list[Json] = list(page)
+    pages = 1
+    while next_url and pages < MAX_FILE_PAGES:
+        page, next_url = await api.get_url(next_url)
+        listed.extend(page)
+        pages += 1
+    files: list[Json] = []
+    for item in listed:
+        entry: Json = {
+            "path": str(item.get("filename", "")),
+            "status": str(item.get("status", "")),
+            "additions": int(item.get("additions", 0)),
+            "deletions": int(item.get("deletions", 0)),
+            "previous_path": item.get("previous_filename"),
+        }
+        if patches:
+            patch = str(item.get("patch") or "")
+            entry["patch"] = patch[:MAX_PATCH]
+            entry["patch_cut"] = len(patch) > MAX_PATCH
+        files.append(entry)
+    output = {
+        "number": number,
+        "head_sha": head or None,
+        "files": files,
+        "count": len(files),
+        "additions": sum(f["additions"] for f in files),
+        "deletions": sum(f["deletions"] for f in files),
+        "complete": next_url is None and len(files) < MAX_FILE_PAGES * 100,
+    }
+    return Outcome(output, read_effect())
+
+
+async def list_pipeline_runs(api: Api, input: Json, key: str) -> Outcome:
+    """The pipeline runs in one status, newest first, at most `limit` (100), each with its
+    age in whole minutes at the moment of the reading (ADR-0193 §3)."""
+    status = input.get("status", "in_progress")
+    if status not in RUN_STATUSES:
+        raise invalid("status is queued, in_progress or completed")
+    limit = input.get("limit", 100)
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
+        raise invalid("limit is a number from 1 to 100")
+    listed = await api.get(api.repo("actions/runs"), {"status": status, "per_page": limit})
+    now = _now()
+    runs = []
+    for run in (listed or {}).get("workflow_runs", [])[:limit]:
+        runs.append(
+            {
+                **run_output(run),
+                "head_sha": str(run.get("head_sha") or "") or None,
+                "branch": str(run.get("head_branch") or "") or None,
+                "age_minutes": _whole(run.get("created_at"), now, 60),
+            }
+        )
+    total = int((listed or {}).get("total_count", len(runs)))
+    output = {
+        "status": status,
+        "runs": runs,
+        "count": len(runs),
+        "complete": total <= len(runs),
+        "read_at": _read_at(now),
+    }
+    return Outcome(output, read_effect())
+
+
+async def update_branch(api: Api, input: Json, key: str) -> Outcome:
+    """Lookup: the head of the branch; a head that carries our key is the merge we made,
+    replayed. Otherwise the base is merged into the branch by the service's merge interface, in
+    one commit that carries the key as a trailer: 201 is the commit, 204 means the branch
+    contains its base already and nothing was written, 409 a conflict, nothing written."""
+    name = _str(input, "name")
+    base = _str(input, "base")
+    expected = _str(input, "expected", optional=True)
+    if expected and not SHA.match(expected):
+        raise invalid("expected must be a full commit sha")
+    request: Json = {"name": name, "base": base, "expected": expected or None}
+    digest = digest_of(request)
+    head = await _ref(api, name)
+    if head is None:
+        raise TargetError("not_found", "none", False, f"branch {name!r} does not exist")
+    commit = await api.get(api.repo(f"git/commits/{head}"))
+    if trailer_of(commit.get("message")) == key:
+        output = {"name": name, "base": base, "updated": True, "sha": head, "previous": None}
+        return Outcome(output, write_effect(_commit_records(api, head), digest, replayed=True))
+    if expected and head != expected:
+        raise TargetError(
+            "conflict", "none", False, f"branch {name!r} moved: its head is not the expected commit"
+        )
+    message = trailed(f"Merge {base} into {name}", key)
+    merged = await api.post(
+        api.repo("merges"), {"base": name, "head": base, "commit_message": message}
+    )
+    if merged is None:
+        output = {"name": name, "base": base, "updated": False, "sha": head, "previous": head}
+        return Outcome(output, write_effect([], digest, replayed=False))
+    sha = str(merged.get("sha", ""))
+    output = {"name": name, "base": base, "updated": True, "sha": sha, "previous": head}
+    return Outcome(output, write_effect(_commit_records(api, sha), digest, replayed=False))
+
+
+async def commit_to_branch(api: Api, input: Json, key: str) -> Outcome:
+    """Lookup: the branch's first parents from its head, at most WALK, for a commit that carries
+    our key: the original, replayed. Otherwise the head must be `expected`, the commit the change
+    was made against; the files go into one commit on top of it, and the reference is moved
+    forward to it, never forced (ADR-0193 §1)."""
+    name = _str(input, "name")
+    expected = _str(input, "expected")
+    if not SHA.match(expected):
+        raise invalid("expected must be a full commit sha")
+    message = _str(input, "message", optional=True) or f"taktus: change on {name}"
+    files = _files(input)
+    deleted = _paths(input, "deleted")
+    if not files and not deleted:
+        raise invalid("a commit onto a branch carries at least one file or one deletion")
+    request: Json = {"name": name, "expected": expected, "message": message, "files": files}
+    if deleted:
+        request["deleted"] = deleted
+    digest = digest_of(request)
+    head = await _ref(api, name)
+    if head is None:
+        raise TargetError("not_found", "none", False, f"branch {name!r} does not exist")
+    sha: str | None = head
+    head_commit: Json | None = None
+    for _ in range(WALK):
+        if sha is None:
+            break
+        commit = await api.get(api.repo(f"git/commits/{sha}"))
+        head_commit = head_commit or commit
+        if trailer_of(commit.get("message")) == key:
+            output = {
+                "name": name,
+                "sha": sha,
+                "parent": None,
+                "url": str(commit.get("html_url", "")),
+            }
+            return Outcome(output, write_effect(_commit_records(api, sha), digest, replayed=True))
+        parents = commit.get("parents") or []
+        sha = str(parents[0].get("sha", "")) if parents else None
+    if head != expected:
+        raise TargetError(
+            "conflict", "none", False, f"branch {name!r} moved: its head is not the expected commit"
+        )
+    tree_sha = str((head_commit or {}).get("tree", {}).get("sha", ""))
+    unflagged = [str(file["path"]) for file in files if "executable" not in file]
+    modes = await _modes_in(api, tree_sha, unflagged)
+    entries: list[Json] = []
+    for file in files:
+        blob = await api.post(
+            api.repo("git/blobs"), {"content": file["content"], "encoding": file["encoding"]}
+        )
+        path = str(file["path"])
+        entries.append(
+            {"path": path, "mode": _mode_of(file, modes), "type": "blob", "sha": str(blob["sha"])}
+        )
+    entries.extend(
+        {"path": path, "mode": FILE_MODE, "type": "blob", "sha": None} for path in deleted
+    )
+    try:
+        tree = await api.post(api.repo("git/trees"), {"base_tree": tree_sha, "tree": entries})
+    except TargetError as error:
+        raise _workflows_named(error, [str(entry["path"]) for entry in entries]) from None
+    commit = await api.post(
+        api.repo("git/commits"),
+        {"message": trailed(message, key), "tree": str(tree["sha"]), "parents": [head]},
+    )
+    new = str(commit["sha"])
+    try:
+        await api.patch(api.repo(f"git/refs/heads/{name}"), {"sha": new, "force": False})
+    except TargetError as error:
+        if error.cause == "invalid" and "fast forward" in error.detail:
+            raise TargetError(
+                "conflict", "none", False, f"branch {name!r} moved while the commit was written"
+            ) from None
+        raise
+    output = {"name": name, "sha": new, "parent": head, "url": str(commit.get("html_url", ""))}
+    return Outcome(output, write_effect(_commit_records(api, new), digest, replayed=False))
+
+
+MERGE_METHODS = ("merge", "squash")
+
+
+async def merge_pull_request(api: Api, input: Json, key: str) -> Outcome:
+    """Lookup: the pull request. Merged, with our key in its merge commit: the original,
+    replayed; merged without it: somebody else's, `conflict`. Otherwise it is merged at the head
+    commit `sha` names and no other, the commit message carrying the key (ADR-0194 §1). The
+    service's refusal to merge — closed, a conflict, a rule of the repository — is `conflict`."""
+    number = _int(input, "number")
+    sha = _str(input, "sha")
+    if not SHA.match(sha):
+        raise invalid("sha must be the full commit the pull request is merged at")
+    method = input.get("method", "squash")
+    if method not in MERGE_METHODS:
+        raise invalid("method is merge or squash: a rebase carries no commit for the key")
+    title = _str(input, "title", optional=True)
+    request: Json = {"number": number, "sha": sha, "method": method, "title": title or None}
+    digest = digest_of(request)
+    pull = await api.get(api.repo(f"pulls/{number}"))
+    if pull.get("merged"):
+        merge_sha = str(pull.get("merge_commit_sha") or "")
+        commit = await api.get(api.repo(f"git/commits/{merge_sha}")) if merge_sha else {}
+        if trailer_of(commit.get("message")) == key:
+            output = {"number": number, "merged": True, "sha": merge_sha, "head_sha": sha}
+            return Outcome(output, write_effect(_pull_records(pull), digest, replayed=True))
+        raise TargetError(
+            "conflict", "none", False, f"pull request {number} was merged by somebody else"
+        )
+    body: Json = {"sha": sha, "merge_method": method, "commit_message": trailed("", key).strip()}
+    if title:
+        body["commit_title"] = title
+    try:
+        merged = await api.put(api.repo(f"pulls/{number}/merge"), body)
+    except TargetError as error:
+        if error.status in (405, 409):
+            raise TargetError(
+                "conflict",
+                "none",
+                False,
+                f"the service did not merge pull request {number}: "
+                + ("its head is not the commit named" if error.status == 409 else "not mergeable"),
+            ) from None
+        raise
+    output = {"number": number, "merged": True, "sha": str(merged.get("sha", "")), "head_sha": sha}
+    return Outcome(output, write_effect(_pull_records(pull), digest, replayed=False))
+
+
+def _commit_records(api: Api, sha: str) -> list[Json]:
+    return [{"kind": "vcs.commit", "id": sha, "url": f"{api.web}/{api.repository}/commit/{sha}"}]
+
+
 type Operation = Callable[[Api, Json, str], Awaitable[Outcome]]
 
 OPERATIONS: dict[str, Operation] = {
@@ -1027,14 +1370,20 @@ OPERATIONS: dict[str, Operation] = {
     "repository.issues.milestone": set_milestone,
     "repository.pullrequests.read": read_pull_request,
     "repository.pullrequests.open": open_pull_request,
+    "repository.pullrequests.list": list_pull_requests,
+    "repository.pullrequests.files": pull_request_files,
+    "repository.pullrequests.merge": merge_pull_request,
     "repository.pipelines.read": read_pipeline_run,
     "repository.pipelines.status": pipeline_status,
     "repository.pipelines.trigger": trigger_pipeline,
+    "repository.pipelines.list": list_pipeline_runs,
     "repository.comments.list": list_comments,
     "repository.comments.create": create_comment,
     "channel.repo.reply": reply,
     "repository.branches.read": read_branch,
     "repository.branches.create": create_branch,
+    "repository.branches.update": update_branch,
+    "repository.branches.commit": commit_to_branch,
     "repository.refs.create": create_references,
     "repository.labels.set": set_labels,
     "repository.labels.remove": remove_labels,

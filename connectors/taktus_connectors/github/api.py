@@ -84,6 +84,9 @@ class Api:
     async def patch(self, path: str, body: Json) -> Any:
         return await self._request("PATCH", path, body=body)
 
+    async def put(self, path: str, body: Json) -> Any:
+        return await self._request("PUT", path, body=body)
+
     async def delete(self, path: str) -> Any:
         return await self._request("DELETE", path)
 
