@@ -384,6 +384,17 @@ class StepRun(Value):
         return tuple(found)
 
 
+class Remedy(Value):
+    """What a remediation run corrects (ADR-0179 §3): the result-defect incident, and the step
+    of the run whose result was wrong. A remediation run produces that step's result and every
+    result built on it again; every step of it that acts outward is the correction anchor's."""
+
+    incident_id: str = Field(min_length=1)
+    run_id: str = Field(min_length=1)
+    """The run whose result was wrong. It stays as it was, with its records."""
+    step_id: StepId
+
+
 class Run(Value):
     """One execution of a plan. The run carries what it executes — the steps in their order and
     the work of each — so that it can be resumed and replayed from its own record."""
@@ -423,6 +434,10 @@ class Run(Value):
     """The version of each skill its steps use, `{name: version}`, pinned when the run was
     created: the version in production, or the one an evaluation's side binds (ADR-0162 §5). A
     skill with no version pinned is not handed over."""
+    remedy: Remedy | None = None
+    """For a remediation run only: the wrong result it produces again (ADR-0179 §3). Every step
+    of it that acts outward waits for the correction anchor's person, at every level. None for
+    every other run."""
     profile: str | None = Field(default=None, min_length=1)
     """The role profile of a shared agent the run serves, `<agent>:<role>@<version>`, or
     `<agent>@<core>/<agent>:<role>@<version>` under a core not yet active: its brief is handed

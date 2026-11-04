@@ -4,6 +4,7 @@ from taktus.components.run.application.service.correct_result import (
 )
 from taktus.components.run.application.service.execute_run import (
     CLAIM_LOST,
+    SUSPECT,
     AnswerParticipant,
     ConfirmSteps,
     DecideSteps,
@@ -14,6 +15,7 @@ from taktus.components.run.application.service.execute_run import (
     RunEngine,
     StartRun,
     SteerStep,
+    Suspect,
     TakeOver,
 )
 from taktus.components.run.application.service.maturation import (
@@ -26,6 +28,7 @@ from taktus.components.run.application.service.runner import Outcome, Runner, Ru
 
 __all__ = [
     "CLAIM_LOST",
+    "SUSPECT",
     "AnswerParticipant",
     "ConfirmSteps",
     "CorrectResult",
@@ -46,5 +49,6 @@ __all__ = [
     "RunnerOptions",
     "StartRun",
     "SteerStep",
+    "Suspect",
     "TakeOver",
 ]
