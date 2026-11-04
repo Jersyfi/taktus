@@ -142,6 +142,9 @@ jobs:
           - name: taktus-connector-httpcheck
             dockerfile: connectors/Dockerfile
             target: httpcheck
+          - name: taktus-connector-kubernetes
+            dockerfile: connectors/Dockerfile
+            target: kubernetes
           - name: taktus-connector-mail
             dockerfile: connectors/Dockerfile
             target: mail

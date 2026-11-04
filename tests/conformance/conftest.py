@@ -1123,6 +1123,9 @@ BUSINESS: dict[str, BusinessConnector] = {
     "einvoice": BusinessConnector(
         "einvoice", FAKES / "document_inbox_service.py", "DOCUMENTS_TOKEN"
     ),
+    "kubernetes": BusinessConnector(
+        "kubernetes", FAKES / "workload_cluster.py", "WORKLOADS_TOKEN"
+    ),
     "openai": BusinessConnector("openai", FAKES / "model_costs_service.py", "MODEL_COSTS_TOKEN"),
     "sentry": BusinessConnector(
         "sentry", FAKES / "error_tracking_service.py", "ERRORS_TOKEN", ("--organization", "example")

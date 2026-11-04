@@ -75,6 +75,11 @@ COPY --chown=connector:connector connectors/taktus_connectors/httpcheck /app/tak
 ENTRYPOINT ["python", "-m", "taktus_connectors.httpcheck"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
+FROM base AS kubernetes
+COPY --chown=connector:connector connectors/taktus_connectors/kubernetes /app/taktus_connectors/kubernetes
+ENTRYPOINT ["python", "-m", "taktus_connectors.kubernetes"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
 FROM base AS mail
 COPY --chown=connector:connector connectors/taktus_connectors/mail /app/taktus_connectors/mail
 ENTRYPOINT ["python", "-m", "taktus_connectors.mail"]
