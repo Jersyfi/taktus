@@ -12,6 +12,7 @@ from typing import Any
 from fakes import FakeIdentifiers, FakeWorker
 from fakes.identity import FixedTenants, directory
 from fakes.maturity import VERIFIED
+from fakes.takeover import instructed
 
 from taktus.adapters.driven.memory import (
     MemoryObjectStore,
@@ -167,7 +168,9 @@ class World:
     async def registered(self, document: dict[str, Any]) -> None:
         if await self.identity.directory.identity(TENANT, "idn_op") is None:
             await self.identity.directory.add(TENANT, "idn_op", (TENANT, "ops"))
-        await self.register.execute(RegisterProcessVersion(document, tenant=TENANT, by="idn_op"))
+        await self.register.execute(
+            RegisterProcessVersion(instructed(document), tenant=TENANT, by="idn_op")
+        )
 
     async def delivered(self, answer: IntakeResult) -> None:
         self.connector.answer = answer

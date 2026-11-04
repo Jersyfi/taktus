@@ -46,7 +46,14 @@ from taktus.components.identity.application.service import IdentityDirectory, Te
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.application.service.streams import ValueStreams
-from taktus.components.process.domain.model import Process, ProcessVersion, Proposal, ValueStream
+from taktus.components.process.application.service.takeover import TakeoverTrials
+from taktus.components.process.domain.model import (
+    Process,
+    ProcessVersion,
+    Proposal,
+    TakeoverTrial,
+    ValueStream,
+)
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.application.service import (
     Alerted,
@@ -222,6 +229,9 @@ class Services:
     """The register, the dependencies and the variants (ADR-0147); a test that reaches them
     sets them. What they gather is held by `tests/composition/test_acting.py`."""
     evaluated: Any = None
+    stages: Any = None
+    """A tenant's introduction in stages (ADR-0191); a test that reaches it sets it. What it
+    computes is held by `tests/governance/test_stages.py`."""
     """A process's evaluations and its proposed cases (ADR-0134); a test that reaches them sets
     them. What they do is held by `tests/composition/test_evaluations.py`."""
     """The acts on a proposal; a test that reaches them sets them. What they do is held by
@@ -368,7 +378,21 @@ class Services:
                 MemoryRepository(self.persistence, ProcessVersion),
                 MemoryProvenanceStore(self.persistence),
                 MemoryRepository(self.persistence, Request),
+                MemoryRepository(self.persistence, TakeoverTrial),
             )
+        )
+
+    @property
+    def takeover_instructions(self) -> TakeoverTrials:
+        """The takeover instructions and their trials, over this world's stores (ADR-0180)."""
+        return TakeoverTrials(
+            MemoryRepository(self.persistence, Process),
+            MemoryRepository(self.persistence, ProcessVersion),
+            MemoryRepository(self.persistence, TakeoverTrial),
+            ledger=self.ledger,
+            work=self.persistence,
+            clock=self.clock,
+            identifiers=self.ids,
         )
 
     @property

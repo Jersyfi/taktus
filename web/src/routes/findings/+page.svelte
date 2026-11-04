@@ -4,6 +4,7 @@
 	The page shows what the surface sends back and decides nothing itself.
 -->
 <script lang="ts">
+	import Unavailable from '../../lib/Unavailable.svelte';
 	import { read, surface } from '../../lib/api';
 	import FindingsView from '../../lib/FindingsView.svelte';
 	import {
@@ -67,14 +68,14 @@
 {:else if answer}
 	<FindingsView {answer} {reading} {message} {busy} {onAnswer} {onConfirm} />
 {:else if problem}
-	<p role="alert">{problem}</p>
+	<Unavailable eyebrow="Findings" {problem} />
 {:else}
 	<p class="status">Reading the findings…</p>
 {/if}
 
 <style>
 	.status {
-		color: var(--muted);
+		color: var(--text-secondary);
 		font-size: 0.9rem;
 	}
 </style>

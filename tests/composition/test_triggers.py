@@ -11,6 +11,7 @@ from fakes import FakeConnector, FakeIdentifiers, FakeWorker
 from fakes.connector import READ, WRITE
 from fakes.identity import FixedTenants, directory
 from fakes.maturity import VERIFIED
+from fakes.takeover import instructed
 
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.adapters.driven.memory import (
@@ -104,7 +105,7 @@ class World:
         if self.by is not None and await self.identity.directory.identity(TENANT, self.by) is None:
             await self.identity.directory.add(TENANT, self.by, (TENANT, "ops"))
         await self.register.execute(
-            RegisterProcessVersion(document, tenant=TENANT, by=by or self.by)
+            RegisterProcessVersion(instructed(document), tenant=TENANT, by=by or self.by)
         )
 
     async def kinds(self) -> list[str]:
@@ -173,6 +174,32 @@ async def test_each_starts_one_run_per_item_a_read_answers() -> None:
     assert sorted(str(run.inputs["target"]) for run in runs if run is not None) == ["x", "y"]
     ((operation, context, _),) = world.connector.calls
     assert operation == READ and context.identity == "idn_op"
+
+
+async def test_each_once_starts_an_item_once_whatever_slot_lists_it_again() -> None:
+    """An inbox read every slot (ADR-0188): `once` starts a run for an item the first time it
+    is listed, and a later slot that lists it again starts nothing for it; a new item still
+    starts its run. The read is given the trigger's `arguments`."""
+    world = World()
+    each = {
+        "input": "target",
+        "operation": READ,
+        "select": "items",
+        "field": "name",
+        "arguments": {"referenced": True},
+        "once": True,
+    }
+    await world.registered(bundle({"each": each}))
+    world.connector.read_sequence.append({"items": [{"name": "x"}]})
+    world.connector.read_sequence.append({"items": [{"name": "x"}, {"name": "y"}]})
+    await world.at(10, 31)
+    first = await world.at(11, 1)
+    second = await world.at(12, 1)
+    assert len(first) == 1 and len(second) == 1 and first != second
+    async with world.persistence.transaction(TENANT):
+        (run,) = [await world.runs.get(TENANT, run_id) for run_id in second]
+    assert run is not None and run.inputs == {"target": "y"}
+    assert [call[2] for call in world.connector.calls] == [{"referenced": True}] * 2
 
 
 async def test_each_over_a_write_starts_nothing_and_stays_due() -> None:

@@ -1,0 +1,19 @@
+{
+  "credentials": {
+    "actions": "EXPIRY_TOKEN"
+  },
+  "read": {
+    "operation": "expiry.domains.read",
+    "input": {
+      "domain": "example-product.test"
+    }
+  },
+  "writes": [],
+  "invalid": {
+    "operation": "expiry.domains.read",
+    "input": {
+      "domain": "not a domain/../x"
+    },
+    "expected_cause": "invalid"
+  }
+}

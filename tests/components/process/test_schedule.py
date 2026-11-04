@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
+from fakes.takeover import instructed
 from pydantic import ValidationError
 
 from taktus.components.process.application.service.register_version import parse_bundle
@@ -87,25 +88,27 @@ def test_missed_slots_fire_once_for_the_latest() -> None:
 
 
 def bundle(**trigger: Any) -> dict[str, Any]:
-    return {
-        "id": "nightly",
-        "version": "1",
-        "name": "Nightly",
-        "autonomy": {"level": 2, "reason": "a test", "toward_next": "nothing"},
-        "inputs": {"target": {"description": "what to check", "example": "a"}},
-        "triggers": [{"schedule": "daily", **trigger}],
-        "steps": [
-            {
-                "id": "one",
-                "method": "rule",
-                "reason": "r",
-                "rejected": [],
-                "exactness": "exact",
-                "checks": [{"kind": "recomputation"}],
-                "work": {"rule": "constant", "value": {"$input": "target"}},
-            }
-        ],
-    }
+    return instructed(
+        {
+            "id": "nightly",
+            "version": "1",
+            "name": "Nightly",
+            "autonomy": {"level": 2, "reason": "a test", "toward_next": "nothing"},
+            "inputs": {"target": {"description": "what to check", "example": "a"}},
+            "triggers": [{"schedule": "daily", **trigger}],
+            "steps": [
+                {
+                    "id": "one",
+                    "method": "rule",
+                    "reason": "r",
+                    "rejected": [],
+                    "exactness": "exact",
+                    "checks": [{"kind": "recomputation"}],
+                    "work": {"rule": "constant", "value": {"$input": "target"}},
+                }
+            ],
+        }
+    )
 
 
 def test_a_schedule_trigger_gives_every_declared_input() -> None:

@@ -16,7 +16,11 @@ tenant's configuration on its own instance and never enters this repository (ADR
 
 ## State
 
-One bundle: [`processes/B-10.03-incoming-invoice.yaml`](processes/B-10.03-incoming-invoice.yaml).
+Two bundles: [`processes/B-10.03-incoming-invoice.yaml`](processes/B-10.03-incoming-invoice.yaml)
+and [`processes/B-10.03-unreferenced-invoice.yaml`](processes/B-10.03-unreferenced-invoice.yaml).
+Each carries a daily trigger over the inbox: B-10.03 over the documents that name an order, or
+are no invoice; the second over those that name none. Each document starts one run, on the first
+day it is listed (`each.once`, ADR-0188) — the collection of B-6.06's incoming half.
 
 | Step | Method | Exactness | What it does |
 |---|---|---|---|
@@ -30,8 +34,22 @@ The process runs at level 3; its action `accounting.bookings` at level 2, counte
 class until its corrections earn a raise (ADR-0110). A tenant caps an action lower for all its
 processes with a risk class that carries a level (`taktusctl anchors set`, ADR-0170).
 
-Not built: the daily collection of the inbox that hands each document to B-10.03, and the
-classification of an invoice that names no order (UC-04 §4).
+**An invoice that names no order** is classified first: its supplier's open orders are read
+(`accounting.orders.list`), a model under the purpose `triage` names one reference and a fixed
+pattern takes it out of the answer, that order is read, and the steps from `check` on are
+B-10.03's. The model only proposes: a wrong choice fails the `invoice` rule and goes to a person,
+and the person who confirms the booking sees the order chosen.
+
+| Step | Method | Exactness | What it does |
+|---|---|---|---|
+| `read-invoice` | rule, `documents.invoices.read` | sourced | as in B-10.03 |
+| `list-orders` | rule, `accounting.orders.list` | sourced | the supplier's orders still open |
+| `classify` | llm, purpose `triage` | tolerant | one reference among them, nothing else |
+| `choose` | rule, `extract` | tolerant | the reference out of the answer, by a fixed pattern |
+| `read-order` | rule, `accounting.orders.read` | sourced | the order chosen |
+| `check`, `propose-booking`, `release-payment` | as in B-10.03 | | |
+
+Not built: a classifier trained on the decisions, which maturation proposes once they exist.
 
 ## Running it
 
@@ -52,7 +70,8 @@ decision request.
 
 What a person does in place of B-10.03 (UC-6.3), from the same systems:
 
-1. Open the invoice from the inbox folder and find the order or contract it names.
+1. Open the invoice from the inbox folder and find the order or contract it names. Where it
+   names none, list the supplier's open orders and choose the one its lines describe.
 2. Check the invoice against it: the seller's tax identifier, the account to be paid against the
    one the accounting system holds, each line's price and quantity received, and the total
    against what is still open on the order.

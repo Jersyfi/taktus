@@ -58,7 +58,13 @@ origin.
 - **Model trials** (#448, ADR-0149) — the trials offered now, each startable with the
   candidates it names, a trial started by hand, and each trial's report: per candidate the
   cases passed, money, tokens and wall time charted, and each case's results side by side. The
-  report is read again while its runs have not settled. Starting a trial binds no model.
+  report is read again while its runs have not settled. Starting a trial binds no model. An
+  offer is declined in place, and a trial started by hand takes cases a person names, each a
+  process and the inputs of one run.
+- **The introduction in stages** (ADR-0137, ADR-0191) — `#/introduction`, for the plan's
+  responsible role: each stage with its condition, the figures the rule read, its processes with
+  their versions, levels, runs, missed runs and incidents, what its opening lacks, and the open
+  action where nothing is lacking, asked back before it is sent.
 
 ## How it is built
 
@@ -71,9 +77,21 @@ origin.
   `{prefix}/app/`; the surface it reads is the directory above.
 - It draws what a level hands it: every glyph comes from `reporting` with motion and without, and
   the app picks one by the reader's setting — the button *Stop motion*, or the system's reduced
-  motion from the first moment. It chooses no token of its own (ADR-0059). It adds one colour per
-  family on top of the form, paper and ink otherwise; every distinction is carried without it
-  (M1.20, DEC-0185).
+  motion from the first moment. It chooses no glyph token of its own (ADR-0059). Every
+  distinction is carried by form; a family's hue only repeats it (M1.20, DEC-0185).
+- **The design system** (ADR-0177) is the owner's, shared with his other applications:
+  `design/tokens.json` is its foundations, copied unchanged from a named commit, and
+  `design/taktus.tokens.json` is Taktus's own layer — the families of methods and the chart
+  series — every value a reference to a primitive. `scripts/tokens.js` writes
+  `src/lib/generated/tokens.css` before every `npm` script; it is never stored. Pages bind to the
+  semantic tokens only (`--bg-canvas`, `--text-primary`, `--family-reproducible`, …); a colour
+  literal in a page's style fails `design.test.ts`, which also measures every text and mark for
+  contrast in both modes. The reader picks *System*, *Light* or *Dark* in the bar; the choice is
+  the device's.
+- **The frame** (ADR-0178): a skip link, the bar, and one list of destinations in four bands —
+  *Now*, *Start work*, *Steer*, *Keep running* — pinned from 905 px and a drawer below. A
+  destination whose page holds something waiting for the reader carries a mark, read from the
+  surface's own lines. The start page, *Today*, puts what waits for the reader before what runs.
 - The reader signs in with an account key once per browser (ADR-0119). The app sends it in
   `Authorization: Bearer` to `POST {prefix}/session`, once, and forgets it. The instance answers
   with a session cookie the page cannot read, which the browser sends with every request, in
@@ -82,6 +100,9 @@ origin.
 
 | Path | What it is |
 |---|---|
+| `design/`, `scripts/tokens.js`, `src/app.css` | the design system's tokens, the stylesheet written from them, and what every page shares (ADR-0177) |
+| `src/lib/navigation.ts`, `frame.svelte.ts`, `theme.svelte.ts`, `Icon.svelte`, `Mark.svelte` | the one list of destinations and its marks, what the bar shows of the page's stream, the theme the device keeps, the frame's icons and the mark (ADR-0178) |
+| `src/lib/today.ts` | the start page's own words: the changes since it opened, and what does not wait |
 | `src/lib/types.ts` | the shapes the surface answers: a run level, a snapshot, a change |
 | `src/lib/api.ts` | the surface's address, and a read or a write as the signed-in reader |
 | `src/lib/stream.ts` | the stream of changes, read with `fetch`, resumed from its last position |
@@ -90,6 +111,8 @@ origin.
 | `src/lib/Graph.svelte` | steps as a graph, placed by their dependencies |
 | `src/lib/RunView.svelte` | the run level, and its text equivalent |
 | `src/lib/takeover.ts`, `TakeoverPanel.svelte` | a running step taken over: the steps that offer it, where an ask stands, the state, the lease, the result read back before it is handed back (ADR-0128); the reader's own ask is held while the page is open, and stored nowhere |
+| `src/lib/introduction.ts`, `IntroductionView.svelte` | a tenant's introduction in stages: their shapes, the open action's rule, the lines in words |
+| `static/fonts/` | IBM Plex Sans, Sans Condensed and Mono in Latin subsets and `plex.css`, served with the app; licence `OFL.txt` (ADR-0177) |
 | `src/lib/StagesPage.svelte` | the stages of a run for a participant, `#/stages/<run>`: done, current, ahead, the role a stage waits for, live from the run's stream, with a link to the run level (UC-6.15) |
 | `src/lib/OverviewView.svelte` | the overview, and its text equivalent |
 | `src/lib/OriginView.svelte` | the origin of a result, and its text equivalent |

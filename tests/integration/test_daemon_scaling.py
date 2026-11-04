@@ -17,6 +17,7 @@ from typing import Any
 
 import pytest
 import yaml
+from fakes.takeover import instructions
 
 from taktus.adapters.driven.configuration import EnvironmentConfiguration
 from taktus.components.command.application.service import CommissionPlan
@@ -150,6 +151,8 @@ def rule_only_bundle(n: int) -> dict[str, Any]:
             "work": {"rule": "constant", "value": {"m": n}},
         },
     ]
+    # The example's own instructions describe the steps replaced above (ADR-0180).
+    document["takeover"] = instructions(document)
     return document
 
 

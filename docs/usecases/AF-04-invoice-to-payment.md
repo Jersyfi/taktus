@@ -54,7 +54,7 @@ A tenant caps any action lower for all its processes with a risk class that carr
 | B-6.06 (incoming half) | **Collecting and matching**: the invoices of the inbox listed, each handed to B-10.03, the unmatched ones reported | daily | 3 | an invoice nobody matched |
 | B-10.03 (unreferenced) | **Classifying an invoice that names no order**: which order or contract it belongs to, proposed by a model, later by a classifier trained on the decisions, later by a rule, each proposal checked by the rule against the order it names | an invoice without a reference | 2, rising | the classification until it matured |
 
-Only the first row is built (§9).
+All three are bundles (§9).
 
 ## 5. What stays with a person
 
@@ -85,7 +85,8 @@ Only the first row is built (§9).
 |---|---|---|
 | `documents.invoices` — an inbox read as EN 16931 | B-10.03 | the documents connector over WebDAV, UBL 2.1 and CII D16B (UC-15.8) |
 | `accounting.orders`, `accounting.bookings`, `payment.release` | B-10.03 | the accounting connector over a generic interface (UC-15.8) |
-| a classifier of unreferenced invoices | B-10.03 (unreferenced) | no |
+| `accounting.orders.list` — a supplier's open orders | B-10.03 (unreferenced) | the accounting connector (ADR-0188) |
+| a classifier of unreferenced invoices | B-10.03 (unreferenced) | a language model under the purpose `triage`, its choice checked by the `invoice` rule; no trained classifier yet (ADR-0188) |
 
 ## 8. When this case holds
 
@@ -111,9 +112,18 @@ booked or paid; a tenant's risk class at level 1 holds the booking at level 1 wi
 to the bundle. The rule's calculation and matching are proven in
 `tests/components/run/test_invoice_rule.py`.
 
-Not built: collecting the inbox daily and handing each document to B-10.03; classifying an
-invoice that names no order; a run against a real inbox and accounting system, which needs the
-tenant's credentials; the review of the catalogue (DEC-0029).
+The inbox is collected daily (ADR-0188): B-10.03 and the classification each carry a daily
+trigger over the documents that name an order, or name none, and each document starts one run
+on the first day it is listed and never again (`tests/composition/test_triggers.py`, and the
+list by reference in `tests/adapters/connectors/test_documents_and_accounting_connectors.py`).
+An invoice that names no order is classified by a stand-in model among its supplier's open
+orders; the order chosen is held against the invoice by the `invoice` rule, its booking waits
+for a person and its payment for a release, and a wrong choice or an answer that is no reference
+goes to a person with nothing booked (`tests/composition/test_invoice_to_payment.py`).
+
+Not built: a classifier trained on the decisions, which maturation proposes once they exist
+(ADR-0084); a run against a real inbox, accounting system and model, which needs the tenant's
+own; the review of the catalogue (DEC-0029).
 
 ## 10. Dependencies
 

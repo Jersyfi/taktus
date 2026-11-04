@@ -38,7 +38,7 @@
 
 <style>
 	.status {
-		color: var(--muted);
+		color: var(--text-secondary);
 		font-size: 0.9rem;
 	}
 </style>

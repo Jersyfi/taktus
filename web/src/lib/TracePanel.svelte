@@ -209,11 +209,11 @@
 
 <style>
 	.trace {
-		border: 1px solid var(--line);
+		border: 1px solid var(--border-subtle);
 		border-radius: 18px;
 		padding: 1rem 1.1rem 1.1rem;
 		margin: 1.25rem 0;
-		background: var(--paper);
+		background: var(--bg-canvas);
 	}
 	header {
 		display: flex;
@@ -222,16 +222,9 @@
 		align-items: flex-end;
 		gap: 0.75rem;
 	}
-	.eyebrow {
-		font-size: 0.75rem;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: var(--ink-3);
-		margin: 0 0 0.25rem;
-	}
 	h2 {
 		margin: 0;
-		font-family: var(--serif);
+		font-family: var(--font-display);
 		font-weight: 500;
 		font-size: 1.25rem;
 	}
@@ -241,31 +234,31 @@
 		flex-wrap: wrap;
 	}
 	.tabs button.on {
-		background: var(--ink);
-		color: var(--paper);
-		border-color: var(--ink);
+		background: var(--text-primary);
+		color: var(--bg-canvas);
+		border-color: var(--text-primary);
 	}
 	.quiet,
 	.hint {
-		color: var(--muted);
+		color: var(--text-secondary);
 		font-size: 0.9rem;
 	}
 	.state {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
-		color: var(--ink-2);
+		color: var(--text-secondary);
 		font-size: 0.92rem;
 	}
 	.dot {
 		width: 0.6rem;
 		height: 0.6rem;
 		border-radius: 50%;
-		border: 2px solid var(--waiting);
+		border: 2px solid var(--family-waiting);
 	}
 	.dot.live {
-		border-color: var(--variable);
-		background: var(--variable);
+		border-color: var(--family-variable);
+		background: var(--family-variable);
 	}
 	.dot.moving {
 		animation: breathe 1.6s ease-in-out infinite;
@@ -285,7 +278,7 @@
 		top: 0.4rem;
 		bottom: 0.4rem;
 		width: 1px;
-		background: var(--line);
+		background: var(--border-subtle);
 	}
 	.line {
 		display: grid;
@@ -300,8 +293,8 @@
 		height: 0.7rem;
 		justify-self: center;
 		align-self: center;
-		background: var(--paper);
-		border: 2px solid var(--variable);
+		background: var(--bg-canvas);
+		border: 2px solid var(--family-variable);
 		box-sizing: border-box;
 		position: relative;
 	}
@@ -313,15 +306,15 @@
 		border-radius: 50%;
 		width: 0.45rem;
 		height: 0.45rem;
-		background: var(--variable);
+		background: var(--family-variable);
 	}
 	[data-mark='call'] .mark {
 		border-radius: 2px;
 	}
 	[data-mark='refused'] .mark {
 		border-radius: 2px;
-		border-color: var(--alert);
-		background: linear-gradient(45deg, transparent 42%, var(--alert) 42% 58%, transparent 58%);
+		border-color: var(--family-alert);
+		background: linear-gradient(45deg, transparent 42%, var(--family-alert) 42% 58%, transparent 58%);
 	}
 	[data-mark='choice'] .mark {
 		transform: rotate(45deg) scale(0.85);
@@ -334,17 +327,17 @@
 		height: 0.25rem;
 		width: 0.85rem;
 		border-radius: 1px;
-		background: var(--ink-2);
-		border-color: var(--ink-2);
+		background: var(--text-secondary);
+		border-color: var(--text-secondary);
 	}
 	[data-mark='made'] .mark {
 		border-radius: 1px 5px 1px 1px;
-		background: var(--paper-2);
+		background: var(--bg-surface);
 	}
 	[data-mark='end'] .mark {
 		border-radius: 50%;
-		background: var(--ink);
-		border-color: var(--ink);
+		background: var(--text-primary);
+		border-color: var(--text-primary);
 	}
 	.newest .mark {
 		animation: breathe 1.6s ease-in-out infinite;
@@ -353,9 +346,9 @@
 		font-weight: 500;
 	}
 	time {
-		font-family: var(--mono);
+		font-family: var(--font-mono);
 		font-size: 0.78rem;
-		color: var(--ink-3);
+		color: var(--text-subtle);
 		font-variant-numeric: tabular-nums;
 	}
 	.text {
@@ -363,16 +356,16 @@
 		overflow-wrap: anywhere;
 	}
 	.kind {
-		font-family: var(--mono);
+		font-family: var(--font-mono);
 		font-size: 0.72rem;
-		color: var(--ink-3);
+		color: var(--text-subtle);
 	}
 	.share {
 		display: flex;
 		flex-wrap: wrap;
 		align-items: flex-end;
 		gap: 0.5rem;
-		border-top: 1px solid var(--line);
+		border-top: 1px solid var(--border-subtle);
 		padding-top: 0.85rem;
 	}
 	.share label {
@@ -387,15 +380,15 @@
 	}
 	input {
 		font: inherit;
-		font-family: var(--mono);
+		font-family: var(--font-mono);
 		padding: 0.4rem 0.7rem;
-		border: 1px solid var(--line);
+		border: 1px solid var(--border-subtle);
 		border-radius: 10px;
-		background: var(--paper);
-		color: var(--ink);
+		background: var(--bg-canvas);
+		color: var(--text-primary);
 	}
 	input[aria-invalid='true'] {
-		border-color: var(--alert);
+		border-color: var(--family-alert);
 	}
 	.roles {
 		list-style: none;
@@ -409,10 +402,10 @@
 		display: flex;
 		align-items: center;
 		gap: 0.4rem;
-		border: 1px solid var(--line);
+		border: 1px solid var(--border-subtle);
 		border-radius: 999px;
 		padding: 0.15rem 0.2rem 0.15rem 0.75rem;
-		font-family: var(--mono);
+		font-family: var(--font-mono);
 		font-size: 0.85rem;
 	}
 	.roles button {
@@ -426,7 +419,7 @@
 		gap: 0.5rem;
 	}
 	.link code {
-		background: var(--paper-2);
+		background: var(--bg-surface);
 		border-radius: 8px;
 		padding: 0.3rem 0.55rem;
 		overflow-wrap: anywhere;
@@ -434,33 +427,15 @@
 	}
 	.said {
 		font-size: 0.9rem;
-		color: var(--ink-2);
-	}
-	button {
-		font: inherit;
-		border: 1px solid var(--line);
-		background: var(--paper);
-		color: var(--ink);
-		border-radius: 10px;
-		padding: 0.4rem 0.9rem;
-		cursor: pointer;
-	}
-	button.primary {
-		background: var(--ink);
-		color: var(--paper);
-		border-color: var(--ink);
-	}
-	button:disabled {
-		opacity: 0.5;
-		cursor: default;
+		color: var(--text-secondary);
 	}
 	@keyframes breathe {
 		0%,
 		100% {
-			box-shadow: 0 0 0 0 color-mix(in oklch, var(--variable) 45%, transparent);
+			box-shadow: 0 0 0 0 color-mix(in oklch, var(--family-variable) 45%, transparent);
 		}
 		50% {
-			box-shadow: 0 0 0 0.35rem color-mix(in oklch, var(--variable) 0%, transparent);
+			box-shadow: 0 0 0 0.35rem color-mix(in oklch, var(--family-variable) 0%, transparent);
 		}
 	}
 	@media (max-width: 640px) {

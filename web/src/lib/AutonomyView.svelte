@@ -103,13 +103,6 @@
 </section>
 
 <style>
-	.eyebrow {
-		font-size: 0.75rem;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: var(--ink-3);
-		margin: 0 0 0.5rem;
-	}
 	h1 {
 		max-width: 28ch;
 	}
@@ -118,11 +111,11 @@
 		font-size: 0.85rem;
 		padding: 0.3rem 0.8rem;
 		border-radius: 999px;
-		border: 1px solid var(--line);
-		color: var(--ink-2);
+		border: 1px solid var(--border-subtle);
+		color: var(--text-secondary);
 	}
 	.muted {
-		color: var(--ink-2);
+		color: var(--text-secondary);
 		font-size: 0.88rem;
 	}
 	.organs {
@@ -137,13 +130,13 @@
 		border-radius: 28px;
 		padding: 1.1rem 1.25rem 1rem;
 		background:
-			radial-gradient(80% 90% at 30% 20%, color-mix(in oklch, var(--reproducible) 4%, transparent), transparent 70%),
-			var(--paper-2);
+			radial-gradient(80% 90% at 30% 20%, color-mix(in oklch, var(--family-reproducible) 4%, transparent), transparent 70%),
+			var(--bg-surface);
 		min-width: 0;
 	}
 	/* A level that fell by rule: an outline, so the distinction does not rest on colour. */
 	.organ.lowered {
-		box-shadow: inset 0 0 0 1.5px var(--alert);
+		box-shadow: inset 0 0 0 1.5px var(--family-alert);
 	}
 	.head {
 		display: flex;
@@ -155,17 +148,17 @@
 		text-decoration: none;
 	}
 	.level {
-		font-family: var(--mono);
+		font-family: var(--font-mono);
 		font-size: 0.72rem;
 		font-weight: 400;
-		border: 1px solid var(--line);
+		border: 1px solid var(--border-subtle);
 		border-radius: 6px;
 		padding: 0 0.35rem;
 	}
 	.fell,
 	.raise {
 		font-size: 0.88rem;
-		border-left: 3px solid var(--ink);
+		border-left: 3px solid var(--text-primary);
 		padding-left: 0.6rem;
 	}
 	table {
@@ -178,12 +171,12 @@
 	td {
 		text-align: left;
 		padding: 0.35rem 0.4rem 0.35rem 0;
-		border-top: 1px solid var(--line);
+		border-top: 1px solid var(--border-subtle);
 		vertical-align: top;
 		font-weight: 400;
 	}
 	thead th {
-		color: var(--ink-3);
+		color: var(--text-subtle);
 		border-top: none;
 	}
 	.meter {
@@ -191,7 +184,7 @@
 		display: block;
 		height: 6px;
 		border-radius: 3px;
-		background: var(--paper);
+		background: var(--bg-canvas);
 		margin: 0.2rem 0;
 		overflow: visible;
 	}
@@ -199,20 +192,20 @@
 		position: absolute;
 		inset: 0 auto 0 0;
 		border-radius: 3px;
-		background: var(--ink-2);
+		background: var(--text-secondary);
 	}
 	.fill.over {
-		background: var(--alert);
+		background: var(--family-alert);
 	}
 	.limit {
 		position: absolute;
 		top: -3px;
 		bottom: -3px;
 		width: 1.5px;
-		background: var(--ink);
+		background: var(--text-primary);
 	}
 	.figure {
-		color: var(--ink-2);
+		color: var(--text-secondary);
 	}
 	.limits {
 		max-width: 46rem;

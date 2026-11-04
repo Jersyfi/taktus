@@ -18,6 +18,7 @@ import yaml
 from fakes import FakeConnector, FakeIdentifiers, FakeWorker
 from fakes.identity import directory
 from fakes.maturity import VERIFIED
+from fakes.takeover import instructed
 
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.adapters.driven.memory import (
@@ -85,15 +86,17 @@ def bundle(version: str, *, extra: bool = False) -> dict[str, Any]:
                 "work": {"rule": "constant", "value": 2},
             }
         )
-    return {
-        "id": "daily",
-        "version": version,
-        "name": "Daily",
-        "autonomy": {"level": 2, "reason": "a test", "toward_next": "nothing"},
-        "inputs": {"target": {"description": "what to read", "example": "a"}},
-        "steps": steps,
-        "limits": {"quota": {"units": 5}},
-    }
+    return instructed(
+        {
+            "id": "daily",
+            "version": version,
+            "name": "Daily",
+            "autonomy": {"level": 2, "reason": "a test", "toward_next": "nothing"},
+            "inputs": {"target": {"description": "what to read", "example": "a"}},
+            "steps": steps,
+            "limits": {"quota": {"units": 5}},
+        }
+    )
 
 
 class World:
@@ -286,7 +289,7 @@ async def test_a_change_asked_in_words_starts_s07_for_the_person() -> None:
     document = yaml.safe_load((S07 / "S-07-change-in-dialogue.yaml").read_text(encoding="utf-8"))
     await world.register.execute(RegisterProcessVersion(document, tenant=TENANT, by=WHO))
     run = await world.acts.ask(TENANT, "daily", "add a step", WHO)
-    assert run.process_version == "s07-change-in-dialogue@2"
+    assert run.process_version == "s07-change-in-dialogue@3"
     assert run.inputs == {"process": "daily", "request": "add a step"}
     assert not run.rehearsal and run.state is RunState.PLANNED
     with pytest.raises(ProposalError) as unknown:

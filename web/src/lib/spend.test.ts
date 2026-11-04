@@ -15,6 +15,7 @@ import {
 	money,
 	moneyBars,
 	mostMoney,
+	namedCases,
 	processSentence,
 	processSpendLink,
 	rows,
@@ -134,5 +135,26 @@ describe('model trials', () => {
 		expect(body).toContain('Run the trial');
 		expect(body).toContain(`href="${trialsLink('trl_1')}"`);
 		expect(body).not.toMatch(/idn_/);
+	});
+
+	it('offers to decline each offer, and takes cases a person names', () => {
+		const { body } = render(TrialsView, { props: { trials, onStart: () => {}, onDecline: () => {} } });
+		expect(body).toContain('Decline…');
+		expect(body).toContain('Add a case');
+		expect(body).toContain('Cases of your own');
+	});
+
+	it('reads the cases a person typed, and says which one is not a JSON object', () => {
+		expect(namedCases([{ process: ' replies ', inputs: '{"message": "late"}' }])).toEqual({
+			ok: true,
+			cases: [{ process: 'replies', inputs: { message: 'late' } }]
+		});
+		expect(namedCases([{ process: 'replies', inputs: '' }])).toEqual({ ok: true, cases: [{ process: 'replies', inputs: {} }] });
+		expect(namedCases([{ process: 'replies', inputs: '[1]' }])).toEqual({
+			ok: false,
+			problem: 'The inputs of case 1 are not a JSON object.'
+		});
+		expect(namedCases([{ process: '', inputs: '{}' }]).ok).toBe(false);
+		expect(namedCases([{ process: 'a', inputs: '{x' }])).toEqual({ ok: false, problem: 'The inputs of case 1 are not JSON.' });
 	});
 });

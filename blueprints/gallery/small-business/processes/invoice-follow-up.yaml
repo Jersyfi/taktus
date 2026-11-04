@@ -6,7 +6,7 @@
 # the open invoices themselves needs the business's accounting system, connected afterwards.
 
 id: invoice-follow-up
-version: "1"
+version: "2"
 name: Invoices to follow up
 autonomy:
   level: 2
@@ -71,3 +71,27 @@ steps:
         business: { $input: business }
         term: { $input: term }
         contact: { $input: contact }
+
+# How a person runs this process without Taktus (ADR-0180): the sequence, and for every step the
+# system to act in, what to do there, the expertise it needs, each credential, and how to tell
+# that it is done.
+takeover:
+  sequence: >
+    Once a week, whoever keeps the business's accounts writes the reminder. Two steps, in order:
+    check that the payment term is a number of days, then write the reminder to follow up every
+    invoice unpaid for longer than that.
+  steps:
+    check:
+      system: the business's terms of payment
+      do: look up the payment term and make sure it is a whole number of days
+      expertise: none
+      credentials: []
+      done: the payment term is a whole number of days, or the reminder waits until it is
+    write:
+      system: a note, a message or the business's task list
+      do: >
+        write for the business: look at every invoice unpaid for more than the payment term, and
+        have the person who sends the reminders send each customer a friendly reminder
+      expertise: none
+      credentials: []
+      done: the reminder names the business, the payment term and who sends the reminders

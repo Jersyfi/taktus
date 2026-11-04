@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from fakes.takeover import instructed
 
 from taktus.composition.local import LocalWiring
 
@@ -26,35 +27,37 @@ from .test_first_slice import PLAIN, taktusctl
 TENANT = "default"
 WHO = "idn_ada"
 
-BUNDLE: dict[str, Any] = {
-    "id": "order-note",
-    "version": "1",
-    "name": "A note on a received order",
-    "autonomy": {
-        "level": 2,
-        "reason": "a community bundle: a person confirms each step before it starts",
-        "toward_next": "a run of notes a person read and did not have to correct",
-    },
-    "author": "an author of the community",
-    "reason": "a note on every order received, by a fixed form of words",
-    "limits": {"compute": {"seconds": 10, "resource_class": "cpu.small"}},
-    "inputs": {"order": {"description": "The order's number", "example": "A-17"}},
-    "steps": [
-        {
-            "id": "write",
-            "method": "rule",
-            "reason": "the note is a fixed form of words filled in with the order's number",
-            "rejected": [{"method": "llm", "why": "a fixed form of words needs no model"}],
-            "exactness": "exact",
-            "checks": [{"kind": "recomputation", "subject": "the note"}],
-            "work": {
-                "rule": "template",
-                "text": "Order ${order} was received.",
-                "values": {"order": {"$input": "order"}},
-            },
-        }
-    ],
-}
+BUNDLE: dict[str, Any] = instructed(
+    {
+        "id": "order-note",
+        "version": "1",
+        "name": "A note on a received order",
+        "autonomy": {
+            "level": 2,
+            "reason": "a community bundle: a person confirms each step before it starts",
+            "toward_next": "a run of notes a person read and did not have to correct",
+        },
+        "author": "an author of the community",
+        "reason": "a note on every order received, by a fixed form of words",
+        "limits": {"compute": {"seconds": 10, "resource_class": "cpu.small"}},
+        "inputs": {"order": {"description": "The order's number", "example": "A-17"}},
+        "steps": [
+            {
+                "id": "write",
+                "method": "rule",
+                "reason": "the note is a fixed form of words filled in with the order's number",
+                "rejected": [{"method": "llm", "why": "a fixed form of words needs no model"}],
+                "exactness": "exact",
+                "checks": [{"kind": "recomputation", "subject": "the note"}],
+                "work": {
+                    "rule": "template",
+                    "text": "Order ${order} was received.",
+                    "values": {"order": {"$input": "order"}},
+                },
+            }
+        ],
+    }
+)
 
 
 def catalogue(

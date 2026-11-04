@@ -100,7 +100,9 @@ catalogue (`Step.checks`, UC-4.13) run when its value is computed, before it cou
 from __future__ import annotations
 
 import binascii
+import csv
 import hashlib
+import io
 import json
 import math
 import re
@@ -144,6 +146,20 @@ class VerifyArtifactRule(Value):
     pattern: str | None = None
 
 
+def _compiles(*patterns: str | None) -> None:
+    """A pattern a step tests is refused when the version is read, never when the step runs: an
+    invalid one ended the run's process with an error instead of the step (ADR-0193)."""
+    for pattern in patterns:
+        if pattern is None:
+            continue
+        try:
+            re.compile(pattern)
+        except re.error as error:
+            raise ValueError(
+                f"the pattern {pattern!r} is not a regular expression: {error}"
+            ) from None
+
+
 class Condition(Value):
     """One machine check over a value: equal to something, matching a pattern, or not. A value
     that is not a string is matched as its JSON text. `equals: null` counts as not given."""
@@ -153,6 +169,11 @@ class Condition(Value):
     equals: Any | None = None
     matches: str | None = None
     not_matches: str | None = None
+
+    @model_validator(mode="after")
+    def _patterns_compile(self) -> Condition:
+        _compiles(self.matches, self.not_matches)
+        return self
 
 
 class CheckRule(Value):
@@ -354,6 +375,112 @@ class FilesType(Value):
         return self
 
 
+class Bound(Value):
+    """One condition over a field of an item of a `filter` rule: equal to something, matching a
+    pattern or not, or a number at least or at most a bound. A value that is not a string is
+    matched as its JSON text; a number is compared in decimal arithmetic."""
+
+    field: str = Field(min_length=1)
+    """A dotted path into the item."""
+    equals: Any | None = None
+    matches: str | None = None
+    not_matches: str | None = None
+    at_least: float | int | str | None = None
+    at_most: float | int | str | None = None
+
+    @model_validator(mode="after")
+    def _names_a_test(self) -> Bound:
+        tests = (self.equals, self.matches, self.not_matches, self.at_least, self.at_most)
+        if all(t is None for t in tests):
+            raise ValueError(f"the condition on {self.field!r} tests nothing")
+        _compiles(self.matches, self.not_matches)
+        return self
+
+
+class FilterRule(Value):
+    """The items of a list that its conditions keep, ordered and limited (ADR-0192 §1).
+
+    `items` is a list of objects, usually a reference to a reading. An item is kept when every
+    condition of `all` holds and, where `any` is given, at least one of `any`. `marker` composes
+    a text from each item's fields, `${field}`, as a `template` composes its text; an item whose
+    marker occurs in one of the texts of `excluding` is left out — what a person or an earlier
+    run already filed. `excluding` is a list of texts, or of objects whose `within` field is the
+    text. `order` sorts by a field, numbers as numbers; `limit` keeps the first ones.
+
+    The result is `{"items": [...], "count": n, "first": item}`, `first` absent when nothing is
+    kept. A field an item does not carry fails its condition, never the step. The same lists
+    give the same result every time: admissible for `exact`."""
+
+    rule: Literal["filter"]
+    items: Any
+    all: tuple[Bound, ...] = ()
+    any: tuple[Bound, ...] = ()
+    excluding: Any = None
+    marker: str | None = Field(default=None, min_length=1)
+    within: str | None = Field(default=None, min_length=1)
+    order: str | None = Field(default=None, min_length=1)
+    descending: bool = False
+    limit: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def _excluding_needs_a_marker(self) -> FilterRule:
+        if self.excluding is not None and self.marker is None:
+            raise ValueError("`excluding` needs a `marker` to look for in its texts")
+        return self
+
+
+class MatchSide(Value):
+    """One of the two lists a `match` rule matches: its items, the fields that make an item's
+    key, and where one item stands for several entries.
+
+    `key` names dotted paths into an entry; two entries match when every path gives the same
+    text. `each` names a field of the item that holds a list: the item stands for one entry per
+    element, each the item with that one element in the field's place — a subscription of two
+    items is two entries."""
+
+    items: Any
+    key: tuple[str, ...] = Field(min_length=1)
+    each: str | None = Field(default=None, pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+class Compared(Value):
+    """A field of a matched pair that must be equal on both sides: numbers in decimal
+    arithmetic, everything else as it was read."""
+
+    left: str = Field(min_length=1)
+    right: str = Field(min_length=1)
+
+
+class MatchRule(Value):
+    """Two lists matched entry by entry by a key, and every entry that does not match named
+    (ADR-0199). The payments at a payment provider against the product's entitlements, the
+    seats billed against the seats granted.
+
+    An entry of `left` and one of `right` match when their keys are equal. A matched pair whose
+    `compare` fields differ is `differing`. An entry without a partner is `left_only` or
+    `right_only`. An entry that lacks a key field is `unkeyed`, and a key that occurs twice on
+    one side is a `duplicate`: neither can be matched with certainty, so both are mismatches.
+
+    The result is `{"matched", "left_only", "right_only", "differing", "unkeyed", "duplicates",
+    "mismatches", "first"}`: `mismatches` counts every entry that is not a clean match, and
+    `first` is the first of them, absent when there is none. The same lists give the same
+    result every time: admissible for `exact`."""
+
+    rule: Literal["match"]
+    left: MatchSide
+    right: MatchSide
+    compare: tuple[Compared, ...] = ()
+
+    @model_validator(mode="after")
+    def _keys_pair(self) -> MatchRule:
+        if len(self.left.key) != len(self.right.key):
+            raise ValueError(
+                f"the left key names {len(self.left.key)} fields and the right "
+                f"{len(self.right.key)}; a key is matched field by field"
+            )
+        return self
+
+
 class CommitTitleRule(Value):
     """A title in the Conventional Commits form, `<type>(<scope>): <summary> (#<number>)`, from
     a sentence such as an issue's title (ADR-0101). The type is one of `types`, taken from the
@@ -467,6 +594,8 @@ type RuleWork = Annotated[
     | ClassificationRule
     | TemplateRule
     | ExtractRule
+    | FilterRule
+    | MatchRule
     | CommitTitleRule
     | InvoiceRule
     | ConnectorRule,
@@ -557,6 +686,11 @@ class WorkerWork(Value):
     """The hosts the worker may reach for this step; nothing else. Empty — the default — means
     no outbound access, which is right for most work."""
     workspace: Workspace = Workspace(kind="none")
+    workspace_ref: Any = None
+    """The workspace's ref when the step names it by a reference to an earlier result — the
+    branch of a pull request a step before it selected (ADR-0193 §2): `workspace.ref` given as
+    `{"$from": …}` is moved here when the work is read, and resolved when the step runs. None
+    when the ref is a text or absent."""
     credentials: tuple[CredentialReference, ...] = ()
     """The credentials the assignment references by name; the execution adapter, or whoever
     runs an endpoint worker, supplies the values."""
@@ -640,12 +774,16 @@ def column(name: str) -> str:
     return f"{name}_" if name == LABEL else name
 
 
-def row_of(values: Any, features: Any) -> str:
+def row_of(values: Any, features: Any, texts: Any = ()) -> str:
     """One case as the rows an `ml` step predicts: a CSV with a header row and one row, a
-    number in every feature column (ADR-0114 §3). `features` are dotted paths into `values`,
-    the values a step on a language model rendered its prompt from. A feature that is not
-    there, or not a finite number, is a ValueError naming it: the case cannot be predicted."""
-    if not isinstance(features, list | tuple) or not features:
+    number in every feature column (ADR-0114 §3), then every text column, which the worker
+    embeds with the encoder its model file carries (ADR-0183). `features` and `texts` are dotted
+    paths into `values`, the values a step on a language model rendered its prompt from. A
+    feature that is not there, or not a finite number, or a text that is not there or empty, is
+    a ValueError naming it: the case cannot be predicted."""
+    if not isinstance(features, list | tuple) or not isinstance(texts, list | tuple):
+        raise ValueError("dataset.features and dataset.texts are lists of paths")
+    if not features and not texts:
         raise ValueError("dataset.features names the numbers to predict from")
     cells: list[str] = []
     for path in features:
@@ -660,8 +798,19 @@ def row_of(values: Any, features: Any) -> str:
         ):
             raise ValueError(f"the feature {path!r} is not a finite number: {value!r}")
         cells.append(repr(float(value)))
-    header = ",".join(column(str(path)) for path in features)
-    return f"{header}\n{','.join(cells)}\n"
+    for path in texts:
+        try:
+            value = select(values, str(path))
+        except (KeyError, IndexError, TypeError):
+            raise ValueError(f"the case gives no value for the text {path!r}") from None
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"the text {path!r} is not a text: {value!r}")
+        cells.append(value)
+    out = io.StringIO()
+    writer = csv.writer(out, lineterminator="\n")
+    writer.writerow([column(str(path)) for path in (*features, *texts)])
+    writer.writerow(cells)
+    return out.getvalue()
 
 
 class MlWork(WorkerWork):
@@ -710,15 +859,18 @@ class MlWork(WorkerWork):
 
     @model_validator(mode="after")
     def _rows_in_one_place(self) -> MlWork:
-        if set(self.dataset) == {"values", "features"}:
+        if set(self.dataset) in ({"values", "features"}, {"values", "features", "texts"}):
             features = self.dataset["features"]
-            if not isinstance(features, list | tuple) or not features:
+            texts = self.dataset.get("texts", [])
+            if not isinstance(features, list | tuple) or not isinstance(texts, list | tuple):
+                raise ValueError("dataset.features and dataset.texts are lists of paths")
+            if not features and not texts:
                 raise ValueError("dataset.features names the numbers to predict from")
             return self
         if self.fallback is not None:
             raise ValueError(
                 "a step that falls back to a language model predicts its one case, given as "
-                "dataset {values, features}"
+                "dataset {values, features} or {values, features, texts}"
             )
         places = {"csv", "uri", "base64"} & set(self.dataset)
         if len(places) != 1 or not set(self.dataset) <= {"csv", "uri", "base64", "digest"}:
@@ -734,8 +886,11 @@ class MlWork(WorkerWork):
         worker as the bytes of that text, and one case given as values and features as the
         bytes of its one row. A case without one of its features is a ValueError naming it."""
         dataset = inputs.get("dataset")
-        if isinstance(dataset, Mapping) and set(dataset) == {"values", "features"}:
-            text = row_of(dataset["values"], dataset["features"])
+        if isinstance(dataset, Mapping) and set(dataset) in (
+            {"values", "features"},
+            {"values", "features", "texts"},
+        ):
+            text = row_of(dataset["values"], dataset["features"], dataset.get("texts", ()))
             rows = {"base64": b64encode(text.encode("utf-8")).decode("ascii")}
             return {**inputs, "dataset": rows}
         if not isinstance(dataset, Mapping) or "csv" not in dataset:
@@ -1050,7 +1205,7 @@ def parse_work(
                 raise UnsupportedWork(step.id, "a worker step carries its task under `work`")
             if not step.required_capabilities:
                 raise UnsupportedWork(step.id, "a worker step names the capabilities it requires")
-            return WorkerWork.model_validate(given)
+            return WorkerWork.model_validate(_workspace_ref_moved(given))
         if step.method is Method.ML:
             if given is None:
                 raise UnsupportedWork(
@@ -1218,12 +1373,22 @@ def select(value: Any, path: Any) -> Any:
     return current
 
 
+def _workspace_ref_moved(given: Mapping[str, Any]) -> Mapping[str, Any]:
+    """A worker's work with a reference under `workspace.ref` moved to `workspace_ref`: the
+    workspace is typed, a reference is resolved only when the step runs (ADR-0193 §2)."""
+    workspace = given.get("workspace")
+    if not isinstance(workspace, Mapping) or not isinstance(workspace.get("ref"), Mapping):
+        return given
+    rest = {k: v for k, v in workspace.items() if k != "ref"}
+    return {**given, "workspace": rest, "workspace_ref": workspace["ref"]}
+
+
 def referenced_values(work: Work) -> list[Any]:
     """The untyped parts of a work that may carry `$from` references."""
     if isinstance(work, MlWork) and work.fallback is not None:
         return [work.task.inputs, work.fallback.values]
     if isinstance(work, WorkerWork):
-        return [work.task.inputs]
+        return [work.task.inputs, work.workspace_ref]
     if isinstance(work, ConnectorRule):
         return [work.input]
     if isinstance(work, CheckRule):
@@ -1242,6 +1407,10 @@ def referenced_values(work: Work) -> list[Any]:
         return [work.values]
     if isinstance(work, ExtractRule):
         return [work.values, work.excluding]
+    if isinstance(work, FilterRule):
+        return [work.items, work.excluding]
+    if isinstance(work, MatchRule):
+        return [work.left.items, work.right.items]
     if isinstance(work, DeviationStatistic):
         return [work.days]
     if isinstance(work, CommitTitleRule):

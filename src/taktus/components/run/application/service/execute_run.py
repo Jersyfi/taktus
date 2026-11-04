@@ -204,9 +204,11 @@ from taktus.components.run.domain.model import (
     DeviationStatistic,
     Ended,
     ExtractRule,
+    FilterRule,
     HumanWork,
     InvoiceRule,
     LlmWork,
+    MatchRule,
     Message,
     MessageRefused,
     MlWork,
@@ -215,6 +217,7 @@ from taktus.components.run.domain.model import (
     ParticipantWork,
     ReadyRule,
     ReceivedMessage,
+    Remedy,
     RoadmapRule,
     RuleFailed,
     Run,
@@ -379,6 +382,7 @@ from taktus.ports.worker import (
 from taktus.shared.v1 import (
     QUANTITIES,
     Anchor,
+    AnchorClass,
     Artifact,
     AutonomyLevel,
     Check,
@@ -396,6 +400,7 @@ from taktus.shared.v1 import (
     ProvenanceRoute,
     Step,
     StepId,
+    Value,
     add_tokens_by_model,
 )
 from taktus.shared.v1.consumption import MODEL_NAME_PATTERN
@@ -479,6 +484,12 @@ class StartRun:
     """The organisational unit the run runs for: `Command.org_unit` of the command that
     started it, never derived from a person (ADR-0166). Its job carries it, and its unit's
     quotas hold it. None runs for the tenant itself."""
+    remedy: Remedy | None = None
+    """For a remediation run: the wrong result it produces again (ADR-0179 §3)."""
+    carried: tuple[StepRun, ...] = ()
+    """For a remediation run: the step runs it starts with, done — every step the wrong result
+    is not built on, as the wrong run left it, and the corrected step with the value a person
+    gave. Each must name a step of the plan and be done; every other step runs again."""
 
     @property
     def identity(self) -> str:
@@ -1012,9 +1023,12 @@ class RunEngine:
             skills=await self._pinned(command),
             profile=command.profile,
             org_unit=command.org_unit,
+            remedy=command.remedy,
             created_at=now,
             updated_at=now,
         )
+        if command.carried:
+            run = _carried(run, command.carried)
         self._check_executable(run)
         run = await self._under_ceilings(run)
         job = None
@@ -2215,6 +2229,9 @@ class RunEngine:
                     step_id=held.step_id,
                     taken_at=now,
                     artifact_ids=tuple(a.id for a in artifacts),
+                    # The steps after it read the person's value, as they read a rule's: what
+                    # a `$from` of the step resolves to (ADR-0180 §5).
+                    result_digest=result.digest,
                 ),
             )
             claim = Claim(
@@ -2704,6 +2721,14 @@ class RunEngine:
                 # does what the process itself asks (ADR-0088).
                 decided = step_run.anchoring is not None and step_run.anchoring.proceeds
                 anchors = () if decided else await self._applying(run, used)
+                if not decided and run.remedy is not None:
+                    # A remediation run: what it does outward corrects what left the system,
+                    # and that is the correction anchor's, at every level (ADR-0022 §3,
+                    # ADR-0179 §3).
+                    correcting = await self._correcting(run, work, used)
+                    if isinstance(correcting, str):
+                        return await self._uncorrected(run, step_run, correcting)
+                    anchors = tuple(dict.fromkeys((*anchors, *correcting)))
                 if not decided and (framed := await self._outside_a_case(run, work, control)):
                     # Personal data outside a specific case: the frame's own anchor, at every
                     # level and whatever the tenant configured (ADR-0130).
@@ -2818,6 +2843,123 @@ class RunEngine:
                 anchors=tuple(a.id for a in named),
             ),
         )
+
+    async def _correcting(
+        self, run: Run, work: Work, used: tuple[str, ...]
+    ) -> tuple[Anchor, ...] | str:
+        """In a remediation run, the correction anchors that hold a step that acts: none for a
+        step that acts on nothing outside, or why it may not run where no anchor of class
+        `correction` names the act (ADR-0179 §3)."""
+        if not autonomy.acts(work, await self._outward(run, work)):
+            return ()
+        named = await self._applying(run, (*used, CORRECTION_ACT))
+        correcting = tuple(a for a in named if a.class_ is AnchorClass.CORRECTION)
+        if not correcting:
+            return (
+                "it acts outward in a remediation run, and no anchor of class correction names "
+                f"{CORRECTION_ACT}: an outward correction is never made without a person "
+                "(ADR-0022 §3)"
+            )
+        return correcting
+
+    async def _uncorrected(self, run: Run, step_run: StepRun, why: str) -> tuple[Run, StepRun]:
+        failed = step_run.to(
+            StepState.FAILED,
+            reason=f"not performed: {why}",
+            retryable=False,
+            finished_at=self._clock.now(),
+        )
+        run = await self._commit(
+            run.with_step_run(failed), "step.failed", step=failed, outcome="not_raised"
+        )
+        return run, failed
+
+    async def recheck(self, tenant: Tenant, run_id: str) -> tuple[Suspect, ...]:
+        """The checks of a finished run that read a source, applied again to the results as
+        they counted, against what each source holds now (ADR-0179 §1). A check that fails now
+        marks its result suspect: the ledger records `check.suspect` on the run, with the check
+        by its place as outcome and what it compared by digest. A result already marked by the
+        same check is not marked again. Nothing of the run changes; a source that cannot be
+        read now marks nothing. A rehearsal's result never counted and is not checked."""
+        async with self._work.transaction(tenant):
+            run = await self._runs.get(tenant, run_id)
+            marked = await self._ledger.of_kinds(tenant, (SUSPECT,))
+        if run is None or run.rehearsal or run.state is not RunState.FINISHED:
+            return ()
+        already = {(e.refs.step_id, e.outcome) for e in marked if e.refs.run_id == run.id}
+        found: list[Suspect] = []
+        async with self._telemetry.span("recheck", {"run.id": run.id}) as span:
+            for step in run.steps:
+                checks = [
+                    (position, check)
+                    for position, check in enumerate(step.checks or (), start=1)
+                    if check.kind in checking.READS
+                ]
+                step_run = run.step_run(step.id)
+                checkpoint = step_run.checkpoint
+                if (
+                    not checks
+                    or step_run.state is not StepState.SUCCEEDED
+                    or checkpoint is None
+                    or checkpoint.result_digest is None
+                ):
+                    continue
+                content = await self._objects.get(checkpoint.result_digest)
+                if content is None:
+                    continue
+                control = control_of(step, run.work.get(step.id), run.inputs)
+                given = control.checking.select if control.checking is not None else None
+                reads = control.checking.reads if control.checking is not None else {}
+                try:
+                    judged = select(json.loads(content), given)
+                except KeyError:
+                    continue
+                for position, check in checks:
+                    if (step.id, f"check_{position}") in already:
+                        continue
+                    try:
+                        read = await self._check_read(run, step_run, check, reads, span)
+                    except (_StepFailed, _AdapterStopped):
+                        continue  # no connector now: nothing can be said, so nothing is marked
+                    if isinstance(read, str):
+                        continue
+                    other, source = read
+                    if check.kind is CheckKind.RECONCILIATION:
+                        finding = checking.reconciliation(position, check, judged, other)
+                    elif check.kind is CheckKind.COMPLETENESS:
+                        finding = checking.completeness(position, check, judged, other)
+                    else:
+                        finding = checking.agreement(position, check, judged, other)
+                    if finding.passed:
+                        continue
+                    suspect = Suspect(
+                        run_id=run.id,
+                        step_id=step.id,
+                        check=f"check_{position}",
+                        family=str(check.kind),
+                        compared=finding.describe(),
+                        source=source,
+                    )
+                    digest = await self._objects.put(_canonical(suspect.model_dump(mode="json")))
+                    async with self._work.transaction(tenant):
+                        await self._ledger.record(
+                            tenant,
+                            Fact(
+                                kind=SUSPECT,
+                                refs=LedgerRefs(
+                                    tenant=tenant,
+                                    plan_id=run.plan_id,
+                                    process_version=run.process_version,
+                                    run_id=run.id,
+                                    step_id=step.id,
+                                ),
+                                method=step_run.method,
+                                outcome=suspect.check,
+                                content_digest=digest,
+                            ),
+                        )
+                    found.append(suspect)
+        return tuple(found)
 
     async def _applying(self, run: Run, used: tuple[str, ...]) -> tuple[Anchor, ...]:
         if self._anchors is None:
@@ -4522,7 +4664,9 @@ class RunEngine:
             match check.kind:
                 case CheckKind.BOUNDS:
                     findings.append(checking.bounds(position, check, judged))
-                case CheckKind.RECONCILIATION | CheckKind.AGREEMENT:
+                case CheckKind.SOURCE_SHAPE:
+                    findings.append(checking.source_shape(position, check, judged))
+                case CheckKind.RECONCILIATION | CheckKind.AGREEMENT | CheckKind.COMPLETENESS:
                     read = await self._check_read(run, step_run, check, reads, span)
                     if isinstance(read, str):
                         findings.append(checking.Finding(position, check, False, read))
@@ -4531,6 +4675,8 @@ class RunEngine:
                     inputs.append(source)
                     if check.kind is CheckKind.RECONCILIATION:
                         findings.append(checking.reconciliation(position, check, judged, other))
+                    elif check.kind is CheckKind.COMPLETENESS:
+                        findings.append(checking.completeness(position, check, judged, other))
                     else:
                         findings.append(checking.agreement(position, check, judged, other))
                 case CheckKind.RECOMPUTATION:
@@ -4597,8 +4743,9 @@ class RunEngine:
         reads: Mapping[str, CheckRead],
         span: Span,
     ) -> tuple[Any, ProvenanceInput] | str:
-        """What a reconciliation or an agreement reads through its source at the moment of the
-        check, with the source as a provenance input; or why it could not be read."""
+        """What a reconciliation, an agreement or a completeness check reads through its source
+        at the moment of the check, with the source as a provenance input; or why it could not
+        be read."""
         source = str(check.source)
         read = reads.get(source)
         if read is None:
@@ -4761,6 +4908,12 @@ class RunEngine:
         if isinstance(work, ExtractRule):
             (values, excluding), read = await self._resolved(run, [work.values, work.excluding])
             return rules.extract(work, values, excluding), Trace(inputs=read), None, None
+        if isinstance(work, FilterRule):
+            (items, excluding), read = await self._resolved(run, [work.items, work.excluding])
+            return rules.filter_items(work, items, excluding), Trace(inputs=read), None, None
+        if isinstance(work, MatchRule):
+            (left, right), read = await self._resolved(run, [work.left.items, work.right.items])
+            return rules.match(work, left, right), Trace(inputs=read), None, None
         if isinstance(work, CommitTitleRule):
             (title, number, labels, files, proposal), read = await self._resolved(
                 run, [work.title, work.number, work.labels, work.files, work.proposal]
@@ -4793,10 +4946,23 @@ class RunEngine:
         held = promised is not None and promised.how == budgeting.HELD
         return self._options.prices if held else None
 
+    def _token_table(self, run: Run) -> PriceTable | None:
+        """The table the run's currency budget holds the money of tokens at, after a step as
+        before it; None where the run limits no currency or no table is configured. Without a
+        table an `llm` step is never admitted under a currency budget (`_demand`)."""
+        if run.budget.currency is None:
+            return None
+        return self._options.prices
+
     def _spent(self, run: Run) -> ConsumptionQuantities:
-        """What the run used and reserved, with the money of its compute seconds at the table
-        where its currency budget holds it: money follows from the record, never stored."""
+        """What the run used and reserved, with the money of its compute seconds and of the
+        tokens of every step that recorded no money at the table where its currency budget
+        holds them: money follows from the record, never stored (#235)."""
         consumed = run.consumed()
+        tokens_table = self._token_table(run)
+        if tokens_table is not None:
+            tokens, _ = run.tokens_without_money()
+            consumed = budgeting.with_token_money(consumed, tokens, tokens_table)[0]
         table = self._compute_table(run)
         if table is None:
             return consumed
@@ -4828,6 +4994,19 @@ class RunEngine:
             return None
         if not quantities.compute_seconds and not quantities.currency:
             return None
+        tokens_table = self._token_table(run)
+        if tokens_table is not None:
+            tokens, unattributed = run.tokens_without_money()
+            missing = budgeting.with_token_money(quantities, tokens, tokens_table)[1]
+            if unattributed or missing:
+                named = [
+                    f"the tokens of {step} without the model that used them"
+                    for step in unattributed
+                ] + list(missing)
+                return (
+                    f"the budget limits money and the price table {tokens_table.version} cannot "
+                    "price " + ", ".join(named) + ": what is left of the budget cannot be computed"
+                )
         promised = budgeting.compute_money(run.budget, self._options.prices)
         table = self._compute_table(run)
         if table is None:
@@ -5792,7 +5971,16 @@ class RunEngine:
         adapter, worker = resolved.adapter, resolved.worker
         span.set_attribute("adapter", adapter)
         call = {"run.id": run.id, "step.id": step.id, "adapter": adapter}
-        (inputs,), read = await self._resolved(run, [work.task.inputs])
+        (inputs, ref), read = await self._resolved(run, [work.task.inputs, work.workspace_ref])
+        if ref is not None:
+            if not isinstance(ref, str) or not ref:
+                return await self._failed_before(
+                    run, step_run, span, f"the workspace's ref is not a text: {ref!r}"[:200],
+                    None, False,
+                )  # fmt: skip
+            work = work.model_copy(
+                update={"workspace": work.workspace.model_copy(update={"ref": ref})}
+            )
         if isinstance(work, MlWork):
             try:
                 inputs = MlWork.worker_inputs(inputs)
@@ -6986,6 +7174,46 @@ class _ToApprove(Exception):
     def __init__(self, drafts: Callable[[int, date], Sequence[Draft]]) -> None:
         super().__init__("to approve")
         self.drafts = drafts
+
+
+SUSPECT = "check.suspect"
+"""A result a check that reads a source failed on when it was applied again after the result
+counted (ADR-0179 §1)."""
+CORRECTION_ACT = "correction.outward"
+"""The act every step of a remediation run that acts outward uses beside its own: what the
+tenant's correction anchor names (ADR-0179 §3)."""
+
+
+class Suspect(Value):
+    """A result a check marked suspect when it was applied again (UC-4.10): the check by its
+    place, its family, what it compared, and the source as it was read now."""
+
+    run_id: str
+    step_id: str
+    check: str
+    family: str
+    compared: str
+    source: ProvenanceInput
+
+
+def _carried(run: Run, carried: Sequence[StepRun]) -> Run:
+    """The run with the step runs a remediation starts from, done (ADR-0179 §3)."""
+    by_step = {s.step_id: s for s in carried}
+    unknown = sorted(set(by_step) - {s.id for s in run.steps})
+    if unknown:
+        raise RunError(f"a remediation carries steps the plan does not have: {unknown}")
+    if any(not s.done for s in carried):
+        raise RunError("a remediation carries only steps that are done")
+    return run.model_copy(
+        update={
+            "step_runs": tuple(
+                by_step[s.step_id].model_copy(update={"index": s.index, "anchoring": None})
+                if s.step_id in by_step
+                else s
+                for s in run.step_runs
+            )
+        }
+    )
 
 
 CHECK_FAILED = "check_failed"

@@ -17,7 +17,7 @@
 # hand, which is the takeover test of ADR-0013 B for this process.
 
 id: s01-removal-test
-version: "1"
+version: "2"
 name: S-01 Removal test
 autonomy:
   level: 3
@@ -207,3 +207,103 @@ steps:
         missing: { $from: record, $select: output.missing }
         seq: { $from: record, $select: output.ledger_seq }
         digest: { $from: record, $select: output.content_digest }
+
+# How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
+# every step the system to act in, what to do there, the expertise it needs, each credential by
+# its parameter and where an authorised person finds it, and how to tell that it is done. The
+# section "By hand" of README.md beside this directory says the same, step by step.
+takeover:
+  sequence: >
+    The test runs once a week, on Monday, once for every integration the instance is configured
+    with; whoever operates the instance starts it, one integration at a time. The steps run in
+    order: describe what the integration serves and who uses it, check that it may be tested,
+    take it out and run the processes that use it with and without it, put it back and read the
+    configuration again, check that it serves what it served, settle on one of the four
+    verdicts, record the verdict, and write one line about it. A process that writes outward is
+    never run by hand, because running it would write twice; its verdict rests on which other
+    adapter or which person would take over its steps.
+  steps:
+    describe:
+      system: the instance's configuration and the registered process bundles
+      do: >
+        note which capabilities the integration serves: for a worker, the capabilities it
+        declares at its capabilities endpoint; for a connector, its declaration; for the model,
+        the purposes the configuration gives it. Note which other configured adapter serves the
+        same. List the registered process bundles whose steps require one of those capabilities,
+        call one of its operations, or ask the model for one of its purposes.
+      expertise: >
+        reading the instance's configuration and a process bundle; knowing the four families of
+        integration, worker, connector, model and the database
+      credentials: []
+      done: >
+        the capabilities served, the alternatives and the processes that use them are written
+        down
+    admit:
+      system: the notes from the step before
+      do: >
+        check that the integration is configured, and that it is a worker, a connector, the model
+        or the database. If either is not so, stop: the integration cannot be tested.
+      expertise: none
+      credentials: []
+      done: both conditions hold, or the test stops here with the reason
+    exercise:
+      system: the instance's configuration and a shell with the instance's command-line tool
+      do: >
+        take the integration out of the configuration: unset the worker's address, remove the
+        connector's entry, or unset the model's endpoint. For every process from the first step
+        that does not write outward, run it once with the original configuration and once with
+        the reduced one, with its declared example inputs, and note for each run its final
+        state, the step it ended at and its consumption. Then decide for each process, step by
+        step: another configured adapter serves the step, or the step's fallback names a person;
+        if neither, the process broke. If the reduced run reached the same point as the
+        original, or stopped exactly at a step a person takes over, the process changed. Put
+        the configuration back as it was.
+      expertise: >
+        changing the instance's configuration and restarting it; running a process from the
+        command line; reading a step's requirements and fallback in a bundle
+      credentials: []
+      done: >
+        every process that uses the integration has a finding, broke or changed, with its two
+        runs kept, and the configuration is as it was before
+    describe-after:
+      system: the instance's configuration
+      do: read again what the integration serves, as in the first step
+      expertise: reading the instance's configuration
+      credentials: []
+      done: what the integration serves now is written down
+    verify-restored:
+      system: the notes of the first step and of the step before
+      do: >
+        check that the integration is configured again and that it serves at least one
+        capability; compare the two readings
+      expertise: none
+      credentials: []
+      done: >
+        the integration is there and serves what it served, or the test stops with the
+        difference
+    verdict:
+      system: the findings of the exercise
+      do: >
+        choose exactly one verdict. Broke, if any process broke. Untested, if no registered
+        process uses the integration. Exception, if the integration is the database, which cannot
+        be removed by design and is tested by the restore drill instead. Changed, otherwise.
+      expertise: the meaning of the four verdicts, as the blueprint's README states them
+      credentials: []
+      done: one of broke, changed, untested or exception is written down for the integration
+    record:
+      system: the register of adapter maturity, or the notes of the operating documentation
+      do: >
+        write the verdict, the date, what the integration served and its version, the processes
+        exercised and the identifiers of their runs into the register of adapter maturity, and
+        keep the two runs' output as the evidence
+      expertise: where the instance's operating documentation keeps the adapters' maturity
+      credentials: []
+      done: the verdict stands in the register with its date and its evidence
+    report:
+      system: the place the operator reads the weekly report
+      do: >
+        write one line: the integration and its family, the verdict, what it was taken under,
+        the processes exercised, and its maturity now with what is still missing for verified
+      expertise: none
+      credentials: []
+      done: the line is written where the weekly report is read

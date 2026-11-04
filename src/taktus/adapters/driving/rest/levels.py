@@ -28,6 +28,7 @@ surface; the web app's session cookie is accepted in its place (ADR-0119).
 
 from __future__ import annotations
 
+import mimetypes
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
@@ -330,7 +331,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
 
 def mount_web(app: FastAPI, base: str, directory: Path) -> None:
     """Serve the web app's static build at `{base}/app/`. `{base}/app` is redirected to it
-    by a relative location, so that a platform that strips the prefix forwards it too."""
+    by a relative location, so that a platform that strips the prefix forwards it too. The
+    web app's fonts are served as `font/woff2`, which a slim image's table does not know."""
+    mimetypes.add_type("font/woff2", ".woff2")
 
     @app.get(f"{base}{WEB_PATH}", include_in_schema=False)
     async def to_app() -> RedirectResponse:

@@ -20,6 +20,8 @@ from taktus_connectors.aws.operations import Config as BillingConfig
 from taktus_connectors.aws.server import build_server as billing_server
 from taktus_connectors.httpcheck.operations import Config as CheckConfig
 from taktus_connectors.httpcheck.server import build_server as check_server
+from taktus_connectors.kubernetes.operations import Config as WorkloadsConfig
+from taktus_connectors.kubernetes.server import build_server as workloads_server
 from taktus_connectors.mail.protocol import Config as MailConfig
 from taktus_connectors.mail.server import build_server as mail_server
 from taktus_connectors.openai.operations import Config as ModelCostsConfig
@@ -53,6 +55,7 @@ SERVERS: dict[str, Any] = {
     "cost-report": lambda: cost_report_server(CostReportConfig("http://127.0.0.1:9")),
     "errors": lambda: errors_server(ErrorsConfig("http://127.0.0.1:9", organization="example")),
     "payments": lambda: payments_server(PaymentsConfig("http://127.0.0.1:9")),
+    "workloads": lambda: workloads_server(WorkloadsConfig("http://127.0.0.1:9")),
 }
 SERVES = {
     "mail": ["channel.mail", "mail.messages"],
@@ -63,6 +66,7 @@ SERVES = {
     "cost-report": ["models.costs"],
     "errors": ["errors.issues"],
     "payments": ["payments.customers", "payments.subscriptions"],
+    "workloads": ["deployment.workloads"],
 }
 
 

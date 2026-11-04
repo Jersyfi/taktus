@@ -151,8 +151,27 @@ async def list_(config: Config, call: Call, input: Json) -> Outcome:
         if (member := _member(response_, folder_path)) is not None
     ]
     members.sort(key=lambda m: (m["modified"] or "", m["document"]))
-    output = {"documents": members[:limit], "complete": len(members) <= limit}
+    referenced = input.get("referenced")
+    if referenced is not None and not isinstance(referenced, bool):
+        raise invalid("referenced must be true or false")
+    listed = members[:limit]
+    if referenced is not None:
+        listed = [m for m in listed if await _references(config, call, m) is referenced]
+    output = {"documents": listed, "complete": len(members) <= limit}
     return Outcome(output=output, effect={"kind": "read"})
+
+
+async def _references(config: Config, call: Call, member: Json) -> bool:
+    """Whether the document names an order (ADR-0188). One read per document. A document that
+    is no invoice this connector reads counts as one naming an order: the process that reads
+    it then hands it to a person, where an unreferenced one would wait for a classification
+    nothing can make."""
+    response = await _request(config, call, "GET", config.folder + str(member["document"]))
+    try:
+        terms = standard.parse(response.content)
+    except standard.NotAnInvoice:
+        return True
+    return bool(terms.get("order_reference"))
 
 
 async def read(config: Config, call: Call, input: Json) -> Outcome:

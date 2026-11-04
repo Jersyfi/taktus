@@ -15,6 +15,12 @@
 # next stage opens; the condition of stage N is therefore UC-03's "Opens when" of stage N + 1.
 # "Held" is four weeks of the stage open, counted back from the moment the rule looks.
 # The last stage's condition is the same four weeks: the business runs dark while it holds.
+#
+# A stage opens only once every process it adds runs for the tenant, and holds only while they
+# do (ADR-0191 §1). A process is named by the identifier of its bundle: `b-<area>-<number>`,
+# the bundle under `processes/` once there is one. B-9.01, the daily report, is no process of
+# the tenant: it is the instance's daily report of signals (UC-6.13), which every tenant with a
+# corridor receives. Stage 0 counts the days it did not come (`reports_missed`, ADR-0191 §2).
 
 kind: Stages
 blueprint: software-operations
@@ -22,15 +28,15 @@ stages:
   - id: control-loop
     name: The control loop
     # Stage 0: the daily report, and the first routines for pull requests, errors and triage,
-    # at level 1 to 2. People read every day and intervene.
+    # at level 1 to 2. People read every day and intervene. The daily report (B-9.01) is the
+    # instance's; the condition counts the days without it.
     processes:
-      b-9-01: 1   # B-9.01
       b-7-01: 2   # B-7.01
       b-7-04: 2   # B-7.04
       b-1-05: 2   # B-1.05
     # Stage 1 opens when this held four weeks: the report ran every day, and every proposal
     # was decided by a person.
-    condition: { weeks: 4, missed: 0, undecided: 0 }
+    condition: { weeks: 4, missed: 0, undecided: 0, reports_missed: 0 }
 
   - id: operation-without-handwork
     name: Operation without handwork
@@ -144,7 +150,6 @@ stages:
       b-6-05: 2   # B-6.05
       b-6-06: 3   # B-6.06
       b-6-07: 2   # B-6.07
-      b-9-01: 1   # B-9.01
       b-9-02: 3   # B-9.02
       b-9-03: 3   # B-9.03
       b-9-04: 3   # B-9.04

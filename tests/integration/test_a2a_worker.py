@@ -31,6 +31,7 @@ from typing import Any
 import pytest
 from fakes import FakeClock, FakeConnector, FakeIdentifiers, FakeMaturities
 from fakes.a2a_agent import ReferenceAgent
+from fakes.takeover import instructed
 
 from taktus.adapters.driven.memory import (
     MemoryLedgerStore,
@@ -231,7 +232,9 @@ async def test_withholding_the_binding_changes_the_step_to_the_other(
     hosts = [bindings[FIRST].agent.host, bindings[SECOND].agent.host]
     pool = StaticWorkerPool([(a, HttpWorker(bindings[a].endpoint)) for a in (FIRST, SECOND)])
     services = connector_services(FakeConnector(), workers=pool)
-    await services.register_version.execute(RegisterProcessVersion(bundle(hosts), tenant=TENANT))
+    await services.register_version.execute(
+        RegisterProcessVersion(instructed(bundle(hosts)), tenant=TENANT)
+    )
     run = await run_removal(services, FIRST)
     assert run.state is RunState.FINISHED, run.reason
 

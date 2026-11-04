@@ -42,6 +42,7 @@ from taktus.components.governance.domain.model.defects import (
     PlanStep,
     Position,
     Rule,
+    SituationPackage,
     Verdict,
 )
 from taktus.components.governance.domain.model.egress import ResultRef
@@ -246,6 +247,93 @@ def render(plan: Plan) -> str:
         if not step.atomic:
             out.append(f"- Not at once: {step.note}")
         out.append("")
+    return "\n".join(out)
+
+
+def package(
+    analysis: Analysis, decision: Decision, plan: Plan, *, tried: str | None = None
+) -> SituationPackage:
+    """The situation package of a result defect (UC-6.8, ADR-0179 §4), from the analysis, the
+    rule's decision and the plan. `tried` is what Taktus did about it so far — a remediation
+    run started — and None where nothing was."""
+    cause = analysis.cause
+    since = (
+        f"since run {cause.at_run}, where its {cause.field.replace('_', ' ')} changed from "
+        f"{cause.before or 'none'} to {cause.after or 'none'}"
+        if cause is not None
+        else "since a moment that cannot be said: no change in how the step produced was found"
+        + (", and the window reaches before the first record" if analysis.unbounded else "")
+    )
+    happened = (
+        f"The result of step {analysis.defect.step_id} in run {analysis.defect.run_id} "
+        f"({analysis.process_version}) was found wrong ({analysis.found.value}), {since}. "
+        f"The rule decided {decision.verdict.value}"
+        + (f" ({', '.join(decision.fired)})" if decision.fired else ", no rule fired")
+        + "."
+    )
+    left = analysis.left
+    affected = (
+        f"{len(analysis.affected)} results in {analysis.window_runs} runs, the strictest of "
+        f"class {analysis.strictest.value if analysis.strictest else 'none'}; "
+        + (f"{len(left)} of them left the system." if left else "none of them left the system.")
+    )
+    options = [
+        "Carry out the remediation plan as written: inside steps run again at the process's "
+        "level; every outward step waits for the person of the correction anchor. Risk: "
+        + (
+            "a receiver holds the old and the new value until it reads the correction."
+            if any(not s.atomic for s in plan.steps)
+            else "the corrected inputs are only as right as the correction they come from."
+        ),
+        "Carry out the plan by hand, outside Taktus, and record what was done in the incident. "
+        "Risk: a step done by hand is recorded only as it is reported.",
+    ]
+    if left:
+        options.append(
+            "Correct nothing outside for now. Risk: the wrong values stay where they went, and "
+            "whatever the receivers build on them is wrong too."
+        )
+    systems = sorted({s.system for s in plan.outward})
+    needed = (
+        f"The remediation plan of {len(plan.steps)} steps, below.",
+        f"The process version {plan.process_version} and its maintained instructions.",
+        *(f"Access to {system}, to make and check its correction." for system in systems),
+    )
+    return SituationPackage(
+        happened=happened,
+        tried=tried or "Nothing yet: no remediation run was started, and the plan waits.",
+        affected=affected,
+        options=tuple(options),
+        needed=needed,
+    )
+
+
+def render_package(situation: SituationPackage) -> str:
+    """The situation package as a person reads it, each part under its name, and the parts it
+    lacks named."""
+    out = [
+        "## What happened",
+        "",
+        situation.happened or "(not known)",
+        "",
+        "## What was tried",
+        "",
+        situation.tried or "(nothing yet)",
+        "",
+        "## What is affected",
+        "",
+        situation.affected or "(not known)",
+        "",
+        "## Options and their risks",
+        "",
+        *(f"{n}. {o}" for n, o in enumerate(situation.options, start=1)),
+        "",
+        "## Documentation and access needed",
+        "",
+        *(f"- {item}" for item in situation.needed),
+    ]
+    if situation.lacking:
+        out += ["", f"This package lacks: {', '.join(situation.lacking)}."]
     return "\n".join(out)
 
 

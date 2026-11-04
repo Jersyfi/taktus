@@ -1,0 +1,248 @@
+# B-8.05 Web deployment — UC-03 §4.8: a published release is deployed, a smoke test is run on
+# it, and a rollback is prepared when it fails (UC-6.13, UC-4.6). Confirming the rollback stays
+# with a person.
+#
+# The image is released to the deployment through the capability `deployment.workloads`
+# (ADR-0195): one container's image set, the run's key on the pod template. The run waits until
+# the rollout is complete — every wanted replica updated and available — and then asks the
+# service as a user would, one request through `check.http`. A failed check counts as a failure
+# by rule, and the rollback to the revision before is put to a person as a decision request, at
+# every level. A rollout that does not complete within fifteen minutes fails the run, and a
+# person decides; no rollback starts for it.
+#
+# The deployment, the container, the image and the smoke path are inputs: a release names them.
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-8.05-web-deployment.yaml \
+#         --input deployment=web --input container=app \
+#         --input image=registry.example/app:1.1.0 --input smoke_path=/health
+#
+# Switching it off (`taktusctl deactivate --process b-8-05`) changes nothing in the cluster.
+
+id: b-8-05
+version: "1"
+name: B-8.05 Web deployment
+autonomy:
+  level: 2
+  reason: >
+    the release leaves the system and reaches every user of the service, so a person confirms
+    it, as every process of UC-03 starts at level 1 or 2 when its stage opens; the rollback asks
+    a person at every level
+  toward_next: >
+    four weeks of releases a person confirmed with every failed smoke test followed by a
+    rollback, and stage 3 of the tenant's plan open; then Taktus proposes level 3, its target in
+    UC-03 (UC-7.1, UC-9.6)
+author: the repository
+reason: a release reaches the service checked, and a failed one is rolled back on a person's word (UC-03 B-8.05)
+
+inputs:
+  deployment:
+    description: the deployment the release goes to
+    example: web
+  container:
+    description: the container of the deployment whose image is set
+    example: app
+  image:
+    description: the image of the release, by registry, name and tag or digest
+    example: registry.example/app:1.1.0
+  smoke_path:
+    description: the path under the service's address that answers when the release works
+    example: /health
+
+limits:
+  quota: { units: 80 }
+
+steps:
+  - id: release
+    method: rule
+    reason: setting the image is an API call that carries the run's key; the effect leaves the system, so at level 2 a person confirms it
+    rejected:
+      - method: worker
+        why: the cluster's own interface rolls the release out; nothing here needs a sandbox
+    exactness: sourced
+    fallback:
+      when: the connector serving deployment.workloads is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: deployment.workloads.release
+      input:
+        name: { $input: deployment }
+        container: { $input: container }
+        image: { $input: image }
+      credentials:
+        - { name: WORKLOADS_TOKEN, injected_as: env }
+
+  - id: rolled-out
+    method: wait
+    reason: the cluster rolls the release out on its own time; the run waits for every replica to be updated and available
+    rejected: []
+    fallback:
+      when: the connector serving deployment.workloads is unavailable, or the rollout does not complete in fifteen minutes
+      to: human
+      role: owner
+    depends_on: [release]
+    work:
+      until:
+        operation: deployment.workloads.read
+        input:
+          name: { $input: deployment }
+        credentials:
+          - { name: WORKLOADS_TOKEN, injected_as: env }
+        select: rolled_out
+        expect: [true]
+        poll_seconds: 15
+        timeout_seconds: 900
+
+  - id: smoke
+    method: rule
+    reason: the service is asked as a user would ask it, and its answer is recorded as it came
+    rejected:
+      - method: llm
+        why: a request and its status need no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving check.http is unavailable
+      to: human
+      role: owner
+    depends_on: [rolled-out]
+    work:
+      rule: connector
+      operation: check.http.run
+      input:
+        path: { $input: smoke_path }
+        expect:
+          status: 200
+          max_duration_ms: 5000
+      credentials:
+        - { name: CHECK_TOKEN, injected_as: env }
+
+  - id: failed
+    method: rule
+    reason: whether the smoke test failed is the check connector's own verdict, counted
+    rejected:
+      - method: llm
+        why: a count needs no judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the smoke tests that failed }
+    depends_on: [smoke]
+    work:
+      rule: filter
+      items:
+        - { $from: smoke, $select: output }
+      all:
+        - { field: outcome, equals: failed }
+
+  - id: rollback
+    method: rule
+    reason: >
+      a failed release is rolled back to the revision before it, by an API call; confirming the
+      rollback stays with a person, so the step asks at every level
+    rejected:
+      - method: worker
+        why: the cluster keeps the earlier revision itself; nothing here needs a sandbox
+    exactness: sourced
+    fallback:
+      when: the connector serving deployment.workloads is unavailable
+      to: human
+      role: owner
+    depends_on: [failed]
+    work:
+      when:
+        - { value: { $from: failed, $select: count }, matches: "^[1-9]" }
+      ask:
+        question: "Roll ${deployment} back to the revision before ${image}?"
+        situation: >
+          The release of ${image} to ${deployment} rolled out, and its smoke test on
+          ${path} failed. The cluster keeps the revision before it.
+        proposal: the deployment is rolled back to the revision before this release
+        values:
+          deployment: { $input: deployment }
+          image: { $input: image }
+          path: { $input: smoke_path }
+      rule: connector
+      operation: deployment.workloads.rollback
+      input:
+        name: { $input: deployment }
+      credentials:
+        - { name: WORKLOADS_TOKEN, injected_as: env }
+
+takeover:
+  sequence: >
+    A person who releases the web service starts the process when a release is published; the
+    release names the deployment, the container, the image and the smoke test's path. The steps
+    run in order: set the new image on the deployment, wait until the rollout is complete, ask the
+    service the smoke test's path as a user would, and count whether the check failed. A failed
+    check makes the owner decide on a rollback to the revision before. A rollout that does not
+    complete within fifteen minutes goes to the owner, and no rollback starts for it.
+  steps:
+    release:
+      system: the workload cluster, the deployment the run was started with
+      do: >
+        set the image of the named container of the deployment to the release's image, by
+        registry, name and tag or digest, exactly as the release names it. Use the cluster's own
+        command for setting a deployment's image, so that it rolls out a new revision.
+      expertise: releasing an image to a deployment in the cluster
+      credentials:
+        - parameter: WORKLOADS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Workload cluster token of the
+            requesting identity described in CREDENTIALS.md; a person working by hand uses their
+            own access to the cluster, which may release images to deployments of its namespace
+      done: the deployment names the release's image and a new revision is rolling out
+    rolled-out:
+      system: the workload cluster, the deployment's rollout status
+      do: >
+        watch the rollout until every wanted replica is updated and available; look again every
+        fifteen seconds or so. If it has not completed after fifteen minutes, stop here and hand
+        it to the owner; start no rollback.
+      expertise: reading a deployment's rollout status in the cluster
+      credentials:
+        - parameter: WORKLOADS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Workload cluster token of the
+            requesting identity described in CREDENTIALS.md; a person working by hand uses their
+            own access to the cluster, which may read deployments of its namespace
+      done: every wanted replica is updated and available, or the owner has the stalled rollout
+    smoke:
+      system: the web service, from outside, as a user reaches it
+      do: >
+        request the smoke test's path under the service's address once, the path the run was
+        started with. The check passes when the answer has status 200 and arrives within five
+        seconds. Write down the status and the time it took.
+      expertise: sending a request to a web address and reading its status and duration
+      credentials:
+        - parameter: CHECK_TOKEN
+          where: >
+            the operator's secret store, under the parameter Check token of the requesting
+            identity described in CREDENTIALS.md; it is needed only where the service asks for a
+            token on that path
+      done: the status and the duration of the request are written down
+    failed:
+      system: the result written down
+      do: >
+        decide by rule whether the smoke test failed: it failed when the status was not 200, or
+        the answer took longer than five seconds, or no answer came.
+      expertise: none
+      credentials: []
+      done: it is written down whether the smoke test failed
+    rollback:
+      system: the workload cluster, the deployment
+      do: >
+        only if the smoke test failed: put to the owner whether to roll the deployment back to
+        the revision before this release, naming the deployment, the image and the path that
+        failed. Only if the owner agrees, roll the deployment back to its previous revision with
+        the cluster's own rollback command, and watch that rollout complete.
+      expertise: rolling a deployment back to its previous revision in the cluster
+      credentials:
+        - parameter: WORKLOADS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Workload cluster token of the
+            requesting identity described in CREDENTIALS.md; a person working by hand uses their
+            own access to the cluster, which may roll back deployments of its namespace
+      done: >
+        the smoke test passed, or the owner's decision is recorded and, if the owner agreed, the
+        deployment runs the revision before the release

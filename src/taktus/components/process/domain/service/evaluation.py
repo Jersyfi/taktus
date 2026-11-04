@@ -29,7 +29,7 @@ from taktus.shared.v1 import Method, Step
 DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 MIN_AGREEMENT = 0.95
 """The least agreement on held-out cases a model registers with: the floor a proposal to move a
-step is raised on (DEC-0164, provisionally Option A). It changes with the owner's answer."""
+step is raised on (DEC-0164, Option A, decided; UC-4.24)."""
 
 
 def findings(steps: Sequence[Step], work: Mapping[str, Mapping[str, Any]]) -> list[str]:

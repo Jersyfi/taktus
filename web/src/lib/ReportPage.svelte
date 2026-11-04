@@ -118,19 +118,12 @@
 </article>
 
 <style>
-	.eyebrow {
-		font-size: 0.75rem;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: var(--ink-3);
-		margin: 0 0 0.5rem;
-	}
 	.status,
 	.muted {
-		color: var(--ink-2);
+		color: var(--text-secondary);
 	}
 	section {
-		border-top: 1px solid var(--line);
+		border-top: 1px solid var(--border-subtle);
 		padding: 0.9rem 0;
 		max-width: 46rem;
 	}
@@ -153,43 +146,25 @@
 		flex-wrap: wrap;
 		gap: 0.6rem;
 		align-items: baseline;
-		border: 1px solid var(--line);
+		border: 1px solid var(--border-subtle);
 		border-radius: 14px;
 		padding: 0.8rem 1rem;
 	}
 	.offered li.recommended {
-		border-color: var(--ink);
-		box-shadow: inset 3px 0 0 var(--ink);
+		border-color: var(--text-primary);
+		box-shadow: inset 3px 0 0 var(--text-primary);
 	}
 	.offered li span:first-child {
 		flex: 1;
 		min-width: 10rem;
 	}
 	.tag {
-		font-family: var(--mono);
+		font-family: var(--font-mono);
 		font-size: 0.7rem;
-		border: 1px solid var(--ink);
+		border: 1px solid var(--text-primary);
 		border-radius: 5px;
 		padding: 0 0.35rem;
 		white-space: nowrap;
-	}
-	button {
-		font: inherit;
-		border: 1px solid var(--line);
-		background: var(--paper);
-		color: var(--ink);
-		border-radius: 10px;
-		padding: 0.4rem 0.9rem;
-		cursor: pointer;
-	}
-	button.primary {
-		background: var(--ink);
-		color: var(--paper);
-		border-color: var(--ink);
-	}
-	button:disabled {
-		opacity: 0.5;
-		cursor: default;
 	}
 	.own {
 		display: flex;
@@ -208,13 +183,13 @@
 	.own input {
 		font: inherit;
 		padding: 0.45rem 0.7rem;
-		border: 1px solid var(--line);
+		border: 1px solid var(--border-subtle);
 		border-radius: 10px;
-		background: var(--paper);
-		color: var(--ink);
+		background: var(--bg-canvas);
+		color: var(--text-primary);
 	}
 	.reading {
-		background: var(--paper-2);
+		background: var(--bg-surface);
 		border-radius: 14px;
 		border-top: none;
 		padding: 1rem 1.1rem;

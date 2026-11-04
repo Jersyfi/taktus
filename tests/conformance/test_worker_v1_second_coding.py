@@ -3,9 +3,9 @@
 The worker (`workers/codex/`) is run against its fake agent, which writes the agent's documented
 non-interactive stream and its session file and does what its items say, so that the worker's
 mechanics — boundaries, tokens per step, the frame, stop and resume, authentication — are proven
-without an account and deterministically (#154). The real agent is not exercised here; its live
-test is #208, which waits for a credential (NEED-0022) and runs only in the workflow `live`
-(DEC-0048).
+without an account and deterministically (#154). The real agent is not exercised here, and the
+project never exercises it: it uses no account at that vendor, so the first live run is a
+tenant's (DEC-0225).
 """
 
 from __future__ import annotations

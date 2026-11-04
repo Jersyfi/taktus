@@ -93,3 +93,10 @@ curl --silent --output /dev/null --write-out '%{http_code}\n' \
 ```
 
 It prints `200`.
+
+## Outcome
+
+**Superseded by:** DEC-0225
+**Provided:** 2026-11-03
+**Confirmed by:** the owner's Anthropic account is one for an individual ("Jerome's Individual Org"), which has no Admin keys, and turning it into a team needs a business the owner does not have. The connector stays product support, proven against its fake.
+**Recorded in:** this pull request

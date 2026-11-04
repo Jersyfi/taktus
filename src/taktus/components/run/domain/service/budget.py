@@ -23,6 +23,8 @@ the run's table prices its resource class (ADR-0010, second amendment). A curren
 that money as it holds every other: the step's reservation is priced before it is admitted, and
 what the run used and reserved is priced at every boundary (`compute_money`, `with_money`). A
 step whose compute has no price under a currency budget is refused, never admitted as free.
+The tokens of a step that recorded no money — an `llm` step once it ended — are priced at the
+same table at every boundary (`with_token_money`), so its money stays held after the step.
 
 **Where a worker must stop.** The reservation, grown by the run's margin, is the worker's hard
 ceiling (`grow`, `ceiling`), and never more than what is left of the whole budget: the worker
@@ -44,9 +46,9 @@ import math
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
-from taktus.ports.model import Calculability, PriceTable, price_compute
+from taktus.ports.model import Calculability, PriceTable, price, price_compute
 from taktus.ports.worker import ComputeLimit, Limits, QuotaLimit, TokenLimit
-from taktus.shared.v1 import ConsumptionQuantities, Method, Value
+from taktus.shared.v1 import ConsumptionQuantities, Method, TokensByModel, Value
 
 WINDOW = 20
 """How many of an adapter's most recent observations its scale is computed over."""
@@ -531,6 +533,24 @@ def with_money(
     resource class the table does not price. An unpriced class adds nothing, so the caller
     refuses what depends on it: unpriced is never free (ADR-0010)."""
     priced = price_compute(seconds, table)
+    if not priced.amount:
+        return quantities, priced.unpriced
+    currency = dict(quantities.currency or {})
+    currency[table.currency] = currency.get(table.currency, 0.0) + priced.amount
+    return quantities.model_copy(update={"currency": currency}), priced.unpriced
+
+
+def with_token_money(
+    quantities: ConsumptionQuantities, tokens: TokensByModel | None, table: PriceTable
+) -> tuple[ConsumptionQuantities, tuple[str, ...]]:
+    """`quantities` with the money of `tokens` at the table added to its currency, and every
+    model and kind the table does not price. These are the tokens of steps that recorded no
+    money — an `llm` step once it ended — so a currency budget holds their money after the
+    step as it held the estimate before it (ADR-0005, third amendment, #235). An unpriced
+    kind adds nothing, so the caller refuses what depends on it: unpriced is never free."""
+    if not tokens:
+        return quantities, ()
+    priced = price(tokens, table)
     if not priced.amount:
         return quantities, priced.unpriced
     currency = dict(quantities.currency or {})

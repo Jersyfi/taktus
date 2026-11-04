@@ -144,6 +144,9 @@ class FakeWorker:
     launched worker on a cluster that is pulling the unit's image does (ADR-0145)."""
     inner_seconds: float = 0.0
     estimate_usd: float | None = None
+    json_artifacts: frozenset[str] = frozenset()
+    """The artifacts announced as `application/json`, as the coding worker announces its
+    changeset; every other one is `text/plain`."""
     steering: bool = False
     handover: bool = False
     peak: int = 0
@@ -353,7 +356,9 @@ class FakeWorker:
                         artifact_id=artifact_id,
                         kind="log",
                         digest="sha256:" + hashlib.sha256(content).hexdigest(),
-                        media_type="text/plain",
+                        media_type="application/json"
+                        if artifact_id in self.json_artifacts
+                        else "text/plain",
                         size_bytes=len(content),
                     )
                 )

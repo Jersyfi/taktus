@@ -12,11 +12,11 @@
 
 	const uid = $props.id();
 	const small = $derived(size < 24);
-	const hue = $derived(HUES[glyph.membrane] ?? 'var(--ink-2)');
+	const hue = $derived(HUES[glyph.membrane] ?? 'var(--text-secondary)');
 	/** A cell at work carries its family's hue in full; at rest it is quieter. */
 	const working = $derived(glyph.motion !== 'none' || glyph.still_mark !== 'none');
 	const line = $derived(
-		glyph.subject === 'step' && !working ? `color-mix(in oklch, ${hue} 58%, var(--ink-3))` : hue
+		glyph.subject === 'step' && !working ? `color-mix(in oklch, ${hue} 58%, var(--text-subtle))` : hue
 	);
 	const stroke = $derived(small ? 3.2 : 1.8);
 	const cytoplasm = $derived(glyph.fill === 'hatched' ? `url(#${uid}-hatch)` : (FILLS[glyph.fill] ?? 0) > 0 ? hue : 'none');
@@ -116,22 +116,22 @@
 		{:else if glyph.membrane === 'tissue'}
 			<rect x="12" y="24" width="76" height="52" rx="26" fill={cytoplasm} fill-opacity={density} stroke={line} stroke-width={stroke} />
 			{#each [34, 50, 66] as x (x)}
-				<circle cx={x} cy="50" r="5" fill="var(--ink-3)" />
+				<circle cx={x} cy="50" r="5" fill="var(--text-subtle)" />
 			{/each}
 		{:else if glyph.membrane === 'crystal'}
 			<path d={circle(R)} fill={line} fill-opacity="0.86" />
-			<path d={circle(9)} fill="var(--paper)" fill-opacity="0.9" />
+			<path d={circle(9)} fill="var(--bg-canvas)" fill-opacity="0.9" />
 		{:else if glyph.membrane === 'root'}
 			<path d="M24,30 Q50,88 76,30" fill="none" stroke={line} stroke-width="2" />
 			<path d="M50,64 V92" stroke={line} stroke-width="2" />
-			<circle cx="50" cy="38" r="6" fill="var(--ink-3)" />
+			<circle cx="50" cy="38" r="6" fill="var(--text-subtle)" />
 		{:else if glyph.membrane === 'signal'}
 			<path d="M50,56 V10" stroke={line} stroke-width="1.8" />
 			<circle cx="50" cy="12" r="5" fill={line} />
 			<path d={circle(24)} transform="translate(0,14)" fill={cytoplasm === 'none' ? 'none' : line} fill-opacity={density ? density + 0.1 : 0} stroke={line} stroke-width={stroke} />
 		{/if}
 		{#if glyph.rings === 'inner_membrane'}
-			<path d={circle(glyph.subject === 'result' ? R - 8 : R - 6)} fill="none" stroke={glyph.subject === 'result' ? 'var(--paper)' : line} stroke-width={small ? 2.4 : 1.2} />
+			<path d={circle(glyph.subject === 'result' ? R - 8 : R - 6)} fill="none" stroke={glyph.subject === 'result' ? 'var(--bg-canvas)' : line} stroke-width={small ? 2.4 : 1.2} />
 		{:else if glyph.rings === 'pore'}
 			<path d="M50,{50 - R - 1} V{small ? 6 : 8}" stroke={line} stroke-width={small ? 3.2 : 1.6} />
 			<circle cx="50" cy={small ? 6 : 8} r={small ? 4 : 2.6} fill={line} />
@@ -152,11 +152,11 @@
 	</g>
 	{#if badge}
 		{#if small}
-			<circle cx="74" cy="74" r="9" fill="var(--ink)" />
+			<circle cx="74" cy="74" r="9" fill="var(--text-primary)" />
 		{:else}
 			<g transform="translate(74,74) scale(2.1)">
-				<circle r="6.4" fill="var(--paper)" stroke="var(--line)" stroke-width="0.7" />
-				<path d={badge} fill="none" stroke="var(--ink)" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
+				<circle r="6.4" fill="var(--bg-canvas)" stroke="var(--border-subtle)" stroke-width="0.7" />
+				<path d={badge} fill="none" stroke="var(--text-primary)" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
 			</g>
 		{/if}
 	{/if}

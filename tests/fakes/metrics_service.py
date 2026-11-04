@@ -14,12 +14,18 @@ What it enforces, because the connector's checks depend on it:
   `l!="v"` joined by commas. Anything else is refused with 400 and `errorType: bad_data`, as
   the store refuses a query it cannot parse. A time that is not a number is 400 too.
 - **Series.** `up` for two instances of the job `service`, `1` and `0`;
-  `http_requests_total` for one, `1027`; `queue_depth` with the value `NaN`. A range repeats each
+  `http_requests_total` for one, `1027`; `queue_depth` with the value `NaN`. For the stage 1
+  watchers (ADR-0198): `function_duration_seconds` by function, `export` 4.2, `login` 0.3 and
+  `resize` `NaN`; `function_calls_per_second`, `sync` 180 and `export` 2; `backup_age_seconds`,
+  `database` 3600 and `files` 7200; `restore_drill_age_seconds`, `database` 2851200 (33 days);
+  `quota_used_ratio` by service, `mail` 0.42 and `payments` 0.91. A range repeats each
   value at every step from `start` to `end`, at most 11000 points.
 
 The same process serves the check connector's target under `/service/`: `/service/health`
 answers 200 with `ready`, `/service/slow` answers after `FAKE_CHECK_SLOW_SECONDS` (default 1.5),
-`/service/missing` 404, and every other path 404. Test-only: `GET /_fake/state` counts the
+`/service/missing` 404, `/service/records/<id>` 403 whatever the token, as a product refuses
+another account's record, `/service/leaky/<id>` 200 with a record, as a product with a hole in
+its rules answers, and every other path 404. Test-only: `GET /_fake/state` counts the
 requests to the API and to the service, and names the bearer tokens the service saw.
 Standard library only; runnable as `python3 tests/fakes/metrics_service.py --port 9204`.
 """
@@ -43,6 +49,17 @@ SERIES: list[tuple[dict[str, str], str]] = [
     ({"__name__": "up", "job": "service", "instance": "b"}, "0"),
     ({"__name__": "http_requests_total", "job": "service", "instance": "a"}, "1027"),
     ({"__name__": "queue_depth", "job": "service"}, "NaN"),
+    # What the stage 1 watchers of software-operations read (ADR-0198).
+    ({"__name__": "function_duration_seconds", "function": "export"}, "4.2"),
+    ({"__name__": "function_duration_seconds", "function": "login"}, "0.3"),
+    ({"__name__": "function_duration_seconds", "function": "resize"}, "NaN"),
+    ({"__name__": "function_calls_per_second", "function": "sync"}, "180"),
+    ({"__name__": "function_calls_per_second", "function": "export"}, "2"),
+    ({"__name__": "backup_age_seconds", "job": "database"}, "3600"),
+    ({"__name__": "backup_age_seconds", "job": "files"}, "7200"),
+    ({"__name__": "restore_drill_age_seconds", "job": "database"}, "2851200"),
+    ({"__name__": "quota_used_ratio", "service": "mail"}, "0.42"),
+    ({"__name__": "quota_used_ratio", "service": "payments"}, "0.91"),
 ]
 NAME = re.compile(r"^[a-zA-Z_:][a-zA-Z0-9_:]*$")
 MATCHER = re.compile(r'^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*(!?=)\s*"([^"]*)"\s*$')
@@ -193,6 +210,10 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
                 state.seen_tokens.append(auth[7:] if auth.startswith("Bearer ") else "")
             if path == "/service/health":
                 self.answer(200, b"ready", "text/plain")
+            elif path.startswith("/service/records/"):
+                self.answer(403, b"not yours", "text/plain")
+            elif path.startswith("/service/leaky/"):
+                self.answer(200, b'{"owner": "someone else"}', "application/json")
             elif path == "/service/slow":
                 time.sleep(slow)
                 self.answer(200, b"ready, slowly", "text/plain")

@@ -4,6 +4,7 @@
 	people the owner named; for anyone else the page says so, and shows the signals.
 -->
 <script lang="ts">
+	import Unavailable from '../../lib/Unavailable.svelte';
 	import { read, surface } from '../../lib/api';
 	import SignInForm from '../../lib/SignInForm.svelte';
 	import type { DailyReport, SignalRecord } from '../../lib/operation';
@@ -37,14 +38,14 @@
 {:else if found}
 	<SignalsView signals={found} {daily} {dailyNote} />
 {:else if problem}
-	<p class="status">{problem}</p>
+	<Unavailable eyebrow="Signals" {problem} />
 {:else}
 	<p class="status">Reading the signals…</p>
 {/if}
 
 <style>
 	.status {
-		color: var(--muted);
+		color: var(--text-secondary);
 		font-size: 0.9rem;
 	}
 </style>

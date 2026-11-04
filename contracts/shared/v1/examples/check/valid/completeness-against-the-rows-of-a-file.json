@@ -1,0 +1,6 @@
+{
+  "kind": "completeness",
+  "subject": "the imported rows",
+  "count": "the rows of the partner file",
+  "source": "documents.read"
+}

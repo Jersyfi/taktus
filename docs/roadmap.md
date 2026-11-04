@@ -327,7 +327,7 @@ operation:
 
 | Beta condition | Checked by |
 |---|---|
-| **A stage-1 process against real connectors** | payment reconciliation or the cost watcher of UC-03 runs on Taktus's own instance against the real service, through connectors that pass the conformance suite |
+| **A stage-1 process against real connectors** | payment reconciliation or the cost watcher of UC-03 runs against the real service on the instance of the business that runs Taktus itself, and the business confirms it; the project's own instance runs the same process against the connectors' fakes, which pass the conformance suite (DEC-0226) |
 | **A budget that holds during a run** | a run is halted at the step boundary where its budget is spent, not only at its end (ADR-0005); a test and an instance run show it |
 | **One server, no Kubernetes** | Taktus installs, upgrades and runs on a single machine with containers from the guide alone (#445) |
 | **The right to run it** | settled with the business outside the repository |
@@ -338,7 +338,7 @@ The conditions below make the beta `1.0.0`.
 |---|---|
 | **Contracts frozen, verified** | the freeze record exists; the gate fails on a frozen schema's change; both conformance suites pass against every reference adapter at the frozen version |
 | **A stabilisation phase with no new features** | a stated span before the tag in which every merged change is a fix or documentation; the register shows no accepted feature in it |
-| **The removal test green for every adapter, not one** | the last weekly S-01 run of every configured integration ended *changed* or *exception*, in an installation with an alternative for every capability a reference adapter serves |
+| **The removal test green for every adapter, not one** | the last weekly S-01 run of every configured integration ended *changed* or *exception*, in an installation with an alternative for every capability a reference adapter serves; an alternative at a service the project does not use counts once it passes its conformance suite against its stand-in (DEC-0225, DEC-0226) |
 | **An upgrade path from `0.7.0` that loses no runs** | a migration test upgrades a database with runs in every state from `0.7.0` to `1.0.0` and back, and every run resumes at its boundary afterwards |
 | **Data export proven by re-import** | an export of a tenant — processes, runs, ledger, provenance, artifacts — is imported into a fresh instance, and the ledger chain and every provenance chain verify there |
 | **An external security review of the execution isolation** | a review by someone outside the project of the container and cluster adapters, its findings recorded and closed |

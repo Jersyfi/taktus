@@ -35,7 +35,7 @@ turn's usage.
 it makes to files (`file_change`), and a call of any other tool. When the item completes, the
 worker commits the workspace, writes a checkpoint — the agent's thread, the commit, the step
 count and the artifacts so far — and emits `step.boundary`. A stop lands there: the worker ends
-the agent, and the assignment finishes `stopped` with that checkpoint (W-06). Items that do not
+the agent, and the assignment finishes `stopped` with that checkpoint (W-06). An agent that exits on its own just as it is ended is not a fault: a group already gone, or one whose leader has exited and is not yet reaped — which macOS answers with EPERM — is nothing to signal, and the assignment still finishes `stopped` (#640). Items that do not
 act — the agent's reasoning, its plan, its messages — are no steps.
 
 Before the agent starts, the hosts the task says it needs (`task.inputs.hosts`) are held against
@@ -77,8 +77,9 @@ an exhausted window blocks, it does not cost more.
 
 The session file is not a documented interface. If a version of the agent stops writing the
 running total there, every step reports zero and the `report` step settles the whole turn: the
-total stays right, and a token limit can then no longer halt the agent while it runs. The live
-test (#208) checks that the tokens per step add up to the agent's own total.
+total stays right, and a token limit can then no longer halt the agent while it runs. Only a
+run against the real agent can show that the tokens per step add up to its own total; this
+project runs none (*Not yet*).
 
 ### Authentication
 
@@ -209,9 +210,34 @@ Its final message proposes the type of a pull request's title,
 `<!-- commit-type: feat -->` on its first line, as P-03 asks (ADR-0101). The real agent is run with `--agent codex` (the default), and a live run needs a
 credential the operator supplies.
 
+## The image
+
+`Dockerfile` in this directory builds the worker's own image, `taktus-worker-codex`: Python for
+the worker, git, `make`, `uv`, and the agent. A release pushes it with every other image
+(`.github/workflows/images.yml`).
+
+    docker build -f workers/codex/Dockerfile -t taktus-worker-codex .
+
+## The agent's version
+
+The agent is pinned to one exact version, written in one file: `agent-version` in this
+directory. Today it is 0.163.0. The image installs that version from the package registry and
+no other; a build whose file names `latest`, a tag or a range fails. A release therefore
+carries the version the file names at the release's tag, and two builds of one tag carry the
+same agent. The package's command is a launcher that starts the native binary of its platform,
+and runs on the registry image's runtime, copied into the image as its one binary; the build
+runs `codex --version` once, so that an image whose agent does not start is never tagged.
+`tests/governance/test_image_workflow.py` holds the image and the release workflow to the file,
+and fails on anything but one exact version or on anything of the first coding worker in it.
+
+A new version is taken deliberately, never by a build: a pull request changes `agent-version`
+and nothing else of the agent, and names the old and the new version.
+
 ## Not yet
 
-The image, the agent pinned to one exact version, and the live test against the real agent in
-the workflow `live` are #208, which waits for a credential (NEED-0022). An instance configures
-both coding workers in `TAKTUS_WORKERS`, each with its own credential (#209, ADR-0078); on
-Taktus's own instance that waits for this image.
+The live test against the real agent is not this project's: the project uses no account at
+the agent's vendor (DEC-0225). The stream's mechanics are proven against the stand-in only. A
+tenant that runs this worker runs the image against its own account first, with the cap it
+chooses, and the shape of the stream the real agent writes at the pinned version is checked
+there. An instance configures both coding workers in `TAKTUS_WORKERS`, each with its own
+credential (#209, ADR-0078).

@@ -1,6 +1,7 @@
 # `mlbench` — the ML bench
 
-A worker that trains, evaluates and serves classical models behind the worker contract v1. It is
+A worker that trains, evaluates and serves classical models, and embeds text with a neural
+encoder, behind the worker contract v1. It is
 the second proof case of the contract ([ADR-0007](../../docs/adr/ADR-0007-worker-contract.md)):
 progress measured in epochs rather than tool calls, compute held in a resource class, the result
 a model artifact with metrics. It is where a step's own model is made once a language model has
@@ -19,7 +20,7 @@ is `Dockerfile` in this directory, built from the repository root.
 The libraries are the owner's decision: the bench trains with scikit-learn and NumPy, DEC-0161,
 Option A.
 
-## Three operations
+## Four operations
 
 `task.inputs.operation` names one. Every assignment begins with the step `load`, which reads what
 the task names; each read is one `tool.called`, held against the frame where it happens.
@@ -29,6 +30,7 @@ the task names; each read is one `tool.called`, held against the frame where it 
 | `train` (default) | `load`, `epoch-1` to `epoch-N`, `evaluate` | `checkpoint-K` (`model.checkpoint`) after every epoch; `metrics` (`report`) and `model` (`model`) at the end |
 | `evaluate` | `load`, `evaluate` | `metrics` (`report`) |
 | `predict` | `load`, `predict` | `predictions` (`dataset`, CSV: row, class, confidence) |
+| `embed` | `load`, `embed` | `embeddings` (`dataset`, CSV: row, e1 to e32) and `embedder` (`model`, the encoders as JSON) |
 
 The inputs, all optional except where an operation needs them:
 
@@ -40,10 +42,23 @@ The inputs, all optional except where an operation needs them:
 | `seed` | every random choice: the synthetic data, the held-out split, the order within an epoch | `0` |
 | `epochs` | passes over the training rows | `5` |
 | `holdout` | the share of rows held out for the metrics, 0.05 to 0.5 | `0.2` |
+| `text` | for `train` and `embed`: the columns that hold text, embedded before anything learns from them (ADR-0183). A model to evaluate or predict with names its own | none; `embed` needs one |
 
-A dataset is a CSV with a header row and a number in every feature column. The model family is a
-linear classifier — logistic regression fitted by stochastic gradient descent — on standardised
-features.
+A dataset is a CSV with a header row and a number in every feature column, except the columns
+`text` names. The model family is a linear classifier — logistic regression fitted by stochastic
+gradient descent — on standardised features.
+
+**Text is embedded by a neural encoder** (ADR-0183, #210). A text's character n-grams of two to
+four characters, lower-cased, are counted into 512 buckets by a stable hash and scaled to length
+one. A one-layer encoder — 512 inputs, 32 tanh units — is trained as an autoencoder on the
+training rows' text from the seed, by 800 passes of full-batch gradient descent, and its weights
+are rounded to eight places. A text's embedding is the encoder's 32 units. In a training the
+encoder is fitted on the training split alone, its 32 columns are named `<column>#1` to
+`<column>#32` after the numeric features, and the model file carries it under `text`, so that a
+prediction on raw text embeds it as the training did. The encoder learns from the dataset alone:
+it is not a pretrained language model (`docs/vision/non-goals.md`), and it tells texts apart by
+their spelling, not by what they mean. It runs on the processor; an accelerator is a tenant's
+(DEC-0226).
 
 ## What it promises about the result
 

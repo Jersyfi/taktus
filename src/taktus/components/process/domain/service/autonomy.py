@@ -21,8 +21,10 @@ measured against. A version that names none admits no raise.
 The quality history is read from the ledger, so that it is reproducible: the runs of the
 process, rehearsals left out, in the order they began (their `run.created`). A run counts once
 it ended: finished without a step that failed, it extends the history; escalated, or with a step
-that failed before it ended, it ends it. A run that halted or waits counts neither way. Result
-defects are counted from the runs a caller names; nothing records them yet (UC-4.10, `0.5.0`).
+that failed before it ended, it ends it. A run that halted or waits counts neither way. A run a
+result defect was raised against counts as failed, whenever the defect was found: the ledger's
+`incident.raised` of a result defect names its run and step and carries the rule's verdict as
+outcome (ADR-0153, ADR-0184). A caller may name further runs.
 
 Pure: statements, ledger entries and the approval in, a verdict out.
 """
@@ -40,6 +42,19 @@ type Refusal = Literal["no_approval", "no_history_named", "history_short"]
 
 CLEAN_STEP_OUTCOMES = frozenset({"succeeded", "rehearsed", "stopped"})
 """What a `step.finished` entry may say without the run counting as failed."""
+DEFECT_VERDICTS = frozenset({"continue", "escalate", "stop"})
+"""The outcomes of the `incident.raised` of a result defect: the verdict of the tenant's rule
+(ADR-0023). Whichever the verdict, the run's result was wrong."""
+
+
+def is_result_defect(entry: LedgerEntry) -> bool:
+    """Whether the entry raised a result defect against a run's step (ADR-0153, ADR-0184)."""
+    return (
+        entry.kind == "incident.raised"
+        and entry.refs.run_id is not None
+        and entry.refs.step_id is not None
+        and (entry.outcome or "") in DEFECT_VERDICTS
+    )
 
 
 def actions_used(steps: Sequence[Step], work: Mapping[str, Mapping[str, Any]]) -> set[str]:
@@ -125,7 +140,8 @@ def history(
     process_id: str,
     defects: frozenset[str] = frozenset(),
 ) -> QualityHistory:
-    """The quality history of a process from the tenant's ledger. `defects` names the runs a
+    """The quality history of a process from the tenant's ledger. A run a result defect was
+    raised against counts as failed, before or after it ended; `defects` names further runs a
     result defect was found in.
 
     This is the full computation, from every entry. The ledger's projection of it
@@ -141,6 +157,9 @@ def history(
         if entry.rehearsal or run_id is None or version is None:
             continue
         if version.split("@", 1)[0] != process_id:
+            continue
+        if is_result_defect(entry):
+            failed.add(run_id)
             continue
         if entry.kind == "run.created":
             if run_id not in order:

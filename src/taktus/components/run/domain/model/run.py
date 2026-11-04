@@ -384,6 +384,17 @@ class StepRun(Value):
         return tuple(found)
 
 
+class Remedy(Value):
+    """What a remediation run corrects (ADR-0179 §3): the result-defect incident, and the step
+    of the run whose result was wrong. A remediation run produces that step's result and every
+    result built on it again; every step of it that acts outward is the correction anchor's."""
+
+    incident_id: str = Field(min_length=1)
+    run_id: str = Field(min_length=1)
+    """The run whose result was wrong. It stays as it was, with its records."""
+    step_id: StepId
+
+
 class Run(Value):
     """One execution of a plan. The run carries what it executes — the steps in their order and
     the work of each — so that it can be resumed and replayed from its own record."""
@@ -423,6 +434,10 @@ class Run(Value):
     """The version of each skill its steps use, `{name: version}`, pinned when the run was
     created: the version in production, or the one an evaluation's side binds (ADR-0162 §5). A
     skill with no version pinned is not handed over."""
+    remedy: Remedy | None = None
+    """For a remediation run only: the wrong result it produces again (ADR-0179 §3). Every step
+    of it that acts outward waits for the correction anchor's person, at every level. None for
+    every other run."""
     profile: str | None = Field(default=None, min_length=1)
     """The role profile of a shared agent the run serves, `<agent>:<role>@<version>`, or
     `<agent>@<core>/<agent>:<role>@<version>` under a core not yet active: its brief is handed
@@ -599,6 +614,25 @@ class Run(Value):
                 seconds.get(used.resource_class, 0.0) + used.compute_seconds
             )
         return seconds
+
+    def tokens_without_money(self) -> tuple[TokensByModel | None, tuple[str, ...]]:
+        """The tokens per model of every step whose counted consumption carries no money,
+        and the steps among them that recorded tokens without the model that used them. A
+        currency budget prices these at the run's table at every boundary, never stored on
+        the step (ADR-0005, third amendment, #235). A step that reported money — a worker,
+        or an `llm` step in flight, counted at its reservation — carries its money already
+        and is not priced a second time from its tokens."""
+        by_model: TokensByModel | None = None
+        unattributed: list[str] = []
+        for step_run in self.step_runs:
+            used = _counted(step_run)
+            if used is None or used.currency:
+                continue
+            if used.tokens_by_model:
+                by_model = add_tokens_by_model(by_model, used.tokens_by_model)
+            elif used.tokens_in or used.tokens_out:
+                unattributed.append(step_run.step_id)
+        return by_model, tuple(unattributed)
 
 
 def _counted(step_run: StepRun) -> ConsumptionQuantities | None:

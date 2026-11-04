@@ -10,6 +10,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequenc
 from typing import Any, Protocol
 
 from taktus.components.accounting.application.service import (
+    NamedCase,
     Offer,
     SpendHandler,
     Trial,
@@ -24,16 +25,18 @@ from taktus.components.decision.application.service import (
     AnswerRequestHandler,
     ConfirmRequestHandler,
 )
-from taktus.components.governance.application.service import Corrections
+from taktus.components.governance.application.service import Corrections, Stages
 from taktus.components.governance.domain.model import Incident
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.application.service.streams import DeclareStream
+from taktus.components.process.application.service.takeover import RecordTrial
 from taktus.components.process.domain.model import (
     CorrectedCase,
     Evaluation,
     ProcessVersion,
     Proposal,
+    TakeoverTrial,
     ValueStream,
 )
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
@@ -185,6 +188,7 @@ class TrialActs(Protocol):
         candidates: Sequence[str],
         by: str,
         occasion: str = "asked",
+        own: Sequence[NamedCase] = (),
     ) -> Trial: ...
 
     async def of_tenant(self, tenant: Tenant) -> list[Trial]: ...
@@ -192,6 +196,10 @@ class TrialActs(Protocol):
     async def read(self, tenant: Tenant, trial_id: str) -> TrialRead: ...
 
     async def offers(self, tenant: Tenant) -> list[Offer]: ...
+
+    async def decline(
+        self, tenant: Tenant, purpose: str, occasion: str, model: str, by: str, reason: str
+    ) -> None: ...
 
 
 class Takeovers(Protocol):
@@ -213,6 +221,18 @@ class Takeovers(Protocol):
         """A person's message to a running step, asked on the run's job; its identifier
         (ADR-0156)."""
         ...
+
+
+class InstructionActs(Protocol):
+    """A process's takeover instructions and the trials of them (ADR-0180)."""
+
+    async def read(self, tenant: Tenant, process_id: str) -> dict[str, Any] | None: ...
+
+    async def record(self, command: RecordTrial) -> TakeoverTrial: ...
+
+    async def of_step(
+        self, tenant: Tenant, process_version: str, step_id: str
+    ) -> dict[str, Any] | None: ...
 
 
 class StartRefused(Exception):
@@ -481,6 +501,17 @@ class RestServices(Protocol):
     @property
     def takeovers(self) -> Takeovers:
         """A running step taken over and handed back (ADR-0128)."""
+        ...
+
+    @property
+    def takeover_instructions(self) -> InstructionActs:
+        """A process's takeover instructions and the trials of them (ADR-0180)."""
+        ...
+
+    @property
+    def stages(self) -> Stages:
+        """A tenant's introduction in stages: the view and a stage opened by a person
+        (ADR-0137, ADR-0191)."""
         ...
 
     @property

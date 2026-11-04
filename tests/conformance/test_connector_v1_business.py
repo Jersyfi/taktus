@@ -24,7 +24,7 @@ from .conftest import BUSINESS, CONNECTORS, RunningConnector, open_standard_faul
 type Start = Callable[..., RunningConnector]
 SCOPED = frozenset({"stripe"})
 """The business connectors that declare a scoped capability (C-11)."""
-WRITERS = frozenset({"accounting"})
+WRITERS = frozenset({"accounting", "kubernetes"})
 """The business connectors with an operation that leaves the system (C-05)."""
 FAULTS = [
     (module, fault, check)

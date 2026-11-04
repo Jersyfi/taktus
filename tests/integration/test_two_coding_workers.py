@@ -29,6 +29,7 @@ from typing import Any
 
 import pytest
 from fakes import FakeConnector
+from fakes.takeover import instructed
 
 from taktus.adapters.driven.configuration import EnvironmentConfiguration
 from taktus.adapters.driven.workers.http import HttpWorker
@@ -55,35 +56,37 @@ CREDENTIAL = "CODING_AGENT_API_KEY"
 # A coding step as P-03's `implement` is one: the capabilities it requires, its credential by
 # the name both workers read, and a person as its fallback. No host, so that the rehearsals run
 # the step for real (ADR-0030).
-CODING: dict[str, Any] = {
-    "id": "small-change",
-    "version": "1",
-    "name": "A small change to a workspace",
-    "autonomy": {
-        "level": 2,
-        "reason": "a test process: every result is looked at",
-        "toward_next": "nothing; it exists for the removal test",
-    },
-    "author": "the test",
-    "reason": "the shape of a coding step, served by either coding worker",
-    "limits": {"currency": {"usd": 5.0}},
-    "steps": [
-        {
-            "id": "implement",
-            "method": "worker",
-            "reason": "changing code is multi-step work with tools, which a worker offers",
-            "rejected": [{"method": "llm", "why": "a completion cannot run commands"}],
-            "exactness": "tolerant",
-            "fallback": {"when": "the coding worker is unavailable", "to": "human"},
-            "requires": ["code.read", "code.edit", "code.test", "shell.sandboxed"],
-            "work": {
-                "task": {"goal": "write hello", "acceptance": ["hello.txt exists"]},
-                "max_steps": 40,
-                "credentials": [{"name": CREDENTIAL, "injected_as": "env"}],
-            },
-        }
-    ],
-}
+CODING: dict[str, Any] = instructed(
+    {
+        "id": "small-change",
+        "version": "1",
+        "name": "A small change to a workspace",
+        "autonomy": {
+            "level": 2,
+            "reason": "a test process: every result is looked at",
+            "toward_next": "nothing; it exists for the removal test",
+        },
+        "author": "the test",
+        "reason": "the shape of a coding step, served by either coding worker",
+        "limits": {"currency": {"usd": 5.0}},
+        "steps": [
+            {
+                "id": "implement",
+                "method": "worker",
+                "reason": "changing code is multi-step work with tools, which a worker offers",
+                "rejected": [{"method": "llm", "why": "a completion cannot run commands"}],
+                "exactness": "tolerant",
+                "fallback": {"when": "the coding worker is unavailable", "to": "human"},
+                "requires": ["code.read", "code.edit", "code.test", "shell.sandboxed"],
+                "work": {
+                    "task": {"goal": "write hello", "acceptance": ["hello.txt exists"]},
+                    "max_steps": 40,
+                    "credentials": [{"name": CREDENTIAL, "injected_as": "env"}],
+                },
+            }
+        ],
+    }
+)
 
 
 @pytest.fixture

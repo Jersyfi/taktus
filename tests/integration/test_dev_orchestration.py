@@ -641,7 +641,7 @@ def test_implementation_admits_a_ready_issue_claims_it_and_refuses_the_rest(
         "to-taktus",
     ]
     (announced,) = comments_on(outside, tasks.ready)
-    assert re.match(r"Taktus took this issue: run `run_\w+` of `p03-implementation@23`", announced)
+    assert re.match(r"Taktus took this issue: run `run_\w+` of `p03-implementation@24`", announced)
 
     ref = outside.get(f"/repos/{REPOSITORY}/git/ref/heads/taktus/issue-{tasks.ready}")
     assert isinstance(ref, dict)
@@ -1062,21 +1062,21 @@ def test_roadmap_control_reports_each_disagreement_once(outside: Outside, tmp_pa
 # --- the takeover of every integration step (issue #90) ---------------------------------------
 
 BUNDLES = {
-    "P-01-roadmap-control.yaml": "p01-roadmap-control@5",
-    "P-02-refinement.yaml": "p02-refinement@6",
-    "P-03-implementation.yaml": "p03-implementation@23",
+    "P-01-roadmap-control.yaml": "p01-roadmap-control@6",
+    "P-02-refinement.yaml": "p02-refinement@7",
+    "P-03-implementation.yaml": "p03-implementation@24",
 }
 REPOSITORY_CONNECTOR = "connector.channel.repo"
 TAKEN_OVER: dict[str, dict[str, set[str]]] = {
     REPOSITORY_CONNECTOR: {
-        "p01-roadmap-control@5": {
+        "p01-roadmap-control@6": {
             "read-roadmap",
             "read-issues",
             "read-open-records",
             "write-report",
         },
-        "p02-refinement@6": {"read-issue", "read-comments", "write-sections"},
-        "p03-implementation@23": {
+        "p02-refinement@7": {"read-issue", "read-comments", "write-sections"},
+        "p03-implementation@24": {
             "read-issue",
             "read-comments",
             "read-open-issues",
@@ -1098,8 +1098,8 @@ TAKEN_OVER: dict[str, dict[str, set[str]]] = {
             "announce-give-back",
         },
     },
-    "worker.endpoint": {"p03-implementation@23": {"implement"}},
-    "model.endpoint": {"p02-refinement@6": {"refine"}},
+    "worker.endpoint": {"p03-implementation@24": {"implement"}},
+    "model.endpoint": {"p02-refinement@7": {"refine"}},
 }
 """Per integration, the steps of P-01 to P-03 it serves, which a person takes over without it."""
 

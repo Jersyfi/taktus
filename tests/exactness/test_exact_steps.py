@@ -102,6 +102,23 @@ def test_the_kernel_examples_agree() -> None:
     assert Step.model_validate(accepted).method is Method.RULE
 
 
+def test_the_bundles_exercise_exact_steps() -> None:
+    """The bundle check below is not empty: most bundles hold an exact step. A process whose
+    results are all tolerant or free — a classification, a drafted reply — holds none, and is
+    still checked for every step it has (NTC-0264)."""
+    holding = [
+        p
+        for p in BUNDLES
+        if any(
+            s.exactness is ExactnessClass.EXACT
+            for s in parse_bundle(yaml.safe_load(p.read_text(encoding="utf-8"))).steps
+        )
+    ]
+    assert len(holding) >= len(BUNDLES) // 2, (
+        f"only {len(holding)} of {len(BUNDLES)} hold an exact step"
+    )
+
+
 @pytest.mark.parametrize("bundle_path", BUNDLES, ids=lambda p: p.name)
 def test_every_example_bundle_keeps_exact_results_with_admissible_methods(
     bundle_path: Path,
@@ -109,7 +126,6 @@ def test_every_example_bundle_keeps_exact_results_with_admissible_methods(
     with bundle_path.open(encoding="utf-8") as handle:
         version = parse_bundle(yaml.safe_load(handle))
     exact = [s for s in version.steps if s.exactness is ExactnessClass.EXACT]
-    assert exact, f"{bundle_path.name} exercises no exact step"
     for step in exact:
         assert step.method in EXACT_ADMISSIBLE, f"{bundle_path.name}: {step.id} on {step.method}"
 

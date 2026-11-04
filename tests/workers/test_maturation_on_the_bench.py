@@ -19,13 +19,13 @@ from taktus.components.run.domain.service import maturation
 from taktus.shared.v1 import Method
 
 from .test_mlbench import Bench
-from .test_mlbench import ml_bench as ml_bench  # the fixture
+from .test_mlbench import generous_bench as generous_bench  # the fixture
 
 
 async def test_a_step_on_a_language_model_is_proposed_a_model_the_bench_trained(
-    ml_bench: Bench,
+    generous_bench: Bench,
 ) -> None:
-    async with HttpWorker(ml_bench.endpoint) as bench:
+    async with HttpWorker(generous_bench.endpoint) as bench:
         w = World(workers=[bench], uncalibrated_margin=1.0)
         await w.history(separable(540))
         (outcome,) = await w.propose.execute(
@@ -54,12 +54,12 @@ async def test_a_step_on_a_language_model_is_proposed_a_model_the_bench_trained(
 
 
 async def test_the_accepted_move_runs_on_the_bench_reproducibly_and_measurably_cheaper(
-    ml_bench: Bench,
+    generous_bench: Bench,
 ) -> None:
     """The roadmap's `0.4.0` criterion against the bench itself (issue #218, ADR-0114): the
     proposal accepted, the step moved, 100 cases on the new version measured beside the version
     it replaced, and the same case answered the same twice."""
-    async with HttpWorker(ml_bench.endpoint) as bench:
+    async with HttpWorker(generous_bench.endpoint) as bench:
         w, _, version = await moved(workers=[bench])
         await cases_on(w, version, maturation.MOVE_CASES, unsure_every=maturation.MOVE_CASES + 1)
         one = await w.run_of(version, 10.2, 0.3, confidence=1.0, kind="k1")

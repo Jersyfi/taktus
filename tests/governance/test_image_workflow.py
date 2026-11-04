@@ -227,3 +227,35 @@ def test_the_live_test_installs_the_version_the_image_carries() -> None:
     assert 'pinned="$(cat workers/claudecode/agent-version)"' in installs[0]
     install = [line for line in installs[0].splitlines() if "npm install" in line]
     assert install == [f'npm install --global "{AGENT_PACKAGE}@${{pinned}}"'], install
+
+
+# --- the second coding worker's agent, pinned the same way (#208) -------------------------------
+
+SECOND_AGENT_VERSION = ROOT / "workers" / "codex" / "agent-version"
+SECOND_DOCKERFILE = ROOT / "workers" / "codex" / "Dockerfile"
+SECOND_AGENT_PACKAGE = "@openai/codex"
+
+
+def test_the_second_agents_version_is_one_exact_version() -> None:
+    version = SECOND_AGENT_VERSION.read_text(encoding="utf-8").strip()
+    assert EXACT.fullmatch(version), f"{SECOND_AGENT_VERSION.name} names {version!r}"
+
+
+def test_the_second_coding_image_installs_the_pinned_version_and_nothing_else() -> None:
+    text = SECOND_DOCKERFILE.read_text(encoding="utf-8")
+    code = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
+    assert "COPY workers/codex/agent-version" in code
+    assert not re.search(r"^\s*ARG\b", code, re.MULTILINE), "the agent's version is no argument"
+    assert "latest" not in code
+    installs = re.findall(rf"{re.escape(SECOND_AGENT_PACKAGE)}@(\S+?)\"", code)
+    assert installs == ["${version}"], installs
+    assert '"$(cat /tmp/agent-version)"' in code
+    assert "grep -Eqx '[0-9]+\\.[0-9]+\\.[0-9]+'" in code
+    # Nothing of the first coding worker: removing one must not touch the other.
+    assert "claudecode" not in code
+
+
+def test_the_release_builds_the_second_coding_image() -> None:
+    build = workflow()["jobs"]["build"]
+    second = [e for e in build["strategy"]["matrix"]["include"] if "codex" in e["dockerfile"]]
+    assert [e["name"] for e in second] == ["taktus-worker-codex"]

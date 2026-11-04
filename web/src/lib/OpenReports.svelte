@@ -43,34 +43,39 @@
 
 <style>
 	.reports {
-		margin-top: 2.5rem;
-		max-width: 46rem;
+		margin-top: var(--sp-300);
 	}
 	.line {
-		font-family: var(--serif);
-		font-size: 1.25rem;
-		margin: 0 0 0.75rem;
+		font-size: var(--fs-300);
+		font-weight: var(--fw-medium);
+		margin: 0 0 var(--sp-150);
 	}
 	ul {
 		list-style: none;
 		padding: 0;
 		margin: 0;
 		display: grid;
-		gap: 0.3rem;
+		gap: var(--sp-100);
+		max-width: 52rem;
 	}
 	a {
 		display: grid;
-		gap: 0.1rem;
-		padding: 0.6rem 0.75rem;
-		border: 1px solid var(--line);
-		border-radius: 12px;
+		gap: var(--sp-025);
+		padding: var(--sp-150) var(--sp-200);
+		border-radius: var(--r-lg);
+		background: var(--bg-surface);
+		border: var(--bw-hairline) solid var(--border-subtle);
+		border-inline-start: 3px solid var(--accent-primary);
 		text-decoration: none;
 	}
 	a:hover {
-		background: var(--paper-2);
+		background: var(--bg-surface-hover);
+	}
+	.title {
+		font-weight: var(--fw-semibold);
 	}
 	.meta {
-		font-size: 0.8rem;
-		color: var(--ink-2);
+		font-size: var(--fs-075);
+		color: var(--text-secondary);
 	}
 </style>

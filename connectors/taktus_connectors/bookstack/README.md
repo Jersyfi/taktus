@@ -22,7 +22,9 @@ fake under `tests/fakes/wiki_service.py` to run without a network.
 **Adding it to an instance** is one entry of `TAKTUS_CONNECTORS`:
 `knowledge.pages=http://knowledge-connector:9102/mcp`. The run's connector pool then finds
 `knowledge.pages` in its declaration, and S-05 publishes the guides into the wiki. Nothing under
-`src/taktus/components/` changes (`tests/adapters/connectors/test_guides_wiki.py`).
+`src/taktus/components/` changes (`tests/adapters/connectors/test_guides_wiki.py`). On a
+cluster the chart deploys it from an entry of `connectors.others`, which writes that entry
+itself (`deploy/k8s/README.md` §2, #259).
 
 ## What it declares
 

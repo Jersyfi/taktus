@@ -68,9 +68,11 @@ from taktus.adapters.driving.rest import (
     review,
     session,
     spend,
+    stages,
     steering,
     streams,
     takeover,
+    takeover_instructions,
     tenants,
     trials,
 )
@@ -181,6 +183,8 @@ def build_app(
         app.include_router(review.router(services, _authenticated), prefix=base)
         app.include_router(autonomy.router(services, _authenticated), prefix=base)
         app.include_router(takeover.router(services, _authenticated), prefix=base)
+        app.include_router(takeover_instructions.router(services, _authenticated), prefix=base)
+        app.include_router(stages.router(services, _authenticated), prefix=base)
         app.include_router(steering.router(services, _authenticated), prefix=base)
         app.include_router(relay.router(connected), prefix=base)
         app.include_router(acting.router(services, _authenticated), prefix=base)

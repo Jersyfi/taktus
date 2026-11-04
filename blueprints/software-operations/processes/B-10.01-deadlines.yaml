@@ -1,0 +1,288 @@
+# B-10.01 Deadline calendar — UC-03 §4.10: the business's tax, contract, notice and renewal
+# deadlines, kept in its calendar, become issues in the repository service with their lead
+# time, once each, through the capabilities `calendar.events` and `repository.issues`
+# (UC-4.17, ADR-0197).
+#
+# Every morning the calendar's entries of the next `lead` days are read, events by their start
+# and to-dos by their due, repeating ones expanded where their rule is plain; and the open
+# issues of the repository. The rule `filter` leaves out each entry an open issue already
+# carries the mark of (`deadline:<uid>@<moment>`) and takes the one due first. One issue per
+# run: the next run takes the next deadline. The selection is `exact`.
+#
+# The issue is filed only after a person confirmed it, at level 2. An entry the connector could
+# not read — a rule with a `BY` part, an unknown zone — is never filed; it stands in the reading
+# under `unread`, which a person sees in the run.
+#
+# The calendar's path and the lead time are this version's inputs; a tenant names its own.
+#
+# Not built here: a task list other than the repository's issues (B-5.01 has no capability).
+# Acting on the deadline stays with a person (UC-03 §4.10).
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-10.01-deadlines.yaml \
+#         --input calendar=/calendars/deadlines.ics --input lead=30
+#
+# Switching it off (`taktusctl deactivate --process b-10-01`) changes nothing at the calendar or
+# the repository: what it filed stays filed.
+
+id: b-10-01
+version: "1"
+name: B-10.01 Deadline calendar
+autonomy:
+  level: 2
+  reason: >
+    the deadline is selected by a fixed rule over the calendar's own reading; filing the issue
+    leaves the system, so a person confirms it, as every process of UC-03 starts at level 1 or 2
+    when its stage opens
+  toward_next: >
+    stage 1 of the tenant's plan open, and four weeks of issues a person confirmed without
+    changing the selection; then Taktus proposes level 3, its target in UC-03, for filing
+    (UC-7.1, UC-9.6)
+author: the repository
+reason: every deadline in the business's calendar reaches a task list with its lead time, without a person copying it (UC-03 B-10.01)
+
+triggers:
+  - schedule: "0 7 * * *"
+    inputs:
+      calendar: /calendars/deadlines.ics
+      lead: 30
+
+inputs:
+  calendar:
+    description: the path of the calendar of deadlines on the server the connector is configured for
+    example: /calendars/deadlines.ics
+  lead:
+    description: the lead time, in days before a deadline, at which it becomes an issue
+    example: 30
+
+limits:
+  quota: { units: 40 }
+
+steps:
+  - id: read-calendar
+    method: rule
+    reason: the calendar's entries are read as the calendar holds them; nothing to judge
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving calendar.events is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: calendar.events.list
+      input:
+        path: { $input: calendar }
+        days: { $input: lead }
+        limit: 500
+      credentials:
+        - { name: CALENDAR_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the calendar answered more entries than were read" }
+
+  - id: read-filed
+    method: rule
+    reason: the open issues are read verbatim, so that a deadline already filed is not filed twice
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.issues is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: repository.issues.list
+      input:
+        state: open
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the open issues were not all read" }
+
+  - id: select
+    method: rule
+    reason: >
+      which deadline is filed is a fixed rule over the calendar's reading: one an open issue
+      carries the mark of is left out, and the one due first is taken
+    rejected:
+      - method: llm
+        why: a date and a mark need no judgement, and a model's pick could differ between two runs
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the deadline selected from the two readings }
+    depends_on: [read-calendar, read-filed]
+    work:
+      rule: filter
+      items: { $from: read-calendar, $select: output.entries }
+      excluding: { $from: read-filed, $select: output.issues }
+      within: body
+      marker: "deadline:${key}"
+      order: at
+      limit: 1
+
+  - id: title
+    method: rule
+    reason: the issue's title is the deadline's moment and its summary between fixed words
+    rejected:
+      - method: llm
+        why: a fixed composition needs no model
+    exactness: sourced
+    depends_on: [select]
+    work:
+      when:
+        - { value: { $from: select, $select: count }, not_matches: "^0$" }
+      rule: template
+      text: "Deadline ${at}: ${summary}"
+      values:
+        at: { $from: select, $select: first.at }
+        summary: { $from: select, $select: first.summary }
+
+  - id: compose
+    method: rule
+    reason: the issue's text is the calendar's entry between fixed words, with the mark that keeps it from being filed twice
+    rejected:
+      - method: llm
+        why: a fixed composition needs no model
+    exactness: sourced
+    depends_on: [select]
+    work:
+      when:
+        - { value: { $from: select, $select: count }, not_matches: "^0$" }
+      rule: template
+      text: |
+        A deadline from the business's calendar falls within its lead time: ${summary}
+
+        - due: ${at} (UTC)
+        - kind: ${kind}, categories: ${categories}
+        - repeats: ${repeats}
+        - in the calendar: ${uid}
+
+        ${description}
+
+        Filed by Taktus, process B-10.01 Deadline calendar, once a person confirmed it. Acting
+        on the deadline stays with a person.
+
+        deadline:${key}
+      values:
+        summary: { $from: select, $select: first.summary }
+        at: { $from: select, $select: first.at }
+        kind: { $from: select, $select: first.kind }
+        categories: { $from: select, $select: first.categories }
+        repeats: { $from: select, $select: first.repeats }
+        uid: { $from: select, $select: first.uid }
+        description: { $from: select, $select: first.description }
+        key: { $from: select, $select: first.key }
+
+  - id: file
+    method: rule
+    reason: opening the issue is an API call; the effect leaves the system, so at level 2 a person confirms it first
+    rejected:
+      - method: worker
+        why: nothing here needs a sandbox or tools
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.issues is unavailable
+      to: human
+      role: owner
+    depends_on: [select, title, compose]
+    work:
+      when:
+        - { value: { $from: select, $select: count }, not_matches: "^0$" }
+      rule: connector
+      operation: repository.issues.create
+      input:
+        title: { $from: title }
+        body: { $from: compose }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+# How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
+# every step the system to act in, what to do there, the expertise it needs, each credential by
+# its parameter and where an authorised person finds it, and how to tell that it is done.
+takeover:
+  sequence: >
+    The process runs every morning at 07:00 UTC; whoever keeps the business's deadlines starts
+    it. The steps run in order: read the calendar of deadlines for the lead time, by default the
+    next 30 days, read the repository's open issues, pick the deadline due first that is not
+    filed yet, write the issue's title and text, and open the issue once a person confirmed it.
+    One issue per run; the next run takes the next deadline. Acting on the deadline itself, a
+    tax return, a notice or a renewal, stays with a person.
+  steps:
+    read-calendar:
+      system: the business's calendar of deadlines, on its calendar server
+      do: >
+        open the calendar at the path the run was started with and list its entries of the next
+        days, as many as the lead time the run was started with: events by their start and
+        to-dos by their due date, a repeating entry once for each time it falls in that range.
+        For each, note its summary, its moment in UTC, whether it is an event or a to-do, its
+        categories, how it repeats, its identifier in the calendar and its description. Its key
+        is the identifier, an at sign and the moment. An entry whose repetition or time zone
+        cannot be read with certainty is not filed; note it apart for a person to look at.
+      expertise: reading calendar entries, their repetition rules and time zones
+      credentials:
+        - parameter: CALENDAR_TOKEN
+          where: >
+            the operator's secret store, under the parameter Calendar token of the requesting
+            identity described in CREDENTIALS.md; a person may instead sign in to the calendar
+            with their own account that may read it
+      done: every entry within the lead time is noted, and every unreadable one set apart
+    read-filed:
+      system: the repository hosting service, in the repository's issue list
+      do: >
+        list every open issue and keep their texts at hand, so that a deadline already filed is
+        recognised. Make sure every page of the list was read.
+      expertise: searching issues in the repository hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md; a person may instead sign in with
+            their own account that may read the repository's issues
+      done: every open issue has been read
+    select:
+      system: the two lists noted before
+      do: >
+        leave out every entry whose mark, the word deadline and a colon followed by the entry's
+        key, already stands in the text of an open issue. Of the rest, take the one due first.
+        If none is left, the process ends here.
+      expertise: none beyond reading the two lists
+      credentials: []
+      done: one deadline is selected, or it is clear that none is to be filed
+    title:
+      system: a text editor
+      do: >
+        only when a deadline was selected, write the title: the word Deadline, its moment, a
+        colon and its summary.
+      expertise: none
+      credentials: []
+      done: the title is written
+    compose:
+      system: a text editor
+      do: >
+        only when a deadline was selected, write the issue's text: that a deadline from the
+        business's calendar falls within its lead time, with its summary; when it is due in
+        UTC, its kind and categories, how it repeats and its identifier in the calendar; its
+        description; and that the issue was filed once a person confirmed it and acting on the
+        deadline stays with a person. End with the mark: deadline, a colon and the entry's key.
+      expertise: none
+      credentials: []
+      done: the issue's text is written and ends with the deadline's mark
+    file:
+      system: the repository hosting service, in the repository's issues
+      do: >
+        only when a deadline was selected and a person confirmed it, open a new issue with the
+        title and the text just written. Check first that no open issue carries the mark, so
+        that nothing is filed twice.
+      expertise: opening an issue in the repository hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md; a person may instead sign in with
+            their own account that may open issues in the repository
+      done: the issue is open with the deadline's mark, or no deadline was to be filed

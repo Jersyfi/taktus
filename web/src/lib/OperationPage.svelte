@@ -31,13 +31,6 @@
 </section>
 
 <style>
-	.eyebrow {
-		font-size: 0.75rem;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: var(--ink-3);
-		margin: 0 0 0.5rem;
-	}
 	h1 {
 		max-width: 28ch;
 		margin-bottom: 2rem;
@@ -53,16 +46,16 @@
 	.operation :global(.record) {
 		border-radius: 24px;
 		padding: 1.1rem 1.25rem 1rem;
-		background: var(--paper-2);
+		background: var(--bg-surface);
 		min-width: 0;
 		overflow-wrap: anywhere;
 	}
 	.operation :global(.record.look) {
-		box-shadow: inset 0 0 0 1.5px color-mix(in oklch, var(--alert) 55%, var(--line));
+		box-shadow: inset 0 0 0 1.5px color-mix(in oklch, var(--family-alert) 55%, var(--border-subtle));
 	}
 	.operation :global(.record.done) {
-		background: color-mix(in oklch, var(--paper-2) 45%, var(--paper));
-		color: var(--ink-2);
+		background: color-mix(in oklch, var(--bg-surface) 45%, var(--bg-canvas));
+		color: var(--text-secondary);
 	}
 	.operation :global(.record h3) {
 		font-size: 1rem;
@@ -76,7 +69,7 @@
 		font-size: 0.75rem;
 		letter-spacing: 0.04em;
 		text-transform: uppercase;
-		color: var(--ink-2);
+		color: var(--text-secondary);
 		margin: 0 0 0.4rem;
 	}
 	/* The mark's form carries the distinction: a ring is calm, a filled dot needs a look, a
@@ -90,7 +83,7 @@
 		flex: none;
 	}
 	.operation :global(.mark.look) {
-		color: var(--alert);
+		color: var(--family-alert);
 	}
 	.operation :global(.mark.look::before) {
 		background: currentColor;
@@ -109,20 +102,20 @@
 		margin: 0.5rem 0 0;
 	}
 	.operation :global(.facts dt) {
-		color: var(--ink-2);
+		color: var(--text-secondary);
 	}
 	.operation :global(.facts dd) {
 		margin: 0;
 	}
 	.operation :global(.meta) {
-		color: var(--ink-2);
+		color: var(--text-secondary);
 		font-size: 0.85rem;
 		margin: 0.15rem 0;
 	}
 	.operation :global(.id) {
-		font-family: var(--mono);
+		font-family: var(--font-mono);
 		font-size: 0.78rem;
-		color: var(--ink-3);
+		color: var(--text-subtle);
 	}
 	.operation :global(details) {
 		margin-top: 0.6rem;
@@ -132,7 +125,7 @@
 		padding-left: 1.1rem;
 	}
 	.operation :global(.empty) {
-		color: var(--ink-2);
+		color: var(--text-secondary);
 	}
 	@media (max-width: 760px) {
 		.operation :global(.records) {

@@ -19,9 +19,11 @@ from taktus.components.process.domain.model import (
     InvalidProcess,
     Process,
     ProcessVersion,
+    TakeoverTrial,
 )
 from taktus.components.process.domain.model.exactness import InvalidStatement
 from taktus.components.process.domain.service import exactness
+from taktus.components.process.domain.service.takeover import untried
 from taktus.components.reporting.domain.model import (
     DecisionFacts,
     OriginFacts,
@@ -42,7 +44,14 @@ from taktus.components.reporting.domain.model import (
     Wait,
 )
 from taktus.components.run.domain.model import WAITING, WORKING, Run, RunState, StepRun, StepState
-from taktus.ports.persistence import ProvenanceStore, Queried, Repository, Tenant, UnitOfWork
+from taktus.ports.persistence import (
+    ProvenanceStore,
+    Queried,
+    Repository,
+    Tenant,
+    TenantStore,
+    UnitOfWork,
+)
 from taktus.shared.v1 import DecisionStatus, Provenance
 
 
@@ -57,13 +66,19 @@ class RepositoryLevelRecords:
         versions: Repository[ProcessVersion],
         provenance: ProvenanceStore,
         requests: Repository[Request],
+        trials: Repository[TakeoverTrial] | None = None,
+        tenants: TenantStore | None = None,
     ) -> None:
+        self._trials = trials
+        """The trials of takeover instructions (ADR-0180 §3). None: none is recorded, and a
+        version at level 3 or 4 is untried."""
         self._work = work
         self._runs = runs
         self._processes = processes
         self._versions = versions
         self._provenance = provenance
         self._requests = requests
+        self._tenants = tenants
 
     async def run(self, tenant: Tenant, run_id: str) -> RunFacts | None:
         async with self._work.transaction(tenant):
@@ -115,6 +130,7 @@ class RepositoryLevelRecords:
             if found is None:
                 return None
             runs = await self._runs.having(tenant, "process_version", found.ref)
+            trials = await self._tried(tenant)
         return ProcessFacts(
             id=found.process_id,
             tenant=tenant,
@@ -153,7 +169,11 @@ class RepositoryLevelRecords:
                 for r in runs
             ),
             exactness=statement_of(found),
+            untried=untried(found.autonomy.level, trials, found.ref),
         )
+
+    async def _tried(self, tenant: Tenant) -> list[TakeoverTrial]:
+        return [] if self._trials is None else list(await self._trials.list(tenant))
 
     async def overview(self, tenant: Tenant) -> OverviewFacts:
         async with self._work.transaction(tenant):
@@ -161,6 +181,8 @@ class RepositoryLevelRecords:
             versions = {v.ref: v for v in await self._versions.list(tenant)}
             counted = await self._runs.count(tenant, ("process_version", "state"))
             running = await self._runs.having(tenant, "step_runs.state", str(StepState.RUNNING))
+            trials = await self._tried(tenant)
+            entry = None if self._tenants is None else await self._tenants.get(tenant)
         summaries = []
         for process in processes:
             active = versions.get(f"{process.id}@{process.active_version}")
@@ -182,10 +204,13 @@ class RepositoryLevelRecords:
                         for step in active.steps
                     ),
                     exactness=statement_of(active),
+                    untried=active is not None
+                    and untried(active.autonomy.level, trials, active.ref),
                 )
             )
         return OverviewFacts(
             tenant=tenant,
+            tenant_name=None if entry is None else entry.name,
             processes=tuple(summaries),
             counts=counts_of(tenant, counted),
             runs=tuple(activity_of(run) for run in running),

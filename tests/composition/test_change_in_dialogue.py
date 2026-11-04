@@ -22,6 +22,7 @@ from fakes import FakeIdentifiers, FakeWorker
 from fakes.identity import directory
 from fakes.maturity import VERIFIED
 from fakes.model import FakeModel
+from fakes.takeover import instructed
 
 from taktus.adapters.driven.connectors.loopback import LoopbackConnector
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
@@ -79,13 +80,15 @@ def target(version: str, *, second: bool = False) -> dict[str, Any]:
     ]
     if second:
         steps.append({**steps[0], "id": "two", "depends_on": ["one"]})
-    return {
-        "id": "daily",
-        "version": version,
-        "name": "Daily",
-        "autonomy": {"level": 2, "reason": "a test", "toward_next": "nothing"},
-        "steps": steps,
-    }
+    return instructed(
+        {
+            "id": "daily",
+            "version": version,
+            "name": "Daily",
+            "autonomy": {"level": 2, "reason": "a test", "toward_next": "nothing"},
+            "steps": steps,
+        }
+    )
 
 
 class World:

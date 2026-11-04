@@ -1,0 +1,21 @@
+{
+  "credentials": {
+    "actions": "CALENDAR_TOKEN"
+  },
+  "read": {
+    "operation": "calendar.events.list",
+    "input": {
+      "path": "/calendars/deadlines.ics",
+      "from": "2026-11-01",
+      "days": 90
+    }
+  },
+  "writes": [],
+  "invalid": {
+    "operation": "calendar.events.list",
+    "input": {
+      "path": "https://elsewhere.example/deadlines.ics"
+    },
+    "expected_cause": "invalid"
+  }
+}

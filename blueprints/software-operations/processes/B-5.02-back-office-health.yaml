@@ -1,0 +1,189 @@
+# B-5.02 Back-office health — UC-03 §4.5: the back office's sign-in, API, notifications and
+# background jobs are asked through the capability `check.http` every five minutes; two
+# failures in a row are an incident (UC-4.16, UC-6.13).
+#
+# It is B-1.06's check, pointed at the back office: the tenant's connector serving
+# `check.http` for this process is configured with the back office's address, and `path` names
+# the part checked. Reading the back office's error log is not built: no connector serves a
+# log (UC-03 §8).
+#
+# The judgement is the tenant's corridor on the step `failures` and its `count`: how many of the
+# two checks failed. A person of the tenant configures it once:
+#
+#     uv run taktusctl signal configure availability.back_office --process b-5-02 \
+#         --step failures --select count --bounds fixed --direction above \
+#         --yellow 0.5 --red 1.5 --fresh 15m \
+#         --role <role> --case <where an outage is worked>
+#
+# One failed check is yellow and waits for the daily report; two in a row are red and raise an
+# incident at once (ADR-0109 §4, §5). Telling customers about a long outage stays with a person
+# (UC-03 §4.1).
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-5.02-back-office-health.yaml \
+#         --input path=/health --input max_duration_ms=5000
+#
+# Switching it off (`taktusctl deactivate --process b-5-02`) changes nothing at the service: it only asks.
+
+id: b-5-02
+version: "1"
+name: B-5.02 Back-office health
+autonomy:
+  level: 1
+  reason: >
+    the process only asks the service and counts the checks that failed by a fixed rule;
+    nothing leaves the system, so at level 1 every step runs and none acts; the judgement is
+    the tenant's corridor, and a red value reaches a person at once as an incident; it starts
+    at level 1, observing, as UC-03 starts every process at level 1 or 2 when its stage opens
+  toward_next: >
+    stage 1 of the tenant's plan open, and four weeks of runs whose incidents a person checked
+    against the service and found right, with no missed run; then Taktus proposes level 2, and level 3
+    after it, its target in UC-03 (UC-7.1, UC-9.6)
+author: the repository
+reason: the back office checked every five minutes without a person watching (UC-03 B-5.02)
+
+# Every five minutes, through the elected scheduler (ADR-0035).
+triggers:
+  - schedule: "*/5 * * * *"
+    inputs:
+      path: /health
+      max_duration_ms: 5000
+
+inputs:
+  path:
+    description: the path under the back office's address that answers when it works
+    example: /health
+  max_duration_ms:
+    description: the longest an answer may take, in milliseconds, before the check counts as failed
+    example: 5000
+
+limits:
+  quota: { units: 4 }
+
+steps:
+  - id: check-first
+    method: rule
+    reason: the service is asked as a user would ask it, and its answer is recorded as it came
+    rejected:
+      - method: llm
+        why: a request and its status need no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving check.http is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: check.http.run
+      input:
+        path: { $input: path }
+        expect:
+          status: 200
+          max_duration_ms: { $input: max_duration_ms }
+      credentials:
+        - { name: CHECK_TOKEN, injected_as: env }
+
+  - id: pause
+    method: wait
+    reason: a second check a minute later tells a blip from an outage; nothing is judged meanwhile
+    rejected: []
+    depends_on: [check-first]
+    work:
+      seconds: 60
+
+  - id: check-second
+    method: rule
+    reason: the service is asked as a user would ask it, and its answer is recorded as it came
+    rejected:
+      - method: llm
+        why: a request and its status need no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving check.http is unavailable
+      to: human
+      role: owner
+    depends_on: [pause]
+    work:
+      rule: connector
+      operation: check.http.run
+      input:
+        path: { $input: path }
+        expect:
+          status: 200
+          max_duration_ms: { $input: max_duration_ms }
+      credentials:
+        - { name: CHECK_TOKEN, injected_as: env }
+
+  - id: failures
+    method: rule
+    reason: >
+      how many of the two checks failed is a count over the connector's own verdicts, which
+      the corridor judges; two failures in a row tell an outage from a blip
+    rejected:
+      - method: llm
+        why: a count needs no judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the checks that failed }
+    depends_on: [check-first, check-second]
+    work:
+      rule: filter
+      items:
+        - { $from: check-first, $select: output }
+        - { $from: check-second, $select: output }
+      all:
+        - { field: outcome, equals: failed }
+
+takeover:
+  sequence: >
+    The process runs every five minutes, on its own schedule; whoever watches the back office
+    takes it over. The steps run in order: ask the back office's health path once, wait one
+    minute, ask it again, and count how many of the two checks failed. A check fails when the
+    answer is not status 200 or takes longer than the limit, 5000 milliseconds unless the run
+    names another. One failure is yellow and waits for the daily report; two failures in a row
+    are red, an outage, and are reported at once to the role the tenant named. Telling customers
+    about a long outage stays with a person.
+  steps:
+    check-first:
+      system: a shell or a browser, against the back office's address
+      do: >
+        request the health path the run was started with, by default the path /health, under
+        the back office's address, sending the check token as a bearer token. Note the status
+        and how long the answer took. The check failed if the status is not 200 or the answer
+        took longer than the limit
+      expertise: sending an HTTP request and reading its status and duration
+      credentials:
+        - parameter: CHECK_TOKEN
+          where: >
+            the operator's secret store, under the parameter Check token of the requesting
+            identity described in CREDENTIALS.md
+      done: the first check is noted as passed or failed, with its status and duration
+    pause:
+      system: none
+      do: wait one minute after the first check; nothing is judged meanwhile
+      expertise: none
+      credentials: []
+      done: one minute has passed since the first check
+    check-second:
+      system: a shell or a browser, against the back office's address
+      do: >
+        request the same health path again, the same way, and note the status and how long the
+        answer took; the check failed if the status is not 200 or the answer took longer than
+        the limit
+      expertise: sending an HTTP request and reading its status and duration
+      credentials:
+        - parameter: CHECK_TOKEN
+          where: >
+            the operator's secret store, under the parameter Check token of the requesting
+            identity described in CREDENTIALS.md
+      done: the second check is noted as passed or failed, with its status and duration
+    failures:
+      system: the two noted checks
+      do: >
+        count how many of the two checks failed. Zero is green. One is yellow: note it for the
+        daily report. Two is red: report the outage at once to the role the tenant named, where
+        an outage is worked
+      expertise: none
+      credentials: []
+      done: the count is written down, and a count of two has been reported as an outage

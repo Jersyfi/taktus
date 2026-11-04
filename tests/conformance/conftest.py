@@ -12,6 +12,7 @@ here, whose private half the connector reads from a file and signs with.
 
 from __future__ import annotations
 
+import base64
 import functools
 import hashlib
 import json
@@ -877,7 +878,12 @@ def start_check_connector(tmp_path: Path) -> Iterator[StartConnector]:
 VENDOR = ROOT / "tests" / "conformance" / "vendor"
 VENDOR_TIME = ROOT / "tests" / "fakes" / "vendor_time_server.py"
 VENDOR_NOTES = ROOT / "tests" / "fakes" / "vendor_notes_server.py"
+ENTITLEMENTS = ROOT / "tests" / "fakes" / "entitlement_server.py"
+ENTITLEMENTS_MANIFEST = (
+    ROOT / "blueprints" / "software-operations" / "connectors" / "entitlements.manifest.json"
+)
 VENDOR_ACTIONS = "VENDOR_TOKEN"
+VENDOR_INTAKE = "VENDOR_INTAKE_SECRET"
 
 
 def _wait_listening(process: subprocess.Popen[bytes], port: int, log: Path, what: str) -> None:
@@ -900,8 +906,9 @@ def start_vendor_connector(tmp_path: Path) -> Iterator[StartConnector]:
 
     `server="time"` is the MCP project's reference time server, which admits anyone and only
     reads; `server="notes"` the stand-in with tools that write, which admits only the random
-    token the connector reads under `VENDOR_TOKEN`. `manifest` is a manifest file, or None for
-    a server served without one (with `capability`)."""
+    token the connector reads under `VENDOR_TOKEN`; `server="entitlements"` the stand-in of a
+    product's entitlements, which admits only the one under `ENTITLEMENTS_TOKEN` (ADR-0199).
+    `manifest` is a manifest file, or None for a server served without one (with `capability`)."""
     started: list[subprocess.Popen[bytes]] = []
 
     def start(
@@ -912,19 +919,25 @@ def start_vendor_connector(tmp_path: Path) -> Iterator[StartConnector]:
         scenario: Path | None = None,
         fault: str | None = None,
         admits: str = "the token",
+        intake: bool = False,
     ) -> RunningConnector:
         """`admits`: whom the stand-in admits — `the token` the connector reads, `anyone`, or
-        `another token` than that."""
+        `another token` than that. `intake`: the connector also takes the vendor's events as
+        signed webhooks under the open specification, with a secret of its own (ADR-0186)."""
         token = "vtk-" + secrets.token_hex(12)
         name = f"{server}-{'manifest' if manifest else 'bare'}-{fault or 'honest'}-{admits[:5]}"
+        name += "-intake" if intake else ""
+        values = {"ENTITLEMENTS_TOKEN" if server == "entitlements" else VENDOR_ACTIONS: token}
+        if intake:
+            values[VENDOR_INTAKE] = "whsec_" + base64.b64encode(secrets.token_bytes(32)).decode()
         port = free_port()
         service_url = f"http://127.0.0.1:{port}"
         log = tmp_path / f"vendor-{name}.log"
         vendor_env = {**_clean_environment()}
-        if server == "notes" and admits != "anyone":
+        if server in ("notes", "entitlements") and admits != "anyone":
             admitted = token if admits == "the token" else "other-" + secrets.token_hex(12)
             vendor_env["FAKE_VENDOR_TOKENS"] = admitted
-        script = VENDOR_NOTES if server == "notes" else VENDOR_TIME
+        script = {"notes": VENDOR_NOTES, "entitlements": ENTITLEMENTS}.get(server, VENDOR_TIME)
         with log.open("wb") as handle:
             process = subprocess.Popen(  # noqa: S603 — a script of the gate, fixed arguments
                 [sys.executable, str(script), "--host", LAUNCH.fake_host, "--port", str(port)],
@@ -934,8 +947,14 @@ def start_vendor_connector(tmp_path: Path) -> Iterator[StartConnector]:
             )
         started.append(process)
         _wait_listening(process, port, log, f"vendor's {server} server")
-        env = {**_clean_environment(), **_secret_files(tmp_path, name, {VENDOR_ACTIONS: token})}
+        env = {**_clean_environment(), **_secret_files(tmp_path, name, values)}
         args = ["--upstream", f"{service_url}/mcp"]
+        if intake:
+            args += [
+                "--intake-channel", "channel.notes",
+                "--intake-events", "note.created,note.deleted",
+                "--intake-sender", "notes-service",
+            ]  # fmt: skip
         if manifest is not None:
             args += ["--manifest", str(manifest)]
         else:
@@ -947,7 +966,7 @@ def start_vendor_connector(tmp_path: Path) -> Iterator[StartConnector]:
             f"{endpoint}/mcp",
             connector_log,
             service_url,
-            {VENDOR_ACTIONS: token},
+            values,
             started[-1],
             scenario=scenario or VENDOR / f"{server}-scenario.json",
         )
@@ -1106,9 +1125,12 @@ BUSINESS: dict[str, BusinessConnector] = {
         "anthropic", FAKES / "cost_report_service.py", "MODEL_COSTS_TOKEN"
     ),
     "aws": BusinessConnector("aws", FAKES / "cloud_billing_service.py", "BILLING_KEY", pair=True),
+    "calendar": BusinessConnector("calendar", FAKES / "calendar_service.py", "CALENDAR_TOKEN"),
     "einvoice": BusinessConnector(
         "einvoice", FAKES / "document_inbox_service.py", "DOCUMENTS_TOKEN"
     ),
+    "expiry": BusinessConnector("expiry", FAKES / "expiry_service.py", "EXPIRY_TOKEN"),
+    "kubernetes": BusinessConnector("kubernetes", FAKES / "workload_cluster.py", "WORKLOADS_TOKEN"),
     "openai": BusinessConnector("openai", FAKES / "model_costs_service.py", "MODEL_COSTS_TOKEN"),
     "sentry": BusinessConnector(
         "sentry", FAKES / "error_tracking_service.py", "ERRORS_TOKEN", ("--organization", "example")

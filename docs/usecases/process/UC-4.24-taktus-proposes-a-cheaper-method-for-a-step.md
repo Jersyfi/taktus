@@ -7,7 +7,7 @@ serves: [P2, P8, P10, P14]
 state: building
 version: 0.4.0
 tests: [tests/components/run/test_maturation.py::test_a_steps_measures_are_read_back_from_the_run_history_it_wrote, tests/components/run/test_maturation.py::test_a_step_without_a_price_is_measured_and_its_cost_is_unpriced, tests/components/run/test_maturation.py::test_a_step_with_500_cases_and_20_in_every_class_is_a_candidate, tests/components/run/test_maturation.py::test_499_cases_or_one_class_at_19_is_no_candidate, tests/components/run/test_maturation.py::test_more_than_50_classes_another_method_or_no_numbers_is_no_candidate, tests/components/run/test_maturation.py::test_the_held_out_cases_are_a_fifth_of_every_class_drawn_the_same_every_time, tests/components/run/test_maturation.py::test_a_proposal_needs_95_percent_a_lower_cost_and_the_same_model_twice, tests/components/run/test_maturation.py::test_a_candidate_is_trained_tried_and_proposed_to_a_person, tests/components/run/test_maturation.py::test_asked_as_a_change_within_the_frame_it_is_proposed_and_nothing_is_registered, tests/components/run/test_maturation.py::test_an_agreement_of_94_percent_or_an_equal_cost_proposes_nothing, tests/integration/test_maturation_command.py::test_the_measures_are_read_back_and_a_correction_counts_without_naming_anyone, tests/composition/test_method_move.py::test_accepting_the_proposal_registers_a_version_with_the_step_on_the_trained_model, tests/composition/test_method_move.py::test_nothing_is_moved_before_a_person_accepts_or_when_the_answer_keeps_the_step, tests/composition/test_method_move.py::test_a_version_without_the_models_evaluation_is_refused, tests/composition/test_method_move.py::test_a_sure_case_is_answered_by_the_model_and_an_unsure_one_by_the_llm, tests/composition/test_method_move.py::test_over_its_first_100_cases_a_move_is_measured_beside_the_version_it_replaced, tests/composition/test_method_move.py::test_a_move_that_is_not_cheaper_is_reported_with_a_proposal_to_roll_back, tests/composition/test_method_move.py::test_rolling_back_makes_the_predecessor_current_again_as_a_new_version, tests/workers/test_maturation_on_the_bench.py::test_a_step_on_a_language_model_is_proposed_a_model_the_bench_trained, tests/workers/test_maturation_on_the_bench.py::test_the_accepted_move_runs_on_the_bench_reproducibly_and_measurably_cheaper]
-adrs: {ADR-0004: ffdb1f1537f5, ADR-0026: ccc4bd1f5423, ADR-0076: 0fce968725a4, ADR-0084: a3b606b10fa0, ADR-0114: c9fd2e73c6ba}
+adrs: {ADR-0004: ffdb1f1537f5, ADR-0026: ccc4bd1f5423, ADR-0076: 0fce968725a4, ADR-0084: b792ae358b77, ADR-0114: 75a031083f19, ADR-0183: db4da8845438}
 supersedes: null
 ---
 
@@ -105,5 +105,6 @@ new version. Against the ML bench itself, a step on a language model is proposed
 bench trained, and the accepted move runs reproducibly and measurably cheaper.
 
 Not yet: a move on a step of a process Taktus runs. Every language-model step of Taktus's own
-bundles reads text, and a candidate learns from numbers only until embeddings exist (#210); the
-roadmap's `0.4.0` criterion waits for it (#218).
+bundles reads text; since ADR-0183 a candidate learns from text through the bench's embedding
+(UC-4.25), so the roadmap's `0.4.0` criterion waits only for such a step on Taktus's own instance
+to reach the floor (#218).

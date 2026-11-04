@@ -81,16 +81,8 @@
 <style>
 	.status,
 	.hint {
-		color: var(--muted);
+		color: var(--text-secondary);
 		font-size: 0.9rem;
-	}
-	.eyebrow {
-		font-size: 0.75rem;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: var(--ink-3);
-		margin: 0 0 0.5rem;
-		flex-basis: 100%;
 	}
 	.key {
 		display: flex;
@@ -106,10 +98,6 @@
 		flex: 1 1 16rem;
 	}
 	input,
-	button {
-		font: inherit;
-		padding: 0.4rem 0.6rem;
-	}
 	.hint {
 		flex-basis: 100%;
 		margin: 0;

@@ -21,6 +21,10 @@ class CheckKind(StrEnum):
     SAMPLING = "sampling"
     RECOMPUTATION = "recomputation"
     """The row DEC-0173 added."""
+    COMPLETENESS = "completeness"
+    """The parts number what another source holds: a row DEC-0223 added."""
+    SOURCE_SHAPE = "source_shape"
+    """What the step read has the shape it was written for: a row DEC-0223 added."""
 
 
 class Reference(StrEnum):
@@ -38,6 +42,8 @@ PARAMETERS: dict[CheckKind, tuple[frozenset[str], frozenset[str]]] = {
     CheckKind.APPROVAL: (frozenset({"threshold", "role"}), frozenset({"threshold", "role"})),
     CheckKind.SAMPLING: (frozenset({"share", "role"}), frozenset({"share", "role"})),
     CheckKind.RECOMPUTATION: (frozenset(), frozenset()),
+    CheckKind.COMPLETENESS: (frozenset({"count", "source"}), frozenset({"count", "source"})),
+    CheckKind.SOURCE_SHAPE: (frozenset(), frozenset({"columns", "pattern"})),
 }
 """What each row of the catalogue needs, as Check.json's `allOf` states it."""
 
@@ -54,6 +60,8 @@ class Check(Value):
     threshold: int | float | None = None
     share: float | None = Field(default=None, gt=0, le=1)
     role: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9-]*$")
+    count: str | None = Field(default=None, min_length=1)
+    columns: tuple[str, ...] | None = Field(default=None, min_length=1)
 
     @model_validator(mode="after")
     def _parameters_of_its_row(self) -> Check:
@@ -72,13 +80,19 @@ class Check(Value):
             findings.append(f"a {self.kind} check takes no {', '.join(foreign)}")
         if self.kind is CheckKind.BOUNDS and not given:
             findings.append("a bounds check names a minimum, a maximum or a pattern")
+        if self.kind is CheckKind.SOURCE_SHAPE and not given:
+            findings.append("a source_shape check names its columns or a pattern")
+        if self.columns is not None and any(not c for c in self.columns):
+            findings.append("a column of a source_shape check has a name")
         if self.minimum is not None and self.maximum is not None and self.minimum > self.maximum:
             findings.append("the minimum of a bounds check lies above its maximum")
         if self.pattern is not None:
             try:
                 re.compile(self.pattern)
             except re.error as error:
-                findings.append(f"the pattern of a bounds check is no regular expression: {error}")
+                findings.append(
+                    f"the pattern of a {self.kind} check is no regular expression: {error}"
+                )
         if findings:
             raise ValueError("; ".join(findings))
         return self

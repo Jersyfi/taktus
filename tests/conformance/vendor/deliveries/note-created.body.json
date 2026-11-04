@@ -1,0 +1,8 @@
+{
+  "type": "note.created",
+  "timestamp": "2025-12-31T23:59:58Z",
+  "data": {
+    "note": "n_0001",
+    "notebook": "nb_ops"
+  }
+}

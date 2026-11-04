@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 from fakes import FakeClock
+from fakes.takeover import instructed
 
 from governance.test_raise import PERSON, TENANT, World, bundle
 from taktus.adapters.driven.memory import MemoryLedgerStore, MemoryRepository
@@ -83,7 +84,9 @@ async def test_a_version_that_keeps_its_caps_needs_no_approval() -> None:
 def _command(
     document: dict[str, Any], *, by: str, approved_by: str | None
 ) -> RegisterProcessVersion:
-    return RegisterProcessVersion(document, tenant=TENANT, by=by, approved_by=approved_by)
+    return RegisterProcessVersion(
+        instructed(document), tenant=TENANT, by=by, approved_by=approved_by
+    )
 
 
 class Governance:

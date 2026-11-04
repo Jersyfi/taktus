@@ -3,6 +3,7 @@
 	the owner named read it; anyone else is told so.
 -->
 <script lang="ts">
+	import Unavailable from '../../lib/Unavailable.svelte';
 	import { read, surface } from '../../lib/api';
 	import BackupView from '../../lib/BackupView.svelte';
 	import SignInForm from '../../lib/SignInForm.svelte';
@@ -28,14 +29,14 @@
 {:else if found}
 	<BackupView backup={found} />
 {:else if problem}
-	<p class="status">{problem}</p>
+	<Unavailable eyebrow="Backup" {problem} />
 {:else}
 	<p class="status">Reading the backup…</p>
 {/if}
 
 <style>
 	.status {
-		color: var(--muted);
+		color: var(--text-secondary);
 		font-size: 0.9rem;
 	}
 </style>

@@ -272,8 +272,101 @@ def web_fixtures() -> str:
         "acting": acting_fixtures(at),
         "spend": spend_fixtures(),
         "views": views_fixtures(),
+        "stages": stages_fixtures(at),
     }
     return json.dumps(document, indent=2, ensure_ascii=False) + "\n"
+
+
+def stages_fixtures(at: Any) -> dict[str, Any]:
+    """What `GET /stages` answers for a plan of three stages — one open and holding, the next
+    proposed and free to open, the last waiting for it — written by the route's own functions
+    (ADR-0137, ADR-0191)."""
+    from datetime import timedelta
+
+    from taktus.adapters.driving.rest.stages import stage_document, summary
+    from taktus.components.governance.domain.model.stages import (
+        Condition,
+        ProcessEvidence,
+        Stage,
+        StageFigures,
+        StageState,
+        StageView,
+    )
+
+    first = Stage(
+        id="watch",
+        name="Watching",
+        processes={"error-rate": 3, "backups": 3},
+        condition=Condition(weeks=2, runs=10, missed=0, incidents=1),
+    )
+    second = Stage(
+        id="support",
+        name="Support answered",
+        processes={"support": 2},
+        condition=Condition(weeks=4, runs=20, correction_rate=0.1),
+    )
+    third = Stage(
+        id="release",
+        name="Releases",
+        processes={"release": 3},
+        condition=Condition(weeks=4, runs=8, incidents=0),
+    )
+    views = [
+        StageView(
+            stage=first,
+            position=1,
+            state=StageState.HOLDING,
+            opened_at=at - timedelta(days=21),
+            holds=True,
+            figures=StageFigures(
+                since=at - timedelta(days=21),
+                until=at,
+                weeks=3.0,
+                runs=42,
+                missed=0,
+                incidents=1,
+                undecided=0,
+            ),
+            processes=(
+                ProcessEvidence(
+                    process="error-rate",
+                    version="error-rate@3",
+                    level=3,
+                    granted=3,
+                    runs=21,
+                    last_finished=at - timedelta(hours=1),
+                ),
+                ProcessEvidence(
+                    process="backups",
+                    version="backups@1",
+                    level=3,
+                    granted=3,
+                    runs=21,
+                    incidents=1,
+                    last_finished=at - timedelta(hours=6),
+                ),
+            ),
+        ),
+        StageView(
+            stage=second,
+            position=2,
+            state=StageState.CLOSED,
+            holds=False,
+            proposed=True,
+            processes=(
+                ProcessEvidence(process="support", version="support@2", level=2, granted=2),
+            ),
+        ),
+        StageView(
+            stage=third,
+            position=3,
+            state=StageState.CLOSED,
+            holds=False,
+            missing=("stage 'support' before it is not open",),
+            processes=(ProcessEvidence(process="release", granted=3),),
+        ),
+    ]
+    return {"summary": summary(views), "stages": [stage_document(v) for v in views]}
 
 
 def views_fixtures() -> dict[str, Any]:

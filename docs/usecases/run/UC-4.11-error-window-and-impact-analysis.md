@@ -6,8 +6,8 @@ epic: E4
 serves: [P6, P8, P12]
 state: building
 version: 0.5.0
-tests: [tests/governance/test_result_defects.py::test_the_window_starts_after_the_change_and_ends_at_the_newest_result, tests/governance/test_result_defects.py::test_every_derived_result_across_two_processes_is_listed_with_its_class, tests/governance/test_result_defects.py::test_a_result_delivered_through_a_channel_is_marked_as_having_left, tests/governance/test_result_defects.py::test_a_window_without_a_found_cause_says_so_and_is_unbounded_at_the_first_record, tests/governance/test_result_defects.py::test_a_result_older_than_the_chain_is_not_reconstructed, tests/governance/test_result_defects.py::test_the_analysis_changes_nothing]
-adrs: {ADR-0014: 6611f7833deb, ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0153: 1f4e8c44971d}
+tests: [tests/governance/test_result_defects.py::test_the_window_starts_after_the_change_and_ends_at_the_newest_result, tests/governance/test_result_defects.py::test_every_derived_result_across_two_processes_is_listed_with_its_class, tests/governance/test_result_defects.py::test_a_result_delivered_through_a_channel_is_marked_as_having_left, tests/governance/test_result_defects.py::test_a_window_without_a_found_cause_says_so_and_is_unbounded_at_the_first_record, tests/governance/test_result_defects.py::test_a_result_older_than_the_chain_is_not_reconstructed, tests/governance/test_result_defects.py::test_the_analysis_changes_nothing, tests/composition/test_defect_watch.py::test_a_sample_judged_wrong_is_raised_by_itself_and_one_judged_right_is_not]
+adrs: {ADR-0014: 6611f7833deb, ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0153: f720e5930f42, ADR-0179: b70d264ab655}
 supersedes: null
 ---
 
@@ -64,11 +64,12 @@ version of the definition has this use case.
 
 ## 5. What is proven so far
 
-A result reported wrong — corrected by a person, or a sample judged wrong — is analysed over the
-provenance chain (ADR-0153). A change in how the step produced starts the window, and the newest
-result ends it; every derived result across processes is listed with its class and the steps
-that read it; a result delivered through a channel is marked as having left. A window without a
-found cause says so and is unbounded at the first record; a result older than the chain is not
-reconstructed; the analysis changes nothing — by the named tests. Not built: a suspect mark from
-a check of UC-4.10 starting the analysis by itself (DEC-0223), and a cause in the content of a
-source rather than in how the step produced.
+A result reported wrong — corrected by a person, a sample judged wrong, or a result a check
+marked suspect when it was applied again — is analysed over the provenance chain (ADR-0153,
+ADR-0179). Each of the three starts its analysis by itself. A change in how the step produced
+starts the window, and the newest result ends it; every derived result across processes is listed
+with its class and the steps that read it; a result delivered through a channel is marked as having
+left. A window without a found cause says so and is unbounded at the first record; a result older
+than the chain is not reconstructed; the analysis changes nothing — by the named tests. Not built: a
+cause in the content of a source rather than in how the step produced; the window's start found by
+running the check again over the recorded results.

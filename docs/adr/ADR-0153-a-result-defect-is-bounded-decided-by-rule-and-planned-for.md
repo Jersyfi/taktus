@@ -87,6 +87,24 @@ decision and the plan; `taktusctl defect raise` raises the incident as well.
 - `tests/governance/test_result_defects.py` holds the analysis, the rule, the plan and the
   incident to UC-4.11, UC-4.12, UC-6.8 and ADR-0023.
 
+## Amendment — a correction is assessed by itself (2026-11-04)
+
+ADR-0184. The scheduler raises a result defect for every correction (`step.corrected`) no
+result defect answers yet, every five minutes, as `taktusctl defect raise` would. "No assessment
+starts by itself" below no longer holds for a correction; it still holds for a sample judged
+wrong. A raised defect counts in the quality history a raise of the level reads.
+
+## Amendment — found again, remedied by the engine, delivered (2026-11-04)
+
+ADR-0179. A check that reads a source is applied again once a day to the results of the last
+thirty days, and one that fails marks its result suspect (`check.suspect`). A sample judged wrong
+and a suspect mark are assessed by themselves, as a correction is. The plan runs as a remediation
+run of the wrong run, which halts with a request of class `correction` before every step that
+acts outward. The incident is delivered through the connector that serves `repository.issues`,
+with its situation package. Below, "no engine executes it", "no request of class `correction` is
+raised by it", "no assessment starts by itself" and "the incident is not delivered" no longer
+hold, within the bounds ADR-0179 states.
+
 ## Where this promise ends
 
 The analysis reads what the chain recorded; it cannot bound a result produced before it, and

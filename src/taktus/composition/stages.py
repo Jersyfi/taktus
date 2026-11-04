@@ -5,9 +5,9 @@ because components never import each other:
 
 - **the level a process runs at now**: its active version, read from the process component,
   lowered where a level fell by rule (ADR-0110);
-- **takeover instructions**: no process version carries them yet (UC-6.3), so every process
-  lacks them, and no stage opens on an instance until they exist. This keeps UC-9.6's rule
-  strictly;
+- **takeover instructions**: the active version's (UC-6.3, ADR-0180 §6). A process lacks them
+  when it has no active version, or when its active version was stored before they were
+  required and carries none;
 - **whether a name is a person**: the identity component;
 - **the reports**: the tenant's owner-facing channel (ADR-0045), when it carries the plan's
   responsible role. A report that cannot be raised is logged; the ledger and the view hold
@@ -91,14 +91,34 @@ class LevelsOfTheProcess:
         return RunningLevel(process_version=version.ref, level=level)
 
 
-class NoTakeoverInstructions:
-    """Governance's port `TakeoverInstructions` while no version carries them (UC-6.3)."""
+class InstructionsOfTheVersion:
+    """Governance's port `TakeoverInstructions`, answered from the active version (ADR-0180
+    §6). Registration refuses a version without them, so a version that has them is current
+    with its steps."""
+
+    def __init__(
+        self, processes: Repository[Process], versions: Repository[ProcessVersion], work: UnitOfWork
+    ) -> None:
+        self._processes = processes
+        self._versions = versions
+        self._work = work
 
     async def lacking(self, tenant: Tenant, process_id: str) -> str | None:
-        return (
-            "no process version carries takeover instructions yet (UC-6.3); a stage that adds "
-            f"{process_id} opens once its active version does"
-        )
+        async with self._work.transaction(tenant):
+            process = await self._processes.get(tenant, process_id)
+            version = (
+                None
+                if process is None or process.active_version is None
+                else await self._versions.get(tenant, f"{process_id}@{process.active_version}")
+            )
+        if version is None:
+            return f"{process_id} has no active version"
+        if version.takeover is None:
+            return (
+                f"its active version {version.ref} carries no takeover instructions; register a "
+                "version that does"
+            )
+        return None
 
 
 class StageReportsOfTheChannel:
@@ -249,7 +269,7 @@ def stage_wiring(
         work,
         clock,
         levels=LevelsOfTheProcess(of(Process), of(ProcessVersion), work, corrections),
-        instructions=NoTakeoverInstructions(),
+        instructions=InstructionsOfTheVersion(of(Process), of(ProcessVersion), work),
         identities=identities,
         reports=StageReportsOfTheChannel(channel, raising, clock),
     )

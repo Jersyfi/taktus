@@ -1427,3 +1427,61 @@ def test_the_s3_store_is_configured_and_its_credential_mounted_as_files() -> Non
     ]
     assert default["data"]["TAKTUS_OBJECT_STORE"] == "filesystem"
     assert "TAKTUS_OBJECT_STORE_ENDPOINT" not in default["data"]
+
+
+WIKI = (
+    "connectors.others[0].name=knowledge",
+    "connectors.others[0].capability=knowledge.pages",
+    "connectors.others[0].connector=bookstack",
+    "connectors.others[0].port=9102",
+    "connectors.others[0].args={--target,https://wiki.example.invalid}",
+    "connectors.others[0].credentials[0].name=KNOWLEDGE_TOKEN",
+    "connectors.others[0].credentials[0].secret=taktus-knowledge",
+    "connectors.others[0].credentials[0].key=token",
+)
+
+
+def test_the_wiki_connector_deploys_so_that_the_guides_reach_the_wiki() -> None:
+    """S-05 publishes the guides into the wiki once the chart deploys the wiki connector (#259,
+    UC-13.6): a deployment of its own from its own image, its address the operator's, its token
+    a mounted file, reached from the roles alone, and `knowledge.pages` in TAKTUS_CONNECTORS —
+    which the instance resolves before the directory it serves itself."""
+    documents = render(*WIKI)
+    wiki = _component(documents, "Deployment", "connector-knowledge")
+    spec = wiki["spec"]["template"]["spec"]
+    [container] = spec["containers"]
+    assert container["image"] == "taktus-connector-bookstack:0.1.0"
+    assert container["args"][-2:] == ["--target", "https://wiki.example.invalid"]
+    assert container["env"] == [
+        {
+            "name": "TAKTUS_CREDENTIAL_KNOWLEDGE_TOKEN_FILE",
+            "value": "/run/secrets/taktus/knowledge-token/token",
+        }
+    ]
+    [volume] = [v for v in spec["volumes"] if "secret" in v]
+    assert volume["secret"]["secretName"] == "taktus-knowledge"
+    assert spec["automountServiceAccountToken"] is False
+    [config] = of_kind(documents, "ConfigMap")
+    entries = config["data"]["TAKTUS_CONNECTORS"].split(",")
+    assert "knowledge.pages=http://taktus-connector-knowledge:9102/mcp" in entries
+    [policy] = [
+        d
+        for d in of_kind(documents, "NetworkPolicy")
+        if d["metadata"]["name"] == wiki["metadata"]["name"]
+    ]
+    [allowed] = policy["spec"]["ingress"]
+    [peer] = allowed["from"]
+    assert peer["podSelector"]["matchLabels"]["app.kubernetes.io/component"] == "control-plane"
+    # The wiki's address is the operator's, never the chart's: its defaults name none.
+    values = (CHART / "values.yaml").read_text(encoding="utf-8")
+    assert "wiki.example" not in values and "--target" not in values.split("others:")[1]
+
+
+def test_without_the_wiki_connector_the_guides_go_to_the_directory() -> None:
+    """Without the entry nothing of the wiki renders, and the directory the operator names in
+    `env` serves `knowledge.pages` inside the instance, as before (#259)."""
+    documents = render("env.TAKTUS_KNOWLEDGE_DIRECTORY=/var/lib/taktus/guides")
+    assert not [d for d in documents if "knowledge" in d["metadata"]["name"]]
+    [config] = of_kind(documents, "ConfigMap")
+    assert "knowledge.pages" not in config["data"].get("TAKTUS_CONNECTORS", "")
+    assert config["data"]["TAKTUS_KNOWLEDGE_DIRECTORY"] == "/var/lib/taktus/guides"

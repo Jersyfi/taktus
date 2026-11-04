@@ -100,9 +100,14 @@ from taktus.components.governance.application.service import (
     ExpectedRuns,
     ReportCapacity,
     ReportCapacityHandler,
+    ResultDefects,
     Stages,
 )
-from taktus.components.governance.domain.model import Incident, WatchConfiguration
+from taktus.components.governance.domain.model import (
+    AnchorConfiguration,
+    Incident,
+    WatchConfiguration,
+)
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.identity.domain.model import (
     BrowserSession,
@@ -119,6 +124,7 @@ from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
 from taktus.components.process.application.service.streams import ValueStreams
+from taktus.components.process.application.service.takeover import TakeoverTrials
 from taktus.components.process.application.service.triggers import TriggersHandler
 from taktus.components.process.domain.model import (
     CorrectedCase,
@@ -126,6 +132,7 @@ from taktus.components.process.domain.model import (
     Process,
     ProcessVersion,
     Proposal,
+    TakeoverTrial,
     TriggerState,
     ValueStream,
 )
@@ -169,6 +176,13 @@ from taktus.composition.change_in_channel import ChangeInChannel
 from taktus.composition.conformance import InstanceSuites, worker_suites
 from taktus.composition.deadlines import Deadlines
 from taktus.composition.decisions import DecisionWiring, decision_wiring
+from taktus.composition.defects import (
+    DefectWatch,
+    IncidentDelivery,
+    RecheckWatch,
+    Remedies,
+    defects_tick,
+)
 from taktus.composition.evaluations import Evaluations, evaluations_tick, outward_by
 from taktus.composition.execution import (
     connector_pool,
@@ -227,7 +241,7 @@ from taktus.composition.stops import StopsConfirmed
 from taktus.composition.streams import StreamReads
 from taktus.composition.takeover_in_channel import TakeoverInChannel
 from taktus.composition.traces import traces_tick
-from taktus.composition.trials import Trials
+from taktus.composition.trials import Trials, trials_tick
 from taktus.composition.triggers import Triggers
 from taktus.ports.clock import Clock
 from taktus.ports.configuration import Configuration, ConfigurationError, Secret
@@ -286,6 +300,14 @@ class Wired:
     stops: StopsConfirmed
     """The stops of adapters the scheduler confirms on every tick while it leads, once each
     holds (ADR-0138)."""
+    defects: DefectWatch
+    """Every result found wrong nobody assessed, raised as a result defect and its plan started
+    by the scheduler (ADR-0184, ADR-0179)."""
+    delivery: IncidentDelivery
+    """Every result defect delivered into the tracking system, where a connector serves it
+    (ADR-0179 §4)."""
+    rechecks: RecheckWatch
+    """The checks that read a source, applied again once a day (ADR-0179 §1)."""
     stages: Stages
     """A tenant's introduction in stages, looked at by the scheduler once an hour while it
     leads (ADR-0137)."""
@@ -346,6 +368,8 @@ class Wired:
     runner: Runner | None = None
     skills: SkillLifecycle | None = None
     """The skill lifecycle the scheduler looks at once a minute (ADR-0162)."""
+    instructions: TakeoverTrials | None = None
+    """A process's takeover instructions and the trials of them (ADR-0180)."""
     agents: SharedAgents | None = None
     """Shared agents with role profiles (ADR-0163)."""
     connected: ConnectedHost | None = None
@@ -382,6 +406,13 @@ class Wired:
     def takeovers(self) -> RunEngine:
         """A running step taken over and handed back, through the engine (ADR-0128)."""
         return self.engine
+
+    @property
+    def takeover_instructions(self) -> TakeoverTrials:
+        """A process's takeover instructions and the trials of them (ADR-0180)."""
+        if self.instructions is None:
+            raise RuntimeError("the daemon wires the takeover instructions")
+        return self.instructions
 
     @property
     def operation(self) -> OperationRecords:
@@ -647,6 +678,8 @@ async def wire(
                     PostgresRepository(persistence, ProcessVersion),
                     provenance_store,
                     PostgresRepository(persistence, Request),
+                    PostgresRepository(persistence, TakeoverTrial),
+                    tenants=PostgresTenantStore(persistence),
                 )
             )
             owner = owner_channel_wiring(
@@ -980,6 +1013,15 @@ async def wire(
                 shape=shape,
                 shipped=load_shipped(),
             )
+            result_defects = ResultDefects(
+                provenance_store,
+                ledger,
+                PostgresRepository(persistence, Incident),
+                PostgresRepository(persistence, WatchConfiguration),
+                PostgresRepository(persistence, AnchorConfiguration),
+                persistence,
+                clock,
+            )
             wired = Wired(
                 connected=connected_host(settings.workers, configuration, relay),
                 settings=settings,
@@ -1182,8 +1224,43 @@ async def wire(
                     clock,
                 ),
                 stops=StopsConfirmed(tenants, stops),
+                defects=DefectWatch(
+                    ledger,
+                    result_defects,
+                    persistence,
+                    verdicts=decisions.requests,
+                    remedies=Remedies(
+                        engine,
+                        runs,
+                        PostgresRepository(persistence, Incident),
+                        commission,
+                        ledger,
+                        persistence,
+                        clock,
+                        ids,
+                    ),
+                ),
+                delivery=IncidentDelivery(
+                    pools.connectors,
+                    PostgresRepository(persistence, Incident),
+                    result_defects,
+                    ledger,
+                    objects,
+                    persistence,
+                ),
+                rechecks=RecheckWatch(engine, ledger, persistence, clock),
                 stages=staged.stages,
                 skills=skill_lifecycle,
+                instructions=TakeoverTrials(
+                    PostgresRepository(persistence, Process),
+                    PostgresRepository(persistence, ProcessVersion),
+                    PostgresRepository(persistence, TakeoverTrial),
+                    ledger=ledger,
+                    work=persistence,
+                    clock=clock,
+                    identifiers=ids,
+                    skills=skill_lifecycle.of_version,
+                ),
                 agents=shared_agents,
                 deadlines=Deadlines(
                     tenants=tenants,
@@ -1438,6 +1515,19 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
         # And it looks at every tenant's stages: one that holds or stopped holding, and the
         # next one proposed for a person to open (ADR-0137).
         look_at_stages = stages_tick(wired.stages, wired.tenants, wired.clock)
+        # And it assesses every correction nobody assessed, as a result defect (ADR-0184).
+        # And it applies the checks that read a source again once a day, starts each plan, and
+        # delivers each incident into the tracking system (ADR-0179).
+        assess_corrections = defects_tick(
+            wired.defects,
+            wired.tenants,
+            wired.clock,
+            delivery=wired.delivery,
+            rechecks=wired.rechecks,
+        )
+        # And it proposes a trial for every model routing switched to that was never tried
+        # (ADR-0200).
+        propose_trials = trials_tick(wired.trials, wired.tenants, wired.clock)
         # And it moves every tenant's skills through their lifecycle: drafts from recurring
         # corrections, rounds scored, approval by rule at level 4, fallback by rule (ADR-0162).
         look_at_skills = (
@@ -1460,6 +1550,8 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
             await erase_traces()
             await anchor_chains()
             await look_at_stages()
+            await assess_corrections()
+            await propose_trials()
             if look_at_skills is not None:
                 await look_at_skills()
 

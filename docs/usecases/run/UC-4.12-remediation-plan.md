@@ -6,8 +6,8 @@ epic: E4
 serves: [P6, P10, P11, P12]
 state: building
 version: 0.5.0
-tests: [tests/governance/test_result_defects.py::test_a_plan_for_results_inside_the_system_runs_without_a_halt, tests/governance/test_result_defects.py::test_every_result_that_left_gets_an_outward_correction_after_it_is_produced_again, tests/governance/test_result_defects.py::test_every_plan_step_says_what_a_person_needs_to_carry_it_out_without_taktus, tests/governance/test_result_defects.py::test_a_correction_that_cannot_be_made_at_once_says_so, tests/governance/test_anchors.py::test_a_level_four_run_halts_at_each_anchor_with_a_decision_request]
-adrs: {ADR-0008: e6a4e033abd4, ADR-0013: 1da224cdeaf4, ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0153: 1f4e8c44971d, ADR-0160: 34e64cb9d5ce}
+tests: [tests/governance/test_result_defects.py::test_a_plan_for_results_inside_the_system_runs_without_a_halt, tests/governance/test_result_defects.py::test_every_result_that_left_gets_an_outward_correction_after_it_is_produced_again, tests/governance/test_result_defects.py::test_every_plan_step_says_what_a_person_needs_to_carry_it_out_without_taktus, tests/governance/test_result_defects.py::test_a_correction_that_cannot_be_made_at_once_says_so, tests/governance/test_anchors.py::test_a_level_four_run_halts_at_each_anchor_with_a_decision_request, tests/governance/test_remediation_run.py::test_a_plan_inside_the_system_runs_again_without_a_halt_and_names_the_correction, tests/governance/test_remediation_run.py::test_an_outward_correction_halts_with_a_request_of_class_correction_at_level_4, tests/governance/test_remediation_run.py::test_without_a_correction_anchor_that_names_the_act_the_outward_step_is_not_made, tests/governance/test_remediation_run.py::test_a_result_defect_starts_its_remediation_run_once_from_the_correction]
+adrs: {ADR-0008: e6a4e033abd4, ADR-0013: 1da224cdeaf4, ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0153: f720e5930f42, ADR-0160: 34e64cb9d5ce, ADR-0179: b70d264ab655}
 supersedes: null
 ---
 
@@ -83,9 +83,13 @@ DEC-0069. No version of the definition has this use case.
 
 The plan is produced from the impact analysis (ADR-0153): a plan for results inside the system
 has no outward step; every result that left gets an outward correction after the step that
-produces it again; every step names the system, the record, the value before and after, the
-order and how to tell it is done, as text a person carries out without Taktus; a correction that
-cannot be made at once says so — by the named tests. The correction anchor halts a level-4 run
-before a step that uses the correction act, with a request of class `correction` (ADR-0160). Not
-built: the plan executed as a process by the run engine, and so the halt before its own outward
-correction, and the new provenance record of a result produced again.
+produces it again; every step names the system, the record, the value before and after, the order
+and how to tell it is done, as text a person carries out without Taktus; a correction that cannot
+be made at once says so. The plan runs on the engine as a remediation run of the wrong run
+(ADR-0179 §3): the corrected step carried with the value a person gave, every step it is not built
+on carried as it was, everything built on it run again at the process's level without a halt; every
+step that acts outward halts first with a request of class `correction`, at level 4 too, and is not
+made where no correction anchor names its act. The steps run again get provenance records of their
+own that name the corrected result; the wrong run and its records stay — by the named tests. Not
+built: a derived result in another run or process produced again by the engine; the steps a person
+executed by hand recorded in the incident.

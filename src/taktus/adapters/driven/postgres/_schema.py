@@ -99,6 +99,7 @@ process_version = Table(
     Column("open_work", JSONB),  # the caps on open work, by kind (ADR-0132)
     Column("deadlines", JSONB),  # the deadlines of each run, by name (ADR-0133)
     Column("evaluation", JSONB),  # the cases, the scorers and their schedule (ADR-0134)
+    Column("takeover", JSONB),  # how a person runs it without Taktus (ADR-0180)
     Column("inputs", JSONB, nullable=False),
     Column("author", Text),
     Column("reason", Text),
@@ -513,6 +514,20 @@ source_declaration = Table(
     PrimaryKeyConstraint("tenant", "id"),
 )
 """One row per tenant that declared its sources (ADR-0130)."""
+
+takeover_trial = Table(
+    "takeover_trial",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("process_id", Text, nullable=False),
+    Column("process_version", Text, nullable=False),
+    _at("at"),
+    Column("trial", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per trial of a version's takeover instructions (ADR-0180 §3); a role, never a
+person; never changed."""
 
 subject_request = Table(
     "subject_request",

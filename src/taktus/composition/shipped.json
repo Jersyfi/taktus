@@ -10,6 +10,7 @@
       "name": "accounting",
       "operations": [
         "accounting.bookings.propose",
+        "accounting.orders.list",
         "accounting.orders.read",
         "payment.release.submit"
       ]
@@ -48,6 +49,16 @@
     },
     {
       "capabilities": [
+        "calendar.events"
+      ],
+      "image": "taktus-connector-calendar",
+      "name": "calendar",
+      "operations": [
+        "calendar.events.list"
+      ]
+    },
+    {
+      "capabilities": [
         "knowledge.pages"
       ],
       "image": null,
@@ -71,6 +82,18 @@
     },
     {
       "capabilities": [
+        "expiry.certificates",
+        "expiry.domains"
+      ],
+      "image": "taktus-connector-expiry",
+      "name": "expiry",
+      "operations": [
+        "expiry.certificates.read",
+        "expiry.domains.read"
+      ]
+    },
+    {
+      "capabilities": [
         "channel.repo",
         "repository.branches",
         "repository.comments",
@@ -86,8 +109,10 @@
       "name": "github",
       "operations": [
         "channel.repo.reply",
+        "repository.branches.commit",
         "repository.branches.create",
         "repository.branches.read",
+        "repository.branches.update",
         "repository.comments.create",
         "repository.comments.list",
         "repository.files.list",
@@ -101,9 +126,13 @@
         "repository.labels.remove",
         "repository.labels.set",
         "repository.members.list",
+        "repository.pipelines.list",
         "repository.pipelines.read",
         "repository.pipelines.status",
         "repository.pipelines.trigger",
+        "repository.pullrequests.files",
+        "repository.pullrequests.list",
+        "repository.pullrequests.merge",
         "repository.pullrequests.open",
         "repository.pullrequests.read",
         "repository.refs.create"
@@ -117,6 +146,19 @@
       "name": "httpcheck",
       "operations": [
         "check.http.run"
+      ]
+    },
+    {
+      "capabilities": [
+        "deployment.workloads"
+      ],
+      "image": "taktus-connector-kubernetes",
+      "name": "kubernetes",
+      "operations": [
+        "deployment.workloads.read",
+        "deployment.workloads.release",
+        "deployment.workloads.rollback",
+        "deployment.workloads.scale"
       ]
     },
     {
@@ -264,6 +306,7 @@
       "capabilities": [
         "data.generate",
         "data.read",
+        "ml.embed",
         "ml.evaluate",
         "ml.predict",
         "ml.train"

@@ -2,7 +2,7 @@
 ADR-0152). Pure: rules over the value and what a check read, never a model.
 
 A step declares its checks (`Step.checks`); the run applies each to the value the step computed,
-or to the part of it `checking.select` names. Four kinds judge the value on the spot:
+or to the part of it `checking.select` names. Six kinds judge the value on the spot:
 
 - **bounds** — the value is a number within `minimum` and `maximum`, and its text matches
   `pattern`;
@@ -10,7 +10,12 @@ or to the part of it `checking.select` names. Four kinds judge the value on the 
   check: a list of numbers, an object of numbers, or one number as its only part;
 - **agreement** — the value equals the second system's value read through `source`;
 - **recomputation** — the step's rule or statistic, evaluated again over the same inputs, gives
-  a value of the same digest.
+  a value of the same digest;
+- **completeness** — the parts number the count read through `source` at the moment of the
+  check: a list's items, an object's entries, or one value as its only part (DEC-0223);
+- **source shape** — what the step read has the columns it was written for, in order, and its
+  text matches `pattern`: a table read as text by its header row, a list of records by the
+  fields of every record, an object by its keys (DEC-0223).
 
 Two kinds bring a person in. **Approval** holds a value above `threshold` for the role before it
 counts. **Sampling** chooses `share` of the results after the fact, by a digest of the run and
@@ -34,11 +39,18 @@ from typing import Any
 
 from taktus.shared.v1 import Check, CheckKind
 
-READS = frozenset({CheckKind.RECONCILIATION, CheckKind.AGREEMENT})
+READS = frozenset({CheckKind.RECONCILIATION, CheckKind.AGREEMENT, CheckKind.COMPLETENESS})
 """The kinds that read a source through a connector at the moment of the check."""
 
 JUDGED = frozenset(
-    {CheckKind.BOUNDS, CheckKind.RECONCILIATION, CheckKind.AGREEMENT, CheckKind.RECOMPUTATION}
+    {
+        CheckKind.BOUNDS,
+        CheckKind.RECONCILIATION,
+        CheckKind.AGREEMENT,
+        CheckKind.RECOMPUTATION,
+        CheckKind.COMPLETENESS,
+        CheckKind.SOURCE_SHAPE,
+    }
 )
 """The kinds a rule decides on the spot; the other two bring a person in."""
 
@@ -158,6 +170,85 @@ def reconciliation(position: int, check: Check, value: Any, total: Any) -> Findi
         True,
         f"the parts sum to {found}, which is {check.total} read through {check.source}",
     )
+
+
+def completeness(position: int, check: Check, value: Any, count: Any) -> Finding:
+    """The parts number what the source holds: a list's items, an object's entries, one value
+    otherwise. A count that is not a whole number fails: nothing could be compared."""
+    expected = decimal(count)
+    if expected is None or expected != expected.to_integral_value() or expected < 0:
+        return Finding(
+            position,
+            check,
+            False,
+            f"{check.count} read through {check.source} is not a count: {_short(count)}",
+        )
+    found = len(value) if isinstance(value, Mapping | list | tuple) else 1
+    if found != int(expected):
+        return Finding(
+            position,
+            check,
+            False,
+            f"the result has {found} part(s); {check.count} read through {check.source} is "
+            f"{int(expected)}",
+        )
+    return Finding(
+        position,
+        check,
+        True,
+        f"the result has {found} part(s), which is {check.count} read through {check.source}",
+    )
+
+
+def columns_of(value: Any) -> list[tuple[str, ...]] | None:
+    """The columns of what the step read: a text's first line split at commas, semicolons or
+    tabs, whichever it holds; every record's fields of a list of records; an object's keys.
+    None for anything else, which has no columns."""
+    if isinstance(value, str):
+        first = value.lstrip("\ufeff").splitlines()[0] if value.strip() else ""
+        for separator in (",", ";", "\t"):
+            if separator in first:
+                return [tuple(c.strip().strip('"') for c in first.split(separator))]
+        return [(first.strip().strip('"'),)] if first.strip() else None
+    if isinstance(value, Mapping):
+        return [tuple(str(k) for k in value)]
+    if isinstance(value, list | tuple) and value and all(isinstance(v, Mapping) for v in value):
+        return [tuple(str(k) for k in record) for record in value]
+    return None
+
+
+def source_shape(position: int, check: Check, value: Any) -> Finding:
+    """What the step read has the columns it was written for, in their order, and matches the
+    pattern."""
+    said: list[str] = []
+    if check.columns is not None:
+        expected = tuple(check.columns)
+        found = columns_of(value)
+        if found is None:
+            return Finding(
+                position, check, False, f"what the step read, {_short(value)}, has no columns"
+            )
+        for number, columns in enumerate(found, start=1):
+            if columns != expected:
+                where = "" if len(found) == 1 else f" in record {number}"
+                return Finding(
+                    position,
+                    check,
+                    False,
+                    f"the columns{where} are {', '.join(columns)}; the step was written for "
+                    f"{', '.join(expected)}",
+                )
+        said.append(f"the columns are {', '.join(expected)}, in order")
+    if check.pattern is not None:
+        if re.search(check.pattern, text(value)) is None:
+            return Finding(
+                position,
+                check,
+                False,
+                f"what the step read does not match the pattern {check.pattern!r}",
+            )
+        said.append(f"what the step read matches the pattern {check.pattern!r}")
+    return Finding(position, check, True, "; ".join(said))
 
 
 def agreement(position: int, check: Check, value: Any, other: Any) -> Finding:

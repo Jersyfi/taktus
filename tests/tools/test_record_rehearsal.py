@@ -18,6 +18,7 @@ from typing import Any
 import pytest
 from fakes import VERIFIED, FakeConnector, FakeModel, FakeWorker
 from fakes.connector import READ, WRITE
+from fakes.takeover import instructed
 
 from taktus.adapters.driven.clock import SystemIdentifiers
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
@@ -47,86 +48,95 @@ sys.path.insert(0, str(TOOLS))
 
 import record_rehearsal  # noqa: E402 — a script under tools/, found through the line above
 
-BUNDLE: dict[str, Any] = {
-    "id": "recorded",
-    "version": "1",
-    "name": "Recorded",
-    "autonomy": {"level": 3, "reason": "a test", "toward_next": "nothing"},
-    "limits": {"quota": {"units": 40}, "compute": {"seconds": 600, "resource_class": "cpu.small"}},
-    "inputs": {"record": {"description": "the record to read", "example": "7"}},
-    "steps": [
-        {
-            "id": "read",
-            "method": "rule",
-            "reason": "a read",
-            "rejected": [],
-            "exactness": "sourced",
-            "work": {"rule": "connector", "operation": READ, "input": {"id": {"$input": "record"}}},
+BUNDLE: dict[str, Any] = instructed(
+    {
+        "id": "recorded",
+        "version": "1",
+        "name": "Recorded",
+        "autonomy": {"level": 3, "reason": "a test", "toward_next": "nothing"},
+        "limits": {
+            "quota": {"units": 40},
+            "compute": {"seconds": 600, "resource_class": "cpu.small"},
         },
-        {
-            "id": "think",
-            "method": "llm",
-            "reason": "words",
-            "rejected": [],
-            "exactness": "tolerant",
-            "fallback": {"when": "always", "to": "human"},
-            "depends_on": ["read"],
-            "work": {
-                "purpose": "reasoning",
-                "prompt": "Say something about ${title}",
-                "values": {"title": {"$from": "read", "$select": "output.title"}},
-            },
-        },
-        {
-            "id": "change",
-            "method": "worker",
-            "reason": "tools",
-            "rejected": [],
-            "exactness": "tolerant",
-            "fallback": {"when": "always", "to": "human"},
-            "requires": ["shell.script"],
-            "depends_on": ["think"],
-            "work": {
-                "task": {
-                    "goal": "change it",
-                    "acceptance": ["it is changed"],
-                    "inputs": {"said": {"$from": "think", "$select": "text"}},
-                },
-                "max_steps": 3,
-            },
-        },
-        {
-            "id": "settle",
-            "method": "wait",
-            "reason": "the outside settles",
-            "rejected": [],
-            "depends_on": ["change"],
-            "work": {
-                "until": {
+        "inputs": {"record": {"description": "the record to read", "example": "7"}},
+        "steps": [
+            {
+                "id": "read",
+                "method": "rule",
+                "reason": "a read",
+                "rejected": [],
+                "exactness": "sourced",
+                "work": {
+                    "rule": "connector",
                     "operation": READ,
                     "input": {"id": {"$input": "record"}},
-                    "select": "found",
-                    "expect": [True],
-                    "poll_seconds": 1,
-                    "timeout_seconds": 5,
-                }
+                },
             },
-        },
-        {
-            "id": "write",
-            "method": "rule",
-            "reason": "a write",
-            "rejected": [],
-            "exactness": "sourced",
-            "depends_on": ["settle"],
-            "work": {
-                "rule": "connector",
-                "operation": WRITE,
-                "input": {"body": {"$from": "think", "$select": "text"}},
+            {
+                "id": "think",
+                "method": "llm",
+                "reason": "words",
+                "rejected": [],
+                "exactness": "tolerant",
+                "fallback": {"when": "always", "to": "human"},
+                "depends_on": ["read"],
+                "work": {
+                    "purpose": "reasoning",
+                    "prompt": "Say something about ${title}",
+                    "values": {"title": {"$from": "read", "$select": "output.title"}},
+                },
             },
-        },
-    ],
-}
+            {
+                "id": "change",
+                "method": "worker",
+                "reason": "tools",
+                "rejected": [],
+                "exactness": "tolerant",
+                "fallback": {"when": "always", "to": "human"},
+                "requires": ["shell.script"],
+                "depends_on": ["think"],
+                "work": {
+                    "task": {
+                        "goal": "change it",
+                        "acceptance": ["it is changed"],
+                        "inputs": {"said": {"$from": "think", "$select": "text"}},
+                    },
+                    "max_steps": 3,
+                },
+            },
+            {
+                "id": "settle",
+                "method": "wait",
+                "reason": "the outside settles",
+                "rejected": [],
+                "depends_on": ["change"],
+                "work": {
+                    "until": {
+                        "operation": READ,
+                        "input": {"id": {"$input": "record"}},
+                        "select": "found",
+                        "expect": [True],
+                        "poll_seconds": 1,
+                        "timeout_seconds": 5,
+                    }
+                },
+            },
+            {
+                "id": "write",
+                "method": "rule",
+                "reason": "a write",
+                "rejected": [],
+                "exactness": "sourced",
+                "depends_on": ["settle"],
+                "work": {
+                    "rule": "connector",
+                    "operation": WRITE,
+                    "input": {"body": {"$from": "think", "$select": "text"}},
+                },
+            },
+        ],
+    }
+)
 
 
 async def real_run(store: Stores, objects: Path) -> tuple[str, str]:

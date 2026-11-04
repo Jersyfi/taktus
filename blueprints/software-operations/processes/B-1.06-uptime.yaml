@@ -1,0 +1,193 @@
+# B-1.06 Uptime — UC-03 §4.1: the business's web app, sign-in, API, webhooks and website are
+# asked as a user asks them, through the capability `check.http`, every five minutes; two
+# failures in a row are an incident (UC-4.16, UC-6.8, UC-6.13).
+#
+# One version checks one path of the service the tenant's connector serving `check.http` is
+# configured for. A tenant checks several flows by registering one process per flow, each with
+# its own `path` (`taktusctl run --input path=/api/health`), or by connectors for several
+# services. A flow that needs more than one request — signing in, then reading — is a worker
+# with a browser, which is not built (UC-03 §8).
+#
+# The judgement is the tenant's corridor on the step `failures` and its `count`: how many of the
+# two checks failed. A person of the tenant configures it once:
+#
+#     uv run taktusctl signal configure availability.uptime --process b-1-06 \
+#         --step failures --select count --bounds fixed --direction above \
+#         --yellow 0.5 --red 1.5 --fresh 15m \
+#         --role <role> --case <where an outage is worked>
+#
+# One failed check is yellow and waits for the daily report; two in a row are red and raise an
+# incident at once (ADR-0109 §4, §5). Telling customers about a long outage stays with a person
+# (UC-03 §4.1).
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-1.06-uptime.yaml \
+#         --input path=/health --input max_duration_ms=5000
+#
+# Switching it off (`taktusctl deactivate --process b-1-06`) changes nothing at the service: it only asks.
+
+id: b-1-06
+version: "1"
+name: B-1.06 Uptime
+autonomy:
+  level: 1
+  reason: >
+    the process only asks the service and counts the checks that failed by a fixed rule;
+    nothing leaves the system, so at level 1 every step runs and none acts; the judgement is
+    the tenant's corridor, and a red value reaches a person at once as an incident; it starts
+    at level 1, observing, as UC-03 starts every process at level 1 or 2 when its stage opens
+  toward_next: >
+    stage 1 of the tenant's plan open, and four weeks of runs whose incidents a person checked
+    against the service and found right, with no missed run; then Taktus proposes level 2, and level 3
+    after it, its target in UC-03 (UC-7.1, UC-9.6)
+author: the repository
+reason: the business's services checked every five minutes without a person watching (UC-03 B-1.06)
+
+# Every five minutes, through the elected scheduler (ADR-0035).
+triggers:
+  - schedule: "*/5 * * * *"
+    inputs:
+      path: /health
+      max_duration_ms: 5000
+
+inputs:
+  path:
+    description: the path under the service's address that answers when the service works
+    example: /health
+  max_duration_ms:
+    description: the longest an answer may take, in milliseconds, before the check counts as failed
+    example: 5000
+
+limits:
+  quota: { units: 4 }
+
+steps:
+  - id: check-first
+    method: rule
+    reason: the service is asked as a user would ask it, and its answer is recorded as it came
+    rejected:
+      - method: llm
+        why: a request and its status need no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving check.http is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: check.http.run
+      input:
+        path: { $input: path }
+        expect:
+          status: 200
+          max_duration_ms: { $input: max_duration_ms }
+      credentials:
+        - { name: CHECK_TOKEN, injected_as: env }
+
+  - id: pause
+    method: wait
+    reason: a second check a minute later tells a blip from an outage; nothing is judged meanwhile
+    rejected: []
+    depends_on: [check-first]
+    work:
+      seconds: 60
+
+  - id: check-second
+    method: rule
+    reason: the service is asked as a user would ask it, and its answer is recorded as it came
+    rejected:
+      - method: llm
+        why: a request and its status need no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving check.http is unavailable
+      to: human
+      role: owner
+    depends_on: [pause]
+    work:
+      rule: connector
+      operation: check.http.run
+      input:
+        path: { $input: path }
+        expect:
+          status: 200
+          max_duration_ms: { $input: max_duration_ms }
+      credentials:
+        - { name: CHECK_TOKEN, injected_as: env }
+
+  - id: failures
+    method: rule
+    reason: >
+      how many of the two checks failed is a count over the connector's own verdicts, which
+      the corridor judges; two failures in a row tell an outage from a blip
+    rejected:
+      - method: llm
+        why: a count needs no judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the checks that failed }
+    depends_on: [check-first, check-second]
+    work:
+      rule: filter
+      items:
+        - { $from: check-first, $select: output }
+        - { $from: check-second, $select: output }
+      all:
+        - { field: outcome, equals: failed }
+
+# How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
+# every step the system to act in, what to do there, the expertise it needs, each credential by
+# its parameter and where an authorised person finds it, and how to tell that it is done.
+takeover:
+  sequence: >
+    The process runs every five minutes, for one path of one of the business's services; whoever
+    is on watch for the services starts it. The steps run in order: ask the service at the path,
+    wait a minute, ask it again, and count how many of the two checks failed. One failure is a
+    blip and waits for the daily report; two in a row are an outage, reported at once to the
+    role responsible. Telling customers about a long outage stays with a person.
+  steps:
+    check-first:
+      system: a terminal with an HTTP client, or a browser, on the service's address
+      do: >
+        request the path the run was started with, by default the service's health path, under
+        the service's address, as a user would. The check passes when the answer has status 200
+        and arrives within the longest time the run was started with, by default 5000
+        milliseconds; any other status, a slower answer or no answer is a failed check. Note the
+        status, the duration and the verdict.
+      expertise: sending an HTTP request and reading its status and duration
+      credentials:
+        - parameter: CHECK_TOKEN
+          where: >
+            the operator's secret store, under the parameter Check token of the requesting
+            identity described in CREDENTIALS.md, sent as a bearer token; a service that admits
+            anyone at the path needs none
+      done: the first check's verdict is noted, passed or failed
+    pause:
+      system: none
+      do: wait sixty seconds after the first check before the second; nothing is judged meanwhile
+      expertise: none
+      credentials: []
+      done: a minute has passed since the first check
+    check-second:
+      system: a terminal with an HTTP client, or a browser, on the service's address
+      do: >
+        request the same path again, in the same way and against the same status and longest
+        time as the first check, and note the status, the duration and the verdict.
+      expertise: sending an HTTP request and reading its status and duration
+      credentials:
+        - parameter: CHECK_TOKEN
+          where: >
+            the operator's secret store, under the parameter Check token of the requesting
+            identity described in CREDENTIALS.md, sent as a bearer token; a service that admits
+            anyone at the path needs none
+      done: the second check's verdict is noted, passed or failed
+    failures:
+      system: the two noted verdicts
+      do: >
+        count how many of the two checks failed. None is fine. One is yellow and is noted for
+        the daily report. Two are red: report the outage at once to the role responsible, with
+        the path, both statuses and the times of the checks.
+      expertise: the tenant's corridor for uptime
+      credentials: []
+      done: the count is written down, and two failures have been reported

@@ -43,13 +43,13 @@
 		font-size: 0.85rem;
 		padding: 0.1rem 0.6rem;
 		border-radius: 999px;
-		border: 1px solid var(--line);
+		border: 1px solid var(--border-subtle);
 		background: transparent;
-		color: var(--ink);
+		color: var(--text-primary);
 		cursor: pointer;
 	}
 	.window[aria-pressed='true'] {
-		background: var(--ink);
-		color: var(--paper);
+		background: var(--text-primary);
+		color: var(--bg-canvas);
 	}
 </style>

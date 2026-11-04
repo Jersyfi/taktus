@@ -1,0 +1,195 @@
+# B-5.06 Business customers' seats — UC-03 §4.5: the seats a business customer pays for are
+# checked against the seats the product grants it, when a customer is new, its seats change or
+# its contract ends. Seats are `exact`.
+#
+# The run serves one customer's case, as B-3.04 does: its subscriptions are read through
+# `payments.customers`, those still paid kept, its entitlements read through
+# `entitlements.customers` (the manifest `connectors/entitlements.manifest.json`, ADR-0199 §2),
+# and the rule `match` pairs each paid product with its entitlement and compares the seats.
+# Every product paid and not granted, granted and not paid, or granted with another number of
+# seats than paid for is a mismatch.
+#
+# The judgement is the tenant's corridor on the step `match` and its `mismatches`; one is red:
+#
+#     uv run taktusctl signal configure payments.seat_mismatches --process b-5-06 \
+#         --step match --select mismatches --bounds fixed --direction above \
+#         --yellow 0.25 --red 0.5 --fresh 8d \
+#         --role <role> --case <where a business customer's seats are worked>
+#
+# The tenant starts it from its own event of a new customer or a changed seat count, as a
+# trigger of its own version, or by hand. Setting up access is B-3.04's repair. Preparing a
+# renewal is not built: no capability serves a contract's end date. The contract and the price
+# stay with a person (UC-03 §6).
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-5.06-business-seats.yaml \
+#         --input customer=cus_...
+#
+# Switching it off (`taktusctl deactivate --process b-5-06`) changes nothing: it only reads.
+
+id: b-5-06
+version: "1"
+name: B-5.06 Business customers' seats
+autonomy:
+  level: 1
+  reason: >
+    the process only reads both systems and matches the seats by a fixed rule; nothing leaves
+    the system, so at level 1 every step runs and none acts; a mismatch reaches a person as an
+    incident; it starts at level 1, observing, as UC-03 starts every process at level 1 or 2
+    when its stage opens
+  toward_next: >
+    stage 1 of the tenant's plan open, and four weeks of runs whose incidents a person checked
+    against both systems and found right; then Taktus proposes level 2, and level 3 after it,
+    its target in UC-03 (UC-7.1, UC-9.6)
+author: the repository
+reason: the seats a business customer pays for are the seats it can use, checked whenever they change (UC-03 B-5.06)
+
+inputs:
+  customer:
+    description: the business customer's identifier at the payment provider, as the product keeps it
+    example: cus_fake1
+
+limits:
+  quota: { units: 8 }
+
+steps:
+  - id: subscriptions
+    method: rule
+    reason: the customer's subscriptions are read as the payment provider holds them; nothing to judge
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving payments.customers is unavailable
+      to: human
+      role: owner
+    work:
+      scope: { subject: { $input: customer } }
+      rule: connector
+      operation: payments.customers.subscriptions
+      input:
+        customer: { $input: customer }
+      credentials:
+        - { name: PAYMENTS_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the customer's subscriptions were not all read" }
+
+  - id: paid
+    method: rule
+    reason: which subscriptions are still paid is the provider's status, kept by a fixed rule
+    rejected:
+      - method: llm
+        why: a status is a field, not a judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the subscriptions still paid }
+    depends_on: [subscriptions]
+    work:
+      rule: filter
+      items: { $from: subscriptions, $select: output.subscriptions }
+      any:
+        - { field: status, equals: active }
+        - { field: status, equals: trialing }
+
+  - id: entitlements
+    method: rule
+    reason: the customer's entitlements are read as the product holds them; nothing to judge
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving entitlements.customers is unavailable
+      to: human
+      role: owner
+    work:
+      scope: { subject: { $input: customer } }
+      rule: connector
+      operation: entitlements.customers.list
+      input:
+        customer: { $input: customer }
+      credentials:
+        - { name: ENTITLEMENTS_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the customer's entitlements were not all read" }
+
+  - id: match
+    method: rule
+    reason: >
+      the seats paid for and the seats granted are two numbers of one product, equal or not;
+      a fixed rule pairs and compares them
+    rejected:
+      - method: llm
+        why: seats are exact (UC-03 B-5.06); a model could miscount
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the seats paid for and granted that differ }
+    depends_on: [paid, entitlements]
+    work:
+      rule: match
+      left:
+        items: { $from: paid, $select: items }
+        key: [customer, items.product]
+        each: items
+      right:
+        items: { $from: entitlements, $select: output.entitlements }
+        key: [customer, product]
+      compare:
+        - { left: items.quantity, right: quantity }
+
+takeover:
+  sequence: >
+    The process runs once for one business customer, when the customer is new, its seats
+    change or its contract ends; the person who looks after business customers starts it with
+    the customer's identifier at the payment provider. The steps run in order: read the
+    customer's subscriptions at the payment provider, keep those still paid, read the
+    customer's entitlements in the product, and pair each paid product with its entitlement and
+    compare the seats. Every mismatch is red and goes to the role the tenant named. The process
+    changes nothing; the contract and the price stay with a person.
+  steps:
+    subscriptions:
+      system: the payment provider's dashboard
+      do: >
+        open the customer by the identifier the run was started with, and list every one of its
+        subscriptions with its status and, for each item, the product and the quantity of seats.
+        Make sure the list is complete
+      expertise: finding a customer's subscriptions in the payment provider's dashboard
+      credentials:
+        - parameter: PAYMENTS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Payment provider key of the
+            requesting identity described in CREDENTIALS.md; a person reading the dashboard
+            signs in with their own account that may read customers and subscriptions
+      done: every subscription of the customer is listed with its status, products and seats
+    paid:
+      system: the list of subscriptions
+      do: keep only the subscriptions whose status is active or trialing; strike out every other one
+      expertise: none
+      credentials: []
+      done: the list holds only the subscriptions still paid
+    entitlements:
+      system: the product's administration, where a customer's access is granted
+      do: >
+        open the same customer and list every entitlement it holds, with the product and the
+        number of seats granted. Make sure the list is complete
+      expertise: finding a customer's entitlements in the product's administration
+      credentials:
+        - parameter: ENTITLEMENTS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Product entitlements token of the
+            requesting identity described in CREDENTIALS.md; a person signs in with their own
+            account that may read entitlements
+      done: every entitlement of the customer is listed with its product and seats
+    match:
+      system: the two lists, side by side
+      do: >
+        pair every item of a paid subscription with the entitlement of the same product, and
+        compare the seats exactly. Write down every product paid and not granted, granted and
+        not paid, or granted with another number of seats than paid for, and count them. One
+        mismatch or more is red: report them to the role the tenant named, where a business
+        customer's seats are worked
+      expertise: none
+      credentials: []
+      done: the mismatches are written down and counted, and any mismatch has been reported

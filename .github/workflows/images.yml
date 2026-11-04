@@ -109,6 +109,10 @@ jobs:
           # Dockerfile from this checkout: the tag fixes the agent too (#116).
           - name: taktus-worker-coding
             dockerfile: workers/claudecode/Dockerfile
+          # The second coding worker, its agent at the exact version workers/codex/agent-version
+          # names, read the same way (#208).
+          - name: taktus-worker-codex
+            dockerfile: workers/codex/Dockerfile
           # Its libraries at the exact versions workers/mlbench/requirements.txt names.
           - name: taktus-worker-mlbench
             dockerfile: workers/mlbench/Dockerfile
@@ -129,15 +133,24 @@ jobs:
           - name: taktus-connector-bookstack
             dockerfile: connectors/Dockerfile
             target: bookstack
+          - name: taktus-connector-calendar
+            dockerfile: connectors/Dockerfile
+            target: calendar
           - name: taktus-connector-einvoice
             dockerfile: connectors/Dockerfile
             target: einvoice
+          - name: taktus-connector-expiry
+            dockerfile: connectors/Dockerfile
+            target: expiry
           - name: taktus-connector-github
             dockerfile: connectors/Dockerfile
             target: github
           - name: taktus-connector-httpcheck
             dockerfile: connectors/Dockerfile
             target: httpcheck
+          - name: taktus-connector-kubernetes
+            dockerfile: connectors/Dockerfile
+            target: kubernetes
           - name: taktus-connector-mail
             dockerfile: connectors/Dockerfile
             target: mail

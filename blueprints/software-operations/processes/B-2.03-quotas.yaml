@@ -1,0 +1,142 @@
+# B-2.03 Quotas — UC-03 §4.2: the share of each outside service's quota that is used — mail
+# sending, payments, data services, the repository service's rate limits — is read daily from
+# the business's metrics store, through the capability `metrics.series`, and the fullest one is
+# judged against its corridor (UC-6.13, ADR-0198).
+#
+# The query is the tenant's: the share used per service, from 0 to 1, as its store holds the
+# figures the services report — for example `max by (service) (quota_used / quota_limit)`
+# over what each service's exporter writes. The rule `filter` takes the service with the
+# highest share; a value the store could not give as a number is left out, never read as zero
+# (`exact`). The service stands in the result, under `first.labels`.
+#
+# The judgement is the tenant's corridor on the step `fullest`, with fixed thresholds:
+#
+#     uv run taktusctl signal configure cost.quota_used --process b-2-03 \
+#         --step fullest --select first.values.0.value --bounds fixed --direction above \
+#         --yellow 0.8 --red 0.95 --fresh 2d \
+#         --role <role> --case <where a quota is worked>
+#
+# Not built here: a quota that only the service's own API reports and no exporter writes to the
+# store; it needs a connector of that service. Changing a plan stays with a person (UC-03 §4.2).
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-2.03-quotas.yaml \
+#         --input 'query=max by (service) (quota_used / quota_limit)'
+#
+# Switching it off (`taktusctl deactivate --process b-2-03`) changes nothing at the store.
+
+id: b-2-03
+version: "1"
+name: B-2.03 Quotas
+autonomy:
+  level: 1
+  reason: >
+    the process only reads the metrics store and takes the fullest quota by a fixed rule;
+    nothing leaves the system, so at level 1 every step runs and none acts; the judgement is
+    the tenant's corridor; it starts at level 1, observing, as UC-03 starts every process at
+    level 1 or 2 when its stage opens
+  toward_next: >
+    stage 1 of the tenant's plan open, and four weeks of runs whose findings a person checked
+    against the services and found right; then Taktus proposes level 2, and level 3 after it,
+    its target in UC-03 (UC-7.1, UC-9.6)
+author: the repository
+reason: an outside service's quota found nearly used before a send or a payment is refused (UC-03 B-2.03)
+
+triggers:
+  - schedule: "0 7 * * *"
+    inputs:
+      query: max by (service) (quota_used / quota_limit)
+
+inputs:
+  query:
+    description: >
+      the tenant's query for the share of the quota used per outside service, from 0 to 1; each
+      series it answers is one service
+    example: max by (service) (quota_used / quota_limit)
+
+limits:
+  quota: { units: 2 }
+
+steps:
+  - id: read-quotas
+    method: rule
+    reason: the store's figures are read verbatim, each value as the store gave it
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving metrics.series is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: metrics.series.query
+      input:
+        query: { $input: query }
+      credentials:
+        - { name: METRICS_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the store answered more series than were read" }
+
+  - id: fullest
+    method: rule
+    reason: >
+      the service with the highest share used is a fixed ordering of the store's own figures;
+      a value the store could not give as a number is left out, never read as zero
+    rejected:
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+      - method: statistics
+        why: taking the largest of the values is an ordering, not a statistic of a series
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the service with the highest share of its quota used }
+    depends_on: [read-quotas]
+    work:
+      rule: filter
+      items: { $from: read-quotas, $select: output.series }
+      all:
+        - { field: values.0.value, at_least: 0 }
+      order: values.0.value
+      descending: true
+      limit: 1
+
+# How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
+# every step the system to act in, what to do there, the expertise it needs, each credential by
+# its parameter and where an authorised person finds it, and how to tell that it is done.
+takeover:
+  sequence: >
+    The process runs every day at 07:00 UTC; whoever watches the business's outside services
+    starts it. The steps run in order: run the tenant's query for the share of each outside
+    service's quota that is used, such as mail sending, payments, data services or the
+    repository hosting service's rate limits, then take the fullest one. A share of 0.8 or more
+    is yellow and 0.95 or more red, as the bundle proposes for the tenant's corridor. Changing a
+    plan stays with a person.
+  steps:
+    read-quotas:
+      system: the business's metrics store, in its query view
+      do: >
+        run the query the run was started with, by default each service's quota used divided by
+        its quota limit, the largest per service. Export the answer as a table with one row per
+        service and its share, from 0 to 1, exactly as the store gives it. Make sure the store
+        answered every series.
+      expertise: running a query in the metrics store's query language and reading its series
+      credentials:
+        - parameter: METRICS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Metrics token of the requesting
+            identity described in CREDENTIALS.md; a person may instead sign in to the store
+            with their own account that may read it
+      done: the table holds every service the query answered, each with its share used
+    fullest:
+      system: a spreadsheet, on the exported table
+      do: >
+        leave out every row whose value is not a number or is below zero; never read a missing
+        value as zero. Sort by share, largest first, and take the first: that service's quota is
+        the fullest. Compare its share with 0.8 for yellow and 0.95 for red, and report a red
+        one at once to the role responsible, before a send or a payment is refused.
+      expertise: sorting a table and the tenant's corridor for quotas
+      credentials: []
+      done: the fullest service and its share are written down and judged

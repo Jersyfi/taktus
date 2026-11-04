@@ -19,9 +19,15 @@ from taktus.adapters.driven.memory import MemoryProvenanceStore
 from taktus.adapters.driven.models import StaticModelPool
 from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
-from taktus.components.accounting.application.service import SpendHandler, TrialError, TrialReports
+from taktus.components.accounting.application.service import (
+    NamedCase,
+    SpendHandler,
+    TrialError,
+    TrialReports,
+)
 from taktus.components.run.application.service import RunEngine
 from taktus.composition.trials import Trials
+from taktus.ports.ledger import Fact
 
 from .test_evaluations import SORRY, TENANT, WHO, Speaker, World
 
@@ -166,3 +172,92 @@ async def test_a_trial_is_offered_when_the_model_a_member_answers_as_changes_ver
     t.world.clock.current = t.world.clock.current.replace(hour=12)
     await t.trials.start(TENANT, "drafting", ["model.fake"], WHO, occasion="changed")
     assert await t.trials.offers(TENANT) == []
+
+
+# --- a person declines an offer, and names cases of their own (ADR-0149 amended, #448) --------
+
+
+async def test_a_declined_offer_is_not_offered_again_until_its_occasion_arises_anew() -> None:
+    t = await trying()
+    await t.trials.start(TENANT, "drafting", ["model.fake"], WHO)
+    await t.trials.propose(TENANT, "drafting", "model.other", "cheaper for the same cases")
+    t.world.clock.current = t.world.clock.current.replace(hour=11)
+    await t.trials.decline(TENANT, "drafting", "proposed", "model.other", WHO, "not now")
+    assert await t.trials.offers(TENANT) == []
+    async with t.world.persistence.transaction(TENANT):
+        declined = [e for e in await t.world.ledger.entries(TENANT) if e.kind == "trial.declined"]
+    assert [(e.outcome, e.refs.actor) for e in declined] == [("proposed", WHO)]
+    t.world.clock.current = t.world.clock.current.replace(hour=12)
+    await t.trials.propose(TENANT, "drafting", "model.other", "cheaper again")
+    (offer,) = await t.trials.offers(TENANT)
+    assert (offer.occasion, offer.reason) == ("proposed", "cheaper again"), "proposed anew"
+
+
+async def test_only_an_offer_that_stands_can_be_declined() -> None:
+    t = await trying()
+    with pytest.raises(TrialError) as no_offer:
+        await t.trials.decline(TENANT, "drafting", "proposed", "model.other", WHO, "")
+    assert no_offer.value.kind == "unknown"
+    with pytest.raises(TrialError) as asked:
+        await t.trials.decline(TENANT, "drafting", "asked", "model.fake", WHO, "")
+    assert asked.value.kind == "invalid"
+    await t.trials.decline(TENANT, "drafting", "introduced", "model.fake", WHO, "known model")
+    assert await t.trials.offers(TENANT) == []
+
+
+async def test_a_case_a_person_names_runs_beside_the_evaluation_cases() -> None:
+    t = await trying()
+    own = [NamedCase(process="replies", inputs={"message": "where is my parcel"})]
+    trial = await t.trials.start(TENANT, "drafting", ["model.fake", "model.other"], WHO, own=own)
+    assert [c.key for c in trial.cases] == ["replies/late", "replies/named-1"]
+    assert trial.cases[1].named and not trial.cases[0].named
+    ran = await t.world.drain()
+    assert len(ran) == 4
+    assert {run.inputs["message"] for run in ran} == {
+        "My parcel came a week late.",
+        "where is my parcel",
+    }, "the evaluation case's inputs and the person's"
+    read = await t.trials.read(TENANT, trial.id)
+    assert all(c.passed == 2 for c in read.report.candidates)
+    with pytest.raises(TrialError) as elsewhere:
+        await t.trials.start(
+            TENANT, "drafting", ["model.fake"], WHO, own=[NamedCase(process="absent")]
+        )
+    assert elsewhere.value.kind == "invalid" and "case 1" in str(elsewhere.value)
+
+
+# --- model routing proposes a trial of a member it switched to (ADR-0200, #448) ---------------
+
+
+async def test_a_member_routing_switched_to_is_proposed_for_a_trial_once() -> None:
+    t = await trying()
+    t.pool = StaticModelPool(
+        [
+            ("model.fake", ["drafting", "judging"], t.world.model, "fake-model@1"),
+            ("model.other", ["drafting"], t.other, "other-model@1"),
+        ]
+    )
+    t.trials._models = t.pool
+    run = await t.world.real_run({"message": "late"})
+    assert await t.trials.routed(TENANT) == [], "the first member answered: nothing switched"
+    async with t.world.persistence.transaction(TENANT):
+        (answered,) = [
+            e
+            for e in await t.world.ledger.entries(TENANT, run.id)
+            if e.kind == "step.finished" and e.adapter == "model.fake"
+        ]
+        await t.world.ledger.record(
+            TENANT,
+            Fact(
+                kind="step.finished",
+                refs=answered.refs,
+                method=answered.method,
+                adapter="model.other",
+                outcome="succeeded",
+            ),
+        )
+    assert await t.trials.routed(TENANT) == [("drafting", "model.other")]
+    offers = [o for o in await t.trials.offers(TENANT) if o.occasion == "proposed"]
+    (offer,) = offers
+    assert offer.model == "model.other" and "routing switched drafting" in offer.reason
+    assert await t.trials.routed(TENANT) == [], "proposed once"

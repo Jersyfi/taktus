@@ -84,7 +84,7 @@
 			{#if list === null}
 				<p class="muted">Reading the requests addressed to you…</p>
 			{:else if list.requests.length === 0}
-				<p>Nothing waits for you.</p>
+				<p class="muted">No request is open.</p>
 			{:else}
 				<ul>
 					{#each list.requests as r (r.id)}
@@ -108,7 +108,9 @@
 							? 'Nothing waits for you.'
 							: `${list.requests.length} ${list.requests.length === 1 ? 'question waits' : 'questions wait'} for you.`}
 					</h1>
-					<p class="muted">None is an alarm: each one is a planned question, with an answer proposed.</p>
+					{#if list.requests.length > 0}
+						<p class="muted">None is an alarm: each one is a planned question, with an answer proposed.</p>
+					{/if}
 				{/if}
 			{:else if absent}
 				<p>No request {requestId} addressed to you.</p>
@@ -128,13 +130,6 @@
 		gap: 2rem;
 		align-items: start;
 	}
-	.eyebrow {
-		font-size: 0.75rem;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: var(--ink-3);
-		margin: 0 0 0.5rem;
-	}
 	nav ul {
 		list-style: none;
 		padding: 0;
@@ -151,15 +146,15 @@
 	}
 	nav a:hover,
 	nav a[aria-current='page'] {
-		background: var(--paper-2);
+		background: var(--bg-surface);
 	}
 	.id {
-		font-family: var(--mono);
+		font-family: var(--font-mono);
 		font-size: 0.75rem;
-		color: var(--ink-3);
+		color: var(--text-subtle);
 	}
 	.muted {
-		color: var(--ink-2);
+		color: var(--text-secondary);
 		font-size: 0.85rem;
 	}
 	@media (max-width: 760px) {

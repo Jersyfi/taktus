@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 from fakes import FakeClock
+from fakes.takeover import instructed
 
 from taktus.adapters.driven.memory import MemoryLedgerStore, MemoryPersistence, MemoryRepository
 from taktus.components.ledger.application.service import ChainedLedger
@@ -48,7 +49,7 @@ def bundle(**overrides: Any) -> dict[str, Any]:
         ],
     }
     document.update(overrides)
-    return document
+    return instructed(document)
 
 
 @pytest.mark.parametrize(

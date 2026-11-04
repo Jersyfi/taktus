@@ -339,6 +339,15 @@ class ProcessElement(Value):
     """The autonomy statement, as the version states it (ADR-0026)."""
     autonomy_text: str = Field(min_length=1)
     text: str = Field(min_length=1)
+    untried: bool = False
+    """Level 3 or 4 without a passed trial of its takeover instructions (UC-6.3 §2)."""
+
+
+UNTRIED = (
+    "No person has yet run this version by hand from its takeover instructions, though it runs "
+    "at level {level}."
+)
+"""What a level says of a version that is untried (UC-6.3 §2, ADR-0180 §3)."""
 
 
 class ProcessLevel(Value):
@@ -431,6 +440,8 @@ def process_level(facts: ProcessFacts) -> ProcessLevel:
     are the ones the reader may see; which those are is the query's (`may_see`)."""
     runs = tuple(sorted(facts.runs, key=lambda r: r.created_at, reverse=True))
     statement = autonomy_text(facts.autonomy)
+    if facts.untried:
+        statement = f"{statement} {UNTRIED.format(level=facts.autonomy.level)}"
     active = next((v.version for v in facts.versions if v.active), None)
     standing = "the active version" if active == facts.version else "not the active version"
     return ProcessLevel(
@@ -441,6 +452,7 @@ def process_level(facts: ProcessFacts) -> ProcessLevel:
             versions=facts.versions,
             autonomy=facts.autonomy,
             autonomy_text=statement,
+            untried=facts.untried,
             text=f"Process {facts.name} ({facts.ref}), {standing}, with "
             f"{_counted(len(facts.steps), 'step')} and {_counted(len(runs), 'run')}. {statement}",
         ),
@@ -489,6 +501,8 @@ class ProcessSummaryElement(Value):
     text: str = Field(min_length=1)
     exactness: Statement | None = None
     """The exactness statement of its active version, as generated (UC-6.9)."""
+    untried: bool = False
+    """Its active version runs at level 3 or 4 without a passed trial (UC-6.3 §2)."""
 
 
 class AreaElement(Value):
@@ -533,6 +547,8 @@ def _summary(
     level = (
         f" at autonomy level {process.autonomy_level}" if process.autonomy_level is not None else ""
     )
+    if process.untried:
+        level = f"{level}, untried by hand"
     busy = f"{_counted(working, 'run')} working, {waiting} waiting"
     steps = (
         f"; running now: {', '.join(f'{s.step} in {s.run}' for s in running)}" if running else ""
@@ -542,6 +558,7 @@ def _summary(
         name=process.name,
         active_version=process.active_version,
         autonomy_level=process.autonomy_level,
+        untried=process.untried,
         working=working,
         waiting=waiting,
         running=running,
@@ -572,13 +589,14 @@ def overview_level(facts: OverviewFacts) -> OverviewLevel:
     )
     working = sum(s.working for s in summaries)
     waiting = sum(s.waiting for s in summaries)
+    name = facts.tenant_name or facts.tenant
     area = AreaElement(
         id=facts.tenant,
-        name=facts.tenant,
+        name=name,
         working=working,
         waiting=waiting,
         processes=summaries,
-        text=f"Area {facts.tenant}: {_counted(len(summaries), 'process')}, "
+        text=f"Area {name}: {_counted(len(summaries), 'process')}, "
         f"{_counted(working, 'run')} working, {waiting} waiting.",
     )
     return OverviewLevel(areas=(area,), summary=_overview_summary(summaries, waiting))

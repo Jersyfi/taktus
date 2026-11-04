@@ -33,6 +33,7 @@ decimals; dates `YYYY-MM-DD`; currencies ISO 4217.
 | Request | Answer |
 |---|---|
 | `GET /orders/<reference>` | 200 and the order: `currency`, `supplier` (`vat_id`, `account`: the account the system pays the supplier to), `lines` (`id`, `item`, `price`, `received`, `invoiced`), `net_total`, `net_invoiced`, `account` and `cost_centre` it is booked to. 404 for a reference the system does not hold |
+| `GET /orders?supplier=<tax identifier>` | 200 and `{"orders": [...]}`: every order or contract of that supplier still open — what was invoiced against it below its net total — each in the shape above with its `reference` |
 | `GET /bookings?mark=<mark>` | 200 and `{"records": [...]}`: every booking proposal carrying the mark |
 | `POST /bookings` | 201 and the proposal created with its `id` and `status`. The body: `mark`, `document`, `digest`, `order`, `supplier`, `currency`, `issue_date`, `due_date`, `account`, `cost_centre`, `net`, `tax`, `gross`, `taxes`. 409 when the document is booked under another mark; 422 for a body the system refuses |
 | `GET /payments?mark=<mark>` | 200 and `{"records": [...]}` |
@@ -46,6 +47,7 @@ subscription, whose `received` is what the period delivered.
 | Operation | Effect | Idempotency | Input |
 |---|---|---|---|
 | `accounting.orders.read` | read | — | `reference` |
+| `accounting.orders.list` | read | — | `supplier`, a tax identifier: its open orders, at most 50, what an invoice that names no order is classified against (ADR-0188) |
 | `accounting.bookings.propose` | write | marked | as the body of `POST /bookings`, without `mark` |
 | `payment.release.submit` | write | marked | as the body of `POST /payments`, without `mark` |
 

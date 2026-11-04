@@ -20,6 +20,7 @@ from taktus.components.process.domain.model.event import (
     FilterValue,
     holds,
 )
+from taktus.components.process.domain.model.takeover import TakeoverInstructions
 from taktus.components.process.domain.service import schedule
 from taktus.components.process.domain.service.autonomy import actions_used
 from taktus.components.process.domain.service.validation import topological_order, validate_graph
@@ -81,12 +82,17 @@ class Each(Value):
     """One run per item of a list that a connector reads when the trigger fires. Each run is
     given its item as the input `input`. The operation must be declared `read`. The list is
     the part of its output that `select` names, a dotted path. `field`, when given, is a
-    dotted path that picks the value out of each item (ADR-0035)."""
+    dotted path that picks the value out of each item (ADR-0035). `arguments` is the read's
+    input, fixed. `once` starts one run per item whatever slot lists it again: the run's
+    identifier is derived from the trigger and the item alone, so an inbox read daily starts a
+    document's run on the first day it is listed and never again (ADR-0188)."""
 
     input: str = Field(min_length=1)
     operation: str = Field(pattern=r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
     select: str = Field(min_length=1)
     field: str | None = Field(default=None, min_length=1)
+    arguments: Mapping[str, Any] | None = None
+    once: bool = False
 
     @property
     def capability(self) -> str:
@@ -356,6 +362,9 @@ class ProcessVersion(Value):
     evaluation: EvaluationSpec | None = None
     """The process's evaluation cases, its scorers and the schedule they run on without a
     change (ADR-0134 §1). None: a change is held to no cases, and nothing measures drift."""
+    takeover: TakeoverInstructions | None = None
+    """How a person runs this version without Taktus (UC-6.3, ADR-0180). Registration requires
+    it; None only on a version stored before it was required, which is read as it is."""
     author: str | None = None
     reason: str | None = None
 

@@ -19,7 +19,7 @@
 # hand (README.md beside this directory).
 
 id: s06-maturation
-version: "1"
+version: "2"
 name: S-06 Maturation
 autonomy:
   level: 3
@@ -129,3 +129,57 @@ steps:
         unpriced: { $from: measure, $select: output.unpriced }
         looked_at: { $from: propose, $select: output.looked_at }
         proposed: { $from: propose, $select: output.proposed }
+
+# How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
+# every step the system to act in, what to do there, the expertise it needs, each credential by
+# its parameter and where an authorised person finds it, and how to tell that it is done. The
+# section "By hand" of README.md beside this directory says the same, with the commands.
+takeover:
+  sequence: >
+    The process runs once a week, on Monday at midnight UTC; whoever owns the process starts it.
+    The steps run in order: measure every step from the instance's own records, look at every
+    step on a language model for a cheaper trained model and propose one where the evidence
+    holds, check that nothing was applied, and write one line with the counts. A proposal is
+    only ever a question to the owner; nothing is changed.
+  steps:
+    measure:
+      system: a shell with the instance's command-line tool, or the instance's own records
+      do: >
+        run the maturation measures command of the command-line tool, or collect for every step
+        from its runs its cost per case at the instance's price table, its duration, how many of
+        its results a person corrected, and how far its results spread. No measure names a
+        person. Note every step whose cost could not be priced, and why.
+      expertise: >
+        reading run records; pricing a step's consumption at the instance's price table
+      credentials: []
+      done: every step has its measures, and every step without a price is named with the reason
+    propose:
+      system: the instance's records and the ML bench
+      do: >
+        for every step on a language model with at least 500 labelled cases, at least 20 in
+        every class and at most 50 classes, hold out a fifth of every class, train a classifier
+        on the bench twice within the budget the run was started with, and try it on the held
+        out cases. Where it agrees on at least 95 percent of them, costs less per case, and both
+        trainings give the same model, raise a proposal to the owner to move the step. Otherwise
+        note why not. Without a price table nothing is trained, because no cost can be compared.
+      expertise: >
+        training and evaluating a classifier on the ML bench, as its README describes; the
+        thresholds above
+      credentials: []
+      done: every step looked at has either a proposal raised to the owner or the reason none was
+    nothing-applied:
+      system: the outcomes of the step before
+      do: >
+        check that no outcome was applied to any process, and that the number of proposals is
+        a whole number
+      expertise: none
+      credentials: []
+      done: no proposal was applied
+    report:
+      system: the place the weekly report is read
+      do: >
+        write one line: how many steps were measured, how many could not be priced, how many
+        steps on a language model were looked at, and how many proposals were raised
+      expertise: none
+      credentials: []
+      done: the line is written

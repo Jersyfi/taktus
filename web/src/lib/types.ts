@@ -235,6 +235,9 @@ export interface ProcessSummaryElement {
 	name: string;
 	active_version?: string;
 	autonomy_level?: number;
+	/** Its active version runs at level 3 or 4 and no person has passed a trial of its
+	 * takeover instructions on it (UC-6.3, ADR-0180). */
+	untried?: boolean;
 	/** How many of its runs work right now, by the run component's own definition. */
 	working: number;
 	/** How many of its runs wait right now, by the run component's own definition. */

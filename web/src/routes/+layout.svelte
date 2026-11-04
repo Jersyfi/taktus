@@ -1,20 +1,64 @@
 <!--
-	The frame of every level: the mark, the depth the reader stands at — overview, process, run,
-	origin — and the control that stops all motion. Paper and ink; a family's hue is added only on
-	the cells (M1.20, DEC-0185). Signing out ends the reader's session on the instance (ADR-0119).
+	The frame of every page (ADR-0178): a skip link, the bar with the mark, the depth the reader
+	stands at — overview, process, run, origin — the theme, the control that stops all motion and
+	signing out; the one navigation list beside the content, pinned from the design system's
+	expanded width and a drawer below it. A destination that waits for the reader carries a mark,
+	read from the surface's own lines. Colours, type and motion are the design system's tokens
+	(ADR-0177). Signing out ends the reader's session on the instance (ADR-0119).
 -->
 <script lang="ts">
+	import '../lib/generated/tokens.css';
+	import '../app.css';
 	import { onMount, type Snippet } from 'svelte';
 	import { page } from '$app/state';
-	import { surface } from '../lib/api';
+	import { surface, read } from '../lib/api';
+	import { frame } from '../lib/frame.svelte';
+	import { currentAdministrationKey, governanceLines } from '../lib/governance';
+	import Icon from '../lib/Icon.svelte';
+	import Mark from '../lib/Mark.svelte';
 	import { motion } from '../lib/motion.svelte';
+	import { BANDS, currentDestination, DESTINATIONS, waitingDestinations } from '../lib/navigation';
+	import { operationLines, type OperationSummary } from '../lib/operation';
 	import { forgetOldKey, signOut } from '../lib/session';
+	import { apply, theme, THEMES } from '../lib/theme.svelte';
 
 	let { children }: { children: Snippet } = $props();
+	let open = $state(false);
+	let waiting: Set<string> = $state(new Set());
+	let main: HTMLElement | undefined = $state();
 
 	onMount(() => {
 		forgetOldKey();
+		apply(theme.choice);
 		return motion.listen();
+	});
+
+	const calm = $derived(motion.stoppedByReader || motion.reducedBySystem);
+	$effect(() => {
+		if (calm) document.documentElement.dataset.motion = 'reduced';
+		else delete document.documentElement.dataset.motion;
+	});
+
+	/** The marks of what waits: read when the frame opens, and again on every return to Today. */
+	async function readWaiting() {
+		const base = surface(location.href);
+		const [governs, operation] = await Promise.all([
+			governanceLines(base, currentAdministrationKey()),
+			read<OperationSummary>(base, 'operation')
+		]);
+		waiting = waitingDestinations(governs, operation.ok ? operationLines(operation.body) : []);
+	}
+	$effect(() => {
+		if (page.route.id === '/') void readWaiting();
+	});
+	onMount(() => {
+		if (page.route.id !== '/') void readWaiting();
+	});
+
+	// A new page closes the drawer.
+	$effect(() => {
+		void page.url.hash;
+		open = false;
 	});
 
 	async function leave() {
@@ -22,6 +66,11 @@
 		location.reload();
 	}
 
+	function skip() {
+		main?.focus();
+	}
+
+	const current = $derived(currentDestination(page.route.id));
 	const DEPTHS = ['Overview', 'Process', 'Run', 'Origin'] as const;
 	const depth = $derived(
 		page.route.id?.startsWith('/origins')
@@ -34,15 +83,31 @@
 						? 0
 						: -1
 	);
-	const calm = $derived(motion.stoppedByReader || motion.reducedBySystem);
 </script>
 
-<div class="page">
-	<header class="bar">
-		<a class="home" href="#/"><span class="mark" aria-hidden="true"></span>taktus</a>
+<svelte:window onkeydown={(e) => e.key === 'Escape' && open && (open = false)} />
+
+<button class="skip" type="button" onclick={skip}>Skip to the content</button>
+
+<header class="bar">
+	<button
+		class="square menu"
+		type="button"
+		aria-expanded={open}
+		aria-controls="destinations"
+		onclick={() => (open = !open)}
+	>
+		<Icon name={open ? 'close' : 'menu'} />
+		<span class="sr-only">{open ? 'Close the navigation' : 'Open the navigation'}</span>
+	</button>
+	<a class="home" href="#/">
+		<Mark beat={frame.changes} still={calm} />
+		<span class="word">taktus</span>
+	</a>
+	{#if depth >= 0}
 		<nav class="depth" aria-label="Depth">
 			{#each DEPTHS as name, i (name)}
-				{#if i > 0}<span class="rail" aria-hidden="true"></span>{/if}
+				{#if i > 0}<span class="rail" class:done={i <= depth} aria-hidden="true"></span>{/if}
 				{#if i === 0 && depth !== 0}
 					<a class="stop done" href="#/">{name}</a>
 				{:else}
@@ -51,240 +116,405 @@
 				{/if}
 			{/each}
 		</nav>
-		<a class="requests" href="#/catalogue" aria-current={page.route.id === '/catalogue' ? 'page' : undefined}>Ask for</a>
-		<a class="requests" href="#/streams" aria-current={page.route.id?.startsWith('/streams') ? 'page' : undefined}>Streams</a>
-		<a class="requests" href="#/register" aria-current={page.route.id === '/register' ? 'page' : undefined}>What acts</a>
-		<a class="requests" href="#/gallery" aria-current={page.route.id === '/gallery' ? 'page' : undefined}>Gallery</a>
-		<a class="requests" href="#/me" aria-current={page.route.id === '/me' ? 'page' : undefined}>Yours</a>
-		<a class="requests" href="#/trials" aria-current={page.route.id?.startsWith('/trials') ? 'page' : undefined}>Trials</a>
-		<a class="requests" href="#/requests" aria-current={page.route.id?.startsWith('/requests') ? 'page' : undefined}>Requests</a>
+	{:else}
+		<span class="depth"></span>
+	{/if}
+	{#if frame.live !== null && page.route.id !== '/'}
+		<p class="live" class:on={frame.live} aria-live="polite">
+			<span class="pulse" aria-hidden="true"></span>{frame.live ? 'Live' : 'Reconnecting…'}
+		</p>
+	{/if}
+	<div class="tools">
+		<div class="segmented" role="group" aria-label="Theme">
+			{#each THEMES as t (t.id)}
+				<button type="button" aria-pressed={theme.choice === t.id} onclick={() => theme.choose(t.id)} title="{t.label} theme">
+					<Icon name={t.id === 'system' ? 'system' : t.id === 'light' ? 'sun' : 'moon'} size={16} />
+					<span class="sr-only">{t.label}</span>
+				</button>
+			{/each}
+		</div>
 		<button
-			class="calm"
+			class="pill"
 			type="button"
 			aria-pressed={calm}
 			disabled={motion.reducedBySystem}
+			title={motion.reducedBySystem ? 'Your system asks for reduced motion' : undefined}
 			onclick={() => (motion.stoppedByReader = !motion.stoppedByReader)}
 		>
-			Stop motion{#if motion.reducedBySystem}&#32;(the system asks for it){/if}
+			<Icon name="motion" size={16} />
+			<span class="label">Reduce motion</span>
 		</button>
-		<button class="calm" type="button" onclick={leave}>Sign out</button>
-	</header>
-	<main>
+		<button class="pill" type="button" onclick={leave}>
+			<Icon name="leave" size={16} />
+			<span class="label">Sign out</span>
+		</button>
+	</div>
+</header>
+
+<div class="frame">
+	<nav id="destinations" class="side" class:open aria-label="Destinations">
+		{#each BANDS as band (band.id)}
+			<p class="band" id="band-{band.id}">{band.label}</p>
+			<ul aria-labelledby="band-{band.id}">
+				{#each DESTINATIONS.filter((d) => d.band === band.id) as d (d.id)}
+					<li>
+						<a href={d.href} aria-current={current === d.id ? 'page' : undefined} data-destination={d.id}>
+							<Icon name={d.icon} />
+							<span class="name">{d.label}</span>
+							{#if waiting.has(d.id)}
+								<span class="waits" aria-hidden="true"></span><span class="sr-only">, needs a look</span>
+							{/if}
+						</a>
+					</li>
+				{/each}
+			</ul>
+		{/each}
+	</nav>
+	{#if open}
+		<button class="scrim" type="button" tabindex="-1" aria-label="Close the navigation" onclick={() => (open = false)}></button>
+	{/if}
+	<main id="main" tabindex="-1" bind:this={main}>
 		{@render children()}
 	</main>
 </div>
 
 <style>
-	/* Paper and ink. A family's hue is added on top of its form (M1.20, DEC-0185); every
-	   distinction is already carried by membrane, nucleus and motion. */
-	:global(:root) {
-		--paper: oklch(0.972 0.007 85);
-		--paper-2: oklch(0.948 0.009 85);
-		--ink: oklch(0.23 0.012 260);
-		--ink-2: oklch(0.46 0.012 260);
-		--ink-3: oklch(0.62 0.01 260);
-		--line: oklch(0.86 0.01 85);
-		--reproducible: oklch(0.5 0.12 240);
-		--variable: oklch(0.6 0.16 50);
-		--person: oklch(0.52 0.12 150);
-		--waiting: oklch(0.55 0.01 260);
-		--alert: oklch(0.55 0.17 28);
-		--focus: oklch(0.55 0.17 255);
-		--serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
-		--sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
-		--mono: ui-monospace, 'SF Mono', Menlo, monospace;
-		--text: var(--ink);
-		--muted: var(--ink-2);
-		--surface: var(--paper);
-		color-scheme: light dark;
+	.skip {
+		min-height: 0;
+		position: fixed;
+		inset-block-start: var(--sp-100);
+		inset-inline-start: var(--sp-100);
+		z-index: var(--z-toast);
+		transform: translateY(-200%);
+		padding: var(--sp-100) var(--sp-200);
+		border-radius: var(--r-md);
+		border: none;
+		background: var(--accent-primary);
+		color: var(--text-inverse);
 	}
-	@media (prefers-color-scheme: dark) {
-		:global(:root) {
-			--paper: oklch(0.165 0.008 260);
-			--paper-2: oklch(0.198 0.009 260);
-			--ink: oklch(0.94 0.008 85);
-			--ink-2: oklch(0.74 0.01 85);
-			--ink-3: oklch(0.58 0.01 85);
-			--line: oklch(0.29 0.01 260);
-			--reproducible: oklch(0.76 0.11 235);
-			--variable: oklch(0.8 0.13 65);
-			--person: oklch(0.78 0.12 150);
-			--waiting: oklch(0.68 0.01 260);
-			--alert: oklch(0.72 0.15 30);
-			--focus: oklch(0.75 0.14 255);
-		}
+	.skip:focus-visible {
+		transform: none;
 	}
-	:global(body) {
-		margin: 0;
-		background: var(--paper);
-		color: var(--ink);
-		font: 400 15px/1.5 var(--sans);
-		font-variant-numeric: tabular-nums;
-	}
-	:global(a) {
-		color: inherit;
-	}
-	:global(:focus-visible) {
-		outline: 2px solid var(--focus);
-		outline-offset: 2px;
-		border-radius: 6px;
-	}
-	/* Each level opens with a sentence: what is happening, before the picture. */
-	:global(h1) {
-		font-family: var(--serif);
-		font-weight: 400;
-		font-size: clamp(1.8rem, 4vw, 2.9rem);
-		line-height: 1.1;
-		letter-spacing: -0.01em;
-		margin: 0 0 0.5rem;
-		text-wrap: balance;
-	}
-	:global(h2) {
-		font-size: 0.8rem;
-		font-weight: 500;
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
-		color: var(--ink-2);
-	}
-	/* Every level's text equivalent: the same states and figures, set as a quiet list. */
-	:global(section.text) {
-		margin-top: 2.5rem;
-	}
-	:global(section.text ol) {
-		font-family: var(--mono);
-		font-size: 0.82rem;
-		line-height: 1.75;
-		background: var(--paper-2);
-		border-radius: 14px;
-		padding: 1.1rem 1.25rem 1.1rem 2.75rem;
-		overflow-x: auto;
-	}
-	.page {
-		max-width: 80rem;
-		margin: 0 auto;
-		padding: 0 1.75rem 4rem;
-	}
+
+	/* The bar: a plane of the surface above the canvas, a hairline beneath, no elevation. */
 	.bar {
 		position: sticky;
-		top: 0;
-		z-index: 2;
+		inset-block-start: 0;
+		z-index: var(--z-sticky);
 		display: flex;
 		align-items: center;
-		gap: 1.25rem;
-		flex-wrap: wrap;
-		padding: 0.75rem 0;
-		margin-bottom: 1.75rem;
-		background: color-mix(in oklch, var(--paper) 90%, transparent);
-		backdrop-filter: blur(10px);
-		border-bottom: 1px solid var(--line);
+		gap: var(--sp-200);
+		height: var(--layout-appbar-height);
+		padding: 0 var(--sp-200);
+		background: var(--bg-glass);
+		backdrop-filter: saturate(1.4) blur(14px);
+		border-bottom: var(--bw-hairline) solid var(--border-subtle);
+	}
+	@supports not (backdrop-filter: blur(1px)) {
+		.bar {
+			background: var(--bg-surface);
+		}
 	}
 	.home {
 		display: flex;
 		align-items: center;
-		gap: 0.6rem;
-		font-weight: 600;
-		font-size: 1.1rem;
-		letter-spacing: -0.02em;
+		gap: var(--sp-100);
 		text-decoration: none;
+		flex: none;
 	}
-	/* The mark: a small reproducible cell, still. */
-	.mark {
-		width: 12px;
-		height: 12px;
-		border-radius: 50%;
-		border: 1.5px solid var(--reproducible);
-		box-shadow:
-			inset 0 0 0 2.5px var(--paper),
-			inset 0 0 0 6px var(--reproducible);
+	.word {
+		font-family: var(--font-display);
+		font-weight: var(--fw-bold);
+		font-size: var(--fs-400);
+		letter-spacing: -0.03em;
+		color: var(--text-brand);
 	}
+	.square,
+	.pill,
+	.segmented button {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: var(--sp-050);
+		min-height: var(--density-control-sm-min);
+		border: var(--bw-hairline) solid var(--border-subtle);
+		background: var(--bg-surface);
+		color: var(--text-primary);
+		border-radius: var(--r-full);
+		font-size: var(--fs-075);
+		font-weight: var(--fw-medium);
+		transition: background-color var(--motion-state-duration) var(--motion-state-easing);
+	}
+	.square {
+		padding: 0;
+		width: var(--density-control-sm-min);
+		border-radius: var(--r-md);
+	}
+	.pill {
+		padding: 0 var(--sp-150);
+	}
+	.square:hover,
+	.pill:hover,
+	.segmented button:hover {
+		background: var(--bg-surface-hover);
+	}
+	.pill[aria-pressed='true'] {
+		background: var(--text-primary);
+		color: var(--text-inverse);
+		border-color: var(--text-primary);
+	}
+	.segmented {
+		display: inline-flex;
+		padding: var(--sp-025);
+		gap: var(--sp-025);
+		background: var(--bg-recess);
+		border-radius: var(--r-full);
+	}
+	.segmented button {
+		padding: 0;
+		width: var(--sp-400);
+		min-height: var(--sp-300);
+		border-color: transparent;
+		background: transparent;
+	}
+	.segmented button[aria-pressed='true'] {
+		background: var(--bg-surface);
+		box-shadow: var(--shadow-raised);
+		color: var(--text-brand);
+	}
+	.tools {
+		display: flex;
+		align-items: center;
+		gap: var(--sp-100);
+		flex: none;
+	}
+
+	/* The depth: four stops on a rail; the one the reader stands at is filled. */
 	.depth {
 		display: flex;
 		align-items: center;
 		flex: 1;
 		min-width: 0;
 		overflow: hidden;
-		font-size: 0.82rem;
-		color: var(--ink-3);
+		font-size: var(--fs-075);
+		color: var(--text-subtle);
 	}
 	.stop {
 		display: flex;
 		align-items: center;
-		gap: 0.45rem;
+		gap: var(--sp-050);
 		white-space: nowrap;
 		text-decoration: none;
 	}
 	.stop::before {
 		content: '';
-		width: 7px;
-		height: 7px;
-		border-radius: 50%;
-		border: 1.5px solid currentColor;
+		width: 8px;
+		height: 8px;
+		border-radius: var(--r-full);
+		border: var(--bw-thick) solid currentColor;
 		flex: none;
 	}
 	.stop.done {
-		color: var(--ink-2);
+		color: var(--text-secondary);
 	}
 	.stop.done::before {
 		background: currentColor;
 	}
 	.stop.here {
-		color: var(--ink);
-		font-weight: 500;
+		color: var(--text-brand);
+		font-weight: var(--fw-semibold);
 	}
 	.stop.here::before {
-		background: var(--ink);
-		border-color: var(--ink);
+		background: var(--accent-primary);
+		border-color: var(--accent-primary);
+		box-shadow: 0 0 0 3px var(--accent-primary-subtle);
 	}
 	.rail {
-		width: 1.75rem;
-		height: 1px;
-		margin: 0 0.5rem;
-		background: var(--line);
+		width: var(--sp-300);
+		height: var(--bw-thick);
+		margin: 0 var(--sp-100);
+		background: var(--border-subtle);
+		border-radius: var(--r-full);
 		flex: none;
 	}
-	.requests {
-		font-size: 0.85rem;
+	.rail.done {
+		background: linear-gradient(to right, var(--text-secondary), var(--accent-primary));
+	}
+
+	/* The live state of the page's stream. */
+	.live {
+		display: flex;
+		align-items: center;
+		gap: var(--sp-050);
+		margin: 0;
+		font-size: var(--fs-075);
+		font-weight: var(--fw-semibold);
+		color: var(--text-subtle);
+		flex: none;
+	}
+	.live.on {
+		color: var(--text-success);
+	}
+	.pulse {
+		width: 8px;
+		height: 8px;
+		border-radius: var(--r-full);
+		border: var(--bw-thick) solid currentColor;
+	}
+	.live.on .pulse {
+		background: currentColor;
+	}
+
+	/* The frame: the navigation column beside the content. */
+	.frame {
+		display: grid;
+		grid-template-columns: var(--layout-sidenav-width) minmax(0, 1fr);
+		min-height: calc(100vh - var(--layout-appbar-height));
+	}
+	.side {
+		position: sticky;
+		inset-block-start: var(--layout-appbar-height);
+		align-self: start;
+		height: calc(100vh - var(--layout-appbar-height));
+		overflow-y: auto;
+		padding: var(--sp-200) var(--sp-150) var(--sp-400);
+		border-inline-end: var(--bw-hairline) solid var(--border-subtle);
+		background: color-mix(in srgb, var(--bg-surface) 55%, transparent);
+	}
+	.band {
+		margin: var(--sp-250) var(--sp-150) var(--sp-050);
+		font-size: var(--fs-050);
+		font-weight: var(--fw-semibold);
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--text-subtle);
+	}
+	.band:first-child {
+		margin-top: 0;
+	}
+	.side ul {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		gap: var(--sp-025);
+	}
+	.side a {
+		position: relative;
+		display: flex;
+		align-items: center;
+		gap: var(--sp-150);
+		min-height: var(--density-control-md-min);
+		padding: 0 var(--sp-150);
+		border-radius: var(--r-md);
 		text-decoration: none;
-		border: 1px solid var(--line);
-		border-radius: 999px;
-		padding: 0.35rem 0.8rem;
+		font-size: var(--fs-100);
+		font-weight: var(--fw-medium);
+		color: var(--text-secondary);
+		transition: background-color var(--motion-state-duration) var(--motion-state-easing);
 	}
-	.requests[aria-current='page'] {
-		background: var(--paper-2);
+	.side a:hover {
+		background: var(--bg-surface-hover);
+		color: var(--text-primary);
 	}
-	.calm {
-		border: 1px solid var(--line);
-		background: var(--paper);
-		border-radius: 999px;
-		padding: 0.35rem 0.8rem;
-		font: inherit;
-		font-size: 0.85rem;
-		cursor: pointer;
-		color: var(--ink);
+	.side a[aria-current='page'] {
+		background: var(--accent-primary-subtle);
+		color: var(--text-brand);
+		font-weight: var(--fw-semibold);
 	}
-	.calm[aria-pressed='true'] {
-		background: var(--ink);
-		color: var(--paper);
-		border-color: var(--ink);
+	.side a[aria-current='page']::before {
+		content: '';
+		position: absolute;
+		inset-inline-start: calc(-1 * var(--sp-150));
+		inset-block: var(--sp-100);
+		width: 3px;
+		border-radius: var(--r-full);
+		background: var(--accent-primary);
 	}
-	.calm:disabled {
-		cursor: default;
+	.name {
+		flex: 1;
 	}
-	@media (max-width: 760px) {
-		.page {
-			padding: 0 1rem 3rem;
+	/* Something waits for the reader: a filled mark, said in words to a screen reader. */
+	.waits {
+		width: 8px;
+		height: 8px;
+		border-radius: var(--r-full);
+		background: var(--accent-primary);
+		box-shadow: 0 0 0 3px var(--accent-primary-subtle);
+	}
+	main {
+		min-width: 0;
+		width: 100%;
+		max-width: var(--layout-content-max);
+		padding: var(--sp-500) var(--sp-600) var(--sp-1000);
+	}
+	main:focus {
+		outline: none;
+	}
+	.scrim {
+		display: none;
+	}
+	.menu {
+		display: none;
+	}
+
+	/* Below the expanded width the column is a drawer the bar's menu opens. */
+	@media (max-width: 904px) {
+		.menu {
+			display: inline-flex;
 		}
-		.depth {
-			order: 3;
-			flex-basis: 100%;
+		.frame {
+			grid-template-columns: minmax(0, 1fr);
 		}
-		.rail {
-			width: 0.9rem;
-			margin: 0 0.3rem;
+		.side {
+			position: fixed;
+			inset-block: var(--layout-appbar-height) 0;
+			inset-inline-start: 0;
+			z-index: var(--z-overlay);
+			width: min(var(--layout-sidenav-width), 85vw);
+			height: auto;
+			background: var(--bg-raised);
+			box-shadow: var(--shadow-overlay);
+			transform: translateX(-105%);
+			visibility: hidden;
+			transition:
+				transform var(--motion-exit-duration) var(--motion-exit-easing),
+				visibility var(--dur-instant) linear var(--motion-exit-duration);
 		}
-		.stop:not(.here):not(.done) {
-			font-size: 0;
-			gap: 0;
+		.side.open {
+			transform: none;
+			visibility: visible;
+			transition: transform var(--motion-entrance-duration) var(--motion-entrance-easing);
+		}
+		.scrim {
+			display: block;
+			position: fixed;
+			inset: var(--layout-appbar-height) 0 0 0;
+			z-index: calc(var(--z-overlay) - 1);
+			border: none;
+			background: var(--bg-scrim);
+		}
+		main {
+			padding: var(--sp-300) var(--sp-200) var(--sp-800);
+		}
+		.rail,
+		.stop:not(.here) {
+			display: none;
+		}
+		.label {
+			display: none;
+		}
+		.bar {
+			gap: var(--sp-100);
+			padding: 0 var(--sp-100);
+		}
+		.tools {
+			margin-inline-start: auto;
+		}
+	}
+	@media (max-width: 420px) {
+		.segmented {
+			display: none;
 		}
 	}
 </style>

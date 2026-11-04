@@ -14,6 +14,7 @@ from collections.abc import Callable
 from typing import Any
 
 import httpx
+from fakes.takeover import instructions
 
 from taktus.components.run.domain.model import WORKING, Run
 
@@ -38,6 +39,8 @@ def with_a_pause(n: int) -> dict[str, Any]:
         },
     )
     document["steps"][2]["depends_on"] = ["pause"]
+    # The instructions describe the pause too (ADR-0180).
+    document["takeover"] = instructions(document)
     return document
 
 

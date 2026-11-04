@@ -6,8 +6,8 @@ epic: E6
 serves: [P1, P6, P12, P14]
 state: building
 version: 0.5.0
-tests: [tests/governance/test_result_defects.py::test_a_reported_result_raises_one_incident_with_what_the_rule_read]
-adrs: {ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0023: 949c6f4e13af, ADR-0024: 52ba89e4adec, ADR-0029: 37c061ef032a, ADR-0153: 1f4e8c44971d}
+tests: [tests/governance/test_result_defects.py::test_a_reported_result_raises_one_incident_with_what_the_rule_read, tests/composition/test_defect_watch.py::test_a_result_defect_is_delivered_once_with_its_package_and_updated_in_place, tests/composition/test_defect_watch.py::test_without_a_connector_for_the_tracking_system_nothing_is_delivered]
+adrs: {ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0023: 949c6f4e13af, ADR-0024: 52ba89e4adec, ADR-0029: 37c061ef032a, ADR-0153: f720e5930f42, ADR-0179: b70d264ab655}
 supersedes: null
 ---
 
@@ -84,6 +84,10 @@ business-critical finding (NTC-0030). No version of the definition has an incide
 
 A result reported wrong raises one incident of kind `result.defect`, with the verdict of the rule
 of ADR-0023 §2 as its severity and the facts and thresholds it read; a second report raises
-nothing; the incident names no person (ADR-0153) — by the named test. Not built: delivery through
-a connector, updates to the same external object, the situation package, the report a model may
-write, and the refusal to close while a request of class `correction` is open.
+nothing; the incident names no person (ADR-0153). It is delivered through the connector that serves
+`repository.issues` as one issue whose text is the situation package with its five parts and the
+remediation plan, recorded as `egress.delivery`; a later change — the remediation started — is a
+comment on the same issue, never a new one; without such a connector nothing is delivered
+(ADR-0179 §4) — by the named tests. Not built: the report a model may write; delivery to a chat
+channel, an operations tool or mail; the refusal to close while a request of class `correction` is
+open, since Taktus closes no result defect yet.

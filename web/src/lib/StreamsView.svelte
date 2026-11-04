@@ -72,13 +72,6 @@
 </section>
 
 <style>
-	.eyebrow {
-		font-size: 0.75rem;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: var(--ink-3);
-		margin: 0 0 0.5rem;
-	}
 	.tier,
 	.outside {
 		list-style: none;
@@ -88,12 +81,12 @@
 		gap: 0.7rem;
 	}
 	.card {
-		background: var(--paper-2);
+		background: var(--bg-surface);
 		border-radius: 18px;
 		padding: 0.8rem 0.9rem;
 	}
 	.card.core {
-		border-left: 4px solid var(--reproducible);
+		border-left: 4px solid var(--family-reproducible);
 	}
 	.card a {
 		color: inherit;
@@ -102,12 +95,12 @@
 		gap: 0.35rem;
 	}
 	h3 {
-		font-family: var(--serif);
+		font-family: var(--font-display);
 		margin: 0;
 	}
 	.edge {
 		font-size: 0.8rem;
-		color: var(--ink-3);
+		color: var(--text-subtle);
 		margin: 0;
 	}
 	.edge.end {
@@ -118,20 +111,20 @@
 		height: 0.5rem;
 		border-radius: 4px;
 		overflow: hidden;
-		background: var(--line);
+		background: var(--border-subtle);
 	}
-	.part.level-1 { background: var(--person); }
-	.part.level-2 { background: var(--waiting); }
-	.part.level-3 { background: var(--variable); }
-	.part.level-4 { background: var(--reproducible); }
+	.part.level-1 { background: var(--family-person); }
+	.part.level-2 { background: var(--family-waiting); }
+	.part.level-3 { background: var(--family-variable); }
+	.part.level-4 { background: var(--family-reproducible); }
 	.part.method-rule,
 	.part.method-statistics,
 	.part.method-ml,
 	.part.method-neural,
-	.part.method-wait { background: var(--reproducible); }
+	.part.method-wait { background: var(--family-reproducible); }
 	.part.method-llm,
-	.part.method-worker { background: var(--variable); }
-	.part.method-human { background: var(--person); }
+	.part.method-worker { background: var(--family-variable); }
+	.part.method-human { background: var(--family-person); }
 	dl {
 		display: grid;
 		grid-template-columns: repeat(3, 1fr);
@@ -140,15 +133,15 @@
 	}
 	dt {
 		font-size: 0.72rem;
-		color: var(--ink-3);
+		color: var(--text-subtle);
 	}
 	dd {
 		margin: 0;
-		font-family: var(--serif);
+		font-family: var(--font-display);
 	}
 	.text,
 	.muted {
-		color: var(--ink-2);
+		color: var(--text-secondary);
 		font-size: 0.82rem;
 		margin: 0.3rem 0 0;
 	}
