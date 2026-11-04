@@ -124,8 +124,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         "/runs/{run_id}/takeovers/{takeover_id}",
         summary="The state a step was taken over in",
         description="The step's goal, acceptance criteria and inputs, the worker's checkpoint, "
-        "what the worker produced so far by identifier and digest, and until when you hold "
-        "it. Answered `404` while the take-over is asked and not yet served, and once it was "
+        "what the worker produced so far by identifier and digest, until when you hold "
+        "it, and how a person does the step by hand under `instructions` (ADR-0180 §4). "
+        "Answered `404` while the take-over is asked and not yet served, and once it was "
         "handed back or its lease lapsed (ADR-0128 §3).",
         responses={200: {"description": "The take-over's state."}, **common},
     )
@@ -141,6 +142,11 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
             document = await services.takeovers.takeover_state(who.tenant, run_id, takeover_id)
         except RunError as error:
             return _refused(error)
+        if isinstance(document, dict) and "step_id" in document:
+            # How a person does the step by hand, from its version's instructions (ADR-0180 §4).
+            document["instructions"] = await services.takeover_instructions.of_step(
+                who.tenant, str(document.get("process_version")), str(document["step_id"])
+            )
         return JSONResponse(document)
 
     @routes.post(

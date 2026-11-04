@@ -20,6 +20,7 @@ import pytest
 from fakes import FakeIdentifiers, FakeModel, FakeWorker
 from fakes.identity import directory
 from fakes.maturity import VERIFIED
+from fakes.takeover import instructed
 
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.adapters.driven.memory import (
@@ -174,26 +175,28 @@ def bundle(
     }
     if schedule is not None:
         evaluation["schedule"] = schedule
-    return {
-        "id": "replies",
-        "version": version,
-        "name": "Replies",
-        "autonomy": {"level": 2, "reason": "a test", "toward_next": "nothing"},
-        "inputs": inputs,
-        "steps": [
-            {
-                "id": "draft",
-                "method": "llm",
-                "reason": "a reply is written in the customer's words",
-                "rejected": [{"method": "rule", "why": "no rule writes a reply"}],
-                "exactness": "tolerant",
-                "fallback": {"when": "the answer fails twice", "to": "human"},
-                "work": work,
-            }
-        ],
-        "limits": {"compute": {"seconds": 10, "resource_class": "cpu.small"}},
-        "evaluation": evaluation,
-    }
+    return instructed(
+        {
+            "id": "replies",
+            "version": version,
+            "name": "Replies",
+            "autonomy": {"level": 2, "reason": "a test", "toward_next": "nothing"},
+            "inputs": inputs,
+            "steps": [
+                {
+                    "id": "draft",
+                    "method": "llm",
+                    "reason": "a reply is written in the customer's words",
+                    "rejected": [{"method": "rule", "why": "no rule writes a reply"}],
+                    "exactness": "tolerant",
+                    "fallback": {"when": "the answer fails twice", "to": "human"},
+                    "work": work,
+                }
+            ],
+            "limits": {"compute": {"seconds": 10, "resource_class": "cpu.small"}},
+            "evaluation": evaluation,
+        }
+    )
 
 
 class World:

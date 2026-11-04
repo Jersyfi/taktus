@@ -16,6 +16,7 @@ from typing import Any
 
 import httpx
 import httpx2
+from fakes.takeover import instructed
 from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
 
@@ -75,7 +76,7 @@ async def registered(given: Services) -> None:
         given.persistence,
         MemoryRepository(given.persistence, Process),
         ledger=given.ledger,
-    ).execute(RegisterProcessVersion(bundle(), tenant=TENANT, by="idn_admin"))
+    ).execute(RegisterProcessVersion(instructed(bundle()), tenant=TENANT, by="idn_admin"))
 
 
 async def agent(given: Services, name: str, *roles: str, tenant: str = TENANT) -> str:

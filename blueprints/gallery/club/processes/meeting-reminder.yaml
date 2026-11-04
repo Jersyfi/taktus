@@ -5,7 +5,7 @@
 # and its rehearsal runs to its end. Its choices are the inputs its monthly trigger gives.
 
 id: meeting-reminder
-version: "1"
+version: "2"
 name: The reminder of the next meeting
 autonomy:
   level: 2
@@ -72,3 +72,31 @@ steps:
         club: { $input: club }
         when: { $input: when }
         place: { $input: place }
+
+# How a person runs this process without Taktus (ADR-0180): the sequence, and for every step the
+# system to act in, what to do there, the expertise it needs, each credential, and how to tell
+# that it is done.
+takeover:
+  sequence: >
+    Once a month, a member of the club who looks after its meetings writes the reminder. Two
+    steps, in order: check that it is known when and where the next meeting is, then write the
+    reminder.
+  steps:
+    check:
+      system: the club's calendar, or a note of the next meeting
+      do: >
+        look up when the next meeting is and where; both must be known before the reminder is
+        written
+      expertise: none
+      credentials: []
+      done: >
+        the time and the place of the next meeting are both known, or the reminder waits until
+        they are
+    write:
+      system: a text, a message or a sheet of paper
+      do: >
+        write to the members of the club: the next meeting is at the time and the place looked
+        up, and please say if you cannot come
+      expertise: none
+      credentials: []
+      done: the reminder names the club, the time and the place

@@ -264,7 +264,23 @@ def open_questions(draft: Draft) -> list[Question]:
                     f"{role!r} under `confirmed`, or change the role of its steps",
                 )
             )
+    if draft.sequence is None:
+        found.append(
+            Question(
+                about="process",
+                asks="say under `sequence` how a person runs the process without Taktus: when "
+                "it runs, in what order, and who starts it (ADR-0180)",
+            )
+        )
     for step in draft.steps:
+        if step.takeover is None:
+            found.append(
+                Question(
+                    about=step.id,
+                    asks=f"say under `takeover` how a person does {step.name!r} by hand: "
+                    "`system`, `do`, `expertise`, `credentials` and `done` (ADR-0180)",
+                )
+            )
         if step.method is None:
             kinds = ", ".join(step.candidates)
             hint = f"; the model suggests {step.suggested}" if step.suggested else ""
@@ -361,6 +377,14 @@ def bundle_of(draft: Draft, version: str = "1") -> dict[str, Any]:
         },
         "reason": f"taken from the process model {draft.source} through a plan draft",
         "steps": steps,
+        "takeover": {
+            "sequence": draft.sequence,
+            "steps": {
+                step.id: step.takeover.document()
+                for step in draft.steps
+                if step.takeover is not None
+            },
+        },
     }
 
 

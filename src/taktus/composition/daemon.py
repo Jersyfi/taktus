@@ -119,6 +119,7 @@ from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
 from taktus.components.process.application.service.streams import ValueStreams
+from taktus.components.process.application.service.takeover import TakeoverTrials
 from taktus.components.process.application.service.triggers import TriggersHandler
 from taktus.components.process.domain.model import (
     CorrectedCase,
@@ -126,6 +127,7 @@ from taktus.components.process.domain.model import (
     Process,
     ProcessVersion,
     Proposal,
+    TakeoverTrial,
     TriggerState,
     ValueStream,
 )
@@ -346,6 +348,8 @@ class Wired:
     runner: Runner | None = None
     skills: SkillLifecycle | None = None
     """The skill lifecycle the scheduler looks at once a minute (ADR-0162)."""
+    instructions: TakeoverTrials | None = None
+    """A process's takeover instructions and the trials of them (ADR-0180)."""
     agents: SharedAgents | None = None
     """Shared agents with role profiles (ADR-0163)."""
     connected: ConnectedHost | None = None
@@ -382,6 +386,13 @@ class Wired:
     def takeovers(self) -> RunEngine:
         """A running step taken over and handed back, through the engine (ADR-0128)."""
         return self.engine
+
+    @property
+    def takeover_instructions(self) -> TakeoverTrials:
+        """A process's takeover instructions and the trials of them (ADR-0180)."""
+        if self.instructions is None:
+            raise RuntimeError("the daemon wires the takeover instructions")
+        return self.instructions
 
     @property
     def operation(self) -> OperationRecords:
@@ -647,6 +658,7 @@ async def wire(
                     PostgresRepository(persistence, ProcessVersion),
                     provenance_store,
                     PostgresRepository(persistence, Request),
+                    PostgresRepository(persistence, TakeoverTrial),
                 )
             )
             owner = owner_channel_wiring(
@@ -1184,6 +1196,16 @@ async def wire(
                 stops=StopsConfirmed(tenants, stops),
                 stages=staged.stages,
                 skills=skill_lifecycle,
+                instructions=TakeoverTrials(
+                    PostgresRepository(persistence, Process),
+                    PostgresRepository(persistence, ProcessVersion),
+                    PostgresRepository(persistence, TakeoverTrial),
+                    ledger=ledger,
+                    work=persistence,
+                    clock=clock,
+                    identifiers=ids,
+                    skills=skill_lifecycle.of_version,
+                ),
                 agents=shared_agents,
                 deadlines=Deadlines(
                     tenants=tenants,

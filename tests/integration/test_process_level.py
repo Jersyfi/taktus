@@ -14,6 +14,7 @@ import copy
 from collections.abc import Callable
 
 import httpx
+from fakes.takeover import instructions
 
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersion,
@@ -102,6 +103,8 @@ async def test_a_registered_process_is_found_at_the_process_level_and_moves_with
                     "work": {"rule": "constant", "value": {"k": 1}},
                 }
             )
+            # The added step's takeover instructions come with it (ADR-0180).
+            changed["takeover"] = instructions(changed)
             await wired.register_version.execute(RegisterProcessVersion(changed, tenant=chosen))
             newer = (await http.get(path, headers=headers)).json()
             assert newer["process"]["version"] == changed["version"]

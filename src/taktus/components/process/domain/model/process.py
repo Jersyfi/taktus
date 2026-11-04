@@ -20,6 +20,7 @@ from taktus.components.process.domain.model.event import (
     FilterValue,
     holds,
 )
+from taktus.components.process.domain.model.takeover import TakeoverInstructions
 from taktus.components.process.domain.service import schedule
 from taktus.components.process.domain.service.autonomy import actions_used
 from taktus.components.process.domain.service.validation import topological_order, validate_graph
@@ -356,6 +357,9 @@ class ProcessVersion(Value):
     evaluation: EvaluationSpec | None = None
     """The process's evaluation cases, its scorers and the schedule they run on without a
     change (ADR-0134 §1). None: a change is held to no cases, and nothing measures drift."""
+    takeover: TakeoverInstructions | None = None
+    """How a person runs this version without Taktus (UC-6.3, ADR-0180). Registration requires
+    it; None only on a version stored before it was required, which is read as it is."""
     author: str | None = None
     reason: str | None = None
 

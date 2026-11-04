@@ -28,7 +28,7 @@
 # (`taktusctl deactivate --process b-10-03-incoming-invoice`) changes nothing in the books.
 
 id: b-10-03-incoming-invoice
-version: "1"
+version: "2"
 name: B-10.03 Incoming invoice
 autonomy:
   level: 3
@@ -206,3 +206,92 @@ steps:
         booking: { $from: propose-booking, $select: output.id }
       credentials:
         - { name: ACCOUNTING_TOKEN, injected_as: env }
+
+takeover:
+  sequence: >
+    It runs once for each incoming electronic invoice in the organisation's inbox folder. By
+    hand, a person of the accounting function starts it for one invoice. Read the invoice, read
+    the order or contract it names, compute every amount again and match the invoice against the
+    order, enter the booking, and release the payment. Any difference stops the process: ask the
+    supplier, do not pay. The payment is always released by a person, and only to the account the
+    accounting system holds for the supplier.
+  steps:
+    read-invoice:
+      system: the organisation's inbox folder for incoming invoices
+      do: >
+        open the invoice whose file name the run was started with and read its business terms:
+        seller and their tax identifier, the order reference, the account to be paid, the
+        dates, each line with price and quantity, each tax category with its rate, and the
+        totals, every amount exactly as the document writes it
+      expertise: >
+        reading a structured electronic invoice by the business terms of the European standard
+        for electronic invoicing, in either of its two syntaxes
+      credentials:
+        - parameter: DOCUMENTS_TOKEN
+          where: >
+            the operator's secret store, under the parameter DOCUMENTS_TOKEN described in
+            CREDENTIALS.md; a person may instead use their own access to the inbox folder
+      done: every business term the later steps need is noted from the invoice
+    read-order:
+      system: the organisation's accounting system
+      do: >
+        find the order or contract under the invoice's order reference and read what was
+        ordered, what was received, what is still open, the supplier and the account the system
+        holds for them, the booking account and the cost centre. If the system holds no such
+        order, stop and ask the person responsible for the purchase
+      expertise: finding an order in the accounting system
+      credentials:
+        - parameter: ACCOUNTING_TOKEN
+          where: >
+            the operator's secret store, under the parameter ACCOUNTING_TOKEN described in
+            CREDENTIALS.md; a person may instead use their own account in the accounting system,
+            if it may read orders
+      done: the order is read, or the process stopped because none was found
+    check:
+      system: a calculator or a spreadsheet, and the invoice in the inbox folder
+      do: >
+        check the seller's tax identifier and the account to be paid against what the
+        accounting system holds; check each line's price and quantity against the order. Add
+        the lines' net amounts, compute each tax category's tax at its rate rounded to the cent,
+        and check every total the invoice states. Open the invoice again and check that the net
+        and the tax sum to its total with tax. Work in exact decimal amounts. Any difference:
+        stop, ask the supplier, do not pay
+      expertise: >
+        the calculation rules of the European standard for electronic invoicing, value added
+        tax by category and rate, and rounding to the cent
+      credentials:
+        - parameter: DOCUMENTS_TOKEN
+          where: >
+            the operator's secret store, under the parameter DOCUMENTS_TOKEN described in
+            CREDENTIALS.md; a person may instead use their own access to the inbox folder
+      done: every amount holds and the invoice agrees with its order, or the process stopped
+    propose-booking:
+      system: the organisation's accounting system
+      do: >
+        enter the booking with the checked amounts: the supplier, the invoice, net, tax per
+        category and gross, the dates, the order's booking account and cost centre. Check first
+        that this invoice is not booked already, so that nothing is booked twice. The booking is
+        posted by a person of the organisation
+      expertise: booking an incoming invoice in the accounting system
+      credentials:
+        - parameter: ACCOUNTING_TOKEN
+          where: >
+            the operator's secret store, under the parameter ACCOUNTING_TOKEN described in
+            CREDENTIALS.md; a person may instead use their own account in the accounting system,
+            if it may enter bookings
+      done: the invoice is booked once with the checked amounts
+    release-payment:
+      system: the payment run of the organisation's accounting system
+      do: >
+        a person entitled to release payments decides; released, the payable amount is put
+        into the payment run by the due date, to the account the accounting system holds for the
+        supplier, never to an account the invoice alone names
+      expertise: >
+        the organisation's rules for releasing payments, and its payment run
+      credentials:
+        - parameter: ACCOUNTING_TOKEN
+          where: >
+            the operator's secret store, under the parameter ACCOUNTING_TOKEN described in
+            CREDENTIALS.md; a person releasing by hand uses their own account in the accounting
+            system, with the right to release payments
+      done: the payment is in the payment run with the checked amount, or it was not released

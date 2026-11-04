@@ -40,6 +40,13 @@
 								{#if process.autonomy_level !== undefined}
 									<span class="level" title="Autonomy level {process.autonomy_level}">L{process.autonomy_level}</span>
 								{/if}
+								{#if process.untried}
+									<span
+										class="untried"
+										title="No person has yet run this version by hand from its takeover instructions"
+										>untried by hand</span
+									>
+								{/if}
 							</div>
 							{#if process.cells?.length}
 								<Graph steps={process.cells} {motionAllowed} compact />
@@ -146,6 +153,10 @@
 	}
 	.head a:hover {
 		text-decoration: underline;
+	}
+	.untried {
+		font-size: 0.75rem;
+		font-style: italic;
 	}
 	.level {
 		font-family: var(--mono);

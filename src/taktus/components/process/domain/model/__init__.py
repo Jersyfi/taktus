@@ -36,6 +36,12 @@ from taktus.components.process.domain.model.proposal import (
     StepChange,
 )
 from taktus.components.process.domain.model.stream import StreamKind, ValueStream
+from taktus.components.process.domain.model.takeover import (
+    CredentialPointer,
+    StepInstructions,
+    TakeoverInstructions,
+    TakeoverTrial,
+)
 from taktus.components.process.domain.model.trigger_state import Firing, TriggerState
 
 __all__ = [
@@ -43,6 +49,7 @@ __all__ = [
     "CaseState",
     "Condition",
     "CorrectedCase",
+    "CredentialPointer",
     "DeadlineAction",
     "DeadlineDeclaration",
     "Difference",
@@ -68,7 +75,10 @@ __all__ = [
     "Scorer",
     "Slo",
     "StepChange",
+    "StepInstructions",
     "StreamKind",
+    "TakeoverInstructions",
+    "TakeoverTrial",
     "Trigger",
     "TriggerState",
     "ValueStream",

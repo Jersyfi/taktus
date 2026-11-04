@@ -29,6 +29,7 @@ from components.run.test_maturation import (
     separable,
 )
 from fakes import FakeWorker, InnerStep
+from fakes.takeover import instructed
 
 from taktus.adapters.driven.memory import MemoryRepository
 from taktus.components.decision.application.service import AnswerRequest, ConfirmRequest
@@ -58,18 +59,20 @@ def bundle() -> dict[str, Any]:
     """The process the step belongs to: one step on a language model, as the cases ran it."""
     step = CLASSIFY.document()
     step["work"] = WORK
-    return {
-        "id": "triage",
-        "version": "1",
-        "name": "Triage",
-        "autonomy": {"level": 3, "reason": "a test", "toward_next": "nothing"},
-        "inputs": {
-            "a": {"description": "a number", "example": 1.0},
-            "b": {"description": "a number", "example": 0.1},
-            "note": {"description": "a text", "example": "n"},
-        },
-        "steps": [step],
-    }
+    return instructed(
+        {
+            "id": "triage",
+            "version": "1",
+            "name": "Triage",
+            "autonomy": {"level": 3, "reason": "a test", "toward_next": "nothing"},
+            "inputs": {
+                "a": {"description": "a number", "example": 1.0},
+                "b": {"description": "a number", "example": 0.1},
+                "note": {"description": "a text", "example": "n"},
+            },
+            "steps": [step],
+        }
+    )
 
 
 class Moving(World):

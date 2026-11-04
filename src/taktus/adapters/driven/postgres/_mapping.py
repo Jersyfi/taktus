@@ -187,6 +187,7 @@ class ProcessVersionMapper:
                 "open_work": document.get("open_work") or None,
                 "deadlines": document.get("deadlines") or None,
                 "evaluation": document.get("evaluation"),
+                "takeover": document.get("takeover"),
                 "inputs": document.get("inputs", {}),
                 "author": document.get("author"),
                 "reason": document.get("reason"),
@@ -234,6 +235,7 @@ class ProcessVersionMapper:
                 "open_work": row.open_work,
                 "deadlines": row.deadlines,
                 "evaluation": row.evaluation,
+                "takeover": row.takeover,
                 "inputs": row.inputs,
                 "author": row.author,
                 "reason": row.reason,
@@ -1718,6 +1720,36 @@ class SubjectRequestMapper:
         return [dict(row.request) for row in rows]
 
 
+class TakeoverTrialMapper:
+    """One row per trial of a version's takeover instructions (ADR-0180 §3), the trial as a
+    document; never changed once written."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.takeover_trial, tenant, id)
+        return None if row is None else dict(row.trial)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.takeover_trial,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "process_id": document["process_id"],
+                "process_version": document["process_version"],
+                "at": _at(document["at"]),
+                "trial": document,
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(
+            connection, s.takeover_trial, tenant, s.takeover_trial.c.at, s.takeover_trial.c.id
+        )
+        return [dict(row.trial) for row in rows]
+
+
 class MessageRulesMapper:
     """One row per tenant that configured its message rules; the rules stay a document."""
 
@@ -1986,6 +2018,7 @@ MAPPERS: dict[str, Mapper] = {
     "residency_rule": ResidencyRuleMapper(),
     "source_declaration": SourceDeclarationMapper(),
     "subject_request": SubjectRequestMapper(),
+    "takeover_trial": TakeoverTrialMapper(),
     "message_rules": MessageRulesMapper(),
     "org_unit_quota": OrgUnitQuotaMapper(),
     "catalogue_installation": CatalogueInstallationMapper(),

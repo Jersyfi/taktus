@@ -4,10 +4,10 @@ title: The takeover test
 component: process
 epic: E6
 serves: [P6, P12, P13]
-state: specified
+state: building
 version: 0.5.0
-tests: []
-adrs: {ADR-0013: 1da224cdeaf4, ADR-0029: 37c061ef032a}
+tests: [tests/components/process/test_takeover_instructions.py::test_a_version_without_takeover_instructions_does_not_register, tests/components/process/test_takeover_instructions.py::test_instructions_that_describe_a_step_it_has_not_or_omit_one_it_has_do_not_register, tests/components/process/test_takeover_instructions.py::test_a_changed_step_that_gains_a_credential_needs_its_instructions_to_name_it, tests/components/process/test_takeover_instructions.py::test_a_version_written_back_carries_its_instructions, tests/components/process/test_takeover_instructions.py::test_every_written_element_is_required, tests/components/process/test_takeover_instructions.py::test_an_identifier_a_person_could_not_look_up_is_refused, tests/components/process/test_takeover_instructions.py::test_a_credential_names_its_parameter_never_a_value, tests/components/process/test_takeover_instructions.py::test_every_shipped_bundle_finds_all_six_for_every_step_and_nothing_unlookable, tests/components/process/test_takeover_instructions.py::test_a_trial_is_kept_with_the_version_names_a_role_and_is_a_ledger_entry, tests/components/process/test_takeover_instructions.py::test_a_version_above_level_2_without_a_passed_trial_on_it_is_untried, tests/adapters/rest/test_takeover_instructions.py::test_the_instructions_are_read_and_a_trial_makes_the_version_tried, tests/adapters/rest/test_takeover_instructions.py::test_a_trial_names_a_role_never_a_person, tests/composition/test_takeover_test.py::test_a_person_takes_over_the_worker_step_does_it_from_the_instructions_and_tries_it]
+adrs: {ADR-0013: 1da224cdeaf4, ADR-0029: 37c061ef032a, ADR-0180: 3edf435e67e4}
 supersedes: null
 ---
 
@@ -54,3 +54,19 @@ Requirement B of ADR-0013; the process version (`process`), where ADR-0029 files
 instructions are part of the version; `CREDENTIALS.md` and its parameters; UC-4.12, whose
 remediation plan is held to the same shape. Definition `UC-6.3`. The version is `0.5.0`, where the
 roadmap automates the takeover test.
+
+## 5. What is proven so far
+
+Every registered version carries takeover instructions under `takeover` (ADR-0180): a bundle
+without them, with an entry for a step it does not have or none for one it has, with a written
+element left out, with a credential a step names and its entry does not, or naming an
+identifier a person could not look up, does not register. The skills each step uses are
+derived when the instructions are read, at their version in production. Every bundle under
+`examples/` and `blueprints/` carries all six elements for every step. A trial is recorded with
+`taktusctl takeover trial` or the HTTP surface, kept with the version it was made on, naming
+the role, the time and what was missing, and recorded in the ledger. A version at level 3 or 4
+without a passed trial on it is marked untried on the process level and the overview of the
+HTTP surface and the web app. The automated takeover test runs a step by hand from its
+instructions through a take-over — by the named tests. Not yet: *untried* is not said where a
+report, the chat or the register shows a level. No trial of a shipped process has been carried
+out by a person; that is a person's act, and only its record is the product's.

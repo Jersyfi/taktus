@@ -17,6 +17,7 @@ from fakes import FakeIdentifiers, FakeWorker
 from fakes.identity import FixedTenants
 from fakes.maturity import VERIFIED
 from fakes.owner_channel import OWNER, TENANT, owner_channel, people
+from fakes.takeover import instructed
 
 from taktus.adapters.driven.memory import (
     MemoryLedgerStore,
@@ -150,7 +151,9 @@ class World:
         await people(self.given)
         await self.given.configure(view_base="https://taktus.example")
         for one in (COST, THROTTLE):
-            await self.register.execute(RegisterProcessVersion(bundle=one, tenant=TENANT))
+            await self.register.execute(
+                RegisterProcessVersion(bundle=instructed(one), tenant=TENANT)
+            )
         await self.signals.corridors.configure(
             ConfigureCorridor(
                 tenant=TENANT,

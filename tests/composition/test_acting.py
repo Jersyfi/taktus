@@ -17,6 +17,7 @@ from typing import Any
 from fakes import FakeClock, FakeConnector, FakeWorker
 from fakes.identity import directory
 from fakes.model import FakeModel
+from fakes.takeover import instructed
 
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.adapters.driven.memory import (
@@ -177,7 +178,9 @@ class World:
             self.versions, self.persistence, self.processes, ledger=self.ledger, clock=self.clock
         )
         for given in (BILLING, SUPPORT):
-            await register.execute(RegisterProcessVersion(bundle=given, tenant=TENANT, by="idn_a"))
+            await register.execute(
+                RegisterProcessVersion(bundle=instructed(given), tenant=TENANT, by="idn_a")
+            )
         return self
 
 

@@ -37,7 +37,7 @@
 # nothing at the provider: it only reads.
 
 id: b-1-01-daily-cost
-version: "1"
+version: "2"
 name: B-1.01 Daily cost
 autonomy:
   level: 3
@@ -113,3 +113,45 @@ steps:
       days: { $from: read-costs, $select: output.days }
       window: 28
       minimum: 7
+
+# How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
+# every step the system to act in, what to do there, the expertise it needs, each credential by
+# its parameter and where an authorised person finds it, and how to tell that it is done.
+takeover:
+  sequence: >
+    The process runs once a day, at midnight UTC; whoever watches the organisation's cloud cost
+    starts it. The steps run in order: read the daily costs of the last days, ending yesterday,
+    from the cloud provider's billing, then compute yesterday's total against the median of the
+    28 days before it and find the service that rose most. Whether the ratio is a deviation is
+    the tenant's corridor: above the yellow bound the finding waits for the daily report, above
+    the red bound it goes at once to the role responsible. Raising a budget and throttling a
+    service stay with a person.
+  steps:
+    read-costs:
+      system: the cloud provider's billing console or its cost report
+      do: >
+        read the cost of every service for each day of the range, as many days as the run was
+        started with, ending yesterday, and export them as a table with one row per day and
+        service; keep every amount exactly as the provider gives it. Make sure the range is
+        complete: no day is missing.
+      expertise: finding the daily cost by service in the cloud provider's billing
+      credentials:
+        - parameter: BILLING_KEY
+          where: >
+            the operator's secret store, under the parameter Cloud billing key of the requesting
+            identity described in CREDENTIALS.md; a person reading the console signs in with
+            their own account that may read the billing
+      done: the table holds every day of the range with every service's cost
+    measure:
+      system: a spreadsheet, on the exported table
+      do: >
+        sum yesterday's costs into the day's total; take the median of the daily totals of the
+        28 days before it, and at least 7 of them must exist; divide the day's total by that
+        median to get the ratio. Do the same for every service, and name the service whose cost
+        rose most as the driver. Compute in decimal and round nothing before the end. Compare
+        the ratio with the tenant's yellow and red bounds.
+      expertise: summing and taking a median in a spreadsheet; the tenant's corridor for the ratio
+      credentials: []
+      done: >
+        the day's total, the median, the ratio and the driver are written down, and a ratio above
+        the red bound has been reported to the role responsible

@@ -16,6 +16,7 @@ from typing import Any
 
 import pytest
 from fakes import FakeClock
+from fakes.takeover import instructed
 
 from taktus.adapters.driven.memory import MemoryLedgerStore, MemoryPersistence, MemoryRepository
 from taktus.adapters.driving.cli.stage_command import blueprint_stages
@@ -32,12 +33,13 @@ from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersion,
     RegisterProcessVersionHandler,
+    parse_bundle,
 )
 from taktus.components.process.domain.model import Process, ProcessVersion, RaiseRefused
 from taktus.composition.stages import (
     CeilingsOfTheStages,
+    InstructionsOfTheVersion,
     LevelsOfTheProcess,
-    NoTakeoverInstructions,
 )
 from taktus.ports.ledger import Fact
 from taktus.shared.v1 import LedgerEntry, LedgerRefs
@@ -94,22 +96,24 @@ def bundle(process: str, level: int, version: str = "1") -> dict[str, Any]:
     autonomy: dict[str, Any] = {"level": level, "reason": "r", "history": 1}
     if level < 4:
         autonomy["toward_next"] = "t"
-    return {
-        "id": process,
-        "version": version,
-        "name": process,
-        "autonomy": autonomy,
-        "steps": [
-            {
-                "id": "read",
-                "method": "rule",
-                "reason": "r",
-                "rejected": [],
-                "exactness": "sourced",
-                "work": {"rule": "connector", "operation": "files.read"},
-            }
-        ],
-    }
+    return instructed(
+        {
+            "id": process,
+            "version": version,
+            "name": process,
+            "autonomy": autonomy,
+            "steps": [
+                {
+                    "id": "read",
+                    "method": "rule",
+                    "reason": "r",
+                    "rejected": [],
+                    "exactness": "sourced",
+                    "work": {"rule": "connector", "operation": "files.read"},
+                }
+            ],
+        }
+    )
 
 
 PLAN: dict[str, Any] = {
@@ -483,9 +487,23 @@ async def test_a_stage_never_opens_while_a_process_it_adds_lacks_takeover_instru
     assert (await w.view("watch")).state is StageState.CLOSED
 
 
-async def test_until_uc_6_3_is_built_no_process_has_current_instructions() -> None:
-    lacking = await NoTakeoverInstructions().lacking(TENANT, "report")
-    assert lacking is not None and "UC-6.3" in lacking
+async def test_a_process_has_instructions_when_its_active_version_carries_them() -> None:
+    """ADR-0180 §6: the port reads the active version; one stored before carries none."""
+    persistence = MemoryPersistence()
+    processes = MemoryRepository(persistence, Process)
+    versions = MemoryRepository(persistence, ProcessVersion)
+    port = InstructionsOfTheVersion(processes, versions, persistence)
+    assert "no active version" in (await port.lacking(TENANT, "report") or "")
+    version = parse_bundle(bundle("report", 2))
+    async with persistence.transaction(TENANT):
+        await versions.put(TENANT, version.model_copy(update={"takeover": None}))
+        await processes.put(
+            TENANT, Process(id="report", name="report", active_version=version.version)
+        )
+    assert "carries no takeover instructions" in (await port.lacking(TENANT, "report") or "")
+    async with persistence.transaction(TENANT):
+        await versions.put(TENANT, version)
+    assert await port.lacking(TENANT, "report") is None
 
 
 # --- UC-03's six stages --------------------------------------------------------------------------

@@ -20,6 +20,7 @@ from fakes import FakeConnector, FakeIdentifiers, FakeMaturities, FakeWorker
 from fakes.clock import FakeClock
 from fakes.connector import READ, WRITE
 from fakes.identity import directory
+from fakes.takeover import instructed
 
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.adapters.driven.memory import (
@@ -480,22 +481,24 @@ async def test_a_rate_above_the_limit_lowers_the_action_class_and_leaves_the_pro
 
 
 def bundle(version: str, level: int) -> dict[str, Any]:
-    return {
-        "id": "p",
-        "version": version,
-        "name": "P",
-        "autonomy": {"level": level, "reason": "r", "toward_next": "t", "history": 1},
-        "steps": [
-            {
-                "id": "a",
-                "method": "rule",
-                "reason": "r",
-                "rejected": [],
-                "exactness": "tolerant",
-                "work": {"rule": "constant", "value": 1},
-            }
-        ],
-    }
+    return instructed(
+        {
+            "id": "p",
+            "version": version,
+            "name": "P",
+            "autonomy": {"level": level, "reason": "r", "toward_next": "t", "history": 1},
+            "steps": [
+                {
+                    "id": "a",
+                    "method": "rule",
+                    "reason": "r",
+                    "rejected": [],
+                    "exactness": "tolerant",
+                    "work": {"rule": "constant", "value": 1},
+                }
+            ],
+        }
+    )
 
 
 async def test_a_level_lowered_by_rule_rises_again_only_with_approval_and_evidence() -> None:

@@ -54,6 +54,7 @@ import pytest
 import yaml
 from fakes.identity import added_by_command_line
 from fakes.ports import free_port
+from fakes.takeover import instructed
 
 from taktus.components.run.domain.service.budget import Seed, scale_for, seeds_of
 from taktus.shared.v1 import Method
@@ -288,7 +289,7 @@ def run_under_cap(
     budget = budget_of(cap_usd, capabilities)
     (evidence / "budget.json").write_text(json.dumps(asdict(budget), indent=2) + "\n")
     process = evidence / "bundle.yaml"
-    process.write_text(yaml.safe_dump(bundle(budget, capabilities), sort_keys=False))
+    process.write_text(yaml.safe_dump(instructed(bundle(budget, capabilities)), sort_keys=False))
     port = free_port()
     env = {**os.environ, CREDENTIAL: credential_value, **(agent_env or {})}
     env.pop(CREDENTIAL_FILE, None)

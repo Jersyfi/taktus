@@ -14,7 +14,7 @@
 # reaches itself (docs/architecture/contracts.md §4).
 
 id: s07-change-in-dialogue
-version: "2"
+version: "3"
 name: S-07 Change in dialogue
 autonomy:
   level: 3
@@ -124,3 +124,50 @@ steps:
         process: { $input: process }
         request: { $input: request }
         bundle: { $from: propose, $select: text }
+
+# How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
+# every step the system to act in, what to do there, the expertise it needs, each credential by
+# its parameter and where an authorised person finds it, and how to tell that it is done. The
+# section "By hand" of README.md beside this directory says the same.
+takeover:
+  sequence: >
+    The process runs when a person asks for a change to a process in their own words, from the
+    web app or the chat; that person starts it. The steps run in order: read the process's
+    active version as a bundle, write the changed bundle the request asks for, and check that
+    the changed bundle would register and keep it with its difference. Nothing is registered:
+    the person who asked reads the proposal and decides whether to commission it.
+  steps:
+    read:
+      system: the process's bundle file in the repository, or the instance's interface
+      do: >
+        copy the bundle of the active version of the process the request names: the file under
+        the blueprints, or the bundle the instance gives for that process
+      expertise: finding a process's bundle
+      credentials: []
+      done: a copy of the active version's bundle is at hand
+    propose:
+      system: a text editor, on the copied bundle
+      do: >
+        change the copy as the person asked, and nothing else. Give it a version name that is
+        not the current one. Every step added or changed carries its method, the reason for it,
+        the methods not chosen with why, a fallback where the method is a language model or a
+        worker, and an exactness class where it produces a result; an exact step declares its
+        check. Do not raise the autonomy level.
+      expertise: >
+        the bundle format and the rules for a step's method, reason, fallback and exactness;
+        understanding what the person asked for
+      credentials: []
+      done: the changed bundle says what the person asked for and nothing more
+    keep:
+      system: a shell with the instance's command-line tool, or the instance's interface
+      do: >
+        check the changed bundle with the bundle check of the command-line tool and fix every
+        finding; then hand it to the instance as a proposal for the process, which keeps it
+        with its difference and registers nothing. Without Taktus, the changed file is the
+        proposal: compare it with the original line by line and give both to the person who
+        asked.
+      expertise: reading the check's findings; comparing two versions of a file
+      credentials: []
+      done: >
+        the changed bundle would register, and the proposal with its difference is with the
+        person who asked

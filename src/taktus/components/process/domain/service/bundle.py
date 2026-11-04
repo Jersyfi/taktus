@@ -4,10 +4,10 @@ version: what a rollback does (UC-4.15, ADR-0091 §5). Pure.
 The bundle is the shape registration reads (`control-plane.md` §4, `examples/processes/README.md`):
 each step with its `work` beside it, the autonomy statement, the triggers, the inputs, the
 service level and the expectation in seconds, the limits, the caps on open work (ADR-0132), the
-deadlines (ADR-0133) and the evaluation (ADR-0134). Every field a version declares is written
-back, so that a rollback restores the version as it was, its caps included (#611). Registered
-again, it gives the same version under the new name, with the author and the reason the
-rollback gives.
+deadlines (ADR-0133), the evaluation (ADR-0134) and the takeover instructions (ADR-0180). Every
+field a version declares is written back, so that a rollback restores the version as it was,
+its caps included (#611). Registered again, it gives the same version under the new name,
+with the author and the reason the rollback gives.
 """
 
 from __future__ import annotations
@@ -75,6 +75,8 @@ def bundle_of(
         }
     if version.evaluation is not None:
         bundle["evaluation"] = version.evaluation.document()
+    if version.takeover is not None:
+        bundle["takeover"] = version.takeover.document()
     return bundle
 
 

@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 from fakes.clock import FakeClock, FakeIdentifiers
+from fakes.takeover import instructed
 
 from taktus.adapters.driven.memory import MemoryLedgerStore, MemoryPersistence, MemoryRepository
 from taktus.components.ledger.application.service import ChainedLedger
@@ -115,14 +116,16 @@ class World:
 
 async def given_registered() -> World:
     world = World()
-    await world.register.execute(RegisterProcessVersion(bundle(), tenant=TENANT))
+    await world.register.execute(RegisterProcessVersion(instructed(bundle()), tenant=TENANT))
     return world
 
 
 async def test_a_changed_bundle_becomes_a_proposal_and_nothing_is_registered() -> None:
     world = await given_registered()
     proposal = await world.proposals.propose(
-        Propose(TENANT, "invoices", changed(), by="idn_ada", request="check the title too")
+        Propose(
+            TENANT, "invoices", instructed(changed()), by="idn_ada", request="check the title too"
+        )
     )
     assert proposal.state is ProposalState.PROPOSED
     assert (proposal.base_version, proposal.version) == ("1", "2")
@@ -139,7 +142,9 @@ async def test_the_difference_names_every_step_added_removed_or_changed() -> Non
     del document["steps"][0]["checks"]
     document["steps"][0] = {**bundle()["steps"][0], "id": "load"}
     document["steps"][1]["depends_on"] = ["load"]
-    proposal = await world.proposals.propose(Propose(TENANT, "invoices", document, by="idn_ada"))
+    proposal = await world.proposals.propose(
+        Propose(TENANT, "invoices", instructed(document), by="idn_ada")
+    )
     changes = {c.id: c for c in proposal.difference.steps}
     assert {c.id: c.change for c in proposal.difference.steps} == {
         "load": "added",
@@ -158,7 +163,7 @@ async def test_a_bundle_that_would_not_register_gives_the_findings_and_no_propos
     broken = changed()
     del broken["steps"][2]["checks"]  # an exact step without a check (UC-4.13)
     with pytest.raises(InvalidProcess) as refused:
-        await world.proposals.propose(Propose(TENANT, "invoices", broken, by="idn_ada"))
+        await world.proposals.propose(Propose(TENANT, "invoices", instructed(broken), by="idn_ada"))
     assert any("check" in f for f in refused.value.findings)
     assert await world.proposals.of_process(TENANT, "invoices") == []
 
@@ -168,7 +173,7 @@ async def test_a_proposal_never_writes_over_a_registered_version() -> None:
     again = deepcopy(bundle())
     again["steps"][1]["reason"] = "changed under the same version"
     with pytest.raises(InvalidProcess, match="never written over"):
-        await world.proposals.propose(Propose(TENANT, "invoices", again, by="idn_ada"))
+        await world.proposals.propose(Propose(TENANT, "invoices", instructed(again), by="idn_ada"))
 
 
 async def test_a_bundle_for_another_process_is_refused() -> None:
@@ -176,7 +181,7 @@ async def test_a_bundle_for_another_process_is_refused() -> None:
     other = changed()
     other["id"] = "orders"
     with pytest.raises(InvalidProcess, match="not 'invoices'"):
-        await world.proposals.propose(Propose(TENANT, "invoices", other, by="idn_ada"))
+        await world.proposals.propose(Propose(TENANT, "invoices", instructed(other), by="idn_ada"))
 
 
 async def test_a_process_with_no_version_gets_a_first_version_made_against_none() -> None:
@@ -184,7 +189,9 @@ async def test_a_process_with_no_version_gets_a_first_version_made_against_none(
     world = await given_registered()
     other = changed()
     other["id"] = "orders"
-    first = await world.proposals.propose(Propose(TENANT, "orders", other, by="idn_ada"))
+    first = await world.proposals.propose(
+        Propose(TENANT, "orders", instructed(other), by="idn_ada")
+    )
     assert first.base_version is None and first.base_ref is None
     assert {c.change for c in first.difference.steps} == {"added"}
     assert first.difference.autonomy_before is None
@@ -193,7 +200,9 @@ async def test_a_process_with_no_version_gets_a_first_version_made_against_none(
 
 async def test_an_open_proposal_is_discarded_once() -> None:
     world = await given_registered()
-    proposal = await world.proposals.propose(Propose(TENANT, "invoices", changed(), by="idn_ada"))
+    proposal = await world.proposals.propose(
+        Propose(TENANT, "invoices", instructed(changed()), by="idn_ada")
+    )
     discarded = await world.proposals.discard(TENANT, "invoices", proposal.id)
     assert discarded.state is ProposalState.DISCARDED
     with pytest.raises(ProposalError) as closed:

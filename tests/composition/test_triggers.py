@@ -11,6 +11,7 @@ from fakes import FakeConnector, FakeIdentifiers, FakeWorker
 from fakes.connector import READ, WRITE
 from fakes.identity import FixedTenants, directory
 from fakes.maturity import VERIFIED
+from fakes.takeover import instructed
 
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.adapters.driven.memory import (
@@ -104,7 +105,7 @@ class World:
         if self.by is not None and await self.identity.directory.identity(TENANT, self.by) is None:
             await self.identity.directory.add(TENANT, self.by, (TENANT, "ops"))
         await self.register.execute(
-            RegisterProcessVersion(document, tenant=TENANT, by=by or self.by)
+            RegisterProcessVersion(instructed(document), tenant=TENANT, by=by or self.by)
         )
 
     async def kinds(self) -> list[str]:
