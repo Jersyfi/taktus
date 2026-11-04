@@ -133,9 +133,15 @@ jobs:
           - name: taktus-connector-bookstack
             dockerfile: connectors/Dockerfile
             target: bookstack
+          - name: taktus-connector-calendar
+            dockerfile: connectors/Dockerfile
+            target: calendar
           - name: taktus-connector-einvoice
             dockerfile: connectors/Dockerfile
             target: einvoice
+          - name: taktus-connector-expiry
+            dockerfile: connectors/Dockerfile
+            target: expiry
           - name: taktus-connector-github
             dockerfile: connectors/Dockerfile
             target: github

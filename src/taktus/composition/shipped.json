@@ -49,6 +49,16 @@
     },
     {
       "capabilities": [
+        "calendar.events"
+      ],
+      "image": "taktus-connector-calendar",
+      "name": "calendar",
+      "operations": [
+        "calendar.events.list"
+      ]
+    },
+    {
+      "capabilities": [
         "knowledge.pages"
       ],
       "image": null,
@@ -68,6 +78,18 @@
       "operations": [
         "documents.invoices.list",
         "documents.invoices.read"
+      ]
+    },
+    {
+      "capabilities": [
+        "expiry.certificates",
+        "expiry.domains"
+      ],
+      "image": "taktus-connector-expiry",
+      "name": "expiry",
+      "operations": [
+        "expiry.certificates.read",
+        "expiry.domains.read"
       ]
     },
     {
