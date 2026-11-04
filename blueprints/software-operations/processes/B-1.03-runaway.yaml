@@ -1,0 +1,106 @@
+# B-1.03 Runaway guard — UC-03 §4.1: the call rate of the business's server functions is read
+# from its metrics store every five minutes, through the capability `metrics.series`, and the
+# function called most is judged against its corridor; a rate far above its baseline — a
+# trigger reacting to its own writes, a retry storm — is an incident at once (UC-6.13,
+# ADR-0198).
+#
+# The query is the tenant's: calls per second by function, or the instances running. The rule
+# `filter` takes the function with the highest rate from the store's own reading; no model
+# touches the figure (`exact`). The function stands in the result, under `first.labels`.
+#
+# The judgement is the tenant's corridor on the step `busiest`:
+#
+#     uv run taktusctl signal configure load.function_calls --process b-1-03 \
+#         --step busiest --select first.values.0.value --bounds median --direction above \
+#         --yellow 3 --red 10 --fresh 15m \
+#         --role <role> --case <where a runaway is worked>
+#
+# with the store's own history as the baseline, or `--bounds fixed` with the tenant's limits.
+#
+# Not built here: throttling the function in an emergency, the target level's act. No
+# capability changes a function's limit; changing a limit for good stays with a person
+# (UC-03 §4.1, UC-7.1).
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-1.03-runaway.yaml \
+#         --input 'query=sum by (function) (rate(function_calls_total[5m]))'
+#
+# Switching it off (`taktusctl deactivate --process b-1-03`) changes nothing at the store.
+
+id: b-1-03
+version: "1"
+name: B-1.03 Runaway guard
+autonomy:
+  level: 1
+  reason: >
+    the process only reads the metrics store and takes its highest call rate by a fixed rule;
+    nothing leaves the system, so at level 1 every step runs and none acts; a red value
+    reaches a person at once as an incident; it starts at level 1, observing, as UC-03 starts
+    every process at level 1 or 2 when its stage opens
+  toward_next: >
+    stage 1 of the tenant's plan open, and four weeks of runs whose incidents a person checked
+    against the store and found right; then Taktus proposes the next level, up to the target
+    UC-03 names once throttling is a capability (UC-7.1, UC-9.6)
+author: the repository
+reason: a function caught in a loop is found within minutes without a person watching the dashboards (UC-03 B-1.03)
+
+triggers:
+  - schedule: "*/5 * * * *"
+    inputs:
+      query: sum by (function) (rate(function_calls_total[5m]))
+
+inputs:
+  query:
+    description: >
+      the tenant's query for the calls per second, or the instances, per function; each series
+      it answers is one function
+    example: sum by (function) (rate(function_calls_total[5m]))
+
+limits:
+  quota: { units: 2 }
+
+steps:
+  - id: read-rates
+    method: rule
+    reason: the store's figures are read verbatim, each value as the store gave it
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving metrics.series is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: metrics.series.query
+      input:
+        query: { $input: query }
+      credentials:
+        - { name: METRICS_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the store answered more series than were read" }
+
+  - id: busiest
+    method: rule
+    reason: >
+      the function called most is a fixed ordering of the store's own figures; a value the
+      store could not give as a number is left out, never read as zero
+    rejected:
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+      - method: statistics
+        why: taking the largest of the values is an ordering; the baseline is the corridor's
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the function with the highest call rate }
+    depends_on: [read-rates]
+    work:
+      rule: filter
+      items: { $from: read-rates, $select: output.series }
+      all:
+        - { field: values.0.value, at_least: 0 }
+      order: values.0.value
+      descending: true
+      limit: 1

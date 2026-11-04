@@ -1,0 +1,133 @@
+# B-1.09 Things that expire — UC-03 §4.1: the certificate a service of the business presents
+# and the registration of its domain are read daily, through the capabilities
+# `expiry.certificates` (over TLS) and `expiry.domains` (over RDAP), and the one that expires
+# first is judged against its corridor: 30 days before, it reaches a person (UC-4.17,
+# ADR-0196).
+#
+# One trigger reads one endpoint and one domain. A tenant with several adds a trigger per pair,
+# each with its own inputs; the connector admits only the endpoints it is configured for. The
+# rule `filter` keeps the readings that carry an expiry and takes the one with the fewest days
+# left (`exact`): the connector counted them from the moment it read, and both moments stand in
+# the reading.
+#
+# The judgement is the tenant's corridor on the step `soonest` and `first.days_left`:
+#
+#     uv run taktusctl signal configure expiry.days_left --process b-1-09 \
+#         --step soonest --select first.days_left --bounds fixed --direction below \
+#         --yellow 30 --red 7 --fresh 2d \
+#         --role <role> --case <where a renewal is worked>
+#
+# A certificate that no longer verifies stands in the reading as `trusted: false` with the
+# reason; one that expired has negative days and is red.
+#
+# Not built here: keys, signing certificates, provisioning profiles and secrets, whose expiry no
+# open standard publishes; and the renewal, which needs control of the server or a purchase. A
+# renewal that costs money stays with a person (UC-03 §4.1).
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-1.09-expiry.yaml \
+#         --input host=www.example.com --input port=443 --input domain=example.com
+#
+# Switching it off (`taktusctl deactivate --process b-1-09`) changes nothing anywhere: it only
+# reads.
+
+id: b-1-09
+version: "1"
+name: B-1.09 Things that expire
+autonomy:
+  level: 1
+  reason: >
+    the process only reads a certificate and a registration and takes the soonest expiry by a
+    fixed rule; nothing leaves the system, so at level 1 every step runs and none acts; it
+    starts at level 1, observing, as UC-03 starts every process at level 1 or 2 when its stage
+    opens
+  toward_next: >
+    stage 1 of the tenant's plan open, and two months of runs whose findings a person checked
+    and found right; then Taktus proposes level 2, and level 3 once a free renewal is a
+    capability, its target in UC-03 (UC-7.1, UC-9.6)
+author: the repository
+reason: a certificate or a domain about to expire found 30 days before, without a person keeping a list (UC-03 B-1.09)
+
+triggers:
+  - schedule: "15 6 * * *"
+    inputs:
+      host: www.example.com
+      port: 443
+      domain: example.com
+
+inputs:
+  host:
+    description: the host of a TLS endpoint of the business, one the connector is configured for
+    example: www.example.com
+  port:
+    description: the endpoint's port
+    example: 443
+  domain:
+    description: a domain of the business, in its ASCII form
+    example: example.com
+
+limits:
+  quota: { units: 3 }
+
+steps:
+  - id: read-certificate
+    method: rule
+    reason: the certificate is read as the endpoint presents it, with its validity as it states it
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving expiry.certificates is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: expiry.certificates.read
+      input:
+        host: { $input: host }
+        port: { $input: port }
+      credentials:
+        - { name: EXPIRY_TOKEN, injected_as: env }
+
+  - id: read-domain
+    method: rule
+    reason: the registration is read as the registry publishes it
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving expiry.domains is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: expiry.domains.read
+      input:
+        domain: { $input: domain }
+      credentials:
+        - { name: EXPIRY_TOKEN, injected_as: env }
+
+  - id: soonest
+    method: rule
+    reason: >
+      the thing that expires first is a fixed ordering of the two readings' days left; a
+      reading without an expiry is left out, never read as zero
+    rejected:
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the reading that expires first }
+    depends_on: [read-certificate, read-domain]
+    work:
+      rule: filter
+      items:
+        - { $from: read-certificate, $select: output }
+        - { $from: read-domain, $select: output }
+      all:
+        - { field: days_left, at_least: -36500 }
+      order: days_left
+      limit: 1
