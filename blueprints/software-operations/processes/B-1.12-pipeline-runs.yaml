@@ -1,0 +1,118 @@
+# B-1.12 Pipeline infrastructure — UC-03 §4.1: a pipeline run that hangs is counted every hour,
+# so that the daily report names it and a person restarts or cancels it (UC-6.13). Pool sizes
+# and runner types stay with a person.
+#
+# Every hour the runs still queued and the runs in progress are read through the capability
+# `repository.pipelines`, each with its whole minutes since it was created (ADR-0193 §3). A
+# rule keeps a queued run waiting for more than half an hour — no runner took it — and a run
+# in progress for more than two hours. The tenant's corridor on either count
+# (`pipeline.queued_too_long`, `pipeline.running_too_long`) reports a deviation with a link to
+# the run, whose result lists each run with its address at the service.
+#
+# Restarting a lost job, cleaning up a runner and the pipeline's weekly cost are not built: the
+# repository connector restarts no run and reads neither the runners nor the billing of the
+# service. The thresholds are this version's.
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-1.12-pipeline-runs.yaml
+#
+# Switching it off (`taktusctl deactivate --process b-1-12`) changes nothing at the service.
+
+id: b-1-12
+version: "1"
+name: B-1.12 Pipeline infrastructure
+autonomy:
+  level: 1
+  reason: >
+    the process only reads and counts by a fixed rule; nothing leaves the system, so at level 1
+    every step runs and none acts; the judgement is the tenant's corridor, and a red value
+    reaches a person as an incident
+  toward_next: >
+    four weeks of counts a person checked against the service and found right, and stage 1 of
+    the tenant's plan open; restarting a run waits for an operation that restarts one, before
+    any level above 1 (UC-7.1, UC-9.6)
+author: the repository
+reason: a pipeline run that hangs is named without a person watching the pipeline (UC-03 B-1.12)
+
+triggers:
+  - schedule: hourly
+
+limits:
+  quota: { units: 4 }
+
+steps:
+  - id: read-queued
+    method: rule
+    reason: the queued runs are read verbatim, each with its minutes since it was created
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.pipelines is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: repository.pipelines.list
+      input:
+        status: queued
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: read-running
+    method: rule
+    reason: the runs in progress are read verbatim, each with its minutes since it was created
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.pipelines is unavailable
+      to: human
+      role: owner
+    depends_on: [read-queued]
+    work:
+      rule: connector
+      operation: repository.pipelines.list
+      input:
+        status: in_progress
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: queued-too-long
+    method: rule
+    reason: a run no runner took for half an hour is a threshold over the service's own timestamp
+    rejected:
+      - method: llm
+        why: a threshold over a count needs no judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the runs queued too long }
+    depends_on: [read-queued]
+    work:
+      rule: filter
+      items: { $from: read-queued, $select: output.runs }
+      all:
+        - { field: age_minutes, at_least: 30 }
+      order: age_minutes
+      descending: true
+
+  - id: running-too-long
+    method: rule
+    reason: a run in progress for two hours is a threshold over the service's own timestamp
+    rejected:
+      - method: llm
+        why: a threshold over a count needs no judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the runs in progress too long }
+    depends_on: [read-running]
+    work:
+      rule: filter
+      items: { $from: read-running, $select: output.runs }
+      all:
+        - { field: age_minutes, at_least: 120 }
+      order: age_minutes
+      descending: true

@@ -1,0 +1,283 @@
+# B-7.12 A merge by a reviewing step — UC-03 §4.7: a green pull request of a narrow class is
+# checked against a written policy by a step that knows nothing of its author, and merged
+# (UC-01 P-04, UC-7.1 action class). Setting the policy stays with a person.
+#
+# The written policy is this version (ADR-0194 §2). It merges two classes, each a fixed rule
+# over the paths the pull request changes at its head and its title:
+#
+# - documentation: every path is under `docs/`, or a Markdown, reStructuredText or AsciiDoc file;
+# - a patch update: every path is a dependency manifest or lock file, and the title says one
+#   dependency moves from x.y.z to x.y.w, the same major and minor version.
+#
+# Every pull request opened starts a run (`pull_request.opened`, contracts/events/v1). It is
+# read; the paths it changes are read at the head commit the service names
+# (`repository.pullrequests.files`); the run waits for the pipeline's verdict on that commit.
+# A pull request that is closed, a draft, changes no path, whose paths were not all listed, or
+# whose pipeline is not `success`, is not merged. The merge is at that head and no other: a
+# commit pushed meanwhile makes the service refuse it, and the run goes to a person.
+#
+# A pull request of a class that touches a protected path — a test, the pipeline, a security
+# rule, a feature flag — is merged only after a person decided it, at every level (UC-03 §6).
+# The step that checks knows the paths, the title and the pipeline's word; never the author.
+# A tenant sets its own policy by registering a version of its own: the classes' patterns and
+# the protected pattern are this version's.
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-7.12-merge-by-policy.yaml \
+#         --input pull=7
+#
+# Switching it off (`taktusctl deactivate --process b-7-12`) changes nothing in the repository.
+
+id: b-7-12
+version: "1"
+name: B-7.12 A merge by a reviewing step
+autonomy:
+  level: 2
+  reason: >
+    the class is a fixed rule over the service's own reading of the paths; the merge leaves the
+    system and cannot be taken back without a new change, so a person confirms it, as every
+    process of UC-03 starts at level 1 or 2 when its stage opens
+  toward_next: >
+    four weeks of merges a person confirmed with none reverted, and stage 4 of the tenant's plan
+    open; then Taktus proposes level 3, its target in UC-03, for the merge of these classes
+    alone (UC-7.1, UC-9.6)
+author: the repository
+reason: pull requests of narrow classes are merged without a person reviewing each (UC-03 B-7.12)
+
+triggers:
+  - event: pull_request.opened
+    from_event: { pull: pull_request }
+
+inputs:
+  pull:
+    description: the number of the pull request to check against the policy
+    example: 7
+
+limits:
+  quota: { units: 300 }
+
+steps:
+  - id: read-pull
+    method: rule
+    reason: the pull request is read verbatim from the system of record
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.pullrequests is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: repository.pullrequests.read
+      input:
+        number: { $input: pull }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+      expect:
+        - { select: state, equals: open, says: "the pull request is not open" }
+        - { select: draft, equals: false, says: "the pull request is a draft" }
+
+  - id: read-files
+    method: rule
+    reason: the paths the pull request changes are read at the head commit the service names
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.pullrequests is unavailable
+      to: human
+      role: owner
+    depends_on: [read-pull]
+    work:
+      rule: connector
+      operation: repository.pullrequests.files
+      input:
+        number: { $input: pull }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the service did not list every path" }
+
+  - id: wait-for-pipeline
+    method: wait
+    reason: the pipeline runs on its own time; the run waits for its verdict on the head read
+    rejected: []
+    fallback:
+      when: the connector serving repository.pipelines is unavailable
+      to: human
+      role: owner
+    depends_on: [read-files]
+    work:
+      until:
+        operation: repository.pipelines.status
+        input:
+          ref: { $from: read-files, $select: output.head_sha }
+        credentials:
+          - { name: REPOSITORY_TOKEN, injected_as: env }
+        select: state
+        expect: [success, failure]
+        poll_seconds: 60
+        timeout_seconds: 7200
+
+  - id: read-pipeline
+    method: rule
+    reason: the pipeline's verdict on the head is read verbatim, the word the merge rests on
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.pipelines is unavailable
+      to: human
+      role: owner
+    depends_on: [wait-for-pipeline]
+    work:
+      rule: connector
+      operation: repository.pipelines.status
+      input:
+        ref: { $from: read-files, $select: output.head_sha }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: not-documentation
+    method: rule
+    reason: the paths that are not documentation, by a fixed pattern of the policy; none means the class holds
+    rejected:
+      - method: llm
+        why: the policy's classes are fixed rules, and a model could merge a class the policy does not name
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the paths outside the documentation class }
+    depends_on: [read-files]
+    work:
+      rule: filter
+      items: { $from: read-files, $select: output.files }
+      all:
+        - { field: path, not_matches: "^docs/|\\.(md|mdx|rst|adoc)$" }
+
+  - id: not-dependencies
+    method: rule
+    reason: the paths that are not a dependency manifest or lock file, by a fixed pattern of the policy
+    rejected:
+      - method: llm
+        why: the policy's classes are fixed rules, and a model could merge a class the policy does not name
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the paths outside the dependency class }
+    depends_on: [read-files]
+    work:
+      rule: filter
+      items: { $from: read-files, $select: output.files }
+      all:
+        - field: path
+          not_matches: "(^|/)(package\\.json|package-lock\\.json|npm-shrinkwrap\\.json|yarn\\.lock|pnpm-lock\\.yaml|pyproject\\.toml|uv\\.lock|poetry\\.lock|Pipfile\\.lock|requirements[^/]*\\.txt|go\\.mod|go\\.sum|Cargo\\.toml|Cargo\\.lock|Gemfile|Gemfile\\.lock|composer\\.json|composer\\.lock|pom\\.xml|build\\.gradle(\\.kts)?|gradle\\.lockfile|packages\\.lock\\.json|Package\\.resolved|Podfile\\.lock|pubspec\\.(yaml|lock))$"
+
+  - id: protected
+    method: rule
+    reason: the protected paths the pull request touches, by the policy's fixed pattern (UC-03 §6, ADR-0194)
+    rejected:
+      - method: llm
+        why: a pattern over paths needs no model, and the rule that keeps cheating to green with a person must not vary
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the protected paths the pull request touches }
+    depends_on: [read-files]
+    work:
+      rule: filter
+      items: { $from: read-files, $select: output.files }
+      any:
+        - field: path
+          matches: "(^|/)(tests?|spec|specs|__tests__|e2e)/|(^|/)[^/]*(_test|\\.test|\\.spec)\\.[a-z]+$|^\\.github/|^\\.gitlab-ci|(^|/)CODEOWNERS$|(?i:security|feature.?flags?|acceptance)"
+
+  - id: protected-decided
+    method: rule
+    reason: >
+      a merge that touches a protected path goes on only after a person decided it: the step
+      asks at every level, and a decline halts the run before anything is merged (UC-03 §6)
+    rejected:
+      - method: llm
+        why: whether a person decided is not a judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: whether a protected path is touched }
+    depends_on: [protected]
+    work:
+      when:
+        - { value: { $from: protected, $select: count }, matches: "^[1-9]" }
+      ask:
+        question: "Merge pull request ${pull}, which changes a protected path?"
+        situation: >
+          Pull request ${pull} meets the merge policy only if its paths are read alone. It
+          changes ${count} protected path(s), the first ${path}: a test, the pipeline, a
+          security rule or a feature flag. A change there can make a check pass without fixing
+          what it checks.
+        proposal: the pull request is merged at the head read, if it is of a class the policy merges
+        values:
+          pull: { $input: pull }
+          count: { $from: protected, $select: count }
+          path: { $from: protected, $select: first.path }
+      rule: check
+      conditions:
+        - { value: { $from: protected, $select: count }, matches: "^[1-9]" }
+
+  - id: merge-documentation
+    method: rule
+    reason: >
+      merging is an API call at the head read and no other; the effect leaves the system, so at
+      level 2 a person confirms it
+    rejected:
+      - method: worker
+        why: nothing here needs a sandbox or tools
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.pullrequests is unavailable, or the service does not merge
+      to: human
+      role: owner
+    depends_on: [read-pull, read-files, read-pipeline, not-documentation, protected-decided]
+    work:
+      when:
+        - { value: { $from: read-pipeline, $select: output.state }, matches: "^success$" }
+        - { value: { $from: read-files, $select: output.count }, matches: "^[1-9]" }
+        - { value: { $from: not-documentation, $select: count }, matches: "^0$" }
+      rule: connector
+      operation: repository.pullrequests.merge
+      input:
+        number: { $input: pull }
+        sha: { $from: read-files, $select: output.head_sha }
+        method: squash
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: merge-patch-update
+    method: rule
+    reason: >
+      merging is an API call at the head read and no other; the effect leaves the system, so at
+      level 2 a person confirms it
+    rejected:
+      - method: worker
+        why: nothing here needs a sandbox or tools
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.pullrequests is unavailable, or the service does not merge
+      to: human
+      role: owner
+    depends_on: [read-pull, read-files, read-pipeline, not-dependencies, protected-decided]
+    work:
+      when:
+        - { value: { $from: read-pipeline, $select: output.state }, matches: "^success$" }
+        - { value: { $from: read-files, $select: output.count }, matches: "^[1-9]" }
+        - { value: { $from: not-dependencies, $select: count }, matches: "^0$" }
+        - value: { $from: read-pull, $select: output.title }
+          matches: "(?i)\\bfrom v?(\\d+)\\.(\\d+)\\.\\d+\\S* to v?\\1\\.\\2\\.\\d+"
+      rule: connector
+      operation: repository.pullrequests.merge
+      input:
+        number: { $input: pull }
+        sha: { $from: read-files, $select: output.head_sha }
+        method: squash
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }

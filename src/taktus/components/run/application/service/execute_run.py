@@ -5831,7 +5831,16 @@ class RunEngine:
         adapter, worker = resolved.adapter, resolved.worker
         span.set_attribute("adapter", adapter)
         call = {"run.id": run.id, "step.id": step.id, "adapter": adapter}
-        (inputs,), read = await self._resolved(run, [work.task.inputs])
+        (inputs, ref), read = await self._resolved(run, [work.task.inputs, work.workspace_ref])
+        if ref is not None:
+            if not isinstance(ref, str) or not ref:
+                return await self._failed_before(
+                    run, step_run, span, f"the workspace's ref is not a text: {ref!r}"[:200],
+                    None, False,
+                )  # fmt: skip
+            work = work.model_copy(
+                update={"workspace": work.workspace.model_copy(update={"ref": ref})}
+            )
         if isinstance(work, MlWork):
             try:
                 inputs = MlWork.worker_inputs(inputs)

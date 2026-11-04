@@ -54,6 +54,15 @@ What it enforces, because the connector's checks depend on it:
   "branch", "conclusion"}` records one completed `ci` run for the head of an existing branch, as
   a push to it would — how `main` turns red or green (#481).
 
+- **Keeping a pull request mergeable** (ADR-0193). A pull request is read with the commit at
+  its head. `GET …/compare/<base>...<head>` answers `ahead_by` and `behind_by` from the commit
+  graph; `GET …/pulls/<n>/files` lists the paths changed between the merge base and the head,
+  with lines added and removed and a unified patch; `POST …/merges` merges one branch or commit
+  into a branch, 201 with the commit, 204 when there is nothing to merge, 409 when both sides
+  changed one path differently; `PUT …/pulls/<n>/merge` merges a pull request at the head `sha`
+  names, 409 for another head, 405 for one closed or conflicting. A branch moved by `PATCH` gets
+  a pipeline run, as a push does. `GET …/actions/runs?status=` lists the runs in one status.
+
 Test-only endpoints under `/_fake/`: `GET /_fake/state` counts what exists, `POST /_fake/reset`
 empties the store, `POST /_fake/outage` with `{"on": true}` makes every other request answer 503
 until switched off, `POST /_fake/hang` with `{"seconds": 2}` makes every other request wait
@@ -73,6 +82,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import difflib
 import json
 import os
 import re
@@ -237,7 +247,14 @@ class Store:
         return issue
 
     def create_pull(
-        self, repo: Repository, title: str, head: str, base: str, body: str, login: str
+        self,
+        repo: Repository,
+        title: str,
+        head: str,
+        base: str,
+        body: str,
+        login: str,
+        draft: bool = False,
     ) -> Json:
         issue = self.create_issue(repo, title, body, login)
         number = int(issue["number"])
@@ -248,6 +265,8 @@ class Store:
             "head": {"ref": head, "label": f"{repo.owner}:{head}"},
             "base": {"ref": base, "label": f"{repo.owner}:{base}"},
             "merged": False,
+            "draft": draft,
+            "merge_commit_sha": None,
         }
         repo.pulls[number] = pull
         return pull
@@ -293,6 +312,83 @@ class Store:
         if children:
             return 200, [children[name] for name in sorted(children)]
         return 404, {"message": "Not Found"}
+
+    # --- the commit graph (ADR-0193) -------------------------------------------------------
+
+    def resolve(self, repo: Repository, ref: str) -> str | None:
+        """A branch's head or a commit's sha; None when neither exists."""
+        sha = repo.refs.get(ref, ref)
+        found = repo.objects.get(sha)
+        return sha if found is not None and found["kind"] == "commit" else None
+
+    def ancestors(self, repo: Repository, sha: str) -> list[str]:
+        """Every commit reachable from `sha`, itself first, breadth first."""
+        seen: list[str] = []
+        todo = [sha]
+        while todo:
+            current = todo.pop(0)
+            if current in seen or current not in repo.objects:
+                continue
+            seen.append(current)
+            todo.extend(p["sha"] for p in repo.objects[current].get("parents", []))
+        return seen
+
+    def merge_base(self, repo: Repository, a: str, b: str) -> str | None:
+        of_b = set(self.ancestors(repo, b))
+        return next((sha for sha in self.ancestors(repo, a) if sha in of_b), None)
+
+    def files_at(self, repo: Repository, sha: str | None) -> dict[str, Json]:
+        """The tree of a commit, by path; empty for no commit."""
+        if sha is None:
+            return {}
+        tree = repo.objects[repo.objects[sha]["tree"]["sha"]]["tree"]
+        return {e["path"]: e for e in tree if e.get("type") == "blob"}
+
+    def text(self, repo: Repository, entry: Json | None) -> str:
+        if entry is None:
+            return ""
+        blob = repo.objects[entry["sha"]]
+        if blob.get("encoding") == "base64":
+            return base64.b64decode(blob["content"]).decode("utf-8", "replace")
+        return str(blob["content"])
+
+    def merged_tree(self, repo: Repository, ours: str, theirs: str) -> str | None:
+        """The tree of `ours` with what `theirs` changed since their merge base; None when both
+        changed one path differently."""
+        base = self.files_at(repo, self.merge_base(repo, ours, theirs))
+        mine, other = self.files_at(repo, ours), self.files_at(repo, theirs)
+        result = dict(mine)
+        for path in set(base) | set(other):
+            if base.get(path, {}).get("sha") == other.get(path, {}).get("sha"):
+                continue  # their side did not change it
+            if base.get(path, {}).get("sha") != mine.get(path, {}).get("sha") and mine.get(
+                path, {}
+            ).get("sha") != other.get(path, {}).get("sha"):
+                return None  # both changed it, differently
+            if path in other:
+                result[path] = other[path]
+            else:
+                result.pop(path, None)
+        return self.new_object(repo, "tree", {"tree": list(result.values())})
+
+    def pushed(self, repo: Repository, sha: str) -> None:
+        """A pipeline run for a commit a branch moved to, as a push starts one."""
+        if self.ci_pending:
+            self.create_run(repo, "ci", sha, status="in_progress", conclusion=None)
+        else:
+            self.create_run(repo, "ci", sha, status="completed", conclusion=self.ci_conclusion)
+
+    def touched(self, repo: Repository, branch: str) -> None:
+        """A push to a branch updates every open pull request from it, as the service's do."""
+        for pull in repo.pulls.values():
+            if pull["head"]["ref"] == branch and pull["state"] == "open":
+                pull["updated_at"] = now()
+                repo.issues[int(pull["number"])]["updated_at"] = now()
+
+    def pull_view(self, repo: Repository, pull: Json) -> Json:
+        """A pull request as the service answers it: with the commit at its head."""
+        head = dict(pull["head"], sha=repo.refs.get(pull["head"]["ref"]))
+        return {**pull, "head": head}
 
     def state(self) -> Json:
         return {
@@ -582,7 +678,65 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(422, {"message": "Update is not a fast forward"})
                 return
             repo.refs[name] = str(sha)
+            self.store.pushed(repo, str(sha))
+            self.store.touched(repo, name)
             self._send(200, {"ref": f"refs/heads/{name}", "object": {"type": "commit", "sha": sha}})
+
+    def do_PUT(self) -> None:
+        """A pull request merged at the head `sha` names (ADR-0194): 409 for another head, 405
+        for one that is closed or conflicts with its base, 200 and the merge commit otherwise."""
+        url = urlparse(self.path)
+        body = self._body()
+        if not self._guard(write=True):
+            return
+        with self.store.lock:
+            m = re.fullmatch(r"/repos/([^/]+)/([^/]+)/pulls/(\d+)/merge", url.path)
+            if m is None:
+                self._send(404, {"message": "Not Found"})
+                return
+            store = self.store
+            repo = store.repository(m.group(1), m.group(2))
+            number = int(m.group(3))
+            pull = repo.pulls.get(number)
+            if pull is None:
+                self._send(404, {"message": "Not Found"})
+                return
+            if pull["state"] != "open" or pull.get("merged"):
+                self._send(405, {"message": "Pull Request is not mergeable"})
+                return
+            head = repo.refs.get(pull["head"]["ref"])
+            if body.get("sha") is not None and body.get("sha") != head:
+                self._send(
+                    409, {"message": "Head branch was modified. Review and try the merge again."}
+                )
+                return
+            base = pull["base"]["ref"]
+            ours = repo.refs[base]
+            tree = store.merged_tree(repo, ours, str(head))
+            if tree is None:
+                self._send(405, {"message": "Pull Request is not mergeable"})
+                return
+            title = body.get("commit_title") or f"{pull['title']} (#{number})"
+            message = f"{title}\n\n{body.get('commit_message') or ''}".rstrip()
+            parents = [{"sha": ours}] + (
+                [{"sha": head}] if body.get("merge_method", "merge") == "merge" else []
+            )
+            sha = store.new_object(
+                repo, "commit", {"message": message, "tree": {"sha": tree}, "parents": parents}
+            )
+            repo.refs[base] = sha
+            store.pushed(repo, sha)
+            changes = {
+                "state": "closed",
+                "merged": True,
+                "merge_commit_sha": sha,
+                "updated_at": now(),
+            }
+            pull.update(changes)
+            repo.issues[number].update(state="closed", updated_at=now())
+            self._send(
+                200, {"sha": sha, "merged": True, "message": "Pull Request successfully merged"}
+            )
 
     def do_DELETE(self) -> None:
         """A label taken off an issue, as the service's issue interface does: the labels left,
@@ -693,10 +847,73 @@ class Handler(BaseHTTPRequestHandler):
                 )
             self._send(200, issues[(page - 1) * per_page : page * per_page], headers)
             return
+        if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/pulls/(\d+)/files", path):
+            repo = store.repository(m.group(1), m.group(2))
+            pull = repo.pulls.get(int(m.group(3)))
+            head = None if pull is None else repo.refs.get(pull["head"]["ref"])
+            if pull is None or head is None:
+                self._send(404, {"message": "Not Found"})
+                return
+            base_head = repo.refs.get(pull["base"]["ref"])
+            since = self.store.merge_base(repo, head, base_head) if base_head else None
+            before, after = store.files_at(repo, since), store.files_at(repo, head)
+            listed: list[Json] = []
+            for name in sorted(set(before) | set(after)):
+                if before.get(name, {}).get("sha") == after.get(name, {}).get("sha"):
+                    continue
+                old = store.text(repo, before.get(name)).splitlines()
+                new = store.text(repo, after.get(name)).splitlines()
+                diff = list(difflib.unified_diff(old, new, lineterm=""))[2:]
+                listed.append(
+                    {
+                        "filename": name,
+                        "status": "added"
+                        if name not in before
+                        else "removed"
+                        if name not in after
+                        else "modified",
+                        "additions": sum(1 for d in diff if d.startswith("+")),
+                        "deletions": sum(1 for d in diff if d.startswith("-")),
+                        "patch": "\n".join(diff),
+                    }
+                )
+            per_page = max(1, min(100, int(query.get("per_page", 30))))
+            page = max(1, int(query.get("page", 1)))
+            headers = {}
+            if page * per_page < len(listed):
+                headers["Link"] = (
+                    f'<{store.base_url}{path}?per_page={per_page}&page={page + 1}>; rel="next"'
+                )
+            self._send(200, listed[(page - 1) * per_page : page * per_page], headers)
+            return
+        if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/compare/(.+)\.\.\.(.+)", path):
+            repo = store.repository(m.group(1), m.group(2))
+            base = store.resolve(repo, unquote(m.group(3)))
+            head = store.resolve(repo, unquote(m.group(4)))
+            if base is None or head is None:
+                self._send(404, {"message": "Not Found"})
+                return
+            of_base, of_head = store.ancestors(repo, base), store.ancestors(repo, head)
+            ahead = len([c for c in of_head if c not in of_base])
+            behind = len([c for c in of_base if c not in of_head])
+            status = (
+                "identical"
+                if not ahead and not behind
+                else "ahead"
+                if not behind
+                else "behind"
+                if not ahead
+                else "diverged"
+            )
+            self._send(200, {"status": status, "ahead_by": ahead, "behind_by": behind})
+            return
         if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/pulls/(\d+)", path):
             repo = store.repository(m.group(1), m.group(2))
             pull = repo.pulls.get(int(m.group(3)))
-            self._send(200, pull) if pull else self._send(404, {"message": "Not Found"})
+            if pull is None:
+                self._send(404, {"message": "Not Found"})
+                return
+            self._send(200, store.pull_view(repo, pull))
             return
         if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/pulls", path):
             repo = store.repository(m.group(1), m.group(2))
@@ -709,7 +926,7 @@ class Handler(BaseHTTPRequestHandler):
                 and (head is None or p["head"]["label"] == head)
             ]
             pulls.sort(key=lambda p: int(p["number"]), reverse=True)
-            self._send(200, pulls)
+            self._send(200, [store.pull_view(repo, p) for p in pulls])
             return
         if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/actions/runs/(\d+)", path):
             repo = store.repository(m.group(1), m.group(2))
@@ -722,6 +939,8 @@ class Handler(BaseHTTPRequestHandler):
             head = query.get("head_sha")
             if head is not None:
                 runs = [r for r in runs if r.get("head_sha") == head]
+            if query.get("status") is not None:
+                runs = [r for r in runs if r.get("status") == query["status"]]
             self._send(200, {"total_count": len(runs), "workflow_runs": runs})
             return
         if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/git/ref/heads/(.+)", path):
@@ -850,7 +1069,13 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 return
             pull = store.create_pull(
-                repo, body["title"], label.split(":", 1)[1], base, body.get("body") or "", login
+                repo,
+                body["title"],
+                label.split(":", 1)[1],
+                base,
+                body.get("body") or "",
+                login,
+                bool(body.get("draft", False)),
             )
             self._send(201, pull)
             return
@@ -870,6 +1095,39 @@ class Handler(BaseHTTPRequestHandler):
                     issue["labels"].append({"name": name, "color": "ededed"})
                     present.add(name)
             self._send(200, issue["labels"])
+            return
+        if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/merges", path):
+            repo = store.repository(m.group(1), m.group(2))
+            into, source = body.get("base"), body.get("head")
+            if not isinstance(into, str) or into not in repo.refs or not isinstance(source, str):
+                self._send(404, {"message": "Base does not exist"})
+                return
+            theirs = store.resolve(repo, source)
+            if theirs is None:
+                self._send(404, {"message": "Head does not exist"})
+                return
+            ours = repo.refs[into]
+            if theirs in store.ancestors(repo, ours):
+                self._send(204, None)
+                return
+            tree = store.merged_tree(repo, ours, theirs)
+            if tree is None:
+                self._send(409, {"message": "Merge conflict"})
+                return
+            message = body.get("commit_message") or f"Merge {source} into {into}"
+            sha = store.new_object(
+                repo,
+                "commit",
+                {
+                    "message": message,
+                    "tree": {"sha": tree},
+                    "parents": [{"sha": ours}, {"sha": theirs}],
+                },
+            )
+            repo.refs[into] = sha
+            store.pushed(repo, sha)
+            store.touched(repo, into)
+            self._send(201, repo.objects[sha])
             return
         if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/git/blobs", path):
             repo = store.repository(m.group(1), m.group(2))
