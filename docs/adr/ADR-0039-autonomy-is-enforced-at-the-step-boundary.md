@@ -108,6 +108,12 @@ once by a stop request that names its tenant.
   own P-01, P-02, P-03 and S-01 are at level 3 or 4; S-01 reaches only the loopback connector,
   which is no integration, and runs.
 
+## Amendment — result defects in the quality history (2026-11-04)
+
+ADR-0184. A run a result defect was raised against counts as failed in its process's quality
+history, whenever the defect was raised; the sentence below on result defects counted "only for
+runs a caller names" no longer holds. A caller may still name further runs.
+
 ## Where this promise ends
 A level is applied to a step before it starts. A step that started under an earlier rule — an
 existing run's step that was already admitted — is not asked again. Level 4 is applied as level 3

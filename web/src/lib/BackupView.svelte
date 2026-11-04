@@ -69,7 +69,7 @@
 		max-width: 44rem;
 	}
 	code {
-		font-family: var(--mono);
+		font-family: var(--font-mono);
 		font-size: 0.8rem;
 	}
 </style>

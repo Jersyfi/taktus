@@ -6,6 +6,8 @@ surface (#448, ADR-0149).
   yet, a model Taktus proposed, a model whose version changed.
 - `POST /trials` — a trial started: every evaluation case of the processes that ask for the
   purpose, once per candidate, as a rehearsal with the purpose bound to the candidate.
+- `POST /trials/offers/decline` — an offer declined by the person: it is not offered again until
+  its occasion arises anew.
 - `GET /trials/{trial_id}` — one trial with its report: per candidate the cases passed, money,
   tokens in and out, wall time, and each case's results beside the others'.
 
@@ -26,13 +28,20 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from taktus.adapters.driving.rest.problems import MEDIA_TYPE, problem
 from taktus.adapters.driving.rest.wiring import RestServices
-from taktus.components.accounting.application.service import OCCASIONS, TrialError
+from taktus.components.accounting.application.service import OCCASIONS, NamedCase, TrialError
 from taktus.ports.identity import Resolution
 
 type Authenticated = Callable[[RestServices, str | None], Awaitable[Resolution | None]]
 
 PROBLEM: dict[str, Any] = {"content": {MEDIA_TYPE: {}}}
 NEEDS_KEY = "an account key is needed: Authorization: Bearer <key>"
+
+
+class CaseBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    process: str = Field(min_length=1, description="A process of your tenant.")
+    inputs: dict[str, Any] = Field(default_factory=dict, description="The run's inputs.")
 
 
 class StartBody(BaseModel):
@@ -51,6 +60,24 @@ class StartBody(BaseModel):
         default="asked",
         description=f"Why the trial runs: one of {', '.join(OCCASIONS)}; `asked` unless it "
         "answers an offer.",
+    )
+    cases: list[CaseBody] = Field(
+        default_factory=list,
+        max_length=50,
+        description="Cases you name beside the evaluation cases: a process whose active "
+        "version asks for the purpose, and the inputs of one run. Each runs once per "
+        "candidate; it has no target, so it passes on its run's own ending (ADR-0149 §1).",
+    )
+
+
+class DeclineBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    purpose: str = Field(pattern=r"^[a-z][a-z0-9_-]*$", description="The offer's purpose.")
+    occasion: str = Field(description="The offer's occasion: introduced, proposed or changed.")
+    model: str = Field(min_length=1, description="The model the offer concerns.")
+    reason: str = Field(
+        default="", max_length=500, description="Why you decline it, in your words; optional."
     )
 
 
@@ -122,11 +149,42 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
             return problem(401, NEEDS_KEY)
         try:
             trial = await services.trials.start(
-                who.tenant, body.purpose, body.candidates, who.identity, body.occasion
+                who.tenant,
+                body.purpose,
+                body.candidates,
+                who.identity,
+                body.occasion,
+                own=[NamedCase(process=c.process, inputs=c.inputs) for c in body.cases],
             )
         except TrialError as error:
             return _refused(error)
         return JSONResponse(trial.document(), status_code=201)
+
+    @routes.post(
+        "/trials/offers/decline",
+        summary="Decline an offered model trial",
+        description="The offer is not shown again until its occasion arises anew: the model "
+        "proposed again, or its version changed again. The ledger records `trial.declined` "
+        "with you as its actor. Declining binds and starts nothing (ADR-0149 §3).",
+        responses={
+            200: {"description": "The offer declined."},
+            404: {"description": "No such offer stands now.", **PROBLEM},
+            **common,
+        },
+    )
+    async def decline(body: DeclineBody, authorization: str | None = Header(default=None)) -> Any:
+        who = await authenticated(services, authorization)
+        if who is None:
+            return problem(401, NEEDS_KEY)
+        try:
+            await services.trials.decline(
+                who.tenant, body.purpose, body.occasion, body.model, who.identity, body.reason
+            )
+        except TrialError as error:
+            return _refused(error)
+        return JSONResponse(
+            {"purpose": body.purpose, "occasion": body.occasion, "model": body.model}
+        )
 
     @routes.get(
         "/trials/{trial_id}",

@@ -84,8 +84,10 @@ files = ["src/taktus", "connectors/taktus_connectors", "tools", "deploy/backup"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 # Every skip says why in the summary, so that a test that needs a cluster or Docker and did not
-# run is visible in every log, CI's included, instead of passing quietly.
-addopts = "-rs"
+# run is visible in every log, CI's included, instead of passing quietly. Every failure and
+# error is named there too, as `FAILED tests/...` and `ERROR tests/...`: the flake register and
+# "main is red" read those lines (tools/ci_watch.py), and `-rs` alone left them out (#520).
+addopts = "-rfEs"
 # A test that asserts a bound on wall-clock time runs alone, after the suite that spreads over
 # the cores: other processes on the same cores would move its measurement (ADR-0096).
 markers = ["timing: asserts a bound on wall-clock time; `make test` leaves it out; `make timing` and CI's lane `timing` run it alone, in one process"]

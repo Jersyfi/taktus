@@ -60,7 +60,9 @@ install on one machine (`deploy/docker/start.py`, ADR-0136 §6): what `make up` 
 first tenant and its administrator with the account key printed once, then a clock until the
 first rehearsal has finished; `make verify-first-process` runs `deploy/docker/first-process.sh`,
 that path from nothing without a person, failing above ten minutes. `make up` brings the control plane up in two
-containers (`deploy/docker/compose.yml`: writes the secret files once, builds the image,
+containers (`deploy/docker/compose.yml`: writes the secret files once, fills them from the
+operator's secret store where `secret-store.json` names one (`deploy/docker/secret_store.py`,
+ADR-0187), builds the image,
 applies the migrations, waits for readiness), `make up-dev` does the same with the reference
 worker layered in from its own image (`compose.reference-worker.yml`, development only),
 `make down` stops either and keeps every volume; all three, and `make start`, lay the

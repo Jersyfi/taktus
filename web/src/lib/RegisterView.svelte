@@ -75,7 +75,9 @@
 				{/if}
 				<p class="muted">
 					{row.serves.join(', ') || 'serves nothing declared'} · {row.location ?? 'location undeclared'}
-					<span class="residency {row.residency}">{row.residency === 'outside' ? 'outside the rule' : row.residency}</span>
+					{#if row.location || row.residency !== 'undeclared'}
+						<span class="residency {row.residency}">{row.residency === 'outside' ? 'outside the rule' : row.residency}</span>
+					{/if}
 				</p>
 				{#if row.processes.length}
 					<p class="uses">
@@ -113,13 +115,6 @@
 </section>
 
 <style>
-	.eyebrow {
-		font-size: 0.75rem;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: var(--ink-3);
-		margin: 0 0 0.5rem;
-	}
 	h1 {
 		max-width: 30ch;
 	}
@@ -128,8 +123,8 @@
 		font-size: 0.85rem;
 		padding: 0.3rem 0.8rem;
 		border-radius: 999px;
-		border: 1px solid var(--line);
-		color: var(--ink-2);
+		border: 1px solid var(--border-subtle);
+		color: var(--text-secondary);
 	}
 	.tools {
 		display: flex;
@@ -140,7 +135,7 @@
 		font-size: 0.9rem;
 	}
 	.muted {
-		color: var(--ink-2);
+		color: var(--text-secondary);
 		font-size: 0.86rem;
 		margin: 0.3rem 0;
 	}
@@ -154,15 +149,15 @@
 	.card {
 		border-radius: 24px;
 		padding: 1rem 1.15rem;
-		background: var(--paper-2);
+		background: var(--bg-surface);
 		min-width: 0;
 	}
 	/* What needs attention carries an outline, so the distinction does not rest on colour. */
 	.card.attention {
-		box-shadow: inset 0 0 0 1.5px var(--alert);
+		box-shadow: inset 0 0 0 1.5px var(--family-alert);
 	}
 	.card.stopped {
-		background: repeating-linear-gradient(135deg, var(--paper-2) 0 10px, var(--paper) 10px 20px);
+		background: repeating-linear-gradient(135deg, var(--bg-surface) 0 10px, var(--bg-canvas) 10px 20px);
 	}
 	.head {
 		display: flex;
@@ -171,24 +166,24 @@
 		flex-wrap: wrap;
 	}
 	.family {
-		font-family: var(--mono);
+		font-family: var(--font-mono);
 		font-size: 0.72rem;
-		color: var(--ink-3);
+		color: var(--text-subtle);
 	}
 	.chip {
 		margin-left: auto;
 		font-size: 0.72rem;
 		border-radius: 999px;
 		padding: 0 0.55rem;
-		border: 1px solid var(--line);
+		border: 1px solid var(--border-subtle);
 	}
 	.chip.broke {
-		border-color: var(--alert);
-		color: var(--alert);
+		border-color: var(--family-alert);
+		color: var(--family-alert);
 	}
 	.chip.changed {
-		border-color: var(--person);
-		color: var(--person);
+		border-color: var(--family-person);
+		color: var(--family-person);
 	}
 	.chip.untested {
 		border-style: dashed;
@@ -203,10 +198,10 @@
 		width: 18px;
 		height: 6px;
 		border-radius: 3px;
-		background: var(--line);
+		background: var(--border-subtle);
 	}
 	.rung.on {
-		background: var(--reproducible);
+		background: var(--family-reproducible);
 	}
 	.reasons {
 		margin: 0.4rem 0;
@@ -214,7 +209,7 @@
 		font-size: 0.86rem;
 	}
 	.residency.outside {
-		color: var(--alert);
+		color: var(--family-alert);
 		font-weight: 600;
 	}
 	.uses {
@@ -229,21 +224,8 @@
 		align-items: center;
 		font-size: 0.86rem;
 	}
-	button {
-		font: inherit;
-		border-radius: 999px;
-		padding: 0.2rem 0.8rem;
-		border: 1px solid var(--line);
-		background: var(--paper);
-		color: var(--ink);
-		cursor: pointer;
-	}
-	button.danger {
-		border-color: var(--alert);
-		color: var(--alert);
-	}
 	.held {
-		color: var(--alert);
+		color: var(--family-alert);
 	}
 	a {
 		color: inherit;

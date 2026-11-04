@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 from fakes import FakeClock
 from fakes.takeover import instructed
 
@@ -199,6 +200,7 @@ class World:
     async def ran(self, version: str, times: int = 1) -> None:
         for _ in range(times):
             self.runs += 1
+            await self.record("run.created", version, run_id=f"run_{self.runs}")
             await self.record("run.finished", version, "succeeded", run_id=f"run_{self.runs}")
 
     def weeks(self, n: float) -> None:
@@ -306,16 +308,24 @@ async def test_opening_needs_the_predecessor_to_hold_and_a_persons_approval() ->
     w.weeks(2)
     await w.ran("report@1", 3)
     assert (await w.view("watch")).holds
+    with pytest.raises(StagesRefused) as refused:
+        await w.stages.open(TENANT, "routine", by=PERSON)
+    assert refused.value.reason == "not_run", "a stage opens only over processes that run"
+    assert "runs no version of cost" in str(refused.value)
+    await w.registered("cost", 2)
+    await w.registered("triage", 2)
     routine = await w.stages.open(TENANT, "routine", by=PERSON)
     assert routine.state is StageState.OPEN
     reasons = [e.outcome for e in await w.entries("stage.refused")]
-    assert reasons == ["out_of_order", "no_approval", "unknown", "predecessor"]
+    assert reasons == ["out_of_order", "no_approval", "unknown", "predecessor", "not_run"]
     assert [(e.refs.stage_id, e.refs.actor) for e in await w.entries("stage.opened")] == [
         ("watch", PERSON),
         ("routine", PERSON),
     ]
-    # Once open, the stage lifts the ceiling; the raise itself still needs its approval.
-    assert (await w.registered("cost", 3)).autonomy.level == 3
+    # Once open, the stage lifts the ceiling; the raise itself still needs its approval and
+    # its history.
+    await w.ran("cost@1")
+    assert (await w.registered("cost", 3, version="2")).autonomy.level == 3
 
 
 async def test_taktus_proposes_the_opening_with_the_figures_and_never_opens_a_stage() -> None:
@@ -325,8 +335,8 @@ async def test_taktus_proposes_the_opening_with_the_figures_and_never_opens_a_st
     assert looked.proposed == ("watch",), "the first stage is proposed once declared"
     assert (await w.view("watch")).state is StageState.CLOSED, "proposed, never opened"
     assert (await w.stages.look(TENANT)).proposed == (), "proposed once"
-    await w.stages.open(TENANT, "watch", by=PERSON)
     await w.registered("report", 2)
+    await w.stages.open(TENANT, "watch", by=PERSON)
     assert (await w.stages.look(TENANT)).proposed == ()
     w.weeks(2)
     await w.ran("report@1", 3)
@@ -351,30 +361,33 @@ async def test_a_stage_that_stops_holding_is_reported_and_its_processes_fall_by_
     await w.stages.open(TENANT, "watch", by=PERSON)
     w.weeks(2)
     await w.ran("report@1", 3)
+    await w.registered("cost", 2)
+    await w.registered("triage", 2)
     await w.stages.open(TENANT, "routine", by=PERSON)
-    await w.registered("cost", 3)
+    await w.ran("cost@1")
+    await w.registered("cost", 3, version="2")
     w.weeks(1)
     assert (await w.stages.look(TENANT)).held == ("watch", "routine")
-    await w.record("incident.raised", "cost@1", "missed", incident_id="inc_1")
+    await w.record("incident.raised", "cost@2", "missed", incident_id="inc_1")
     looked = await w.stages.look(TENANT)
     assert looked.fell == ("routine",)
     [incident] = looked.lowered
-    assert incident.kind is IncidentKind.STAGE and incident.process_version == "cost@1"
+    assert incident.kind is IncidentKind.STAGE and incident.process_version == "cost@2"
     assert incident.facts["level_before"] == "3" and incident.facts["level_after"] == "2"
     assert "1 incident(s) raised, at most 0" in str(incident.facts["missing"])
     lowered = await w.entries("autonomy.lowered")
     assert [(e.refs.process_version, e.outcome, e.refs.stage_id) for e in lowered] == [
-        ("cost@1", "level_2", "routine")
+        ("cost@2", "level_2", "routine")
     ]
     assert lowered[0].refs.actor is None, "nobody approves a fall"
-    assert (await w.corrections.lowered(TENANT, "cost@1")).level == 2, "the run reads it"
+    assert (await w.corrections.lowered(TENANT, "cost@2")).level == 2, "the run reads it"
     role, stage, fallen = w.reports.falls[-1]
     assert role == ROLE and stage.stage.id == "routine" and list(fallen) == [incident]
     view = await w.view("routine")
     assert view.state is StageState.NOT_HOLDING and not view.holds
     # A stage that stopped holding grants nothing: the level rises only once it holds again.
     with pytest.raises(RaiseRefused, match="at most at level 2"):
-        await w.registered("cost", 3, version="2")
+        await w.registered("cost", 3, version="3")
     assert (await w.stages.look(TENANT)).fell == (), "it falls once"
 
 
@@ -432,6 +445,7 @@ async def test_the_correction_rate_and_proposals_waiting_are_read_per_process() 
         ],
     }
     await declared(w, plan)
+    await w.registered("report", 2)
     await w.stages.open(TENANT, "watch", by=PERSON)
     for outcome in ("released", "corrected", "released", "released"):
         await w.record("proposal.decided", "report@1", outcome, run_id="run_1", step_id="s")
@@ -480,6 +494,7 @@ async def test_a_condition_may_be_stricter_than_its_blueprint_and_never_looser()
 async def test_a_stage_never_opens_while_a_process_it_adds_lacks_takeover_instructions() -> None:
     w = World(instructions=Instructions("cost"))
     await declared(w)
+    await w.registered("report", 2)
     with pytest.raises(StagesRefused) as refused:
         await w.stages.open(TENANT, "watch", by=PERSON)
     assert refused.value.reason == "instructions"
@@ -532,10 +547,137 @@ async def test_uc_03s_six_stages_are_declared_and_shown_with_their_conditions() 
         "open for at least 4 week(s)",
         "at most 0 expected run(s) missed",
         "at most 0 proposal(s) waiting for a person",
+        "at most 0 day(s) without the daily report",
     ]
     assert "no correction rate above 25%" in view[2].stage.condition.described()
     assert "at most 0 incident(s)" in view[3].stage.condition.described()
     assert max(view[0].stage.processes.values()) <= 2, "stage 0 runs at level 1 to 2"
     every = {p for v in view[1:] for p in v.stage.processes}
-    assert len(every) == 88, "every process of UC-03 §4.1 to §4.10 belongs to a stage"
+    assert len(every) == 87, "every process of UC-03 §4.1 to §4.10 belongs to a stage"
     assert not any(p.startswith("b-11-") for p in every), "the steering is Taktus itself"
+    assert "b-9-01" not in {p for v in view for p in v.stage.processes}, (
+        "the daily report is the instance's, counted by `reports_missed`"
+    )
+
+
+def test_every_bundle_of_the_blueprint_is_named_by_its_stages_and_starts_at_most_at_level_two() -> (
+    None
+):
+    """ADR-0191 §4: a stage names a process by its bundle's identifier, or it names nothing
+    the tenant registers; and every process of UC-03 starts at level 1 or 2 (UC-03 §4)."""
+    floor = blueprint_stages(ROOT / "blueprints/software-operations/stages.yaml")
+    named = {p for s in floor.stages for p in s.processes}
+    bundles = sorted((ROOT / "blueprints/software-operations/processes").glob("*.yaml"))
+    assert bundles
+    for path in bundles:
+        bundle = yaml.safe_load(path.read_text(encoding="utf-8"))
+        assert bundle["id"] in named, f"{path.name}: {bundle['id']} is named by no stage"
+        assert bundle["autonomy"]["level"] <= 2, f"{path.name} starts above level 2"
+        number = path.name.split("-", 2)[1]  # B-1.01-daily-cost.yaml -> 1.01
+        assert bundle["id"] == "b-" + number.replace(".", "-"), path.name
+
+
+# --- a stage counts only processes that run (ADR-0191) -------------------------------------------
+
+
+async def deactivated(w: World, process: str) -> None:
+    async with w.persistence.transaction(TENANT):
+        found = await w.processes.get(TENANT, process)
+        assert found is not None
+        await w.processes.put(TENANT, found.model_copy(update={"active_version": None}))
+
+
+async def test_a_stage_opens_only_once_every_process_it_adds_runs_for_the_tenant() -> None:
+    w = World()
+    await declared(w)
+    watch = await w.view("watch")
+    assert "t runs no version of report" in watch.missing
+    with pytest.raises(StagesRefused) as refused:
+        await w.stages.open(TENANT, "watch", by=PERSON)
+    assert refused.value.reason == "not_run"
+    assert (await w.view("watch")).state is StageState.CLOSED
+    await w.registered("report", 2)
+    assert "t runs no version of report" not in (await w.view("watch")).missing
+    assert (await w.stages.open(TENANT, "watch", by=PERSON)).state is StageState.OPEN
+
+
+async def test_an_open_stage_does_not_hold_while_a_process_it_adds_runs_no_version() -> None:
+    w = World()
+    await declared(w)
+    await w.registered("report", 2)
+    await w.stages.open(TENANT, "watch", by=PERSON)
+    w.weeks(2)
+    await w.ran("report@1", 3)
+    assert (await w.stages.look(TENANT)).held == ("watch",)
+    await deactivated(w, "report")
+    watch = await w.view("watch")
+    assert not watch.holds and watch.missing == ("t runs no version of report",)
+    assert (await w.stages.look(TENANT)).fell == ("watch",)
+
+
+async def test_the_view_shows_each_process_with_its_version_level_and_what_it_did() -> None:
+    w = World()
+    await declared(w)
+    await w.registered("report", 2)
+    await w.stages.open(TENANT, "watch", by=PERSON)
+    w.weeks(1)
+    await w.ran("report@1", 2)
+    await w.record("incident.raised", "report@1", "missed", incident_id="inc_1")
+    watch, routine = await w.stages.view(TENANT)
+    [report] = watch.processes
+    assert (report.process, report.version, report.level, report.granted) == (
+        "report",
+        "report@1",
+        2,
+        2,
+    )
+    assert (report.runs, report.missed, report.incidents) == (2, 1, 1)
+    assert report.last_finished is not None and watch.opened_at is not None
+    assert watch.opened_at < report.last_finished <= w.clock.now()
+    assert [(p.process, p.version, p.level, p.runs) for p in routine.processes] == [
+        ("cost", None, None, 0),
+        ("triage", None, None, 0),
+    ], "a stage not open shows what runs, and counts nothing"
+    assert "idn_" not in str(watch.document()), "no figure names a person"
+
+
+async def test_the_days_without_the_daily_report_are_counted_and_bind() -> None:
+    w = World()
+    plan = {
+        "responsible": ROLE,
+        "stages": [
+            {
+                "id": "watch",
+                "name": "Watch",
+                "processes": {"report": 2},
+                "condition": {"reports_missed": 0},
+            }
+        ],
+    }
+    await declared(w, plan)
+    await w.registered("report", 2)
+    await w.stages.open(TENANT, "watch", by=PERSON)  # 2026-10-01, 00:00 UTC
+    for day in ("20261001", "20261002", "20261004"):
+        async with w.persistence.transaction(TENANT):
+            await w.ledger.record(
+                TENANT,
+                Fact(
+                    kind="report.raised",
+                    refs=LedgerRefs(tenant=TENANT, report_id=f"signals-{day}"),
+                    outcome="daily",
+                ),
+            )
+    async with w.persistence.transaction(TENANT):
+        await w.ledger.record(
+            TENANT,
+            Fact(
+                kind="report.raised",
+                refs=LedgerRefs(tenant=TENANT, report_id="red-inc_1"),
+                outcome="red",
+            ),
+        )
+    w.clock.current += timedelta(days=4, hours=7)
+    [watch] = await w.stages.view(TENANT)
+    assert watch.figures is not None and watch.figures.reports_missed == 1, "the third day"
+    assert watch.missing == ("1 day(s) without the daily report, at most 0",)
+    assert watch.stage.condition.described()[-1] == "at most 0 day(s) without the daily report"

@@ -103,6 +103,21 @@ def test_a_manifest_names_each_operation_by_a_declared_capability(tmp_path: Path
         load(manifest_file(tmp_path, document))
 
 
+def test_a_capability_is_scoped_as_a_whole_or_not_at_all(tmp_path: Path) -> None:
+    """A subject on every operation of a capability declares it scoped (ADR-0199); a subject
+    on some of them would leave a way round the scope, and is refused."""
+    document = notes_manifest()
+    for operation in document["operations"]:
+        operation["subject"] = "id"
+    manifest, digest = load(manifest_file(tmp_path, document))
+    assert with_manifest(manifest, digest).declaration()["scoped"] == ["notes.pages"]
+    document["operations"][0].pop("subject")
+    with pytest.raises(ManifestError, match="scoped as a whole"):
+        load(manifest_file(tmp_path, document))
+    unscoped = with_manifest(*load(manifest_file(tmp_path, notes_manifest())))
+    assert "scoped" not in unscoped.declaration()
+
+
 def test_the_digest_is_of_the_bytes(tmp_path: Path) -> None:
     path = manifest_file(tmp_path, notes_manifest())
     _, first = load(path)

@@ -8,7 +8,8 @@ shared repository suite round-trips the real aggregates through here, so a chang
 document's shape is a red test, not a silent loss.
 
 `put` replaces: the parent row is upserted, the children are deleted and written again, all
-inside the caller's transaction. Timestamps travel as ISO 8601 text in a document and as
+inside the caller's transaction. The run is the exception: its children are written where they
+changed, and only there (#325). Timestamps travel as ISO 8601 text in a document and as
 `timestamptz` in a row; `_at` and `_iso` convert at the boundary.
 """
 
@@ -16,11 +17,12 @@ from __future__ import annotations
 
 import asyncio
 import builtins
-from collections.abc import Sequence
+import json
+from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from typing import Any, Protocol, runtime_checkable
 
-from sqlalchemy import Table, and_, delete, exists, func, or_, select
+from sqlalchemy import Table, and_, delete, exists, func, or_, select, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import Row
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -94,6 +96,62 @@ async def _insert_all(
 ) -> None:
     if rows:
         await connection.execute(insert(table), list(rows))
+
+
+def _fingerprint(row: Mapping[Any, Any], columns: Sequence[str]) -> tuple[str, ...]:
+    """A row's values as text that tells `true` from `1` and `1` from `1.0`: two rows with the
+    same fingerprint hold the same values. One that differs only in how a value is spelled is
+    written again, which costs a write and loses nothing."""
+    return tuple(json.dumps(row[name], sort_keys=True, default=str) for name in columns)
+
+
+class _Changes:
+    """What one table of a run's children needs, read against what is stored (#325): the keys
+    the document no longer holds, and the rows that are new or differ. An equal row is left as
+    it is."""
+
+    def __init__(self, table: Table, keys: Sequence[str]) -> None:
+        self.table = table
+        self.keys = tuple(keys)
+        self.gone: list[tuple[Any, ...]] = []
+        self.changed: list[dict[str, Any]] = []
+
+    async def read(
+        self, connection: AsyncConnection, scope: Sequence[Any], rows: Sequence[dict[str, Any]]
+    ) -> _Changes:
+        columns = list(rows[0]) if rows else [self.keys[-1]]
+        stored = {
+            tuple(row[name] for name in self.keys): _fingerprint(row, columns)
+            for row in (
+                await connection.execute(
+                    select(*(self.table.c[name] for name in {*self.keys, *columns})).where(*scope)
+                )
+            ).mappings()
+        }
+        wanted = {tuple(row[name] for name in self.keys): row for row in rows}
+        self.gone = [key for key in stored if key not in wanted]
+        self.changed = [
+            row for key, row in wanted.items() if stored.get(key) != _fingerprint(row, columns)
+        ]
+        return self
+
+    async def delete(self, connection: AsyncConnection, scope: Sequence[Any]) -> None:
+        if self.gone:
+            key = tuple_(*(self.table.c[name] for name in self.keys))
+            await connection.execute(delete(self.table).where(*scope, key.in_(self.gone)))
+
+    async def write(self, connection: AsyncConnection) -> None:
+        if not self.changed:
+            return
+        statement = insert(self.table)
+        columns = [name for name in self.changed[0] if name not in self.keys]
+        await connection.execute(
+            statement.on_conflict_do_update(
+                index_elements=list(self.keys),
+                set_={name: statement.excluded[name] for name in columns},
+            ),
+            self.changed,
+        )
 
 
 async def _one(
@@ -479,80 +537,103 @@ class RunMapper:
                 "updated_at": _at(document["updated_at"]),
             },
         )
-        await connection.execute(
-            delete(s.step_run).where(s.step_run.c.tenant == tenant, s.step_run.c.run_id == run_id)
-        )
         key = {"tenant": tenant, "run_id": run_id}
         step_runs = document.get("step_runs", [])
-        await _insert_all(
-            connection,
-            s.step_run,
-            [
-                {
-                    **key,
-                    "step_id": sr["step_id"],
-                    "position": sr["index"],
-                    "method": sr["method"],
-                    "state": sr["state"],
-                    "attempt": sr.get("attempt", 1),
-                    "retryable": sr.get("retryable"),
-                    "adapter": sr.get("adapter"),
-                    "assignment_id": sr.get("assignment_id"),
-                    "assignment_open": sr.get("assignment_open", False),
-                    "assignment_seq": sr.get("assignment_seq", 0),
-                    "estimate": sr.get("estimate"),
-                    "reservation": sr.get("reservation"),
-                    "consumption": sr.get("consumption"),
-                    "reason": sr.get("reason"),
-                    "started_at": _at(sr.get("started_at")),
-                    "finished_at": _at(sr.get("finished_at")),
-                    "waiting_since": _at(sr.get("waiting_since")),
-                    "waits": sr.get("waits", 0),
-                    "confirmed_by": sr.get("confirmed_by"),
-                    "block": sr.get("block"),
-                    "anchoring": sr.get("anchoring"),
-                    "messages": sr.get("messages") or None,
-                }
-                for sr in step_runs
-            ],
-        )
-        await _insert_all(
-            connection,
-            s.checkpoint,
-            [
-                {
-                    **key,
-                    "step_id": sr["step_id"],
-                    "ref": sr["checkpoint"]["ref"],
-                    "taken_at": _at(sr["checkpoint"]["taken_at"]),
-                    "artifact_ids": sr["checkpoint"].get("artifact_ids", []),
-                    "result_digest": sr["checkpoint"].get("result_digest"),
-                }
-                for sr in step_runs
-                if sr.get("checkpoint") is not None
-            ],
-        )
-        await _insert_all(
-            connection,
-            s.artifact,
-            [
-                {
-                    **key,
-                    "step_id": sr["step_id"],
-                    "id": artifact["id"],
-                    "position": position,
-                    "kind": artifact["kind"],
-                    "digest": artifact["digest"],
-                    "media_type": artifact.get("media_type"),
-                    "size_bytes": artifact.get("size_bytes"),
-                    "uri": artifact.get("uri"),
-                    "title": artifact.get("title"),
-                    "created_at": _at(artifact.get("created_at")),
-                }
-                for sr in step_runs
-                for position, artifact in enumerate(sr.get("artifacts", []))
-            ],
-        )
+        await self._children_put(connection, tenant, run_id, key, step_runs)
+
+    async def _children_put(
+        self,
+        connection: AsyncConnection,
+        tenant: Tenant,
+        run_id: str,
+        key: dict[str, Any],
+        step_runs: Sequence[Document],
+    ) -> None:
+        """The step runs, checkpoints and artifacts that changed, and only those (#325): a row
+        the document no longer holds is deleted, a new or changed one written, an equal one left
+        as it is. A commit of one step therefore writes a constant number of rows, not every row
+        of the run again, and sends no more than those; what is stored afterwards is the same as
+        before. The stored rows are read first, in the caller's transaction, after the run's own row
+        was written: that row's lock holds a second commit of the same run until this one ends,
+        so the rows read are the rows this commit changes."""
+        step_rows = [
+            {
+                **key,
+                "step_id": sr["step_id"],
+                "position": sr["index"],
+                "method": sr["method"],
+                "state": sr["state"],
+                "attempt": sr.get("attempt", 1),
+                "retryable": sr.get("retryable"),
+                "adapter": sr.get("adapter"),
+                "assignment_id": sr.get("assignment_id"),
+                "assignment_open": sr.get("assignment_open", False),
+                "assignment_seq": sr.get("assignment_seq", 0),
+                "estimate": sr.get("estimate"),
+                "reservation": sr.get("reservation"),
+                "consumption": sr.get("consumption"),
+                "reason": sr.get("reason"),
+                "started_at": _at(sr.get("started_at")),
+                "finished_at": _at(sr.get("finished_at")),
+                "waiting_since": _at(sr.get("waiting_since")),
+                "waits": sr.get("waits", 0),
+                "confirmed_by": sr.get("confirmed_by"),
+                "block": sr.get("block"),
+                "anchoring": sr.get("anchoring"),
+                "messages": sr.get("messages") or None,
+            }
+            for sr in step_runs
+        ]
+        checkpoint_rows = [
+            {
+                **key,
+                "step_id": sr["step_id"],
+                "ref": sr["checkpoint"]["ref"],
+                "taken_at": _at(sr["checkpoint"]["taken_at"]),
+                "artifact_ids": sr["checkpoint"].get("artifact_ids", []),
+                "result_digest": sr["checkpoint"].get("result_digest"),
+            }
+            for sr in step_runs
+            if sr.get("checkpoint") is not None
+        ]
+        artifact_rows = [
+            {
+                **key,
+                "step_id": sr["step_id"],
+                "id": artifact["id"],
+                "position": position,
+                "kind": artifact["kind"],
+                "digest": artifact["digest"],
+                "media_type": artifact.get("media_type"),
+                "size_bytes": artifact.get("size_bytes"),
+                "uri": artifact.get("uri"),
+                "title": artifact.get("title"),
+                "created_at": _at(artifact.get("created_at")),
+            }
+            for sr in step_runs
+            for position, artifact in enumerate(sr.get("artifacts", []))
+        ]
+        tables = (s.step_run, s.checkpoint, s.artifact)
+        scopes = [(table.c.tenant == tenant, table.c.run_id == run_id) for table in tables]
+        changes = [
+            await _Changes(table, keys).read(connection, scope, rows)
+            for table, keys, scope, rows in zip(
+                tables,
+                (
+                    ("tenant", "run_id", "step_id"),
+                    ("tenant", "run_id", "step_id"),
+                    ("tenant", "run_id", "step_id", "id"),
+                ),
+                scopes,
+                (step_rows, checkpoint_rows, artifact_rows),
+                strict=True,
+            )
+        ]
+        # The children before their step run when deleting, and after it when writing.
+        for change, scope in reversed(list(zip(changes, scopes, strict=True))):
+            await change.delete(connection, scope)
+        for change in changes:
+            await change.write(connection)
 
     async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
         rows = await _all(connection, s.run, tenant, s.run.c.created_at, s.run.c.id)

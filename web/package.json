@@ -4,10 +4,11 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite dev",
-    "build": "vite build && node scripts/relative.js",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
-    "test": "svelte-kit sync && vitest run"
+    "tokens": "node scripts/tokens.js",
+    "dev": "node scripts/tokens.js && vite dev",
+    "build": "node scripts/tokens.js && vite build && node scripts/relative.js",
+    "check": "node scripts/tokens.js && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
+    "test": "node scripts/tokens.js && svelte-kit sync && vitest run"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "4.0.0",

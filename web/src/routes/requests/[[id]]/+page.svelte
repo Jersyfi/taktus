@@ -128,13 +128,6 @@
 		gap: 2rem;
 		align-items: start;
 	}
-	.eyebrow {
-		font-size: 0.75rem;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: var(--ink-3);
-		margin: 0 0 0.5rem;
-	}
 	nav ul {
 		list-style: none;
 		padding: 0;
@@ -151,15 +144,15 @@
 	}
 	nav a:hover,
 	nav a[aria-current='page'] {
-		background: var(--paper-2);
+		background: var(--bg-surface);
 	}
 	.id {
-		font-family: var(--mono);
+		font-family: var(--font-mono);
 		font-size: 0.75rem;
-		color: var(--ink-3);
+		color: var(--text-subtle);
 	}
 	.muted {
-		color: var(--ink-2);
+		color: var(--text-secondary);
 		font-size: 0.85rem;
 	}
 	@media (max-width: 760px) {

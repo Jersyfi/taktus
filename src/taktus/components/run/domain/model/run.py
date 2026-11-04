@@ -600,6 +600,25 @@ class Run(Value):
             )
         return seconds
 
+    def tokens_without_money(self) -> tuple[TokensByModel | None, tuple[str, ...]]:
+        """The tokens per model of every step whose counted consumption carries no money,
+        and the steps among them that recorded tokens without the model that used them. A
+        currency budget prices these at the run's table at every boundary, never stored on
+        the step (ADR-0005, third amendment, #235). A step that reported money — a worker,
+        or an `llm` step in flight, counted at its reservation — carries its money already
+        and is not priced a second time from its tokens."""
+        by_model: TokensByModel | None = None
+        unattributed: list[str] = []
+        for step_run in self.step_runs:
+            used = _counted(step_run)
+            if used is None or used.currency:
+                continue
+            if used.tokens_by_model:
+                by_model = add_tokens_by_model(by_model, used.tokens_by_model)
+            elif used.tokens_in or used.tokens_out:
+                unattributed.append(step_run.step_id)
+        return by_model, tuple(unattributed)
+
 
 def _counted(step_run: StepRun) -> ConsumptionQuantities | None:
     """What a step counts against the budget: its actual once it ended; the larger of its

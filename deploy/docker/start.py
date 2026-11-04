@@ -123,6 +123,8 @@ def main() -> int:
     print("start: installing Taktus. The first build of the image takes several minutes.")
 
     stage("writing the secrets", install.run(str(ROOT / "deploy" / "docker" / "secrets.sh")))
+    store = [sys.executable, str(ROOT / "deploy" / "docker" / "secret_store.py")]
+    stage("reading the secret store", install.run(*store))
     fresh = ["--no-cache", "--pull"] if options.no_cache else []
     stage("building the image", install.run(*install.compose, "build", *fresh, "taktus"))
     marks["image_built"] = now()

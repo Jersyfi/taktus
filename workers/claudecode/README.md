@@ -44,6 +44,7 @@ next call before it was ended; whatever it left in the workspace stays there unc
 the first step after the resume commits it — nothing is lost, and nothing is announced twice.
 A step that does not reach its result within the stop's ceiling ends the agent anyway; the
 last boundary is the checkpoint.
+An agent that exits on its own just as it is ended is not a fault: a group already gone, or one whose leader has exited and is not yet reaped — which macOS answers with EPERM — is nothing to signal, and the assignment still finishes `stopped` (#640).
 
 One more step exists that is not a tool call: before the agent starts, the hosts the task says
 it needs (`task.inputs.hosts`) are held against the frame as a step of their own, so that a

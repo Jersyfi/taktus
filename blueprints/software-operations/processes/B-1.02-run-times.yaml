@@ -1,0 +1,146 @@
+# B-1.02 Run times — UC-03 §4.1: the run time of the business's server functions is read from
+# its metrics store once a month, through the capability `metrics.series`, and the slowest
+# function judged against its corridor, so that the costliest one is named before the bill
+# grows (UC-6.13, ADR-0198).
+#
+# The query is the tenant's: a run time per function as its metrics store computes it, for
+# example the 95th percentile over the month. The rule `filter` takes the function with the
+# longest run time from the store's own reading, with its value; a value the store could not
+# give as a number is left out, never read as zero. No model touches the figure (`exact`).
+#
+# The judgement is the tenant's corridor on the step `slowest` and the value
+# `first.values.0.value`, against the store's own history once there are enough runs:
+#
+#     uv run taktusctl signal configure cost.function_run_time --process b-1-02 \
+#         --step slowest --select first.values.0.value --bounds median --direction above \
+#         --yellow 1.5 --red 3 --fresh 32d \
+#         --role <role> --case <where a cost driver is worked>
+#
+# Not built here: expensive queries, egress and storage, which no store reports in one shape,
+# and the optimisation proposed as an issue or a pull request of the target level; the
+# proposal is the implementation process's (B-7.03) on an issue a person files. Its priority
+# stays with a person (UC-03 §4.1).
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-1.02-run-times.yaml \
+#         --input 'query=histogram_quantile(0.95, sum by (function, le) (rate(function_duration_seconds_bucket[30d])))'
+#
+# Switching it off (`taktusctl deactivate --process b-1-02`) changes nothing at the store.
+
+id: b-1-02
+version: "1"
+name: B-1.02 Run times
+autonomy:
+  level: 1
+  reason: >
+    the process only reads the metrics store and takes its longest run time by a fixed rule;
+    nothing leaves the system, so at level 1 every step runs and none acts; the judgement is
+    the tenant's corridor; it starts at level 1, observing, as UC-03 starts every process at
+    level 1 or 2 when its stage opens
+  toward_next: >
+    stage 1 of the tenant's plan open, and three months of runs whose findings a person checked
+    against the store and found right; then Taktus proposes the next level, up to the target
+    UC-03 names once proposing an optimisation is part of it (UC-7.1, UC-9.6)
+author: the repository
+reason: the costliest server function named every month without a person reading the dashboards (UC-03 B-1.02)
+
+triggers:
+  - schedule: "0 6 1 * *"
+    inputs:
+      query: histogram_quantile(0.95, sum by (function, le) (rate(function_duration_seconds_bucket[30d])))
+
+inputs:
+  query:
+    description: >
+      the tenant's query for the run time per function, in the store's query language; each
+      series it answers is one function
+    example: histogram_quantile(0.95, sum by (function, le) (rate(function_duration_seconds_bucket[30d])))
+
+limits:
+  quota: { units: 2 }
+
+steps:
+  - id: read-run-times
+    method: rule
+    reason: the store's figures are read verbatim, each value as the store gave it
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving metrics.series is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: metrics.series.query
+      input:
+        query: { $input: query }
+      credentials:
+        - { name: METRICS_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the store answered more series than were read" }
+
+  - id: slowest
+    method: rule
+    reason: >
+      the function with the longest run time is a fixed ordering of the store's own figures; a
+      value the store could not give as a number is left out, never read as zero
+    rejected:
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+      - method: statistics
+        why: taking the largest of the values is an ordering; the percentile is the store's
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the function with the longest run time }
+    depends_on: [read-run-times]
+    work:
+      rule: filter
+      items: { $from: read-run-times, $select: output.series }
+      all:
+        - { field: values.0.value, at_least: 0 }
+      order: values.0.value
+      descending: true
+      limit: 1
+
+# How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
+# every step the system to act in, what to do there, the expertise it needs, each credential by
+# its parameter and where an authorised person finds it, and how to tell that it is done.
+takeover:
+  sequence: >
+    The process runs once a month, on the first day at 06:00 UTC; whoever watches the cost of
+    the business's server functions starts it. The steps run in order: run the tenant's query
+    for the run time per function in the metrics store, then take the function with the longest
+    run time. Whether that run time is a deviation is the tenant's corridor, judged against the
+    store's own history of earlier months. Expensive queries, egress and storage are not part of
+    it. Proposing and prioritising an optimisation stays with a person.
+  steps:
+    read-run-times:
+      system: the business's metrics store, in its query view
+      do: >
+        run the query the run was started with, by default the 95th percentile of each
+        function's call duration over the last 30 days, grouped by function. Export the answer
+        as a table with one row per function and its value exactly as the store gives it. Make
+        sure the store answered every series: a cut-off answer is not a complete reading.
+      expertise: running a query in the metrics store's query language and reading its series
+      credentials:
+        - parameter: METRICS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Metrics token of the requesting
+            identity described in CREDENTIALS.md; a person may instead sign in to the store
+            with their own account that may read it
+      done: the table holds every function the query answered, each with its run time
+    slowest:
+      system: a spreadsheet, on the exported table
+      do: >
+        leave out every row whose value is not a number or is below zero; never read a missing
+        value as zero. Sort the remaining rows by value, largest first, and take the first: that
+        function is the slowest. Compare its run time with the median of the slowest run times
+        of earlier months: above the tenant's yellow bound, one and a half times the median as
+        the bundle proposes, it goes into the report; above the red bound, three times, it goes
+        at once to the role responsible.
+      expertise: sorting a table and comparing a value with the tenant's corridor for run times
+      credentials: []
+      done: the slowest function and its run time are written down and judged against the corridor

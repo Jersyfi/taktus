@@ -4,6 +4,8 @@ The interface is four resources under `--target`, over HTTP and JSON, each reque
 requesting identity's credential as a bearer token (`README.md` states each in full):
 
 - `GET /orders/<reference>`: 200 and the order; 404 for a reference the system does not hold;
+- `GET /orders?supplier=<tax identifier>`: 200 and `{"orders": [...]}`, every order or contract
+  of that supplier still open, each with its `reference`;
 - `GET /bookings?mark=<mark>`, `GET /payments?mark=<mark>`: 200 and `{"records": [...]}`, every
   record carrying that mark;
 - `POST /bookings`, `POST /payments`: 201 and the record created, with its `id`; 422 for a body
@@ -141,6 +143,28 @@ async def read_order(config: Config, call: Call, input: Json) -> Outcome:
     return Outcome(output={"reference": reference, **order}, effect={"kind": "read"})
 
 
+VAT_ID = re.compile(r"^[A-Z]{2}[A-Za-z0-9+*.]{2,13}$")
+LISTED = 50
+"""The most open orders a list hands on: a classification chooses among them."""
+
+
+async def list_orders(config: Config, call: Call, input: Json) -> Outcome:
+    supplier = _pattern(input, "supplier", VAT_ID, "a supplier's tax identifier")
+    found = await _request(config, call, "GET", "/orders", params={"supplier": supplier})
+    orders = found.get("orders") if isinstance(found, dict) else None
+    if not isinstance(orders, list) or not all(
+        isinstance(o, dict) and isinstance(o.get("reference"), str) for o in orders
+    ):
+        raise _unexpected("the system answered no list of orders, each with its reference")
+    listed = sorted(orders, key=lambda o: str(o["reference"]))
+    output = {
+        "supplier": supplier,
+        "orders": listed[:LISTED],
+        "complete": len(listed) <= LISTED,
+    }
+    return Outcome(output=output, effect={"kind": "read"})
+
+
 async def _marked(config: Config, call: Call, resource: str, record: Json, kind: str) -> Outcome:
     mark = mark_of(call.key)
     found = await _request(config, call, "GET", f"/{resource}", params={"mark": mark})
@@ -212,6 +236,7 @@ async def submit_payment(config: Config, call: Call, input: Json) -> Outcome:
 
 OPERATIONS = {
     "accounting.orders.read": read_order,
+    "accounting.orders.list": list_orders,
     "accounting.bookings.propose": propose_booking,
     "payment.release.submit": submit_payment,
 }

@@ -21,6 +21,7 @@ from taktus_connectors import serving
 from taktus_connectors.vendor.manifest import ManifestError
 from taktus_connectors.vendor.server import NAME, faults, prepare, served
 from taktus_connectors.vendor.upstream import Upstream
+from taktus_connectors.vendor.webhooks import DEFAULT_CREDENTIAL, Intake
 from taktus_connectors.vendor.wrapping import PlanError, Wrapper
 
 EXIT_REFUSED = 2
@@ -37,7 +38,28 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--manifest", type=Path, help="the manifest of the server's effects")
     parser.add_argument("--capability", help="without a manifest: the capability served")
     parser.add_argument("--credential", help="without a manifest: the actions credential")
+    parser.add_argument("--intake-channel", help="the channel the vendor's events arrive on")
+    parser.add_argument("--intake-events", help="the event kinds taken, separated by commas")
+    parser.add_argument("--intake-sender", help="the account the vendor's events come from")
+    parser.add_argument("--intake-credential", default=DEFAULT_CREDENTIAL)
     args = parser.parse_args(argv)
+    intake: Intake | None = None
+    named = (args.intake_channel, args.intake_events, args.intake_sender)
+    if any(named):
+        if not all(named):
+            log("refused to start: an intake needs --intake-channel, --intake-events and "
+                "--intake-sender")  # fmt: skip
+            return EXIT_REFUSED
+        try:
+            intake = Intake(
+                channel=args.intake_channel,
+                events=tuple(e.strip() for e in args.intake_events.split(",") if e.strip()),
+                sender=args.intake_sender,
+                credential=args.intake_credential,
+            )
+        except ValueError as error:
+            log(f"refused to start: {error}")
+            return EXIT_REFUSED
     upstream = Upstream(args.upstream, timeout=args.timeout)
     try:
         plan = asyncio.run(
@@ -53,14 +75,14 @@ def main(argv: list[str] | None = None) -> int:
         log(f"refused to start: {error}")
         return EXIT_REFUSED
     if args.list_faults:
-        for fault, what in faults(plan).items():
+        for fault, what in faults(plan, intake).items():
             sys.stdout.write(f"{fault}\t{fault[:4]}\t{what}\n")
         return 0
     for withheld in plan.withheld:
         log(f"withheld {withheld.tool}: {withheld.reason}")
     if plan.manifest is None:
         log("no manifest: read only, and experimental (ADR-0117)")
-    return serving.serve(served(Wrapper(upstream, plan), args.fault), args)
+    return serving.serve(served(Wrapper(upstream, plan), args.fault, intake), args)
 
 
 if __name__ == "__main__":

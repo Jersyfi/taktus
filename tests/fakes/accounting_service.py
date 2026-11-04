@@ -3,10 +3,10 @@
 memory.
 
 The connector under `connectors/taktus_connectors/accounting/` asks `GET /orders/<reference>`,
-`GET /bookings?mark=`, `POST /bookings`, `GET /payments?mark=` and `POST /payments`. This fake
-answers each in the interface's shapes, with its statuses for its errors, over records it holds
-in memory. It exists so that the connector can be exercised in CI without a network, an account
-or a secret.
+`GET /orders?supplier=`, `GET /bookings?mark=`, `POST /bookings`, `GET /payments?mark=` and
+`POST /payments`. This fake answers each in the interface's shapes, with its statuses for its
+errors, over records it holds in memory. It exists so that the connector can be exercised in
+CI without a network, an account or a secret.
 
 What it enforces, because the connector's checks depend on it:
 
@@ -31,6 +31,7 @@ import os
 import re
 import sys
 import threading
+from decimal import Decimal
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
@@ -112,6 +113,17 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
                 self.answer(200, body)
                 return
             if not self.admitted():
+                return
+            if url.path == "/orders":
+                supplier = parse_qs(url.query).get("supplier", [None])[0]
+                with state.lock:
+                    found = [
+                        {"reference": reference, **order}
+                        for reference, order in state.orders.items()
+                        if order["supplier"]["vat_id"] == supplier
+                        and Decimal(order["net_invoiced"]) < Decimal(order["net_total"])
+                    ]
+                self.answer(200, {"orders": found})
                 return
             if url.path.startswith("/orders/"):
                 order = state.orders.get(unquote(url.path.removeprefix("/orders/")))

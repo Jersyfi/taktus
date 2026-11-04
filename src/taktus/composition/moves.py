@@ -1,5 +1,5 @@
 """A proposal to move a step to a trained model, accepted, applied; and the move rolled back
-(ADR-0114, issue #218, DEC-0164 provisionally Option A).
+(ADR-0114, issue #218, DEC-0164 Option A, UC-4.24).
 
 - **Apply.** A proposal is a decision request (ADR-0084 §6). Once a person's answer took
   effect with the option that moves the step, and without modifications, the step's process

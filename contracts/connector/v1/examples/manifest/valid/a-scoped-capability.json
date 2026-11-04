@@ -1,0 +1,40 @@
+{
+  "contract": "connector/v1",
+  "capabilities": [
+    "entitlements.grants",
+    "entitlements.customers"
+  ],
+  "credential": "ENTITLEMENTS_TOKEN",
+  "operations": [
+    {
+      "tool": "list_entitlements",
+      "name": "entitlements.grants.list",
+      "capability": "entitlements.grants",
+      "effect": "read",
+      "summary": "Every entitlement in force: each {id, customer, product, quantity}, the customer by the payment provider's identifier and nothing else of the customer; complete says whether every one was answered."
+    },
+    {
+      "tool": "customer_entitlements",
+      "name": "entitlements.customers.list",
+      "capability": "entitlements.customers",
+      "effect": "read",
+      "subject": "customer",
+      "summary": "The entitlements in force of the customer customer, in the shape of entitlements.grants.list. Scoped: a call that serves a case answers only the case's subject."
+    },
+    {
+      "tool": "grant_entitlement",
+      "name": "entitlements.customers.grant",
+      "capability": "entitlements.customers",
+      "effect": "write",
+      "idempotency": "native",
+      "key_argument": "request_id",
+      "replayed": "/replayed",
+      "record": {
+        "kind": "entitlement",
+        "id": "/id"
+      },
+      "subject": "customer",
+      "summary": "Grant the customer customer the product product with quantity seats; the product's tool recognises a repeated request_id itself. Scoped as the read is."
+    }
+  ]
+}

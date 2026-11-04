@@ -189,6 +189,16 @@ use case that changes a number changes the constant (`maturation.MOVE_CASES`,
 - No migration and no contract change: a version is a document already, and `Step.fallback.to`
   already admits `llm`.
 
+## Amendment — a moved step predicts its text too (2026-11-04)
+
+Since ADR-0183 a moved step's work names its texts beside its features: `dataset: {values,
+features, texts}`. The run renders the one case as a CSV row, the numbers and then the texts,
+and the worker embeds the texts with the encoder of the pinned model file. A case without one
+of its texts, or with an empty one, cannot be predicted and fails before the worker is asked,
+as a case without one of its numbers does (§3). The last paragraph of *Where this promise ends*
+no longer holds as written: a step that reads text can reach the floor; whether one on Taktus's
+own instance has is a fact of its history (ADR-0183).
+
 ## Where this promise ends
 The move is measured over its first 100 cases only. A model that drifts afterwards is not
 watched here; that is deviation detection (UC-4.10). The cost per case is what the steps

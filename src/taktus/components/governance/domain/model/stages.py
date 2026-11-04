@@ -3,7 +3,7 @@
 A **stage plan** is one tenant's configuration: its stages in the order they open, the role a
 change of a stage is reported to, and the blueprint it comes from. A **stage** names the
 processes it adds, with the level each may reach once the stage is open, and its **holding
-condition**: six figures over the ledger, each optional. Nothing here names a person
+condition**: seven figures over the ledger, each optional. Nothing here names a person
 (principle 14): a stage, a process and a role are what a plan names.
 
 A stage's **state** is read from the ledger, never stored: `closed` until a person opened it,
@@ -45,6 +45,9 @@ class Condition(Value):
     (ADR-0110)."""
     undecided: int | None = Field(default=None, ge=0)
     """At most this many of their proposals wait for a person."""
+    reports_missed: int | None = Field(default=None, ge=0)
+    """At most this many whole days of the window passed without the tenant's daily report of
+    signals (UC-6.13, ADR-0191 §2)."""
 
     def looser_than(self, floor: Condition) -> list[str]:
         """Every figure this condition holds less strictly than `floor`; empty when none."""
@@ -53,7 +56,7 @@ class Condition(Value):
             mine, theirs = getattr(self, name), getattr(floor, name)
             if mine < theirs:
                 found.append(f"`{name}` is {mine}, below the blueprint's {theirs}")
-        for name in ("missed", "incidents", "correction_rate", "undecided"):
+        for name in ("missed", "incidents", "correction_rate", "undecided", "reports_missed"):
             mine, theirs = getattr(self, name), getattr(floor, name)
             if theirs is None:
                 continue
@@ -80,6 +83,8 @@ class Condition(Value):
             lines.append(f"no correction rate above {self.correction_rate:.0%}")
         if self.undecided is not None:
             lines.append(f"at most {self.undecided} proposal(s) waiting for a person")
+        if self.reports_missed is not None:
+            lines.append(f"at most {self.reports_missed} day(s) without the daily report")
         return lines
 
 
@@ -177,6 +182,26 @@ class StageFigures(Value):
     correction_rate: float | None = Field(default=None, ge=0, le=1)
     """The highest correction rate of any process or action class; None where none was decided."""
     undecided: int = Field(ge=0)
+    reports_missed: int = Field(default=0, ge=0)
+    """Whole days of the window without the tenant's daily report of signals."""
+
+
+class ProcessEvidence(Value):
+    """One process a stage adds, as the view shows it: whether the tenant runs it, and what it
+    did within the stage's window (ADR-0191 §3). Counted per process, never per person."""
+
+    process: str
+    version: str | None = None
+    """The active version, as `<process>@<version>`; None where the tenant runs none."""
+    level: AutonomyLevel | None = None
+    """The level it runs at now; None where the tenant runs no version of it."""
+    granted: AutonomyLevel
+    """The level the stage lets it reach once open."""
+    runs: int = Field(default=0, ge=0)
+    missed: int = Field(default=0, ge=0)
+    incidents: int = Field(default=0, ge=0)
+    last_finished: datetime | None = None
+    """When a run of it last finished within the window."""
 
 
 class StageView(Value):
@@ -195,6 +220,9 @@ class StageView(Value):
     what its opening lacks."""
     proposed: bool = False
     """Taktus proposed opening it, and the stage before it has not changed since."""
+    processes: tuple[ProcessEvidence, ...] = ()
+    """Every process the stage adds: whether the tenant runs it, and, for an open stage, what
+    it did within the window."""
 
 
 class Ceiling(Value):

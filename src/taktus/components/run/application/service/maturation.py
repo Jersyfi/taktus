@@ -1,5 +1,5 @@
 """Use case: Taktus proposes moving a step from a language model to a trained model, on
-evidence (ADR-0084, issue #217, DEC-0164 provisionally Option A).
+evidence (ADR-0084, issue #217, DEC-0164 Option A, UC-4.24).
 
 For every step on a language model whose cases reach the floor (`domain.service.maturation`),
 Taktus makes the evidence before it proposes anything:
@@ -39,6 +39,7 @@ from pydantic import Field
 from taktus.components.run.application.query.measures import StepCases, StepMeasures
 from taktus.components.run.application.service.execute_run import RunEngine, StartRun
 from taktus.components.run.domain.model import Run, RunState
+from taktus.components.run.domain.model.work import column
 from taktus.components.run.domain.service import maturation, prediction
 from taktus.components.run.domain.service.maturation import (
     Case,
@@ -192,7 +193,8 @@ class ProposeMovesHandler:
             )
         train, held = maturation.split(step.cases, command.seed)
         features = candidacy.features
-        training = await self._train(command, step, train, features)
+        texts = candidacy.texts
+        training = await self._train(command, step, train, features, texts)
         outcome = outcome.model_copy(update={"training_run": training.id})
         models = _models(training)
         if training.state is not RunState.FINISHED or len(models) != 2:
@@ -209,7 +211,7 @@ class ProposeMovesHandler:
             )
         digest = models[0]
         model_ref = maturation.model_ref(step.step_id, digest)
-        trial = await self._trial(command, step, held, features, content, digest, model_ref)
+        trial = await self._trial(command, step, held, features, content, digest, model_ref, texts)
         outcome = outcome.model_copy(update={"trial_run": trial.id})
         if trial.state is not RunState.FINISHED:
             return await self._refused(
@@ -254,6 +256,7 @@ class ProposeMovesHandler:
             cases=len(step.cases),
             classes=candidacy.classes,
             features=features,
+            texts=texts,
             left_out=candidacy.left_out,
             evidence=evidence,
             model=model_ref,
@@ -305,22 +308,30 @@ class ProposeMovesHandler:
         return None
 
     async def _train(
-        self, command: ProposeMoves, step: StepCases, train: Sequence[Case], features: Any
+        self,
+        command: ProposeMoves,
+        step: StepCases,
+        train: Sequence[Case],
+        features: Any,
+        texts: Sequence[str] = (),
     ) -> Run:
-        data = maturation.dataset(train, features, labelled=True)
+        data = maturation.dataset(train, features, labelled=True, texts=texts)
         inputs = {
             "operation": "train",
             "dataset": {
                 "base64": b64encode(data).decode("ascii"),
                 "digest": _digest(data),
                 "rows": len(train),
-                "features": len(features),
+                "features": len(features) + len(texts),
             },
             "label": maturation.LABEL,
             "seed": command.seed,
             "epochs": command.epochs,
             "holdout": BENCH_HOLDOUT,
         }
+        if texts:
+            # The bench embeds the texts before it learns from them (ADR-0183).
+            inputs["text"] = [column(t) for t in texts]
         task = {
             "goal": f"train a classifier for step {step.step_id} of {step.process_version}",
             "acceptance": ["a model file and its metrics"],
@@ -359,13 +370,14 @@ class ProposeMovesHandler:
         model: bytes,
         digest: str,
         model_ref: str,
+        texts: Sequence[str] = (),
     ) -> Run:
         pinned = {"base64": b64encode(model).decode("ascii"), "digest": digest}
         sets = {"held-out": held, "one-case": held[:1]}
         steps: list[Step] = []
         work: dict[str, Mapping[str, Any]] = {}
         for step_id, rows in sets.items():
-            data = maturation.dataset(rows, features, labelled=False)
+            data = maturation.dataset(rows, features, labelled=False, texts=texts)
             steps.append(
                 Step(
                     id=step_id,

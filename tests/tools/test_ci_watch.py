@@ -109,6 +109,33 @@ def test_the_failed_tests_are_read_from_the_log_once_each() -> None:
     ]
 
 
+def test_pytest_writes_the_lines_the_register_reads(tmp_path: Path) -> None:
+    """The register named no test for ten repeats: the project's `addopts` asked pytest for the
+    skips only, so no `FAILED` or `ERROR` line was in the log (#520). A run under the project's
+    own options names its failure and its error."""
+    import subprocess
+
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_named.py").write_text(
+        "import pytest\n"
+        "@pytest.fixture\n"
+        "def broken():\n    raise RuntimeError('setup')\n"
+        "def test_fails():\n    assert False\n"
+        "def test_errs(broken):\n    pass\n",
+        encoding="utf-8",
+    )
+    root = TOOLS.parent
+    done = subprocess.run(  # noqa: S603 — this interpreter, a file the test wrote
+        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-p", "no:randomly",
+         "-c", str(root / "pyproject.toml"), "--rootdir", str(tmp_path), "tests"],
+        capture_output=True, text=True, check=False, cwd=tmp_path,
+    )  # fmt: skip
+    found = ci_watch.failed_tests(done.stdout)
+    assert sorted(found) == ["tests/test_named.py::test_errs", "tests/test_named.py::test_fails"], (
+        done.stdout
+    )
+
+
 @pytest.mark.parametrize(
     ("conclusion", "attempt", "branch", "event", "expected"),
     [

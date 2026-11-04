@@ -83,23 +83,16 @@
 </section>
 
 <style>
-	.eyebrow {
-		font-size: 0.75rem;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: var(--ink-3);
-		margin: 0 0 0.5rem;
-	}
 	.private {
 		display: inline-block;
 		font-size: 0.85rem;
 		padding: 0.3rem 0.8rem;
 		border-radius: 999px;
-		border: 1px solid var(--line);
-		color: var(--ink-2);
+		border: 1px solid var(--border-subtle);
+		color: var(--text-secondary);
 	}
 	.muted {
-		color: var(--ink-2);
+		color: var(--text-secondary);
 	}
 	ul {
 		list-style: none;
@@ -111,15 +104,15 @@
 		display: flex;
 		gap: 1rem;
 		padding: 0.45rem 0;
-		border-bottom: 1px solid var(--line);
+		border-bottom: 1px solid var(--border-subtle);
 	}
 	.own li span:last-child {
 		margin-left: auto;
 		font-variant-numeric: tabular-nums;
 	}
 	.id {
-		font-family: var(--mono);
+		font-family: var(--font-mono);
 		font-size: 0.8rem;
-		color: var(--ink-3);
+		color: var(--text-subtle);
 	}
 </style>

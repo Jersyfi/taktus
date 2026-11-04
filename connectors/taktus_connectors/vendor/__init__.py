@@ -11,5 +11,7 @@ adapter's maturity stays *experimental*. A tool whose effect nobody declared is 
 
 Run it: `python -m taktus_connectors.vendor --upstream URL --manifest FILE`.
 The modules: `manifest` binds the manifest, `upstream` reaches the vendor's server, `wrapping`
-turns its tools into operations, and `server` serves them through `connectors/serving.py`.
+turns its tools into operations, `webhooks` verifies and normalises the vendor's events sent
+as signed webhooks under the open specification (ADR-0186), and `server` serves them through
+`connectors/serving.py`.
 """

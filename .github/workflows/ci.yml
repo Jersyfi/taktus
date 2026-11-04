@@ -29,6 +29,14 @@ concurrency:
 permissions:
   contents: read
 
+# The test containers run without testcontainers' reaper, Ryuk, on a runner. Ryuk's own container
+# failed to bind its port ("address already in use") in six of the ten repeats of the flake
+# register that named no test, and every PostgreSQL fixture of the run then errored at setup
+# (#520). A runner is discarded after its job, so what Ryuk would remove is removed with it; on
+# a developer's machine Ryuk stays on.
+env:
+  TESTCONTAINERS_RYUK_DISABLED: "true"
+
 jobs:
   # Which lanes this change runs (ADR-0096 §3, #390): `tools/lanes.py`, the code `make verify`
   # runs too. `static` and `decisions` always run; the others when a path they claim changed. A

@@ -1,0 +1,35 @@
+{
+  "credentials": {
+    "actions": "VENDOR_TOKEN",
+    "intake": "VENDOR_INTAKE_SECRET"
+  },
+  "read": {
+    "operation": "notes.pages.list",
+    "input": {}
+  },
+  "writes": [],
+  "invalid": {
+    "operation": "notes.pages.read",
+    "input": {
+      "page": "placeholder-missing"
+    },
+    "expected_cause": "invalid"
+  },
+  "intake": {
+    "signature": {
+      "header": "webhook-signature",
+      "prefix": "v1,",
+      "identified": {
+        "id": "webhook-id",
+        "timestamp": "webhook-timestamp"
+      }
+    },
+    "supported": {
+      "headers": {
+        "content-type": "application/json",
+        "webhook-id": "msg_placeholder0001"
+      },
+      "body": "{\"type\":\"invoice.paid\",\"timestamp\":\"2026-01-01T00:00:00Z\",\"data\":{\"invoice\":\"placeholder-inv-1\"}}"
+    }
+  }
+}

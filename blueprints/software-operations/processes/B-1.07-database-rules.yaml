@@ -1,0 +1,181 @@
+# B-1.07 Database rules — UC-03 §4.1: the product's data rules are tested against the two
+# attack patterns UC-03 names, daily and by hand after a change to them: a stranger asks for a
+# record another account owns, and for the next identifier after one, through the capability
+# `check.http`. Each must be refused; a record answered to a stranger is an incident at once
+# (UC-01 P-04, ADR-0198).
+#
+# The stranger is an account of the product made only for this check, which owns none of the
+# records asked for. Its token is the credential `CHECK_STRANGER_TOKEN`, sent by the check
+# connector to the service it is configured for, in place of the requesting identity's own
+# (`CREDENTIALS.md`). A check passes when the product answers 401, 403 or 404; a status 200,
+# or no answer, is a failed check. The rule `filter` counts the failed checks (`exact`).
+#
+# The judgement is the tenant's corridor on the step `admitted` and its `count`:
+#
+#     uv run taktusctl signal configure security.data_rules --process b-1-07 \
+#         --step admitted --select count --bounds fixed --direction above \
+#         --yellow 0.25 --red 0.5 --fresh 2d \
+#         --role <role> --case <where a security finding is worked>
+#
+# One record answered to a stranger is red. The paths are the tenant's: a record of another
+# account, `other`, and the identifier after one, `next`.
+#
+# Not built here: attack patterns beyond the two, and checking an index deployment. A change to
+# the rules triggers a run by hand or by the tenant's pipeline (`taktusctl run`). The merge of
+# the rules stays with a person (UC-03 §4.1).
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-1.07-database-rules.yaml \
+#         --input other=/api/records/1002 --input next=/api/records/1003
+#
+# Switching it off (`taktusctl deactivate --process b-1-07`) changes nothing at the product: it
+# only asks.
+
+id: b-1-07
+version: "1"
+name: B-1.07 Database rules
+autonomy:
+  level: 1
+  reason: >
+    the process only asks the product as a stranger and counts the requests it answered by a
+    fixed rule; nothing leaves the system, so at level 1 every step runs and none acts; a red
+    value reaches a person at once as an incident; it starts at level 1, observing, as UC-03
+    starts every process at level 1 or 2 when its stage opens
+  toward_next: >
+    stage 1 of the tenant's plan open, and four weeks of runs whose findings a person checked
+    against the product and found right; then Taktus proposes level 2, its target in UC-03
+    (UC-7.1, UC-9.6)
+author: the repository
+reason: a data rule that lets a stranger read another account's records found before a customer finds it (UC-03 B-1.07)
+
+triggers:
+  - schedule: "30 5 * * *"
+    inputs:
+      other: /api/records/1002
+      next: /api/records/1003
+
+inputs:
+  other:
+    description: the path of a record another account owns, which the stranger must not read
+    example: /api/records/1002
+  next:
+    description: the path of the identifier after one the stranger may read, counted up
+    example: /api/records/1003
+
+limits:
+  quota: { units: 2 }
+
+steps:
+  - id: ask-other
+    method: rule
+    reason: the product is asked as a stranger would ask it, and its answer is recorded as it came
+    rejected:
+      - method: llm
+        why: a fixed request and its status need no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving check.http is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: check.http.run
+      input:
+        path: { $input: other }
+        expect:
+          status: [401, 403, 404]
+      credentials:
+        - { name: CHECK_STRANGER_TOKEN, injected_as: env }
+
+  - id: ask-next
+    method: rule
+    reason: the product is asked as a stranger counting up identifiers would ask it
+    rejected:
+      - method: llm
+        why: a fixed request and its status need no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving check.http is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: check.http.run
+      input:
+        path: { $input: next }
+        expect:
+          status: [401, 403, 404]
+      credentials:
+        - { name: CHECK_STRANGER_TOKEN, injected_as: env }
+
+  - id: admitted
+    method: rule
+    reason: >
+      how many of the two requests the product did not refuse is a count over the connector's
+      own verdicts, which the corridor judges
+    rejected:
+      - method: llm
+        why: a count needs no judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the requests a stranger was not refused }
+    depends_on: [ask-other, ask-next]
+    work:
+      rule: filter
+      items:
+        - { $from: ask-other, $select: output }
+        - { $from: ask-next, $select: output }
+      all:
+        - { field: outcome, equals: failed }
+
+# How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
+# every step the system to act in, what to do there, the expertise it needs, each credential by
+# its parameter and where an authorised person finds it, and how to tell that it is done.
+takeover:
+  sequence: >
+    The process runs every day at 05:30 UTC, and by hand after any change to the product's data
+    rules; whoever is responsible for the product's security starts it. The steps run in order:
+    as a stranger, ask the product for a record another account owns, then for the identifier
+    after one, and count the requests the product did not refuse. Each must be refused. One
+    record answered to a stranger is a security finding, reported at once to the role
+    responsible. The merge of a change to the rules stays with a person.
+  steps:
+    ask-other:
+      system: a terminal with an HTTP client, on the product's address
+      do: >
+        request the path of the record another account owns, the one the run was started with,
+        sending the stranger account's token as a bearer token and never a token of your own.
+        The request passes when the product refuses it with status 401, 403 or 404. Status 200,
+        any other status, or no answer is a failed check. Note the status and the verdict.
+      expertise: sending an HTTP request with a bearer token and reading its status
+      credentials:
+        - parameter: CHECK_STRANGER_TOKEN
+          where: >
+            the operator's secret store, under the parameter Check token of a stranger described
+            in CREDENTIALS.md: the token of the product account made only for this check, which
+            owns none of the records asked for
+      done: the verdict for the other account's record is noted, refused or not
+    ask-next:
+      system: a terminal with an HTTP client, on the product's address
+      do: >
+        request the path of the identifier after one the stranger may read, the one the run was
+        started with, in the same way and with the same token. It passes only when refused with
+        status 401, 403 or 404. Note the status and the verdict.
+      expertise: sending an HTTP request with a bearer token and reading its status
+      credentials:
+        - parameter: CHECK_STRANGER_TOKEN
+          where: >
+            the operator's secret store, under the parameter Check token of a stranger described
+            in CREDENTIALS.md: the token of the product account made only for this check, which
+            owns none of the records asked for
+      done: the verdict for the next identifier is noted, refused or not
+    admitted:
+      system: the two noted verdicts
+      do: >
+        count the requests that were not refused. None is fine. One or two are red: report at
+        once to the role responsible which path was answered to a stranger and with which
+        status, as a security finding.
+      expertise: the tenant's corridor for data rules
+      credentials: []
+      done: the count is written down, and every request not refused has been reported

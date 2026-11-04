@@ -306,10 +306,12 @@ is refused before its body is read, never processed. The scheme is declared, and
 |---|---|---|
 | `hmac-sha256` | the raw body, keyed with the intake secret | — |
 | `hmac-sha256-timestamped` | `<version>:<moment>:<raw body>`, keyed with the intake secret; the version is a token the target fixes, the moment of sending is whole seconds since the epoch and travels in a header of its own | a bound on replay: a payload whose moment lies more than 300 seconds from `received_at` is refused as `bad_signature` |
+| `hmac-sha256-identified` | `<delivery identifier>.<moment>.<raw body>`, keyed with the bytes the intake secret encodes in base64 after an optional `whsec_`; the identifier and the moment travel in headers of their own, the signature as one or more entries `v1,<base64 digest>` separated by spaces, of which one must verify | the same bound on replay, and an identifier that cannot be changed on the way: the open specification of signed webhooks (ADR-0186) |
 
 There is no scheme `none`, and an intake declaration without a signature is not valid. The
 second scheme exists because a chat service signs that way (ADR-0024, amendment of
-2026-10-09); a target that signs the raw body uses the first.
+2026-10-09); a target that signs the raw body uses the first. The third is the open
+specification of signed webhooks, which many systems send under (ADR-0186).
 
 The structured content is exactly one of `accepted` and `refused`:
 
@@ -501,6 +503,10 @@ points at the answer's flag that says the vendor recognised a repeat. With `none
 repeats the call on its own (§4). `marked` is not offered: it needs a lookup in the target
 before acting, which a connector cannot know for a server it did not write. `demand` defaults to
 two requests, the listing and the call; `summary` to the vendor's description of the tool.
+`subject` names the tool's argument that carries the subject of a case, such as a customer's
+identifier. Where every operation of a capability names one, the declaration names the
+capability `scoped` (§5, ADR-0130): a call that serves a case and names another subject in that
+argument is refused as `out_of_scope` before the vendor's server is asked (ADR-0199).
 
 The declaration names the manifest by the digest of its bytes, `wrapped.manifest`. A changed
 manifest is therefore another configuration, and a conformance pass taken under the old one no

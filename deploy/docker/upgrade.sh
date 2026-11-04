@@ -17,7 +17,9 @@
 #   3. leaves five runs, one in each state: finished, waiting for a person, parked in a long
 #      wait, halted at its money limit, escalated after its worker step failed;
 #   4. runs this checkout's migrations while the previous release still serves, and — when that
-#      release reads the schema's range (#330) — checks that it stays ready; then upgrades:
+#      release reads the schema's range (#330) — checks that it stays ready while the schema
+#      still serves it, and that it refuses once a migration that declares itself breaking
+#      names a newer oldest build (ADR-0093 §1); then upgrades:
 #      the containers are replaced by this checkout's, which migrate on start;
 #   5. checks that every run is where it was, and that its ledger's chain is intact;
 #   6. continues each one as its operator would — confirms the waiting step, raises the halted
@@ -205,10 +207,23 @@ say "4a. this checkout's migrations, while the previous release still serves (AD
 # What the cluster's pre-upgrade hook does: the schema moves first, the old process keeps running.
 current run --rm --no-deps -T taktus alembic -c migrations/alembic.ini upgrade head
 if git show "${from}:src/taktus/adapters/driven/postgres/migrate.py" | grep -q "OLDEST_CODE"; then
-    # The previous release reads the range (#330): it stays ready against the migrated schema.
-    curl -fsS "${api}/ready" | grep -q '"status": *"ready"' \
-        || { echo "the previous release is not ready against the migrated schema"; exit 1; }
-    echo "the previous release is ready against this checkout's schema"
+    # The previous release reads the range (#330). Whether it must stay ready is the schema's
+    # word: `taktus_oldest_code()` names the oldest build it serves. While that build is in the
+    # previous release's history, the previous release stays ready. A migration since then that
+    # contracts declares itself breaking and names its own revision (ADR-0093 §1, migration 0091):
+    # the previous release must then refuse, and this upgrade is one with downtime. Both are held.
+    oldest="$(previous exec -T postgres psql -U taktus -d taktus -tAc 'SELECT taktus_oldest_code()' | tr -d '[:space:]')"
+    [ -n "$oldest" ] || { echo "the migrated schema names no oldest build"; exit 1; }
+    if git ls-tree --name-only "${from}" migrations/versions/ | grep -q "/${oldest}_"; then
+        curl -fsS "${api}/ready" | grep -q '"status": *"ready"' \
+            || { echo "the previous release is not ready against the migrated schema, which serves it (oldest build ${oldest})"; exit 1; }
+        echo "the previous release is ready against this checkout's schema (oldest build ${oldest})"
+    else
+        status="$(curl -sS -o /dev/null -w '%{http_code}' "${api}/ready" || true)"
+        [ "$status" != 200 ] \
+            || { echo "the previous release answers ready against a schema that serves builds from ${oldest} on"; exit 1; }
+        echo "the schema serves builds from ${oldest} on, which ${from} predates: the previous release refuses (${status}); this upgrade is one with downtime (ADR-0093 §1)"
+    fi
 else
     echo "${from} predates the range check (#330): its readiness after the migration is not held"
 fi

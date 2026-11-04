@@ -33,7 +33,14 @@ from taktus.conformance import Status
 from taktus.conformance.connector.rules import CHECKS
 from taktus.conformance.contracts import first_error
 
-from .conftest import VENDOR, VENDOR_NOTES, StartConnector, _wait_listening, stop_all
+from .conftest import (
+    ENTITLEMENTS_MANIFEST,
+    VENDOR,
+    VENDOR_NOTES,
+    StartConnector,
+    _wait_listening,
+    stop_all,
+)
 
 TIME_MANIFEST = VENDOR / "time-manifest.json"
 NOTES_MANIFEST = VENDOR / "notes-manifest.json"
@@ -165,6 +172,26 @@ async def test_a_write_nobody_declared_is_refused_before_the_vendor(
         assert "withheld delete_note" in connector.log.read_text()
 
 
+async def test_a_product_s_entitlements_under_a_scoped_manifest_pass_c05_and_c11(
+    start_vendor_connector: StartConnector,
+) -> None:
+    """The blueprint's manifest over the stand-in of a product's entitlements (ADR-0199): the
+    capability is declared scoped because each operation names the argument that carries the
+    customer, a call for another customer than the case's is refused before the product is
+    asked, and the grant the product recognises as a repeat passes C-05."""
+    connector = start_vendor_connector(server="entitlements", manifest=ENTITLEMENTS_MANIFEST)
+    report = await connector.run_suite()
+    assert report.failed == [] and report.inconclusive == [], report.render()
+    passes(report.render(), {c.id: c.status for c in report.checks})
+    declaration = await _declaration(connector.endpoint)
+    assert declaration["scoped"] == ["entitlements.customers"]
+    broken = start_vendor_connector(
+        server="entitlements", manifest=ENTITLEMENTS_MANIFEST, fault="C-11"
+    )
+    report = await broken.run_suite()
+    assert {c.id for c in report.checks if c.status is Status.FAILED} == {"C-11"}, report.render()
+
+
 def test_without_a_manifest_a_listing_that_needs_a_credential_refuses_the_start(
     tmp_path: Path,
 ) -> None:
@@ -289,3 +316,52 @@ def test_the_catalogue_lists_a_vendors_server_with_its_maturity(
     assert any(line.startswith("connector.loopback ") for line in lines)
     for value in bare.credential_values.values():
         assert value not in listed.stdout + listed.stderr
+
+
+# --- signed webhooks under the open specification (ADR-0186, issue #532) ----------------------
+
+NOTES_INTAKE_SCENARIO = VENDOR / "notes-intake-scenario.json"
+INTAKE_FAULTS = [
+    ("C-07", "C-07"),
+    ("C-08-unsigned", "C-08"),
+    ("C-08-signature", "C-08"),
+    ("C-08-stale", "C-08"),
+]
+
+
+async def test_a_vendors_signed_webhooks_pass_the_intake_checks(
+    start_vendor_connector: StartConnector,
+) -> None:
+    """The vendor's events, in the shape of the open specification, signed by the suite under
+    `hmac-sha256-identified`: accepted when signed, refused as `unsigned`, `bad_signature` for a
+    wrong signature, a stale moment, an identifier or a moment altered after signing, and as
+    `unsupported_event` for a kind the operator did not list."""
+    connector = start_vendor_connector(
+        server="notes", manifest=NOTES_MANIFEST, scenario=NOTES_INTAKE_SCENARIO, intake=True
+    )
+    report = await connector.run_suite()
+    assert report.failed == [] and report.inconclusive == [], report.render()
+    passes(report.render(), {c.id: c.status for c in report.checks})
+    purposes = {call.purpose for call in report.calls}
+    assert {"identifier altered", "moment altered", "stale", "unsupported"} <= purposes
+    declaration = await _declaration(connector.endpoint)
+    assert declaration["intake"] == {
+        "events": ["note.created", "note.deleted"],
+        "signature": {"scheme": "hmac-sha256-identified"},
+    }
+    assert first_error("Capabilities", declaration, "connector/v1") is None
+
+
+@pytest.mark.parametrize(("fault", "check"), INTAKE_FAULTS)
+async def test_each_intake_fault_fails_exactly_its_check(
+    start_vendor_connector: StartConnector, fault: str, check: str
+) -> None:
+    connector = start_vendor_connector(
+        server="notes",
+        manifest=NOTES_MANIFEST,
+        scenario=NOTES_INTAKE_SCENARIO,
+        intake=True,
+        fault=fault,
+    )
+    report = await connector.run_suite()
+    assert [c.id for c in report.failed] == [check], report.render()

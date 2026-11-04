@@ -1,5 +1,5 @@
 """An accepted proposal moves the step to the trained model, and the move is measured (issue
-#218, ADR-0114, DEC-0164 provisionally Option A), over the memory stores.
+#218, ADR-0114, DEC-0164 Option A, UC-4.24), over the memory stores.
 
 The run history, the scripted language model and the scripted bench are
 `tests/components/run/test_maturation.py`'s. Here the process is registered, the proposal is
@@ -243,7 +243,11 @@ async def test_accepting_the_proposal_registers_a_version_with_the_step_on_the_t
     assert step.fallback is not None and step.fallback.to is Method.LLM
     assert step.fallback.when == f"confidence < {maturation.FALLBACK_AT:g}"
     assert work["fallback"]["prompt"] == WORK["prompt"], "the language model it ran on"
-    assert work["dataset"] == {"values": WORK["values"], "features": ["a", "b"]}
+    assert work["dataset"] == {
+        "values": WORK["values"],
+        "features": ["a", "b"],
+        "texts": ["note"],
+    }, "the note is a text the bench embeds (ADR-0183)"
     assert [r.method for r in step.rejected][-1] is Method.LLM
     evaluation = work["evaluation"]
     assert evaluation["model_digest"] == digest and evaluation["held_out"] == 108

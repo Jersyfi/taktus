@@ -96,7 +96,9 @@ REQUIREMENTS: dict[str, str] = {
     "lists, a sender, a context and a reply address",
     "C-08": "the intake tool returns refused with reason unsigned for a payload without a "
     "signature and bad_signature for a wrongly signed one, and under the scheme "
-    "hmac-sha256-timestamped for one signed more than 300 seconds before it was received; an "
+    "hmac-sha256-timestamped or hmac-sha256-identified for one signed more than 300 seconds "
+    "before it was received, and under hmac-sha256-identified for one whose identifier or "
+    "moment differs from what was signed; an "
     "event the declaration does not list is refused as unsupported_event; the connector's own "
     "action is refused as own_action",
     "C-09": "every Result carries consumption with at least one quantity, and a quantity of a "

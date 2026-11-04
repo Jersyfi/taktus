@@ -91,14 +91,14 @@
 	td {
 		text-align: left;
 		padding: 0.35rem 0.6rem;
-		border-bottom: 1px solid var(--line);
+		border-bottom: 1px solid var(--border-subtle);
 	}
 	thead th {
-		color: var(--ink-2);
+		color: var(--text-secondary);
 		font-weight: 500;
 	}
 	tbody th {
-		font-family: var(--mono);
+		font-family: var(--font-mono);
 		font-weight: 400;
 	}
 	tr.differs td:last-child {

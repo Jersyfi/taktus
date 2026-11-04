@@ -76,16 +76,16 @@
 	}
 	.totals p {
 		margin: 0;
-		color: var(--ink-2);
+		color: var(--text-secondary);
 	}
 	.figure {
 		display: block;
-		font-family: var(--serif);
+		font-family: var(--font-display);
 		font-size: 2rem;
-		color: var(--ink);
+		color: var(--text-primary);
 	}
 	.unpriced {
-		color: var(--ink-2);
+		color: var(--text-secondary);
 		font-size: 0.85rem;
 	}
 	.against {
@@ -98,24 +98,15 @@
 	.against label {
 		flex-basis: 100%;
 		font-size: 0.85rem;
-		color: var(--ink-2);
+		color: var(--text-secondary);
 	}
 	input {
 		font: inherit;
-		font-family: var(--mono);
+		font-family: var(--font-mono);
 		padding: 0.35rem 0.6rem;
-		border: 1px solid var(--line);
+		border: 1px solid var(--border-subtle);
 		border-radius: 8px;
-		background: var(--paper);
-		color: var(--ink);
-	}
-	button {
-		font: inherit;
-		padding: 0.35rem 0.9rem;
-		border-radius: 999px;
-		border: 1px solid var(--line);
-		background: var(--paper-2);
-		color: var(--ink);
-		cursor: pointer;
+		background: var(--bg-canvas);
+		color: var(--text-primary);
 	}
 </style>

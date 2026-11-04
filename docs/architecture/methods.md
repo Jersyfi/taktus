@@ -77,6 +77,14 @@ tries it on a fifth of the cases held out, and proposes the move only at 95 % ag
 cost per case and the same model from both trainings. The proposal is a decision request; Taktus
 never applies it. The numbers are UC-4.24's (DEC-0164).
 
+**A step that reads text (ADR-0183, UC-4.25).** The classifier learns from the numbers and the
+texts the step's prompt was rendered from. The bench turns each text into 32 numbers with a
+neural encoder it trains on the training cases' text from the seed — character n-grams in, one
+tanh layer out — and the model file carries the encoder, so that a moved step embeds its case's
+text as the training did. The encoder knows the wording of the cases it learned from, not the
+meaning of words; a step whose classes depend on meaning does not reach 95 % and is proposed
+nothing.
+
 **Once a person accepts (ADR-0114).** The process gains a new version, and the version it
 replaces stays registered and unchanged. In the new version the step runs on the trained model,
 pinned by version and digest, with the model's file in the version. Below the proposal's
@@ -163,8 +171,10 @@ catalogue in the shared kernel (`contracts/shared/v1/Check.json`). A bundle whos
 declares none does not register, and the finding names the catalogue. The statement is generated
 from the process version whenever it is read, and `taktusctl exactness --process <bundle>` prints
 it. A sixth row, *recomputation* — the value is computed again from its recorded inputs — is
-part of the catalogue since DEC-0173. The checks are declared, not yet run (#223), and the statement is not
-yet shown in the web app or a report (#224).
+part of the catalogue since DEC-0173. Two more since DEC-0223 (ADR-0185): *completeness* — the
+result has as many parts as a count another source holds — and *the shape of the source* — what
+the step read has the columns it was written for, in order, or matches a pattern. Every check
+runs before the value counts (ADR-0152).
 
 ---
 

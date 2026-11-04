@@ -1,6 +1,6 @@
 """Use case: a step moved to a trained model is measured over its first cases, and a move that
 did not make it cheaper is proposed for rolling back (ADR-0114, issue #218, DEC-0164
-provisionally Option A).
+Option A, UC-4.24).
 
 A move is the ledger entry `method.moved`: a new process version, registered on a person's
 acceptance of a proposal, in which the step runs on the trained model. This handler reads every

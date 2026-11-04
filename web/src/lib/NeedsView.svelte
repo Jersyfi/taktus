@@ -74,22 +74,15 @@
 </section>
 
 <style>
-	.eyebrow {
-		font-size: 0.75rem;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: var(--ink-3);
-		margin: 0 0 0.5rem;
-	}
 	.muted,
 	.state,
 	.id {
-		color: var(--ink-2);
+		color: var(--text-secondary);
 		font-size: 0.88rem;
 		margin: 0.2rem 0;
 	}
 	.id {
-		font-family: var(--mono);
+		font-family: var(--font-mono);
 		font-size: 0.75rem;
 	}
 	.list {
@@ -102,13 +95,13 @@
 	.need {
 		border-radius: 24px;
 		padding: 1rem 1.2rem;
-		background: var(--paper-2);
-		box-shadow: inset 3px 0 0 var(--ink);
+		background: var(--bg-surface);
+		box-shadow: inset 3px 0 0 var(--text-primary);
 	}
 	/* A need provided rests: no edge, quieter ink. */
 	.need.filed {
 		box-shadow: none;
-		color: var(--ink-2);
+		color: var(--text-secondary);
 	}
 	.title a {
 		text-decoration: none;
@@ -129,7 +122,7 @@
 	h3 {
 		font-size: 0.75rem;
 		font-weight: 500;
-		color: var(--ink-3);
+		color: var(--text-subtle);
 		margin: 0.6rem 0 0.2rem;
 	}
 	.grid ul,

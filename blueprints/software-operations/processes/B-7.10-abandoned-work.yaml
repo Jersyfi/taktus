@@ -1,0 +1,171 @@
+# B-7.10 Abandoned work — UC-03 §4.7: pull requests lying still and started issues without
+# movement are counted every day, so that the daily report names them (UC-01 P-10). Cleaning up
+# stays with a person.
+#
+# Every morning the open pull requests and the open issues are read through the capabilities
+# `repository.pullrequests` and `repository.issues`, each with its whole hours since its last
+# update (ADR-0193 §3). A rule keeps the pull requests idle for at least two weeks, and the
+# issues labelled as started that did not move for a week, the longest idle first. The tenant's
+# corridor on either count (`work.abandoned_pulls`, `work.abandoned_issues`) puts a deviation
+# into the daily report with a link to the run, whose result lists each item (UC-6.13).
+#
+# Branches without a pull request are not counted: the repository connector lists no branches.
+# The thresholds and the pattern of the started label are this version's; a tenant changes them
+# by a version of its own.
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-7.10-abandoned-work.yaml
+#
+# Switching it off (`taktusctl deactivate --process b-7-10`) changes nothing in the repository.
+
+id: b-7-10
+version: "1"
+name: B-7.10 Abandoned work
+autonomy:
+  level: 1
+  reason: >
+    the process only reads and counts by a fixed rule; nothing leaves the system, so at level 1
+    every step runs and none acts; the judgement is the tenant's corridor
+  toward_next: >
+    four weeks of counts a person checked against the repository and found right, and stage 4
+    of the tenant's plan open; then Taktus proposes level 2, and level 3 after it, its target in
+    UC-03 (UC-7.1, UC-9.6)
+author: the repository
+reason: work that lies still is named every day without a person looking for it (UC-03 B-7.10)
+
+triggers:
+  - schedule: "0 5 * * *"
+
+limits:
+  quota: { units: 140 }
+
+steps:
+  - id: read-pulls
+    method: rule
+    reason: the open pull requests are read verbatim, each with its hours since its last update
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.pullrequests is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: repository.pullrequests.list
+      input:
+        state: open
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: read-issues
+    method: rule
+    reason: the open issues are read verbatim, each with its hours since its last update
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.issues is unavailable
+      to: human
+      role: owner
+    depends_on: [read-pulls]
+    work:
+      rule: connector
+      operation: repository.issues.list
+      input:
+        state: open
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: abandoned-pulls
+    method: rule
+    reason: a pull request idle for two weeks is a threshold over the service's own timestamp, which the corridor judges
+    rejected:
+      - method: llm
+        why: a threshold over a count needs no judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the pull requests idle for two weeks }
+    depends_on: [read-pulls]
+    work:
+      rule: filter
+      items: { $from: read-pulls, $select: output.pulls }
+      all:
+        - { field: draft, equals: false }
+        - { field: idle_hours, at_least: 336 }
+      order: idle_hours
+      descending: true
+
+  - id: abandoned-issues
+    method: rule
+    reason: a started issue without movement for a week is a label and a threshold over the service's own timestamp
+    rejected:
+      - method: llm
+        why: a threshold over a count needs no judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the started issues without movement for a week }
+    depends_on: [read-issues]
+    work:
+      rule: filter
+      items: { $from: read-issues, $select: output.issues }
+      all:
+        - { field: labels, matches: "\"(in.?progress|started|doing|claimed)\"" }
+        - { field: idle_hours, at_least: 168 }
+      order: idle_hours
+      descending: true
+
+takeover:
+  sequence: >
+    The process runs every morning at five UTC, on its own schedule; whoever looks after the
+    repository's order of work takes it over. The steps run in order: list the open pull
+    requests, list the open issues, keep the pull requests idle for two weeks, and keep the
+    started issues that did not move for a week. Both lists, the longest idle first, go into
+    the daily report when the tenant's corridor on either count says so. Closing or cleaning up
+    the work stays with a person.
+  steps:
+    read-pulls:
+      system: the repository hosting service, the repository's pull requests
+      do: >
+        list every open pull request with whether it is a draft and when it was last updated,
+        and work out for each the whole hours since that update
+      expertise: listing a repository's open pull requests in its hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md; a person signs in with their own
+            account that may read the repository
+      done: every open pull request is listed with its draft state and its hours since update
+    read-issues:
+      system: the repository hosting service, the repository's issues
+      do: >
+        list every open issue with its labels and when it was last updated, and work out for
+        each the whole hours since that update
+      expertise: listing a repository's open issues in its hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md
+      done: every open issue is listed with its labels and its hours since update
+    abandoned-pulls:
+      system: the list of pull requests
+      do: >
+        keep the pull requests that are not drafts and were not updated for at least 336 hours,
+        two weeks; order them by hours since update, the longest first, and count them
+      expertise: none
+      credentials: []
+      done: the idle pull requests are listed, longest idle first, and counted
+    abandoned-issues:
+      system: the list of issues
+      do: >
+        keep the issues carrying a label that says the work started (in progress, started,
+        doing or claimed) and that were not updated for at least 168 hours, one week; order them
+        by hours since update, the longest first, and count them
+      expertise: none
+      credentials: []
+      done: the started issues without movement are listed, longest idle first, and counted

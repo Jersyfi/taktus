@@ -60,9 +60,19 @@ COPY --chown=connector:connector connectors/taktus_connectors/bookstack /app/tak
 ENTRYPOINT ["python", "-m", "taktus_connectors.bookstack"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
+FROM base AS calendar
+COPY --chown=connector:connector connectors/taktus_connectors/calendar /app/taktus_connectors/calendar
+ENTRYPOINT ["python", "-m", "taktus_connectors.calendar"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
 FROM base AS einvoice
 COPY --chown=connector:connector connectors/taktus_connectors/einvoice /app/taktus_connectors/einvoice
 ENTRYPOINT ["python", "-m", "taktus_connectors.einvoice"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
+FROM base AS expiry
+COPY --chown=connector:connector connectors/taktus_connectors/expiry /app/taktus_connectors/expiry
+ENTRYPOINT ["python", "-m", "taktus_connectors.expiry"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
 FROM base AS github
@@ -73,6 +83,11 @@ CMD ["--host", "0.0.0.0", "--port", "9100"]
 FROM base AS httpcheck
 COPY --chown=connector:connector connectors/taktus_connectors/httpcheck /app/taktus_connectors/httpcheck
 ENTRYPOINT ["python", "-m", "taktus_connectors.httpcheck"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
+FROM base AS kubernetes
+COPY --chown=connector:connector connectors/taktus_connectors/kubernetes /app/taktus_connectors/kubernetes
+ENTRYPOINT ["python", "-m", "taktus_connectors.kubernetes"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
 FROM base AS mail

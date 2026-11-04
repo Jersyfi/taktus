@@ -92,25 +92,15 @@
 		display: grid;
 		gap: 0.25rem;
 		font-size: 0.85rem;
-		color: var(--ink-2);
+		color: var(--text-secondary);
 	}
 	input {
 		font: inherit;
-		font-family: var(--mono);
+		font-family: var(--font-mono);
 		padding: 0.35rem 0.6rem;
-		border: 1px solid var(--line);
+		border: 1px solid var(--border-subtle);
 		border-radius: 8px;
-		background: var(--paper);
-		color: var(--ink);
-	}
-	button {
-		font: inherit;
-		padding: 0.35rem 0.9rem;
-		border-radius: 999px;
-		border: 1px solid var(--line);
-		background: var(--paper);
-		color: var(--ink);
-		cursor: pointer;
-		margin-top: 0.4rem;
+		background: var(--bg-canvas);
+		color: var(--text-primary);
 	}
 </style>

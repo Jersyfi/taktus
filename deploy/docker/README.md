@@ -6,11 +6,12 @@
 | `compose.reference-worker.yml` | **development only**, layered over `compose.yml`: the reference worker in its own image, reached by endpoint, for trying a bundle out and for `verify.sh` (`make up-dev`) |
 | `Dockerfile` | the control plane image, every role, selected at start by `TAKTUS_ROLES`; carries no worker code (DEC-0011) and no connector (ADR-0158). The web app is built in a stage of its own with Node, and only its static build is carried over; the runtime holds no Node (ADR-0063). `npm ci` gives up a request that stalls after 30 s and retries it, so that a stalled download is retried rather than stopping the build (#360). It runs as user 999, pinned by number because the chart runs it as that number (`deploy/k8s/`). On a version tag and on a push to `main`, `.github/workflows/images.yml` builds it and each worker's image for the registry the repository names, scanned, signed and recorded by digest (ADR-0173) |
 | `connectors.py` | writes `compose.connectors.yml` from the operator's `connectors.json` — a service per further connector, its credentials as secret files, and `TAKTUS_CONNECTORS` on the `taktus` service — which `make up`, `make up-dev` and `make start` lay over `compose.yml` (see *Connectors*). Both files are the operator's, ignored by git; `connectors.example.json` is the shape |
+| `secret_store.py` | fills the secret files under `secrets/` from a secret store the operator chooses, by the store's own command per reference, as the operator's `secret-store.json` names them; run by `make up`, `make up-dev` and `make start`, and with `--interval` again and again, so that a rotation in the store reaches the files (see *Secrets from a store*, ADR-0187). Without the file it does nothing; `secret-store.example.json` is the shape |
 | `secrets.sh` | writes the two secret files `compose.yml` reads, once, under `secrets/` (ignored by git); the directory is closed to other host users and the files are readable, because the containers read them as their own user |
 | `start.py` | `make start`, the one command of a first install (ADR-0136 §6): what `make up` does, then `taktusctl first start` — the first tenant, its administrator and the account key, printed once — and a clock that runs until the tenant's first rehearsal has finished; it writes what it measured to `first-process.json`, which is never committed |
 | `first-process.sh` | `make verify-first-process` (ADR-0136 §7): `start.py` from nothing under a compose project of its own, then the gallery, a proposal and its rehearsal through the HTTP surface; fails where the rehearsal did not finish within ten minutes of the install's start |
 | `verify.sh` | the end-to-end check: from nothing, the image checked for worker code, a run, the container killed, restarted, the run resumed |
-| `upgrade.sh` | the upgrade test (ADR-0124): the previous release from its tag's compose files and published images, a run in each of five states, this checkout's migrations run while it still serves — and, once that release reads the schema's range, it stays ready (ADR-0093, #330) — then upgraded to this checkout; every run continues at its boundary and no completed step runs again (`make verify-upgrade`, and the workflow `upgrade` on every release tag) |
+| `upgrade.sh` | the upgrade test (ADR-0124): the previous release from its tag's compose files and published images, a run in each of five states, this checkout's migrations run while it still serves — and, once that release reads the schema's range, it stays ready while the schema's `taktus_oldest_code()` still names a revision of its history, and refuses once a breaking migration names a newer one (ADR-0093, #330, #664) — then upgraded to this checkout; every run continues at its boundary and no completed step runs again (`make verify-upgrade`, and the workflow `upgrade` on every release tag) |
 | `taktus.env` | not in the repository: the operator's own settings, `TAKTUS_NAME=value` per line, read by `compose.yml` when it exists; never a secret value (ignored by git) |
 | `.env` | not in the repository: what Docker Compose itself reads every time, the host port `TAKTUS_HTTP_PORT` above all, so that a port chosen once is kept by every later `make up` (ignored by git). `TAKTUS_HTTP_PORT` in `taktus.env` changes nothing: inside the container the port is always 8080 |
 | `compose.dev.yml` | the development database: PostgreSQL alone, bound to `127.0.0.1`, trusting local connections, for `uv run taktusctl run` and the tests |
@@ -124,6 +125,27 @@ them. A list that names a connector, a capability or a credential twice, a modul
 at once, or no port is refused before anything starts. So is `TAKTUS_CONNECTORS` set in
 `taktus.env` beside the list: the list alone names the connectors. Without `connectors.json`
 nothing is added, and a `compose.connectors.yml` it wrote earlier is removed.
+
+## Secrets from a store
+
+Every secret of the install is a file under `secrets/`, read by the container it is mounted in.
+The files can be written by hand, or filled from a secret store the operator chooses: a password
+manager, a vault, any store with a command-line tool that prints one value (ADR-0187).
+
+1. Copy `secret-store.example.json` to `secret-store.json`. `command` is the store's tool, as a
+   list of its arguments, with `{reference}` where the value's reference goes. Each entry of
+   `secrets` names a `file` under `secrets/` and the `reference` of its value in the store.
+2. Sign the tool in for the host user that runs `make up`, with an account that can only read
+   these values. The tool's own login is the store's and never enters this repository.
+3. `make up`, as always. It reads every value before anything starts, and fails naming each
+   file it could not read.
+
+A rotation in the store reaches the files when the program runs again. Run it on a schedule —
+`python3 deploy/docker/secret_store.py --interval 300` as a service of the host, or once from
+the host's scheduler. It writes a file only when the value changed, in place, so the container
+reads the new value at its next read: the connectors and workers at their next call, the
+control plane's own values at its next start. A store that fails or is gone leaves every file
+as it was. Without `secret-store.json` nothing changes: the files are what the operator wrote.
 
 ## Models, and a gateway in front of them
 

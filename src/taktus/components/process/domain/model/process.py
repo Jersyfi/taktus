@@ -82,12 +82,17 @@ class Each(Value):
     """One run per item of a list that a connector reads when the trigger fires. Each run is
     given its item as the input `input`. The operation must be declared `read`. The list is
     the part of its output that `select` names, a dotted path. `field`, when given, is a
-    dotted path that picks the value out of each item (ADR-0035)."""
+    dotted path that picks the value out of each item (ADR-0035). `arguments` is the read's
+    input, fixed. `once` starts one run per item whatever slot lists it again: the run's
+    identifier is derived from the trigger and the item alone, so an inbox read daily starts a
+    document's run on the first day it is listed and never again (ADR-0188)."""
 
     input: str = Field(min_length=1)
     operation: str = Field(pattern=r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
     select: str = Field(min_length=1)
     field: str | None = Field(default=None, min_length=1)
+    arguments: Mapping[str, Any] | None = None
+    once: bool = False
 
     @property
     def capability(self) -> str:

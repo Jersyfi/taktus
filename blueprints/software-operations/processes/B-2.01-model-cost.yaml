@@ -18,7 +18,7 @@
 # it once, on the step `measure` and its `ratio`: the day's total over the median of the 28
 # days before it, both from the provider's own history, so it judges from the first run:
 #
-#     uv run taktusctl signal configure cost.models_daily --process b-2-01-model-cost \
+#     uv run taktusctl signal configure cost.models_daily --process b-2-01 \
 #         --step measure --select ratio --bounds fixed --direction above \
 #         --yellow 1.5 --red 2.0 --fresh 26h \
 #         --role <role> --case <where a cost deviation is worked>
@@ -33,10 +33,10 @@
 #     uv run taktusctl run --process blueprints/software-operations/processes/B-2.01-model-cost.yaml \
 #         --input days=29
 #
-# Switching this process off (`taktusctl deactivate --process b-2-01-model-cost`) changes
+# Switching this process off (`taktusctl deactivate --process b-2-01`) changes
 # nothing at the provider: it only reads.
 
-id: b-2-01-model-cost
+id: b-2-01
 version: "2"
 name: B-2.01 Model cost
 autonomy:
