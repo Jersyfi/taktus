@@ -1,0 +1,36 @@
+{
+  "credentials": {
+    "actions": "ENTITLEMENTS_TOKEN"
+  },
+  "read": {
+    "operation": "entitlements.grants.list",
+    "input": {}
+  },
+  "writes": [
+    {
+      "operation": "entitlements.customers.grant",
+      "input": {
+        "customer": "cus_suite{{unique}}",
+        "product": "prod_plan",
+        "quantity": 1
+      }
+    }
+  ],
+  "invalid": {
+    "operation": "entitlements.customers.grant",
+    "input": {
+      "customer": "cus_fake1"
+    },
+    "expected_cause": "invalid"
+  },
+  "scoped": {
+    "operation": "entitlements.customers.list",
+    "subject": "cus_fake1",
+    "own": {
+      "customer": "cus_fake1"
+    },
+    "other": {
+      "customer": "cus_fake2"
+    }
+  }
+}

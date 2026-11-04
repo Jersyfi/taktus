@@ -409,6 +409,58 @@ class FilterRule(Value):
         return self
 
 
+class MatchSide(Value):
+    """One of the two lists a `match` rule matches: its items, the fields that make an item's
+    key, and where one item stands for several entries.
+
+    `key` names dotted paths into an entry; two entries match when every path gives the same
+    text. `each` names a field of the item that holds a list: the item stands for one entry per
+    element, each the item with that one element in the field's place — a subscription of two
+    items is two entries."""
+
+    items: Any
+    key: tuple[str, ...] = Field(min_length=1)
+    each: str | None = Field(default=None, pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+class Compared(Value):
+    """A field of a matched pair that must be equal on both sides: numbers in decimal
+    arithmetic, everything else as it was read."""
+
+    left: str = Field(min_length=1)
+    right: str = Field(min_length=1)
+
+
+class MatchRule(Value):
+    """Two lists matched entry by entry by a key, and every entry that does not match named
+    (ADR-0199). The payments at a payment provider against the product's entitlements, the
+    seats billed against the seats granted.
+
+    An entry of `left` and one of `right` match when their keys are equal. A matched pair whose
+    `compare` fields differ is `differing`. An entry without a partner is `left_only` or
+    `right_only`. An entry that lacks a key field is `unkeyed`, and a key that occurs twice on
+    one side is a `duplicate`: neither can be matched with certainty, so both are mismatches.
+
+    The result is `{"matched", "left_only", "right_only", "differing", "unkeyed", "duplicates",
+    "mismatches", "first"}`: `mismatches` counts every entry that is not a clean match, and
+    `first` is the first of them, absent when there is none. The same lists give the same
+    result every time: admissible for `exact`."""
+
+    rule: Literal["match"]
+    left: MatchSide
+    right: MatchSide
+    compare: tuple[Compared, ...] = ()
+
+    @model_validator(mode="after")
+    def _keys_pair(self) -> MatchRule:
+        if len(self.left.key) != len(self.right.key):
+            raise ValueError(
+                f"the left key names {len(self.left.key)} fields and the right "
+                f"{len(self.right.key)}; a key is matched field by field"
+            )
+        return self
+
+
 class CommitTitleRule(Value):
     """A title in the Conventional Commits form, `<type>(<scope>): <summary> (#<number>)`, from
     a sentence such as an issue's title (ADR-0101). The type is one of `types`, taken from the
@@ -523,6 +575,7 @@ type RuleWork = Annotated[
     | TemplateRule
     | ExtractRule
     | FilterRule
+    | MatchRule
     | CommitTitleRule
     | InvoiceRule
     | ConnectorRule,
@@ -1321,6 +1374,8 @@ def referenced_values(work: Work) -> list[Any]:
         return [work.values, work.excluding]
     if isinstance(work, FilterRule):
         return [work.items, work.excluding]
+    if isinstance(work, MatchRule):
+        return [work.left.items, work.right.items]
     if isinstance(work, DeviationStatistic):
         return [work.days]
     if isinstance(work, CommitTitleRule):

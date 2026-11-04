@@ -24,6 +24,19 @@
 # - the tenant's label is added to the text, and its delay, quiet hours and recipient limit hold;
 #   once a person answers in the case, the process sends nothing more in it.
 #
+# The case has a response limit (B-3.12, UC-4.17): eight working hours from the message to the
+# reply sent. Six hours in, the role `owner` is reminded; at the limit the case is escalated to
+# it, attached to the run. The tenant's working time counts, and its own role replaces `owner`.
+#
+# The drafts are held to the process's evaluation cases (B-4.01, B-4.02, B-4.04; UC-4.18,
+# ADR-0134, NTC-0263). A proposal that changes a step is run on the cases beside the active version, and
+# a regression is not commissioned unless a person overrides it with a reason. The same cases run
+# every week with no change, and a fall is a drift, an incident, because the process sends
+# outward. The set starts empty: a draft a person corrects is proposed as a case, with the
+# correction as its target, and enters the set once a person confirmed it. A case keeps only the
+# message's identifier; the message stays in the tenant's mailbox. Every correction is counted
+# per process and action over 7 and 28 days (B-4.03, UC-7.5).
+#
 # At level 2 every reply is released by a person (UC-03 §5: stage 2 begins with every class at
 # level 2). Approving a class of request for sending on its own is B-3.03 and a raise of this
 # process's action, by a person, on its correction history (UC-7.1, UC-7.5).
@@ -41,7 +54,7 @@
 # Switching it off (`taktusctl deactivate --process b-3-02`) leaves the mailbox as it is.
 
 id: b-3-02
-version: "1"
+version: "2"
 name: B-3.02 Drafting a reply
 autonomy:
   level: 2
@@ -64,6 +77,45 @@ inputs:
 
 limits:
   quota: { units: 10 }
+
+# B-3.12: the response limit of the case, kept by Taktus across restarts (UC-4.17, ADR-0133).
+deadlines:
+  first_answer:
+    from: run
+    until: { step: send }
+    limit: 8h
+    counts: working
+    lead: 6h
+    at_lead: { remind: owner }
+    at_limit: { escalate: owner }
+
+# B-4.01, B-4.02, B-4.04: the drafts held to the cases, on a change and every week (UC-4.18).
+evaluation:
+  cases: []
+  schedule: weekly
+  scorers:
+    - step: draft
+      method: rule
+      reason: a reply must carry what the confirmed target says, in words a rule can count
+      exactness: exact
+      rule: { kind: overlap }
+    - step: draft
+      method: llm
+      reason: >
+        whether a reply answers as well as the confirmed target is meaning, not words; a judge
+        scores it, inside a run of its own, and the rule above scores where it gives no number
+      rejected:
+        - method: rule
+          why: a good reply can answer in other words than its target
+      exactness: tolerant
+      fallback:
+        when: the judge gives no number
+        to: rule
+      rule: { kind: overlap }
+      purpose: check
+      criterion: >
+        Does the reply answer what the customer asked as fully and as correctly as the target,
+        without promising money, a date, a feature or legal advice the target does not?
 
 steps:
   - id: read-message

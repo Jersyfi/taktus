@@ -19,6 +19,7 @@ import secrets
 import threading
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -31,8 +32,11 @@ from fakes import (
     error_tracking_service,
     mail_service,
     metrics_service,
+    payment_service,
     repository_service,
 )
+from fakes import entitlement_server as entitlements
+from fakes.identity import FixedTenants
 from fakes.maturity import VERIFIED
 from fakes.model import FakeModel
 from fakes.owner_channel import OWNER, TENANT, owner_channel, people
@@ -46,6 +50,12 @@ from taktus_connectors.prometheus.operations import Config as MetricsConfig
 from taktus_connectors.prometheus.server import build_server as metrics_server
 from taktus_connectors.sentry.operations import Config as ErrorsConfig
 from taktus_connectors.sentry.server import build_server as errors_server
+from taktus_connectors.stripe.operations import Config as PaymentsConfig
+from taktus_connectors.stripe.server import build_server as payments_server
+from taktus_connectors.vendor.manifest import load as load_manifest
+from taktus_connectors.vendor.server import build_server as vendor_server
+from taktus_connectors.vendor.upstream import Upstream
+from taktus_connectors.vendor.wrapping import Wrapper, with_manifest
 
 from taktus.adapters.driven.connectors.mcp import McpActionConnector
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
@@ -59,32 +69,58 @@ from taktus.adapters.driven.memory import (
 from taktus.adapters.driven.models import StaticModelPool
 from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
+from taktus.components.command.application.service import CommissionPlanHandler
+from taktus.components.governance.application.service import Drifts
+from taktus.components.governance.domain.model import Incident, IncidentKind, WatchConfiguration
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersion,
     RegisterProcessVersionHandler,
 )
-from taktus.components.process.domain.model import Process, ProcessVersion
+from taktus.components.process.domain.model import (
+    CaseState,
+    CorrectedCase,
+    Evaluation,
+    Process,
+    ProcessVersion,
+)
+from taktus.components.process.domain.model.evaluation import Verdict
 from taktus.components.reporting.application.service import Changer, ConfigureCorridor
 from taktus.components.reporting.domain.model import Level
 from taktus.components.run.application.service import (
     ConfirmSteps,
+    CorrectResult,
+    CorrectResultHandler,
     EngineOptions,
+    ResumeRun,
     RunEngine,
     StartRun,
 )
-from taktus.components.run.domain.model import Run, RunState, StepState
+from taktus.components.run.application.service.deadlines import DeadlineKeeper
+from taktus.components.run.domain.model import Deadline, Run, RunState, StepState, WorkingTime
 from taktus.components.run.ports import MessageRules
+from taktus.composition.deadlines import Deadlines
+from taktus.composition.decisions import DeadlinesOfTheVersion
+from taktus.composition.evaluations import Evaluations
 from taktus.composition.signals import signal_wiring
 from taktus.ports.model import Completion, Prompt
 from taktus.ports.worker import Limits
-from taktus.shared.v1 import Commissioned, Plan, PlanResult, PlanStatus, PriceKinds
+from taktus.shared.v1 import Command, Commissioned, Plan, PlanResult, PlanStatus, PriceKinds
 
 ROOT = Path(__file__).resolve().parents[2]
 PROCESSES = ROOT / "blueprints" / "software-operations" / "processes"
+MANIFESTS = ROOT / "blueprints" / "software-operations" / "connectors"
 CONNECTORS = ROOT / "connectors" / "taktus_connectors"
 REPOSITORY = "acme/product"
 TOKEN = "tok-" + secrets.token_hex(12)
-CREDENTIALS = ("REPOSITORY_TOKEN", "ERRORS_TOKEN", "CHECK_TOKEN", "METRICS_TOKEN", "MAIL_PASSWORD")
+CREDENTIALS = (
+    "REPOSITORY_TOKEN",
+    "ERRORS_TOKEN",
+    "CHECK_TOKEN",
+    "METRICS_TOKEN",
+    "MAIL_PASSWORD",
+    "PAYMENTS_TOKEN",
+    "ENTITLEMENTS_TOKEN",
+)
 MAILBOX = "support@mail.example"
 
 
@@ -103,7 +139,9 @@ class Outside:
     repository: str
     errors: str
     metrics: str
+    payments: str
     mail: mail_service.Running
+    product: entitlements.State = field(default_factory=entitlements.State)
 
     def submitted(self) -> int:
         """How many messages were submitted for sending."""
@@ -136,6 +174,7 @@ def outside(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Outside
         repository_service.make_server("127.0.0.1", 0, {TOKEN: "write"}),
         error_tracking_service.make_server("127.0.0.1", 0, {TOKEN}),
         metrics_service.make_server("127.0.0.1", 0, {TOKEN}),
+        payment_service.make_server("127.0.0.1", 0, {TOKEN}),
     ]
     urls = [_serving(s) for s in servers]
     mail = mail_service.start("127.0.0.1", {MAILBOX: TOKEN})
@@ -182,6 +221,7 @@ class Told:
 
 
 TRIAGE = "You classify an issue"
+REPORT = "You read a customer's message"
 DRAFT, CHECK, CLASSIFY = "You draft a reply", "You check a drafted reply", "You classify a drafted"
 
 
@@ -218,6 +258,21 @@ class World:
             ),
             ("connector.metrics", served(metrics_server(MetricsConfig(outside.metrics, 5.0)))),
             (
+                "connector.payments",
+                served(payments_server(PaymentsConfig(outside.payments, timeout=5.0))),
+            ),
+            (
+                "connector.entitlements",
+                served(
+                    vendor_server(
+                        Wrapper(
+                            Upstream(entitlements.create_server(outside.product), timeout=5.0),
+                            with_manifest(*load_manifest(MANIFESTS / "entitlements.manifest.json")),
+                        )
+                    )
+                ),
+            ),
+            (
                 "connector.mail",
                 served(
                     mail_server(
@@ -235,6 +290,16 @@ class World:
                 ),
             ),
         ]
+        self.ids = FakeIdentifiers()
+        self.queue = MemoryQueue(self.persistence, self.clock)
+        self.keeper = DeadlineKeeper(
+            self.of(Deadline),
+            self.of(WorkingTime),
+            self.ledger,
+            self.persistence,
+            self.clock,
+            DeadlinesOfTheVersion(self.of(ProcessVersion), self.persistence),
+        )
         self.engine = RunEngine(
             maturities=VERIFIED,
             runs=self.of(Run),
@@ -244,9 +309,10 @@ class World:
             provenance=self.provenance,
             workers=StaticWorkerPool([("worker.fake", FakeWorker())]),
             clock=self.clock,
-            ids=FakeIdentifiers(),
+            ids=self.ids,
             telemetry=NoTelemetry(),
-            queue=MemoryQueue(self.persistence, self.clock),
+            queue=self.queue,
+            deadlines=self.keeper,
             options=EngineOptions(uncalibrated_margin=0.0),
             connectors=StaticConnectorPool(connectors),
             models=StaticModelPool(
@@ -270,8 +336,65 @@ class World:
             owner=self.given.owner,
         )
 
+        self.commission = CommissionPlanHandler(
+            self.of(Command), self.of(Plan), self.persistence, self.clock, self.ids
+        )
+        self.deadlines = Deadlines(
+            tenants=FixedTenants((TENANT,)),
+            keeper=self.keeper,
+            processes=self.of(Process),
+            versions=self.of(ProcessVersion),
+            commission=self.commission,
+            engine=self.engine,
+            identities=self.given.identity.directory,
+            work=self.persistence,
+            clock=self.clock,
+            ids=self.ids,
+        )
+
+        async def outward(version: ProcessVersion) -> bool:
+            return True
+
+        self.evaluations = Evaluations(
+            processes=self.of(Process),
+            versions=self.of(ProcessVersion),
+            evaluations=self.of(Evaluation),
+            cases=self.of(CorrectedCase),
+            runs=self.of(Run),
+            commission=self.commission,
+            engine=self.engine,
+            identities=self.given.identity.directory,
+            drifts=Drifts(
+                self.of(Incident),
+                self.of(WatchConfiguration),
+                self.ledger,
+                self.persistence,
+                self.clock,
+            ),
+            ledger=self.ledger,
+            objects=self.objects,
+            work=self.persistence,
+            clock=self.clock,
+            ids=self.ids,
+            outward=outward,
+        )
+
     def of(self, kind: Any) -> Any:
         return MemoryRepository(self.persistence, kind)
+
+    async def drain(self) -> None:
+        """Every queued run, run through, as a runner would."""
+        for _ in range(20):
+            async with self.persistence.transaction(TENANT):
+                jobs = await self.queue.claim(TENANT, "runner-a", 10)
+            if not jobs:
+                return
+            for job in jobs:
+                await self.engine.resume(
+                    ResumeRun(
+                        run_id=job.payload["run_id"], actor="runner-a", tenant=TENANT, on_claim=True
+                    )
+                )
 
     async def ready(self) -> World:
         await people(self.given)
@@ -279,7 +402,9 @@ class World:
         return self
 
     async def registered(self, name: str) -> ProcessVersion:
-        return await self.register.execute(RegisterProcessVersion(bundle(name), tenant=TENANT))
+        return await self.register.execute(
+            RegisterProcessVersion(bundle(name), tenant=TENANT, by=OWNER)
+        )
 
     async def start(self, version: ProcessVersion, **inputs: Any) -> Run:
         plan = Plan(
@@ -347,8 +472,10 @@ def states(run: Run) -> dict[str, StepState]:
 
 
 def declared_operations() -> set[str]:
+    """What a connector of this repository declares, and what the vendor connector serves
+    under a manifest the blueprint ships (ADR-0199 §2)."""
     names: set[str] = set()
-    for path in CONNECTORS.glob("*/declaration.py"):
+    for path in [*CONNECTORS.glob("*/declaration.py"), *MANIFESTS.glob("*.manifest.json")]:
         names |= set(re.findall(r'"name": "([a-z][a-z0-9_.]+)"', path.read_text(encoding="utf-8")))
     return names
 
@@ -552,3 +679,233 @@ async def test_b_3_02_money_a_rejection_or_a_promise_holds_the_reply_and_nothing
         "date": "anc-promise",
     }[classified] in reason
     assert outside.submitted() == before
+
+
+# --- stage 1: B-6.01 Payment against entitlement ------------------------------------------------
+
+
+async def test_b_6_01_names_what_is_paid_and_not_granted_and_granted_and_not_paid_as_an_incident(
+    outside: Outside,
+) -> None:
+    w = await World(outside).ready()
+    version = await w.registered("B-6.01-payment-against-entitlement.yaml")
+    await w.corridor(
+        "payments.entitlement_mismatches",
+        version.process_id,
+        step="match",
+        select="mismatches",
+        bounds="fixed",
+        direction="above",
+        yellow=0.25,
+        red=0.5,
+    )
+    run = await w.start(version)
+    assert run.state is RunState.FINISHED, [(s.step_id, s.reason) for s in run.step_runs]
+    matched = await w.result(run, "match")
+    # The payment fake holds four active subscriptions of cus_fake1 to cus_fake4; the product
+    # grants cus_fake1 to cus_fake3, and cus_fake9, whom nobody pays for.
+    assert matched["matched"] == 3
+    assert [e["customer"] for e in matched["left_only"]] == ["cus_fake4"]
+    assert [e["customer"] for e in matched["right_only"]] == ["cus_fake9"]
+    assert matched["mismatches"] == 2
+    looked = await w.signals.watch.look(TENANT)
+    (judged,) = looked.judged
+    assert judged.level is Level.RED and len(looked.incidents) == 1
+    assert outside.product.document()["calls"] == {"list_entitlements": 1}, "it only read"
+
+    # Once the product grants what was paid and withdraws what was not, the lists agree.
+    with outside.product.lock:
+        outside.product.entitlements.pop("ent_9")
+        outside.product.entitlements["ent_4"] = {
+            "id": "ent_4", "customer": "cus_fake4", "product": "prod_plan", "quantity": 1,
+        }  # fmt: skip
+    again = await w.start(version)
+    assert (await w.result(again, "match"))["mismatches"] == 0
+
+
+# --- stage 2: B-3.04 Paid but not unlocked ------------------------------------------------------
+
+
+async def test_b_3_04_grants_what_was_paid_for_once_a_person_confirmed_it(outside: Outside) -> None:
+    w = await World(outside).ready()
+    version = await w.registered("B-3.04-paid-not-unlocked.yaml")
+    run = await w.start(version, customer="cus_fake4")
+    assert run.state is RunState.WAITING_HUMAN, "at level 2 nothing starts before a person"
+    run = await w.confirmed(run)
+    assert run.state is RunState.FINISHED, [(s.step_id, s.reason) for s in run.step_runs]
+    matched = await w.result(run, "match")
+    assert matched["mismatches"] == 1 and matched["first"]["kind"] == "left_only"
+    held = outside.product.document()["entitlements"]
+    granted = [e for e in held if e["customer"] == "cus_fake4"]
+    assert [(e["product"], e["quantity"]) for e in granted] == [("prod_plan", 1)]
+    assert states(run)["repair"] is StepState.SUCCEEDED
+
+    again = await w.confirmed(await w.start(version, customer="cus_fake4"))
+    assert (await w.result(again, "match"))["mismatches"] == 0
+    assert (await w.result(again, "repair"))["skipped"] is True, "nothing left to repair"
+
+
+async def test_b_3_04_a_case_that_is_not_clear_is_named_and_nothing_is_granted(
+    outside: Outside,
+) -> None:
+    """cus_fake9 is unlocked and pays nothing: the cause is named, and the product is not
+    touched — whether to withdraw access or ask for payment stays with a person."""
+    w = await World(outside).ready()
+    version = await w.registered("B-3.04-paid-not-unlocked.yaml")
+    run = await w.confirmed(await w.start(version, customer="cus_fake9"))
+    matched = await w.result(run, "match")
+    assert matched["first"]["kind"] == "right_only"
+    assert (await w.result(run, "repair"))["skipped"] is True
+    assert "grant_entitlement" not in outside.product.document()["calls"]
+
+
+async def test_b_3_04_reads_only_the_customer_of_its_case(outside: Outside) -> None:
+    """Both reads carry the customer as the case's scope; the product is asked for that
+    customer alone, never for every entitlement (UC-7.7, ADR-0130)."""
+    w = await World(outside).ready()
+    version = await w.registered("B-3.04-paid-not-unlocked.yaml")
+    await w.confirmed(await w.start(version, customer="cus_fake1"))
+    calls = outside.product.document()["calls"]
+    assert calls == {"customer_entitlements": 1}
+
+
+# --- stage 1: B-5.06 Business customers' seats --------------------------------------------------
+
+
+async def test_b_5_06_seats_paid_for_and_granted_that_differ_are_an_incident(
+    outside: Outside,
+) -> None:
+    w = await World(outside).ready()
+    version = await w.registered("B-5.06-business-seats.yaml")
+    await w.corridor(
+        "payments.seat_mismatches",
+        version.process_id,
+        step="match",
+        select="mismatches",
+        bounds="fixed",
+        direction="above",
+        yellow=0.25,
+        red=0.5,
+    )
+    run = await w.start(version, customer="cus_fake1")
+    assert run.state is RunState.FINISHED, [(s.step_id, s.reason) for s in run.step_runs]
+    assert (await w.result(run, "match"))["mismatches"] == 0
+    with outside.product.lock:
+        outside.product.entitlements["ent_1"]["quantity"] = 3
+    changed = await w.start(version, customer="cus_fake1")
+    [differing] = (await w.result(changed, "match"))["differing"]
+    assert differing["fields"][0]["left_value"] == 1 and differing["fields"][0]["right_value"] == 3
+    looked = await w.signals.watch.look(TENANT)
+    assert any(j.level is Level.RED and j.run_id == changed.id for j in looked.judged)
+
+
+# --- stage 2: B-3.12 the response limit, and B-4.01, B-4.02, B-4.04 on B-3.02's cases -----------
+
+
+async def test_b_3_12_a_case_unanswered_past_its_limit_is_escalated_once_and_an_answered_one_not(
+    outside: Outside,
+) -> None:
+    w = await World(outside).ready()
+    version = await w.registered("B-3.02-draft-reply.yaml")
+    replying(w, "You can export the report under Settings, then Export.")
+    waiting = await w.start(version, message="<seed-1@mail.example>")
+    answered = await w.confirmed(await w.start(version, message="<seed-1@mail.example>"))
+    assert waiting.state is RunState.WAITING_HUMAN and answered.state is RunState.FINISHED
+    (open_,) = await w.keeper.open(TENANT)
+    assert open_.run_id == waiting.id, "the answered case met its limit"
+    w.clock.current += timedelta(days=7)
+    taken = await w.deadlines.tick()
+    assert sorted(f"{t.kind}:{t.outcome}" for t in taken) == [
+        "deadline.lead:remind",
+        "deadline.reached:escalate",
+    ]
+    assert all(t.deadline.run_id == waiting.id for t in taken)
+    w.clock.current += timedelta(days=7)
+    assert await w.deadlines.tick() == [], "taken once"
+
+
+async def scored(w: World) -> list[Evaluation]:
+    """The evaluations a look started, run through and scored."""
+    done: list[Evaluation] = []
+    for _ in range(4):
+        await w.drain()
+        done += [e for e in await w.evaluations.look(TENANT) if e.verdict is not None]
+        if done:
+            return done
+    return done
+
+
+async def test_b_4_04_a_corrected_draft_becomes_a_case_and_b_4_02_runs_it_every_week(
+    outside: Outside,
+) -> None:
+    w = await World(outside).ready()
+    version = await w.registered("B-3.02-draft-reply.yaml")
+    replying(w, "You can export the report under Settings, then Export.")
+    run = await w.confirmed(await w.start(version, message="<seed-1@mail.example>"))
+    assert run.state is RunState.FINISHED
+    better = "Open Settings, choose Export, and pick the report you want as CSV."
+    await CorrectResultHandler(w.of(Run), w.persistence, w.objects, w.ledger).execute(
+        CorrectResult(TENANT, run.id, "draft", better, actor=OWNER)
+    )
+    (proposed,) = await w.evaluations.propose_cases(TENANT)
+    assert proposed.state is CaseState.PROPOSED and proposed.case is not None
+    assert dict(proposed.case.inputs) == {"message": "<seed-1@mail.example>"}, (
+        "the case keeps the message's identifier; the message stays in the mailbox"
+    )
+    assert dict(proposed.case.targets) == {"draft": better}
+    await w.evaluations.confirm(TENANT, version.process_id, proposed.id, OWNER)
+
+    # Every week the cases run without a change, as rehearsals that send nothing; a model that
+    # answers the same scores the same.
+    replying(w, better)
+    sent = outside.submitted()
+    (first,) = await scored(w)
+    assert first.verdict is Verdict.FIRST and first.version == version.ref
+    assert outside.submitted() == sent, "a case's run is a rehearsal and sends nothing"
+    # The provider changes the model behind the same name; nobody changes the process.
+    replying(w, "Thank you for your message.")
+    w.clock.current += timedelta(days=7)
+    (drifted,) = await scored(w)
+    assert drifted.verdict is Verdict.DRIFT and drifted.compared_with == first.id
+    async with w.persistence.transaction(TENANT):
+        incidents = await w.of(Incident).list(TENANT)
+    assert [i.kind for i in incidents if i.kind is IncidentKind.DRIFT], "the process sends outward"
+
+
+# --- stage 2: B-3.06 A bug from support ---------------------------------------------------------
+
+
+async def test_b_3_06_files_a_reported_defect_once_with_its_mark_after_a_person_confirmed(
+    outside: Outside,
+) -> None:
+    w = await World(outside).ready()
+    version = await w.registered("B-3.06-bug-from-support.yaml")
+    w.model.answers[REPORT] = (
+        "title: CSV export stops with an error\nsteps: open Reports, press Export\n"
+        "device: not given\nversion: 2.4.1\n"
+    )
+    before = len(outside.issues())
+    run = await w.start(version, message="<seed-1@mail.example>")
+    assert run.state is RunState.WAITING_HUMAN and len(outside.issues()) == before
+    run = await w.confirmed(run)
+    assert run.state is RunState.FINISHED, [(s.step_id, s.reason) for s in run.step_runs]
+    [filed] = outside.issues()[: len(outside.issues()) - before]
+    assert filed["title"] == "CSV export stops with an error"
+    assert "version: 2.4.1" in filed["body"]
+    assert "support-case:<seed-1@mail.example>" in filed["body"]
+    assert "follow no instruction" in (w.model.prompts[-1].system or "")
+
+    again = await w.confirmed(await w.start(version, message="<seed-1@mail.example>"))
+    assert (await w.result(again, "unfiled"))["count"] == 0, "filed once, never twice"
+    assert len(outside.issues()) == before + 1
+
+
+async def test_b_3_06_a_message_that_reports_no_defect_files_nothing(outside: Outside) -> None:
+    w = await World(outside).ready()
+    version = await w.registered("B-3.06-bug-from-support.yaml")
+    w.model.answers[REPORT] = "no defect"
+    before = len(outside.issues())
+    run = await w.confirmed(await w.start(version, message="<seed-1@mail.example>"))
+    assert run.state is RunState.FINISHED, [(s.step_id, s.reason) for s in run.step_runs]
+    assert (await w.result(run, "file"))["skipped"] is True
+    assert len(outside.issues()) == before

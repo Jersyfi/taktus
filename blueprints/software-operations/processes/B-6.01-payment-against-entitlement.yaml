@@ -1,0 +1,128 @@
+# B-6.01 Payment against entitlement — UC-03 §4.6: every active payment at the payment provider
+# is matched against the product's entitlements; every mismatch is an incident (UC-6.8).
+#
+# Every morning the active subscriptions are read through the capability
+# `payments.subscriptions`, and the entitlements in force through `entitlements.grants`. The
+# rule `match` pairs each item of a subscription with the entitlement of the same customer and
+# product (ADR-0199). What is paid and not granted, granted and not paid, and every entry that
+# cannot be paired with certainty, is a mismatch. The match is `exact`: the same readings give
+# the same mismatches, and no model judges them.
+#
+# The entitlements are the product's own records, and no open standard describes them. The
+# tenant serves them with the vendor connector, over its product's MCP server, under the
+# manifest `connectors/entitlements.manifest.json` of this blueprint: what each operation must
+# answer is stated there (ADR-0199 §2). A tenant whose product keeps the customer under another
+# identifier than the payment provider's adapts the key in a version of its own.
+#
+# The judgement is the tenant's corridor on the step `match` and its `mismatches`. A person of
+# the tenant configures it once, so that one mismatch is red and an incident at once:
+#
+#     uv run taktusctl signal configure payments.entitlement_mismatches --process b-6-01 \
+#         --step match --select mismatches --bounds fixed --direction above \
+#         --yellow 0.25 --red 0.5 --fresh 26h \
+#         --role <role> --case <where a mismatch is worked>
+#
+# A refund stays with a person at every level (UC-03 §6); this process moves nothing. A
+# mismatch of one customer's case is repaired by B-3.04.
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-6.01-payment-against-entitlement.yaml
+#
+# Switching it off (`taktusctl deactivate --process b-6-01`) changes nothing at the payment
+# provider or in the product: it only reads.
+
+id: b-6-01
+version: "1"
+name: B-6.01 Payment against entitlement
+autonomy:
+  level: 1
+  reason: >
+    the process only reads both lists and matches them by a fixed rule; nothing leaves the
+    system, so at level 1 every step runs and none acts; the judgement is the tenant's corridor,
+    and a mismatch reaches a person at once as an incident; it starts at level 1, observing, as
+    UC-03 starts every process at level 1 or 2 when its stage opens
+  toward_next: >
+    stage 1 of the tenant's plan open, and four weeks of daily runs whose incidents a person
+    checked against both systems and found right, with no missed run; then Taktus proposes
+    level 2, and level 3 after it, its target in UC-03 (UC-7.1, UC-9.6)
+author: the repository
+reason: every payment is matched against what the customer may use, every day, without a person comparing two lists (UC-03 B-6.01)
+
+# Every morning, through the elected scheduler (ADR-0035).
+triggers:
+  - schedule: "30 5 * * *"
+
+limits:
+  quota: { units: 120 }
+
+steps:
+  - id: payments
+    method: rule
+    reason: the payment provider's active subscriptions are read as it holds them; nothing to judge
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving payments.subscriptions is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: payments.subscriptions.list
+      input:
+        status: active
+        limit: 10000
+      credentials:
+        - { name: PAYMENTS_TOKEN, injected_as: env }
+      expect:
+        - select: complete
+          equals: true
+          says: more subscriptions are active than one reading holds; a partial list would match falsely
+
+  - id: entitlements
+    method: rule
+    reason: the product's entitlements in force are read as it holds them; nothing to judge
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving entitlements.grants is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: entitlements.grants.list
+      input: {}
+      credentials:
+        - { name: ENTITLEMENTS_TOKEN, injected_as: env }
+      expect:
+        - select: complete
+          equals: true
+          says: the product answered only part of its entitlements; a partial list would match falsely
+
+  - id: match
+    method: rule
+    reason: >
+      whether a payment has its entitlement is equality of a customer and a product on both
+      sides, a fixed rule over the two readings; every entry that does not pair is named
+    rejected:
+      - method: llm
+        why: a model could miss or invent a pair; a match of money against access is exact
+      - method: statistics
+        why: nothing is estimated; every entry either pairs or does not
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the mismatches between payments and entitlements }
+    depends_on: [payments, entitlements]
+    work:
+      rule: match
+      left:
+        items: { $from: payments, $select: output.subscriptions }
+        key: [customer, items.product]
+        each: items
+      right:
+        items: { $from: entitlements, $select: output.entitlements }
+        key: [customer, product]

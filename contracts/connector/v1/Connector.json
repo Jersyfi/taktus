@@ -1199,7 +1199,7 @@
     },
     "ManifestOperation": {
       "title": "ManifestOperation",
-      "description": "One tool of a vendor's MCP server, declared as an operation of this contract. tool is the vendor's own name for it; name, capability, effect, idempotency, demand and summary mean what they mean in Operation. Two idempotencies are offered: native, where the vendor's tool takes a key itself — key_argument names the argument the idempotency key is passed in, and replayed points at the boolean of the answer that says the vendor recognised a repeat — and none, where Taktus never repeats the call on its own. marked is not offered: it needs a lookup in the target system before acting, which a wrapper cannot know for a server it did not write. An outward operation names where its answer names the record. demand defaults to one request; summary to the vendor's description of the tool.",
+      "description": "One tool of a vendor's MCP server, declared as an operation of this contract. tool is the vendor's own name for it; name, capability, effect, idempotency, demand and summary mean what they mean in Operation. Two idempotencies are offered: native, where the vendor's tool takes a key itself — key_argument names the argument the idempotency key is passed in, and replayed points at the boolean of the answer that says the vendor recognised a repeat — and none, where Taktus never repeats the call on its own. marked is not offered: it needs a lookup in the target system before acting, which a wrapper cannot know for a server it did not write. An outward operation names where its answer names the record. demand defaults to one request; summary to the vendor's description of the tool. subject names the argument that carries a case's subject, for an operation of a scoped capability.",
       "type": "object",
       "properties": {
         "tool": {
@@ -1238,6 +1238,11 @@
           "$ref": "#/$defs/Demand"
         },
         "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subject": {
+          "description": "The argument of the vendor's tool that names the subject of a case — a customer's identifier, for example. Where every operation of a capability names one, the capability is declared scoped (ADR-0130, ADR-0199): a call that serves a case and names another subject in this argument is refused as out_of_scope before the vendor's server is asked.",
           "type": "string",
           "minLength": 1
         }

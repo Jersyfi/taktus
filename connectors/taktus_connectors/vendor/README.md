@@ -30,6 +30,11 @@ a credential. A tool the manifest names that the vendor does not list, or one th
 a read that the vendor marks as acting, refuses the start. Where the listing needs a
 credential, the same check runs at each call.
 
+An operation that names a `subject` — the tool's argument that carries a case's subject, such
+as a customer's identifier — makes its capability scoped. A call that serves a case and names
+another subject there is refused as `out_of_scope`, and the vendor's server is not asked
+(ADR-0130, ADR-0199). Conformance check C-11 proves it, and the fault `C-11` breaks it.
+
 ## Without a manifest
 
 `--capability` names the capability the tools are served under; `--credential` the requesting

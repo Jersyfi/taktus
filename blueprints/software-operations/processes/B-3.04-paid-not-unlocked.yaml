@@ -1,0 +1,169 @@
+# B-3.04 "Paid but not unlocked" — UC-03 §4.3: for a customer's request about payment or
+# access, the payment at the payment provider is matched against the entitlement in the
+# product, the cause named, and a clear case repaired (UC-7.1 action class, UC-7.7).
+#
+# The run serves one customer's case: every read and the repair carry the customer as the
+# step's scope, and a connector answers that customer's data only (ADR-0130). The customer is
+# named by the payment provider's identifier, which a support message does not carry: the
+# tenant's intake, or the person who reads the request, gives it as the input `customer`.
+#
+# The subscriptions of the customer are read through `payments.customers`, those still paid —
+# `active` or `trialing` — kept by the rule `filter`, and the customer's entitlements read
+# through `entitlements.customers` (the manifest `connectors/entitlements.manifest.json`,
+# ADR-0199 §2). The rule `match` pairs each paid item with the entitlement of its product and
+# compares the seats. Its result names the cause: `left_only` is paid and not unlocked,
+# `right_only` unlocked and not paid, `differing` the wrong number of seats.
+#
+# A clear case — exactly one mismatch, and it is a paid product without its entitlement — is
+# repaired: the entitlement is granted with the seats paid for. At level 2 a person confirms
+# the grant first. Every other mismatch is left for a person with the cause the match named. A
+# refund stays with a person at every level (UC-03 §6, the anchor `anc-money`).
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-3.04-paid-not-unlocked.yaml \
+#         --input customer=cus_...
+#
+# Switching it off (`taktusctl deactivate --process b-3-04`) changes nothing: what it granted
+# stays granted.
+
+id: b-3-04
+version: "1"
+name: B-3.04 Paid but not unlocked
+autonomy:
+  level: 2
+  reason: >
+    the cause is found by a fixed rule over the two systems' own readings; the repair grants
+    access in the product and leaves the system, so a person confirms it, as every process of
+    UC-03 starts at level 1 or 2 when its stage opens
+  toward_next: >
+    four weeks of repairs a person confirmed without changing them, and stage 2 of the
+    tenant's plan open; then Taktus proposes level 3 for the grant, its target in UC-03
+    (UC-7.1, UC-7.5, UC-9.6)
+author: the repository
+reason: a customer who paid and cannot use what they paid for is unlocked without a person comparing two systems (UC-03 B-3.04)
+
+inputs:
+  customer:
+    description: the customer's identifier at the payment provider, as the product keeps it
+    example: cus_fake4
+
+limits:
+  quota: { units: 12 }
+
+steps:
+  - id: subscriptions
+    method: rule
+    reason: the customer's subscriptions are read as the payment provider holds them; nothing to judge
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving payments.customers is unavailable
+      to: human
+      role: owner
+    work:
+      scope: { subject: { $input: customer } }
+      rule: connector
+      operation: payments.customers.subscriptions
+      input:
+        customer: { $input: customer }
+      credentials:
+        - { name: PAYMENTS_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the customer's subscriptions were not all read" }
+
+  - id: paid
+    method: rule
+    reason: which subscriptions are still paid is the provider's status, kept by a fixed rule
+    rejected:
+      - method: llm
+        why: a status is a field, not a judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the subscriptions still paid }
+    depends_on: [subscriptions]
+    work:
+      rule: filter
+      items: { $from: subscriptions, $select: output.subscriptions }
+      any:
+        - { field: status, equals: active }
+        - { field: status, equals: trialing }
+
+  - id: entitlements
+    method: rule
+    reason: the customer's entitlements are read as the product holds them; nothing to judge
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving entitlements.customers is unavailable
+      to: human
+      role: owner
+    work:
+      scope: { subject: { $input: customer } }
+      rule: connector
+      operation: entitlements.customers.list
+      input:
+        customer: { $input: customer }
+      credentials:
+        - { name: ENTITLEMENTS_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the customer's entitlements were not all read" }
+
+  - id: match
+    method: rule
+    reason: >
+      whether a paid product is unlocked is equality of the product and the seats on both
+      sides; the cause is which side an unpaired entry stands on, never a guess
+    rejected:
+      - method: llm
+        why: a model could name a cause the readings do not show; the match is exact (UC-03 B-3.04)
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the mismatches of the customer's payments and entitlements }
+    depends_on: [paid, entitlements]
+    work:
+      rule: match
+      left:
+        items: { $from: paid, $select: items }
+        key: [customer, items.product]
+        each: items
+      right:
+        items: { $from: entitlements, $select: output.entitlements }
+        key: [customer, product]
+      compare:
+        - { left: items.quantity, right: quantity }
+
+  - id: repair
+    method: rule
+    reason: >
+      granting the entitlement is an API call of the product; it is made only in the clear case
+      the match named, with the product and the seats the payment shows, and at level 2 after a
+      person confirmed it
+    rejected:
+      - method: llm
+        why: what is granted is what was paid for, a field of the reading
+      - method: worker
+        why: nothing here needs a sandbox or tools
+    exactness: sourced
+    fallback:
+      when: the connector serving entitlements.customers is unavailable
+      to: human
+      role: owner
+    depends_on: [match]
+    work:
+      when:
+        - { value: { $from: match, $select: mismatches }, equals: 1 }
+        - { value: { $from: match, $select: first.kind }, equals: left_only }
+      scope: { subject: { $input: customer } }
+      rule: connector
+      operation: entitlements.customers.grant
+      input:
+        customer: { $input: customer }
+        product: { $from: match, $select: first.entry.items.product }
+        quantity: { $from: match, $select: first.entry.items.quantity }
+      credentials:
+        - { name: ENTITLEMENTS_TOKEN, injected_as: env }

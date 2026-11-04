@@ -24,7 +24,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from taktus_connectors.serving import Call, Outcome, TargetError, invalid
+from taktus_connectors.serving import Call, Outcome, TargetError, invalid, out_of_scope
 from taktus_connectors.vendor.manifest import Manifest, ManifestRecord
 from taktus_connectors.vendor.upstream import (
     Exchange,
@@ -58,6 +58,8 @@ class Planned:
     replayed: str | None = None
     record: ManifestRecord | None = None
     demand: Json | None = None
+    subject: str | None = None
+    """The tool's argument that names a case's subject (ADR-0199)."""
 
     @property
     def outward(self) -> bool:
@@ -94,10 +96,12 @@ class Plan:
     manifest: str | None
     """The digest of the manifest; None when the server is served without one."""
     withheld: tuple[Withheld, ...] = ()
+    scoped: tuple[str, ...] = ()
+    """The capabilities whose every operation names a case's subject (ADR-0130, ADR-0199)."""
 
     def declaration(self) -> Json:
         wrapped: Json = {} if self.manifest is None else {"manifest": self.manifest}
-        return {
+        document: Json = {
             "contract": CONTRACT,
             "version": VERSION,
             "capabilities": list(self.capabilities),
@@ -107,6 +111,9 @@ class Plan:
             "permissions": "passthrough",
             "wrapped": wrapped,
         }
+        if self.scoped:
+            document["scoped"] = list(self.scoped)
+        return document
 
 
 class PlanError(ValueError):
@@ -187,6 +194,7 @@ def with_manifest(manifest: Manifest, digest: str, tools: list[VendorTool] | Non
                 replayed=op.replayed,
                 record=op.record,
                 demand=None if op.demand is None else op.demand.document(),
+                subject=op.subject,
             )
         )
     declared = {op.tool for op in manifest.operations}
@@ -201,6 +209,7 @@ def with_manifest(manifest: Manifest, digest: str, tools: list[VendorTool] | Non
         tuple(operations),
         digest,
         withheld,
+        manifest.scoped,
     )
 
 
@@ -252,6 +261,12 @@ class Wrapper:
 
     async def invoke(self, planned: Planned, call: Call, input: Json) -> Outcome:
         arguments = dict(input)
+        if planned.subject is not None and call.scope is not None:
+            if arguments.get(planned.subject) != call.scope:
+                raise out_of_scope(
+                    f"the argument {planned.subject!r} is not the subject of the case this call "
+                    "serves; the vendor's server was not asked"
+                )
         if planned.key_argument is not None:
             if planned.key_argument in arguments:
                 raise invalid(

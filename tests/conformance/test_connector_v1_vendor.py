@@ -33,7 +33,14 @@ from taktus.conformance import Status
 from taktus.conformance.connector.rules import CHECKS
 from taktus.conformance.contracts import first_error
 
-from .conftest import VENDOR, VENDOR_NOTES, StartConnector, _wait_listening, stop_all
+from .conftest import (
+    ENTITLEMENTS_MANIFEST,
+    VENDOR,
+    VENDOR_NOTES,
+    StartConnector,
+    _wait_listening,
+    stop_all,
+)
 
 TIME_MANIFEST = VENDOR / "time-manifest.json"
 NOTES_MANIFEST = VENDOR / "notes-manifest.json"
@@ -163,6 +170,26 @@ async def test_a_write_nobody_declared_is_refused_before_the_vendor(
         assert "delete_note" not in state["calls"]
         assert "create_note" not in state["calls"]
         assert "withheld delete_note" in connector.log.read_text()
+
+
+async def test_a_product_s_entitlements_under_a_scoped_manifest_pass_c05_and_c11(
+    start_vendor_connector: StartConnector,
+) -> None:
+    """The blueprint's manifest over the stand-in of a product's entitlements (ADR-0199): the
+    capability is declared scoped because each operation names the argument that carries the
+    customer, a call for another customer than the case's is refused before the product is
+    asked, and the grant the product recognises as a repeat passes C-05."""
+    connector = start_vendor_connector(server="entitlements", manifest=ENTITLEMENTS_MANIFEST)
+    report = await connector.run_suite()
+    assert report.failed == [] and report.inconclusive == [], report.render()
+    passes(report.render(), {c.id: c.status for c in report.checks})
+    declaration = await _declaration(connector.endpoint)
+    assert declaration["scoped"] == ["entitlements.customers"]
+    broken = start_vendor_connector(
+        server="entitlements", manifest=ENTITLEMENTS_MANIFEST, fault="C-11"
+    )
+    report = await broken.run_suite()
+    assert {c.id for c in report.checks if c.status is Status.FAILED} == {"C-11"}, report.render()
 
 
 def test_without_a_manifest_a_listing_that_needs_a_credential_refuses_the_start(

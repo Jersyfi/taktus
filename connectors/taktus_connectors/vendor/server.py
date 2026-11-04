@@ -32,11 +32,13 @@ NAME = "vendor-connector"
 
 
 def faults(plan: Plan, intake: webhooks.Intake | None = None) -> dict[str, str]:
-    """The common faults, C-05 where an operation recognises a repeat, and the intake's where
-    there is one."""
+    """The common faults, C-05 where an operation recognises a repeat, C-11 where a capability
+    is scoped, and the intake's where there is one."""
     offered = dict(serving.COMMON_FAULTS)
     if any(op.idempotency == "native" for op in plan.operations):
         offered["C-05"] = "a repeat is sent with a fresh key, so the vendor acts again"
+    if plan.scoped:
+        offered.update(serving.SCOPE_FAULTS)
     if intake is not None:
         offered.update(INTAKE_FAULTS)
     return offered

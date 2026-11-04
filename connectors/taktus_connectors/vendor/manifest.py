@@ -101,6 +101,9 @@ class ManifestOperation(Value):
     record: ManifestRecord | None = None
     demand: Demand | None = None
     summary: str | None = Field(default=None, min_length=1)
+    subject: str | None = Field(default=None, min_length=1)
+    """The tool's argument that names a case's subject: the operation's capability is scoped
+    (ADR-0130, ADR-0199)."""
 
     @model_validator(mode="after")
     def _effect_decides_the_rest(self) -> ManifestOperation:
@@ -150,7 +153,25 @@ class Manifest(Value):
         for op in self.operations:
             if op.capability not in self.capabilities:
                 raise ValueError(f"operation {op.name!r} belongs to an undeclared capability")
+        for capability in self.capabilities:
+            subjects = {
+                op.subject is not None for op in self.operations if op.capability == capability
+            }
+            if len(subjects) > 1:
+                raise ValueError(
+                    f"some operations of {capability!r} name a subject and some do not; a "
+                    "capability is scoped as a whole"
+                )
         return self
+
+    @property
+    def scoped(self) -> tuple[str, ...]:
+        """The capabilities whose every operation names a subject."""
+        return tuple(
+            c
+            for c in self.capabilities
+            if any(op.subject is not None and op.capability == c for op in self.operations)
+        )
 
 
 def load(path: Path) -> tuple[Manifest, str]:
