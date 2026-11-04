@@ -755,6 +755,7 @@ class LocalWiring:
                         stores.of(ProcessVersion),
                         stores.provenance_store,
                         stores.of(Request),
+                        stores.tenants,
                     ),
                     traces=stores.traces,
                     work=stores.work,

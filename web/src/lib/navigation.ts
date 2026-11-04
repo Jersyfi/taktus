@@ -15,6 +15,7 @@ export type IconName =
 	| 'gallery'
 	| 'streams'
 	| 'levels'
+	| 'stages'
 	| 'findings'
 	| 'trials'
 	| 'acts'
@@ -51,6 +52,7 @@ export const DESTINATIONS: Destination[] = [
 	{ id: 'gallery', label: 'Gallery', href: '#/gallery', band: 'start', icon: 'gallery', routes: ['/gallery'] },
 	{ id: 'streams', label: 'Streams', href: '#/streams', band: 'start', icon: 'streams', routes: ['/streams'] },
 	{ id: 'autonomy', label: 'Levels', href: '#/autonomy', band: 'steer', icon: 'levels', routes: ['/autonomy'] },
+	{ id: 'introduction', label: 'Introduction', href: '#/introduction', band: 'steer', icon: 'stages', routes: ['/introduction'] },
 	{ id: 'findings', label: 'Findings', href: '#/findings', band: 'steer', icon: 'findings', routes: ['/findings'] },
 	{ id: 'trials', label: 'Trials', href: '#/trials', band: 'steer', icon: 'trials', routes: ['/trials'] },
 	{ id: 'register', label: 'What acts', href: '#/register', band: 'steer', icon: 'acts', routes: ['/register'] },

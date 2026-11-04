@@ -102,12 +102,21 @@ transition of the frame runs. The glyphs keep their still marks as before (ADR-0
 - The look of every page changes; what each page says and draws does not.
 - `web/README.md` names the design files.
 
+## Amendment — the faces are shipped with the app (2026-11-04)
+
+The page now carries IBM Plex itself. `web/static/fonts/` holds the woff2 files of IBM Plex Sans
+(variable, 100 to 700), Sans Condensed (600, 700) and Mono (400, 600), each in the Latin and Latin
+Extended subsets, and `plex.css`, which declares them; `src/app.html` links it relative to the
+page. They are served from the instance's own origin: no page contacts a font host, and no package
+enters the lock file. The files are Fontsource's 5.3.0 builds, under the SIL Open Font License
+1.1, whose text with IBM's copyright is `web/static/fonts/OFL.txt`. They are copied, not
+installed: a newer cut reaches Taktus only when the files are copied again.
+
 ## Where this promise ends
 
-- **The faces are named, not shipped.** The web app names IBM Plex first in each stack and falls
-  back to the system's own sans-serif and monospace faces. It does not ship the font files: they
-  would be a new package in the lock file, and a page an instance serves contacts no foreign host
-  for a font. Where IBM Plex is not installed, the page is set in the system's face.
+- **The faces ship in two subsets.** Latin and Latin Extended of IBM Plex Sans, Sans Condensed
+  and Mono are served with the app (amendment below). A script outside them — Arabic, Hebrew,
+  Devanagari, Thai, Chinese — is set in the system's face unless the reader's system has Plex.
 - **Hubtask's components are not taken.** Only its foundations are. Its Svelte components belong
   to a different shell and router, and Taktus draws its own levels (ADR-0063).
 - **A copy, not a link.** A change in Hubtask reaches Taktus only when its file is copied again.

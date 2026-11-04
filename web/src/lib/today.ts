@@ -22,3 +22,11 @@ export function nothingWaits(kinds: string[]): string | null {
 	const list = named.length === 1 ? named[0] : `${named.slice(0, -1).join(', ')} or ${named.at(-1)}`;
 	return `No ${list} waits for you.`;
 }
+
+/** How an area of the overview is headed: by the name the surface hands, and only as a detail by
+ * the identifier Taktus generated. An area the surface names only by its identifier is headed
+ * in words, never by the raw identifier. */
+export function areaTitle(area: { id: string; name: string }): { title: string; detail: string | null } {
+	if (area.name && area.name !== area.id) return { title: area.name, detail: area.id };
+	return { title: 'Your organisation', detail: area.id };
+}

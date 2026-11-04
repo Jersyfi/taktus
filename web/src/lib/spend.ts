@@ -126,6 +126,39 @@ export interface Offer {
 	since?: string | null;
 }
 
+/** A case a person names for a trial (`POST /trials`, `cases`): a process of the tenant and the
+ * inputs of one run. */
+export interface NamedCase {
+	process: string;
+	inputs: Record<string, unknown>;
+}
+
+/** The most cases a person may name for one trial, as the surface holds it. */
+export const MAX_NAMED = 50;
+
+/** The cases a person typed, read: every row with a process, its inputs a JSON object. A row
+ * whose inputs are not one says which, before anything is sent. */
+export function namedCases(
+	rows: { process: string; inputs: string }[]
+): { ok: true; cases: NamedCase[] } | { ok: false; problem: string } {
+	const cases: NamedCase[] = [];
+	for (const [i, row] of rows.entries()) {
+		const process = row.process.trim();
+		if (!process) return { ok: false, problem: `Case ${i + 1} names no process.` };
+		let inputs: unknown;
+		try {
+			inputs = JSON.parse(row.inputs.trim() || '{}');
+		} catch {
+			return { ok: false, problem: `The inputs of case ${i + 1} are not JSON.` };
+		}
+		if (typeof inputs !== 'object' || inputs === null || Array.isArray(inputs))
+			return { ok: false, problem: `The inputs of case ${i + 1} are not a JSON object.` };
+		cases.push({ process, inputs: inputs as Record<string, unknown> });
+	}
+	if (cases.length > MAX_NAMED) return { ok: false, problem: `At most ${MAX_NAMED} cases.` };
+	return { ok: true, cases };
+}
+
 /** `GET /trials`. */
 export interface Trials {
 	trials: Trial[];

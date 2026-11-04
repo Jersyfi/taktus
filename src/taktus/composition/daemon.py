@@ -667,6 +667,7 @@ async def wire(
                     PostgresRepository(persistence, ProcessVersion),
                     provenance_store,
                     PostgresRepository(persistence, Request),
+                    PostgresTenantStore(persistence),
                 )
             )
             owner = owner_channel_wiring(

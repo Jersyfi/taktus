@@ -293,3 +293,13 @@ def test_every_process_is_drawn_as_its_cells_and_only_a_running_cell_moves() -> 
 def test_an_idle_body_draws_no_motion() -> None:
     level = overview_level(body(activity("r3", "invoices", "finished")))
     assert all(c.drawn.moving.motion is Motion.NONE for c in level.areas[0].processes[0].cells)
+
+
+def test_the_area_is_named_by_the_tenant_s_display_name_and_keeps_its_identifier() -> None:
+    """A reader reads the tenant's name; its generated identifier stays the area's id."""
+    named = overview_level(BUSY.model_copy(update={"tenant": "tnt_4f2a", "tenant_name": "Bakery"}))
+    (area,) = named.areas
+    assert (area.id, area.name) == ("tnt_4f2a", "Bakery")
+    assert area.text.startswith("Area Bakery:")
+    (unnamed,) = overview_level(BUSY).areas
+    assert unnamed.name == unnamed.id == "default"

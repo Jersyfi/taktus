@@ -572,13 +572,14 @@ def overview_level(facts: OverviewFacts) -> OverviewLevel:
     )
     working = sum(s.working for s in summaries)
     waiting = sum(s.waiting for s in summaries)
+    name = facts.tenant_name or facts.tenant
     area = AreaElement(
         id=facts.tenant,
-        name=facts.tenant,
+        name=name,
         working=working,
         waiting=waiting,
         processes=summaries,
-        text=f"Area {facts.tenant}: {_counted(len(summaries), 'process')}, "
+        text=f"Area {name}: {_counted(len(summaries), 'process')}, "
         f"{_counted(working, 'run')} working, {waiting} waiting.",
     )
     return OverviewLevel(areas=(area,), summary=_overview_summary(summaries, waiting))
