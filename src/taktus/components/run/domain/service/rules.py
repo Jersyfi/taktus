@@ -23,6 +23,8 @@ from taktus.components.run.domain.model.work import (
     Expectation,
     ExtractRule,
     FilterRule,
+    MatchRule,
+    MatchSide,
     ReadyRule,
     RoadmapRule,
     ScreenRule,
@@ -425,6 +427,125 @@ def filter_items(rule: FilterRule, items: Any, excluding: Any) -> dict[str, Any]
     if kept:
         result["first"] = kept[0]
     return result
+
+
+def match(rule: MatchRule, left: Any, right: Any) -> dict[str, Any]:
+    """The two lists matched entry by entry by their keys, every entry that is not a clean
+    match named (ADR-0199)."""
+    lefts, left_unkeyed = _keyed(rule.left, left, "left")
+    rights, right_unkeyed = _keyed(rule.right, right, "right")
+    unkeyed = [*left_unkeyed, *right_unkeyed]
+    duplicates: list[dict[str, Any]] = []
+    for side, keyed in (("left", lefts), ("right", rights)):
+        for key, entries in keyed.items():
+            if len(entries) > 1:
+                duplicates.append({"side": side, "key": list(key), "count": len(entries)})
+    doubled = {tuple(d["key"]) for d in duplicates}
+    matched = 0
+    left_only: list[Any] = []
+    differing: list[dict[str, Any]] = []
+    for key, entries in lefts.items():
+        if key in doubled:
+            continue
+        partners = rights.get(key)
+        if partners is None:
+            left_only.append(entries[0])
+            continue
+        fields = _differences(rule, entries[0], partners[0])
+        if fields:
+            differing.append(
+                {"key": list(key), "left": entries[0], "right": partners[0], "fields": fields}
+            )
+        else:
+            matched += 1
+    right_only = [
+        entries[0] for key, entries in rights.items() if key not in lefts and key not in doubled
+    ]
+    result: dict[str, Any] = {
+        "matched": matched,
+        "left_only": left_only,
+        "right_only": right_only,
+        "differing": differing,
+        "unkeyed": unkeyed,
+        "duplicates": duplicates,
+        "mismatches": len(left_only)
+        + len(right_only)
+        + len(differing)
+        + len(unkeyed)
+        + len(duplicates),
+    }
+    for kind in ("left_only", "right_only", "differing", "unkeyed", "duplicates"):
+        if result[kind]:
+            result["first"] = {"kind": kind, "entry": result[kind][0]}
+            break
+    return result
+
+
+def _keyed(
+    side: MatchSide, items: Any, name: str
+) -> tuple[dict[tuple[str, ...], list[dict[str, Any]]], list[dict[str, Any]]]:
+    """The side's entries by key, in the order they were read, and those without a key."""
+    if not isinstance(items, list | tuple):
+        raise RuleFailed(f"{name} is not a list: {_short(items)}")
+    keyed: dict[tuple[str, ...], list[dict[str, Any]]] = {}
+    unkeyed: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, Mapping):
+            raise RuleFailed(f"an item of {name} is not an object: {_short(item)}")
+        for entry in _entries(side, item, name):
+            try:
+                key = tuple(_text(select(entry, path)) for path in side.key)
+            except KeyError:
+                unkeyed.append({"side": name, "entry": entry})
+                continue
+            keyed.setdefault(key, []).append(entry)
+    return keyed, unkeyed
+
+
+def _entries(side: MatchSide, item: Mapping[str, Any], name: str) -> list[dict[str, Any]]:
+    if side.each is None:
+        return [dict(item)]
+    elements = item.get(side.each)
+    if not isinstance(elements, list | tuple):
+        raise RuleFailed(f"the field {side.each!r} of an item of {name} is not a list")
+    return [{**item, side.each: element} for element in elements]
+
+
+def _text(value: Any) -> str:
+    return value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+
+
+def _differences(
+    rule: MatchRule, left: Mapping[str, Any], right: Mapping[str, Any]
+) -> list[dict[str, Any]]:
+    differences: list[dict[str, Any]] = []
+    for compared in rule.compare:
+        found = []
+        for entry, path in ((left, compared.left), (right, compared.right)):
+            try:
+                found.append(select(entry, path))
+            except KeyError:
+                found.append(None)
+        if not _same(found[0], found[1]):
+            differences.append(
+                {
+                    "left": compared.left,
+                    "right": compared.right,
+                    "left_value": found[0],
+                    "right_value": found[1],
+                }
+            )
+    return differences
+
+
+def _same(left: Any, right: Any) -> bool:
+    """Equal values: two numbers in decimal arithmetic, a missing value equal to nothing."""
+    if left is None or right is None:
+        return False
+    numbers = _number(left), _number(right)
+    if numbers[0] is not None and numbers[1] is not None:
+        return numbers[0] == numbers[1]
+    return bool(left == right)
 
 
 def _within(rule: FilterRule, excluding: Any) -> list[str]:

@@ -878,6 +878,10 @@ def start_check_connector(tmp_path: Path) -> Iterator[StartConnector]:
 VENDOR = ROOT / "tests" / "conformance" / "vendor"
 VENDOR_TIME = ROOT / "tests" / "fakes" / "vendor_time_server.py"
 VENDOR_NOTES = ROOT / "tests" / "fakes" / "vendor_notes_server.py"
+ENTITLEMENTS = ROOT / "tests" / "fakes" / "entitlement_server.py"
+ENTITLEMENTS_MANIFEST = (
+    ROOT / "blueprints" / "software-operations" / "connectors" / "entitlements.manifest.json"
+)
 VENDOR_ACTIONS = "VENDOR_TOKEN"
 VENDOR_INTAKE = "VENDOR_INTAKE_SECRET"
 
@@ -902,8 +906,9 @@ def start_vendor_connector(tmp_path: Path) -> Iterator[StartConnector]:
 
     `server="time"` is the MCP project's reference time server, which admits anyone and only
     reads; `server="notes"` the stand-in with tools that write, which admits only the random
-    token the connector reads under `VENDOR_TOKEN`. `manifest` is a manifest file, or None for
-    a server served without one (with `capability`)."""
+    token the connector reads under `VENDOR_TOKEN`; `server="entitlements"` the stand-in of a
+    product's entitlements, which admits only the one under `ENTITLEMENTS_TOKEN` (ADR-0199).
+    `manifest` is a manifest file, or None for a server served without one (with `capability`)."""
     started: list[subprocess.Popen[bytes]] = []
 
     def start(
@@ -922,17 +927,17 @@ def start_vendor_connector(tmp_path: Path) -> Iterator[StartConnector]:
         token = "vtk-" + secrets.token_hex(12)
         name = f"{server}-{'manifest' if manifest else 'bare'}-{fault or 'honest'}-{admits[:5]}"
         name += "-intake" if intake else ""
-        values = {VENDOR_ACTIONS: token}
+        values = {"ENTITLEMENTS_TOKEN" if server == "entitlements" else VENDOR_ACTIONS: token}
         if intake:
             values[VENDOR_INTAKE] = "whsec_" + base64.b64encode(secrets.token_bytes(32)).decode()
         port = free_port()
         service_url = f"http://127.0.0.1:{port}"
         log = tmp_path / f"vendor-{name}.log"
         vendor_env = {**_clean_environment()}
-        if server == "notes" and admits != "anyone":
+        if server in ("notes", "entitlements") and admits != "anyone":
             admitted = token if admits == "the token" else "other-" + secrets.token_hex(12)
             vendor_env["FAKE_VENDOR_TOKENS"] = admitted
-        script = VENDOR_NOTES if server == "notes" else VENDOR_TIME
+        script = {"notes": VENDOR_NOTES, "entitlements": ENTITLEMENTS}.get(server, VENDOR_TIME)
         with log.open("wb") as handle:
             process = subprocess.Popen(  # noqa: S603 — a script of the gate, fixed arguments
                 [sys.executable, str(script), "--host", LAUNCH.fake_host, "--port", str(port)],

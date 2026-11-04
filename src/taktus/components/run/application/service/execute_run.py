@@ -208,6 +208,7 @@ from taktus.components.run.domain.model import (
     HumanWork,
     InvoiceRule,
     LlmWork,
+    MatchRule,
     Message,
     MessageRefused,
     MlWork,
@@ -4765,6 +4766,9 @@ class RunEngine:
         if isinstance(work, FilterRule):
             (items, excluding), read = await self._resolved(run, [work.items, work.excluding])
             return rules.filter_items(work, items, excluding), Trace(inputs=read), None, None
+        if isinstance(work, MatchRule):
+            (left, right), read = await self._resolved(run, [work.left.items, work.right.items])
+            return rules.match(work, left, right), Trace(inputs=read), None, None
         if isinstance(work, CommitTitleRule):
             (title, number, labels, files, proposal), read = await self._resolved(
                 run, [work.title, work.number, work.labels, work.files, work.proposal]

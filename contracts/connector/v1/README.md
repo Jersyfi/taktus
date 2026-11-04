@@ -503,6 +503,10 @@ points at the answer's flag that says the vendor recognised a repeat. With `none
 repeats the call on its own (§4). `marked` is not offered: it needs a lookup in the target
 before acting, which a connector cannot know for a server it did not write. `demand` defaults to
 two requests, the listing and the call; `summary` to the vendor's description of the tool.
+`subject` names the tool's argument that carries the subject of a case, such as a customer's
+identifier. Where every operation of a capability names one, the declaration names the
+capability `scoped` (§5, ADR-0130): a call that serves a case and names another subject in that
+argument is refused as `out_of_scope` before the vendor's server is asked (ADR-0199).
 
 The declaration names the manifest by the digest of its bytes, `wrapped.manifest`. A changed
 manifest is therefore another configuration, and a conformance pass taken under the old one no
