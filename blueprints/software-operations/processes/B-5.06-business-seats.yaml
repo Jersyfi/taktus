@@ -138,3 +138,58 @@ steps:
         key: [customer, product]
       compare:
         - { left: items.quantity, right: quantity }
+
+takeover:
+  sequence: >
+    The process runs once for one business customer, when the customer is new, its seats
+    change or its contract ends; the person who looks after business customers starts it with
+    the customer's identifier at the payment provider. The steps run in order: read the
+    customer's subscriptions at the payment provider, keep those still paid, read the
+    customer's entitlements in the product, and pair each paid product with its entitlement and
+    compare the seats. Every mismatch is red and goes to the role the tenant named. The process
+    changes nothing; the contract and the price stay with a person.
+  steps:
+    subscriptions:
+      system: the payment provider's dashboard
+      do: >
+        open the customer by the identifier the run was started with, and list every one of its
+        subscriptions with its status and, for each item, the product and the quantity of seats.
+        Make sure the list is complete
+      expertise: finding a customer's subscriptions in the payment provider's dashboard
+      credentials:
+        - parameter: PAYMENTS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Payment provider key of the
+            requesting identity described in CREDENTIALS.md; a person reading the dashboard
+            signs in with their own account that may read customers and subscriptions
+      done: every subscription of the customer is listed with its status, products and seats
+    paid:
+      system: the list of subscriptions
+      do: keep only the subscriptions whose status is active or trialing; strike out every other one
+      expertise: none
+      credentials: []
+      done: the list holds only the subscriptions still paid
+    entitlements:
+      system: the product's administration, where a customer's access is granted
+      do: >
+        open the same customer and list every entitlement it holds, with the product and the
+        number of seats granted. Make sure the list is complete
+      expertise: finding a customer's entitlements in the product's administration
+      credentials:
+        - parameter: ENTITLEMENTS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Product entitlements token of the
+            requesting identity described in CREDENTIALS.md; a person signs in with their own
+            account that may read entitlements
+      done: every entitlement of the customer is listed with its product and seats
+    match:
+      system: the two lists, side by side
+      do: >
+        pair every item of a paid subscription with the entitlement of the same product, and
+        compare the seats exactly. Write down every product paid and not granted, granted and
+        not paid, or granted with another number of seats than paid for, and count them. One
+        mismatch or more is red: report them to the role the tenant named, where a business
+        customer's seats are worked
+      expertise: none
+      credentials: []
+      done: the mismatches are written down and counted, and any mismatch has been reported

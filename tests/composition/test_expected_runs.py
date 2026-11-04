@@ -15,6 +15,7 @@ from fakes import FakeConnector, FakeIdentifiers, FakeWorker
 from fakes.connector import READ
 from fakes.identity import FixedTenants, directory
 from fakes.maturity import VERIFIED
+from fakes.takeover import instructed
 
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.adapters.driven.memory import (
@@ -146,7 +147,9 @@ class World:
     async def registered(self, document: dict[str, Any]) -> None:
         if await self.identity.directory.identity(TENANT, "idn_op") is None:
             await self.identity.directory.add(TENANT, "idn_op", (TENANT, "ops"))
-        await self.register.execute(RegisterProcessVersion(document, tenant=TENANT, by="idn_op"))
+        await self.register.execute(
+            RegisterProcessVersion(instructed(document), tenant=TENANT, by="idn_op")
+        )
 
     async def at(self, hour: int, minute: int = 0) -> None:
         """The scheduler's tick at the time: the triggers fire, a runner executes every run

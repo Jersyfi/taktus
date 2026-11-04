@@ -177,3 +177,89 @@ steps:
         name: { $input: deployment }
       credentials:
         - { name: WORKLOADS_TOKEN, injected_as: env }
+
+takeover:
+  sequence: >
+    A person who releases the backend starts the process when a release is published; the
+    release names the deployment, the container and the image, and the tenant gives the error
+    rate query and its limit. The steps run in order: set the new image on the deployment, wait
+    until the rollout is complete, wait thirty minutes more under load, read the backend's error
+    rate, and compare it with the limit. A rate at or above the limit makes the owner decide on a
+    rollback to the revision before. A rollout that does not complete within fifteen minutes goes
+    to the owner.
+  steps:
+    release:
+      system: the workload cluster, the deployment the run was started with
+      do: >
+        set the image of the named container of the deployment to the release's image, by
+        registry, name and tag or digest, exactly as the release names it. Use the cluster's own
+        command for setting a deployment's image, so that it rolls out a new revision.
+      expertise: releasing an image to a deployment in the cluster
+      credentials:
+        - parameter: WORKLOADS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Workload cluster token of the
+            requesting identity described in CREDENTIALS.md; a person working by hand uses their
+            own access to the cluster, which may release images to deployments of its namespace
+      done: the deployment names the release's image and a new revision is rolling out
+    rolled-out:
+      system: the workload cluster, the deployment's rollout status
+      do: >
+        watch the rollout until every wanted replica is updated and available; look again every
+        fifteen seconds or so. If it has not completed after fifteen minutes, stop here and hand
+        it to the owner.
+      expertise: reading a deployment's rollout status in the cluster
+      credentials:
+        - parameter: WORKLOADS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Workload cluster token of the
+            requesting identity described in CREDENTIALS.md; a person working by hand uses their
+            own access to the cluster, which may read deployments of its namespace
+      done: every wanted replica is updated and available, or the owner has the stalled rollout
+    watch:
+      system: none
+      do: >
+        wait thirty minutes after the rollout completed, so that the release carries real load.
+        Judge nothing meanwhile.
+      expertise: none
+      credentials: []
+      done: thirty minutes have passed since the rollout completed
+    read-rate:
+      system: the metrics store
+      do: >
+        run the tenant's query for the backend's error rate over the last thirty minutes, the
+        query the run was started with. Write down the number exactly as the store gives it.
+      expertise: running a query in the metrics store
+      credentials:
+        - parameter: METRICS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Metrics token of the requesting
+            identity described in CREDENTIALS.md; a person working by hand signs in to the
+            metrics store with their own account, which may run queries
+      done: the error rate is written down, or it is written down that the store gave no number
+    rise:
+      system: the number written down
+      do: >
+        compare the error rate with the limit the run was started with. It is a rise when the
+        rate is at or above the limit. A missing number is not a rise and is not read as zero;
+        write down that it is missing.
+      expertise: none
+      credentials: []
+      done: it is written down whether the rate is a rise
+    rollback:
+      system: the workload cluster, the deployment
+      do: >
+        only if the rate was a rise: put to the owner whether to roll the deployment back to the
+        revision before this release, naming the deployment, the image, the rate and the limit.
+        Only if the owner agrees, roll the deployment back to its previous revision with the
+        cluster's own rollback command, and watch that rollout complete.
+      expertise: rolling a deployment back to its previous revision in the cluster
+      credentials:
+        - parameter: WORKLOADS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Workload cluster token of the
+            requesting identity described in CREDENTIALS.md; a person working by hand uses their
+            own access to the cluster, which may roll back deployments of its namespace
+      done: >
+        there was no rise, or the owner's decision is recorded and, if the owner agreed, the
+        deployment runs the revision before the release

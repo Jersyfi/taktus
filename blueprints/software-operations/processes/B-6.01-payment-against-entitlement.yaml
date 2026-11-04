@@ -126,3 +126,50 @@ steps:
       right:
         items: { $from: entitlements, $select: output.entitlements }
         key: [customer, product]
+
+takeover:
+  sequence: >
+    The process runs every morning at half past five UTC, on its own schedule; whoever looks
+    after payments and access takes it over. The steps run in order: read every active
+    subscription at the payment provider, read every entitlement in force in the product, and
+    pair them by customer and product. Every entry that does not pair is a mismatch, red, and
+    goes at once to the role the tenant named. The process moves nothing: a refund stays with a
+    person, and one customer's mismatch is repaired by the process for a payment not unlocked.
+  steps:
+    payments:
+      system: the payment provider's dashboard, or its export of subscriptions
+      do: >
+        export every active subscription, with its customer and, for each item, the product.
+        Make sure the export is complete; a partial list would show false mismatches
+      expertise: exporting subscriptions from the payment provider's dashboard
+      credentials:
+        - parameter: PAYMENTS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Payment provider key of the
+            requesting identity described in CREDENTIALS.md; a person reading the dashboard
+            signs in with their own account that may read subscriptions
+      done: every active subscription is in the export with its customer and products
+    entitlements:
+      system: the product's administration, or its export of entitlements
+      do: >
+        export every entitlement in force, with its customer and product. Make sure the export
+        is complete; a partial list would show false mismatches
+      expertise: exporting entitlements from the product's administration
+      credentials:
+        - parameter: ENTITLEMENTS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Product entitlements token of the
+            requesting identity described in CREDENTIALS.md; a person signs in with their own
+            account that may read entitlements
+      done: every entitlement in force is in the export with its customer and product
+    match:
+      system: a spreadsheet, on the two exports
+      do: >
+        pair every item of an active subscription with the entitlement of the same customer and
+        product. Write down every item paid and not granted, every entitlement granted and not
+        paid, and every entry that cannot be paired with certainty, and count them. One mismatch
+        or more is red: report them at once to the role the tenant named, where a mismatch is
+        worked
+      expertise: matching two tables by two columns in a spreadsheet
+      credentials: []
+      done: the mismatches are written down and counted, and any mismatch has been reported

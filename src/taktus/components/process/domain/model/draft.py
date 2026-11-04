@@ -6,7 +6,8 @@ flows give it, the role its lane suggests and the condition its branch carries. 
 method chosen: each names the method kinds its kind of task suggests as `candidates`, and the
 draft names every question that must be answered before it can become a bundle. The person
 answers them by filling in the draft — `method`, `reason`, `rejected`, `exactness`, `checks`,
-`fallback`, `model`, `requires`, `expertise`, `work` — and `drafts.complete` turns the filled
+`fallback`, `model`, `requires`, `expertise`, `work`, and how a person does it by hand under
+`takeover` (ADR-0180) — and `drafts.complete` turns the filled
 draft into a bundle, which then goes the road every bundle goes (ADR-0168 §4).
 
 A draft is a document of its own, with `kind: draft`. It is never stored and never registered.
@@ -19,6 +20,7 @@ from typing import Any, Literal
 
 from pydantic import Field
 
+from taktus.components.process.domain.model.takeover import StepInstructions
 from taktus.shared.v1 import (
     Capability,
     Check,
@@ -64,6 +66,8 @@ class DraftStep(Value):
     requires: tuple[Capability, ...] | None = None
     expertise: tuple[Expertise, ...] | None = None
     work: Mapping[str, Any] | None = None
+    takeover: StepInstructions | None = None
+    """How a person does the step by hand: the takeover instructions' entry (ADR-0180)."""
 
 
 class DraftGateway(Value):
@@ -102,6 +106,8 @@ class Draft(Value):
     level: Literal[1, 2] = 1
     """The autonomy level the draft proposes to start at: a model's process starts as a
     discovered one does (UC-9.4)."""
+    sequence: str | None = None
+    """The process as a whole in a person's words: the takeover instructions' `sequence`."""
     questions: tuple[Question, ...] = ()
     not_imported: tuple[str, ...] = ()
     """What the model held that the draft does not carry, one line each."""

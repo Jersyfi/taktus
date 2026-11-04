@@ -128,3 +128,54 @@ steps:
         - { $from: ask-next, $select: output }
       all:
         - { field: outcome, equals: failed }
+
+# How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
+# every step the system to act in, what to do there, the expertise it needs, each credential by
+# its parameter and where an authorised person finds it, and how to tell that it is done.
+takeover:
+  sequence: >
+    The process runs every day at 05:30 UTC, and by hand after any change to the product's data
+    rules; whoever is responsible for the product's security starts it. The steps run in order:
+    as a stranger, ask the product for a record another account owns, then for the identifier
+    after one, and count the requests the product did not refuse. Each must be refused. One
+    record answered to a stranger is a security finding, reported at once to the role
+    responsible. The merge of a change to the rules stays with a person.
+  steps:
+    ask-other:
+      system: a terminal with an HTTP client, on the product's address
+      do: >
+        request the path of the record another account owns, the one the run was started with,
+        sending the stranger account's token as a bearer token and never a token of your own.
+        The request passes when the product refuses it with status 401, 403 or 404. Status 200,
+        any other status, or no answer is a failed check. Note the status and the verdict.
+      expertise: sending an HTTP request with a bearer token and reading its status
+      credentials:
+        - parameter: CHECK_STRANGER_TOKEN
+          where: >
+            the operator's secret store, under the parameter Check token of a stranger described
+            in CREDENTIALS.md: the token of the product account made only for this check, which
+            owns none of the records asked for
+      done: the verdict for the other account's record is noted, refused or not
+    ask-next:
+      system: a terminal with an HTTP client, on the product's address
+      do: >
+        request the path of the identifier after one the stranger may read, the one the run was
+        started with, in the same way and with the same token. It passes only when refused with
+        status 401, 403 or 404. Note the status and the verdict.
+      expertise: sending an HTTP request with a bearer token and reading its status
+      credentials:
+        - parameter: CHECK_STRANGER_TOKEN
+          where: >
+            the operator's secret store, under the parameter Check token of a stranger described
+            in CREDENTIALS.md: the token of the product account made only for this check, which
+            owns none of the records asked for
+      done: the verdict for the next identifier is noted, refused or not
+    admitted:
+      system: the two noted verdicts
+      do: >
+        count the requests that were not refused. None is fine. One or two are red: report at
+        once to the role responsible which path was answered to a stranger and with which
+        status, as a security finding.
+      expertise: the tenant's corridor for data rules
+      credentials: []
+      done: the count is written down, and every request not refused has been reported

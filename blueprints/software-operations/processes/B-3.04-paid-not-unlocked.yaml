@@ -167,3 +167,77 @@ steps:
         quantity: { $from: match, $select: first.entry.items.quantity }
       credentials:
         - { name: ENTITLEMENTS_TOKEN, injected_as: env }
+
+takeover:
+  sequence: >
+    The process runs once for one customer's request about a payment or about access they paid
+    for; the person who reads the request starts it with the customer's identifier at the
+    payment provider. The steps run in order: read the customer's subscriptions at the payment
+    provider, keep those still paid, read the customer's entitlements in the product, pair each
+    paid product with its entitlement and compare the seats, and grant the missing entitlement
+    when the case is clear. A clear case is exactly one mismatch, and it is a product paid for
+    and not unlocked. Every other mismatch goes to the owner with its cause. A refund always
+    stays with a person.
+  steps:
+    subscriptions:
+      system: the payment provider's dashboard
+      do: >
+        open the customer by the identifier the run was started with, and list every one of its
+        subscriptions with its status and, for each item, the product and the quantity. Make sure
+        the list is complete
+      expertise: finding a customer's subscriptions in the payment provider's dashboard
+      credentials:
+        - parameter: PAYMENTS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Payment provider key of the
+            requesting identity described in CREDENTIALS.md; a person reading the dashboard
+            signs in with their own account that may read customers and subscriptions
+      done: every subscription of the customer is listed with its status, products and quantities
+    paid:
+      system: the list of subscriptions
+      do: >
+        keep only the subscriptions whose status is active or trialing; strike out every other
+        one, such as cancelled, unpaid or past due
+      expertise: none
+      credentials: []
+      done: the list holds only the subscriptions still paid
+    entitlements:
+      system: the product's administration, where a customer's access is granted
+      do: >
+        open the same customer and list every entitlement it holds, with the product and the
+        number of seats. Make sure the list is complete
+      expertise: finding a customer's entitlements in the product's administration
+      credentials:
+        - parameter: ENTITLEMENTS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Product entitlements token of the
+            requesting identity described in CREDENTIALS.md; a person signs in to the
+            administration with their own account that may read entitlements
+      done: every entitlement of the customer is listed with its product and seats
+    match:
+      system: the two lists, side by side
+      do: >
+        pair every item of a paid subscription with the entitlement of the same product. Write
+        down each item that does not pair or differs, with its cause: paid and not unlocked (a
+        paid product with no entitlement), unlocked and not paid (an entitlement with no paid
+        product), or a different number of seats on the two sides. Count the mismatches
+      expertise: none
+      credentials: []
+      done: every mismatch is written down with its cause, and their number is counted
+    repair:
+      system: the product's administration
+      do: >
+        only when there is exactly one mismatch and it is a product paid for and not unlocked,
+        grant the customer the entitlement for that product with the number of seats paid for.
+        At level 2 the owner confirms the grant first. Grant nothing in any other case; hand
+        the case to the owner with the causes written down. Never refund
+      expertise: granting a customer an entitlement in the product's administration
+      credentials:
+        - parameter: ENTITLEMENTS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Product entitlements token of the
+            requesting identity described in CREDENTIALS.md; a person signs in with their own
+            account that may grant entitlements
+      done: >
+        the customer holds the entitlement with the seats paid for, or the case is with the
+        owner with its causes

@@ -25,7 +25,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p02-refinement
-version: "6"
+version: "7"
 name: P-02 Refinement
 autonomy:
   level: 3
@@ -234,3 +234,88 @@ steps:
         body: { $from: compose-comment }
       credentials:
         - { name: REPOSITORY_TOKEN, injected_as: env }
+
+takeover:
+  sequence: >
+    It runs whenever an issue is opened in the repository. By hand, the owner, or a person the
+    owner named, starts it when a new issue appears, for that one issue. The seven steps run in
+    order: read the issue, read its comments, stop if the sections were written before, find
+    the sections of the ready standard the issue lacks, write exactly those, put them into one
+    comment, and post it. If nothing is missing, the person stops and writes nothing. The issue
+    itself is never edited and the label ready is never added.
+  steps:
+    read-issue:
+      system: the repository hosting service
+      do: >
+        open the issue whose number the run was started with and read its title, its body and
+        its state; note whether it is a pull request
+      expertise: finding an issue by its number
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter REPOSITORY_TOKEN described in
+            CREDENTIALS.md; a person may instead use their own account on the repository hosting
+            service, if it may read issues
+      done: the issue's title, body and state are read
+    read-comments:
+      system: the repository hosting service
+      do: read every comment on the same issue, in order
+      expertise: none
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter REPOSITORY_TOKEN described in
+            CREDENTIALS.md; a person may instead use their own account, if it may read issues
+      done: every comment on the issue is read
+    admit:
+      system: the comments just read
+      do: >
+        look for a comment that contains "Written by Taktus, process P-02 Refinement"; if one is
+        there, stop: the sections were written before, and nothing is written twice
+      expertise: none
+      credentials: []
+      done: no such comment exists, or the process stopped here
+    missing:
+      system: the issue's body
+      do: >
+        note which of the three sections of the ready standard are missing or empty: "What must
+        be achieved", "How it is verified", "Where the boundary lies". If the issue is closed or
+        a pull request, stop. If none is missing, stop and write nothing
+      expertise: >
+        the ready standard of the backlog, in the repository's process document under Ready
+      credentials: []
+      done: the list of missing sections is noted, or the process stopped here
+    refine:
+      system: a text editor
+      do: >
+        write exactly the missing sections, in the order of the standard, each headed with
+        three hash signs, a space and its name, and no other section. What must be achieved
+        states the outcome, not the route. How it is verified states testable conditions as a
+        list. Where the boundary lies states what is not part of it. Use the issue's own words
+        and its discussion; invent no requirement
+      expertise: >
+        understanding the issue's subject well enough to say what done means for it, and
+        writing conditions a test can check
+      credentials: []
+      done: each missing section is written, opens with its heading and has text under it
+    compose-comment:
+      system: a text editor
+      do: >
+        put the sections into one comment and end it with the fixed footer: a line, then
+        "Written by Taktus, process P-02 Refinement, from the issue and its comments", saying
+        that a person adds the label ready once the sections are in the issue. Keep that footer
+        sentence, so that a later run finds the comment and writes nothing again
+      expertise: none
+      credentials: []
+      done: the comment holds the sections and the footer
+    write-sections:
+      system: the repository hosting service
+      do: >
+        post the comment on the issue; do not edit the issue and do not add the label ready
+      expertise: commenting on an issue
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter REPOSITORY_TOKEN described in
+            CREDENTIALS.md; a person may instead use their own account, if it may comment
+      done: the comment is on the issue, and the issue and its labels are unchanged

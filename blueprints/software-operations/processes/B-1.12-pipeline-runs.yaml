@@ -116,3 +116,59 @@ steps:
         - { field: age_minutes, at_least: 120 }
       order: age_minutes
       descending: true
+
+# How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
+# every step the system to act in, what to do there, the expertise it needs, each credential by
+# its parameter and where an authorised person finds it, and how to tell that it is done.
+takeover:
+  sequence: >
+    The process runs every hour; whoever looks after the business's pipelines starts it. The
+    steps run in order: list the pipeline runs still queued, then the runs in progress; keep
+    each queued run waiting for 30 minutes or more, because no runner took it, and each run in
+    progress for 120 minutes or more. The counts are judged by the tenant's corridor and named
+    in the daily report, each run with its link. Restarting or cancelling a run, the pool sizes
+    and the runner types stay with a person.
+  steps:
+    read-queued:
+      system: the repository hosting service, in the repository's pipeline runs
+      do: >
+        list every run whose status is queued, and note for each its link and the whole minutes
+        since it was created.
+      expertise: finding pipeline runs by status in the repository hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md; a person may instead sign in with
+            their own account that may read the repository's pipelines
+      done: every queued run is noted with its age in minutes
+    read-running:
+      system: the repository hosting service, in the repository's pipeline runs
+      do: >
+        list every run whose status is in progress, and note for each its link and the whole
+        minutes since it was created.
+      expertise: finding pipeline runs by status in the repository hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md; a person may instead sign in with
+            their own account that may read the repository's pipelines
+      done: every run in progress is noted with its age in minutes
+    queued-too-long:
+      system: the list of queued runs
+      do: >
+        keep the runs queued for 30 minutes or more and sort them by age, oldest first. Their
+        number is the count of runs queued too long.
+      expertise: none
+      credentials: []
+      done: the runs queued too long and their count are written down
+    running-too-long:
+      system: the list of runs in progress
+      do: >
+        keep the runs in progress for 120 minutes or more and sort them by age, oldest first.
+        Their number is the count of runs in progress too long. Name each kept run, with its
+        link, to the role that decides whether to restart or cancel it.
+      expertise: none
+      credentials: []
+      done: the runs in progress too long and their count are written down and passed on

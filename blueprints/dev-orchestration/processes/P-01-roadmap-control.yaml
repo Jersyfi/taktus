@@ -29,7 +29,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p01-roadmap-control
-version: "5"
+version: "6"
 name: P-01 Roadmap control
 autonomy:
   level: 3
@@ -253,3 +253,96 @@ steps:
         body: { $from: compose-report }
       credentials:
         - { name: REPOSITORY_TOKEN, injected_as: env }
+
+takeover:
+  sequence: >
+    It runs once a day, and again whenever a push to the base branch changes the roadmap. By
+    hand, the owner, or a person the owner named, starts it at the same moments. The seven steps
+    run in order: read the roadmap, read every open issue, read the directory of open records,
+    order the backlog, find where the roadmap and the issues disagree, write the report, and post
+    it as one comment on the issue labelled report. The person proposes and changes nothing: no
+    issue, label or milestone is changed, created or closed.
+  steps:
+    read-roadmap:
+      system: the repository hosting service, or a clone of the repository
+      do: >
+        open the roadmap file named when the run was started, on the base branch, read it in
+        full, and note the commit it was read at
+      expertise: reading a file and its commit on the base branch of a repository
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter REPOSITORY_TOKEN described in
+            CREDENTIALS.md; a person may instead use their own account on the repository hosting
+            service, if it may read files
+      done: the roadmap's text and the commit it was read at are noted
+    read-issues:
+      system: the repository hosting service
+      do: >
+        list every open issue, every page to the last, with its labels and its milestone; a
+        list that stopped short is not used, because an issue left out would be reported as
+        missing
+      expertise: filtering and paging the issue list of the repository hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter REPOSITORY_TOKEN described in
+            CREDENTIALS.md; a person may instead use their own account, if it may read issues
+      done: every open issue is listed with its labels and milestone, and the last page was read
+    read-open-records:
+      system: the repository hosting service, or a clone of the repository
+      do: >
+        list the files in the directory of open records named when the run was started, on the
+        base branch; each file is a decision or needs record that is still open
+      expertise: browsing a directory of a repository on its base branch
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter REPOSITORY_TOKEN described in
+            CREDENTIALS.md; a person may instead use their own account, if it may read files
+      done: the names of the files in that directory are listed
+    order:
+      system: the lists just made, or a clone of the repository with its toolchain
+      do: >
+        sort the issues as the backlog orders them: earliest milestone, then priority (high,
+        normal, low), then issue number; group them as claimed (labelled in-progress), ready and
+        not ready. Note every issue labelled ready whose content fails the ready standard, with
+        the reason; an open record named under "Blocked by" is not such a failure. In a clone,
+        the command make backlog prints the same order and the same failures
+      expertise: >
+        the ready standard of the backlog, in the repository's process document under Ready:
+        three sections, a component, a milestone, one priority label, the label ready, and
+        nothing open under "Blocked by"
+      credentials: []
+      done: the issues are in their order and every failing ready issue is noted with its reason
+    reconcile:
+      system: the roadmap's text and the issue list
+      do: >
+        for every item of every milestone in the roadmap, note it when it names no issue by its
+        number; for every open issue with a milestone, note it when no item of that milestone
+        names its number. Match by number only, never by the words of a title
+      expertise: reading the roadmap's milestones and items
+      credentials: []
+      done: both lists of disagreements are written down, or each is noted as none
+    compose-report:
+      system: a text editor
+      do: >
+        write the report under the fixed headings: Roadmap control with the roadmap file and the
+        commit; "Where the roadmap and the issues disagree" with the reconciliation; "Issues
+        labelled ready that fail the standard" with those failures; "The backlog in its order"
+        with the order. End it with a line that says it proposes and changes nothing
+      expertise: none
+      credentials: []
+      done: the report holds the three lists under their headings
+    write-report:
+      system: the repository hosting service
+      do: >
+        post the report as one comment on the issue whose number the run was started with, the
+        issue labelled report; change nothing else
+      expertise: commenting on an issue
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter REPOSITORY_TOKEN described in
+            CREDENTIALS.md; a person may instead use their own account, if it may comment
+      done: the comment is on the report issue, and no other issue, label or milestone changed

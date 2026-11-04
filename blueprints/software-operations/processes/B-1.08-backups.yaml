@@ -158,3 +158,66 @@ steps:
       order: values.0.value
       descending: true
       limit: 1
+
+# How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
+# every step the system to act in, what to do there, the expertise it needs, each credential by
+# its parameter and where an authorised person finds it, and how to tell that it is done.
+takeover:
+  sequence: >
+    The process runs every day at 06:00 UTC; whoever is responsible for the business's backups
+    starts it. The steps run in order: read the age of each job's last successful backup from
+    the metrics store and take the oldest, then read the age of each job's last restore drill
+    whose samples matched and take the oldest. A backup older than 26 hours is yellow and older
+    than 50 hours red; a drill older than 32 days is yellow and older than 40 days red, as the
+    bundle proposes for the tenant's corridor. A red value goes at once to the role responsible.
+    The drill itself is the drill job's, and a restore in an emergency stays with a person.
+  steps:
+    read-backups:
+      system: the business's metrics store, in its query view
+      do: >
+        run the backup query the run was started with, by default the time now minus each job's
+        last successful backup, in seconds. Export the answer as a table with one row per job
+        and its age exactly as the store gives it. Make sure the store answered every series.
+      expertise: running a query in the metrics store's query language and reading its series
+      credentials:
+        - parameter: METRICS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Metrics token of the requesting
+            identity described in CREDENTIALS.md; a person may instead sign in to the store
+            with their own account that may read it
+      done: the table holds every backup job with the age of its last success
+    oldest-backup:
+      system: a spreadsheet, on the exported table of backups
+      do: >
+        leave out every row whose value is not a number or is below zero; never read a missing
+        value as zero. Sort by age, largest first, and take the first: that job's backup is the
+        oldest. Compare its age with 93600 seconds, 26 hours, for yellow and 180000 seconds,
+        50 hours, for red.
+      expertise: sorting a table and converting seconds into hours
+      credentials: []
+      done: the job with the oldest backup and its age are written down and judged
+    read-drills:
+      system: the business's metrics store, in its query view
+      do: >
+        after the backups, run the drill query the run was started with, by default the time
+        now minus each job's last restore drill whose samples matched, in seconds. Export the
+        answer as a table with one row per job and its age exactly as the store gives it. Make
+        sure the store answered every series.
+      expertise: running a query in the metrics store's query language and reading its series
+      credentials:
+        - parameter: METRICS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Metrics token of the requesting
+            identity described in CREDENTIALS.md; a person may instead sign in to the store
+            with their own account that may read it
+      done: the table holds every drill job with the age of its last matching drill
+    oldest-drill:
+      system: a spreadsheet, on the exported table of drills
+      do: >
+        leave out every row whose value is not a number or is below zero; never read a missing
+        value as zero. Sort by age, largest first, and take the first: that job's drill is the
+        oldest. Compare its age with 2764800 seconds, 32 days, for yellow and 3456000 seconds,
+        40 days, for red. Report a red backup or drill at once to the role responsible.
+      expertise: sorting a table and converting seconds into days
+      credentials: []
+      done: the job with the oldest drill and its age are written down, and any red value reported

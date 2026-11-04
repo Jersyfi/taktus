@@ -200,3 +200,89 @@ steps:
         body: { $from: compose }
       credentials:
         - { name: REPOSITORY_TOKEN, injected_as: env }
+
+# How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
+# every step the system to act in, what to do there, the expertise it needs, each credential by
+# its parameter and where an authorised person finds it, and how to tell that it is done.
+takeover:
+  sequence: >
+    The process runs every morning at 07:00 UTC; whoever keeps the business's deadlines starts
+    it. The steps run in order: read the calendar of deadlines for the lead time, by default the
+    next 30 days, read the repository's open issues, pick the deadline due first that is not
+    filed yet, write the issue's title and text, and open the issue once a person confirmed it.
+    One issue per run; the next run takes the next deadline. Acting on the deadline itself, a
+    tax return, a notice or a renewal, stays with a person.
+  steps:
+    read-calendar:
+      system: the business's calendar of deadlines, on its calendar server
+      do: >
+        open the calendar at the path the run was started with and list its entries of the next
+        days, as many as the lead time the run was started with: events by their start and
+        to-dos by their due date, a repeating entry once for each time it falls in that range.
+        For each, note its summary, its moment in UTC, whether it is an event or a to-do, its
+        categories, how it repeats, its identifier in the calendar and its description. Its key
+        is the identifier, an at sign and the moment. An entry whose repetition or time zone
+        cannot be read with certainty is not filed; note it apart for a person to look at.
+      expertise: reading calendar entries, their repetition rules and time zones
+      credentials:
+        - parameter: CALENDAR_TOKEN
+          where: >
+            the operator's secret store, under the parameter Calendar token of the requesting
+            identity described in CREDENTIALS.md; a person may instead sign in to the calendar
+            with their own account that may read it
+      done: every entry within the lead time is noted, and every unreadable one set apart
+    read-filed:
+      system: the repository hosting service, in the repository's issue list
+      do: >
+        list every open issue and keep their texts at hand, so that a deadline already filed is
+        recognised. Make sure every page of the list was read.
+      expertise: searching issues in the repository hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md; a person may instead sign in with
+            their own account that may read the repository's issues
+      done: every open issue has been read
+    select:
+      system: the two lists noted before
+      do: >
+        leave out every entry whose mark, the word deadline and a colon followed by the entry's
+        key, already stands in the text of an open issue. Of the rest, take the one due first.
+        If none is left, the process ends here.
+      expertise: none beyond reading the two lists
+      credentials: []
+      done: one deadline is selected, or it is clear that none is to be filed
+    title:
+      system: a text editor
+      do: >
+        only when a deadline was selected, write the title: the word Deadline, its moment, a
+        colon and its summary.
+      expertise: none
+      credentials: []
+      done: the title is written
+    compose:
+      system: a text editor
+      do: >
+        only when a deadline was selected, write the issue's text: that a deadline from the
+        business's calendar falls within its lead time, with its summary; when it is due in
+        UTC, its kind and categories, how it repeats and its identifier in the calendar; its
+        description; and that the issue was filed once a person confirmed it and acting on the
+        deadline stays with a person. End with the mark: deadline, a colon and the entry's key.
+      expertise: none
+      credentials: []
+      done: the issue's text is written and ends with the deadline's mark
+    file:
+      system: the repository hosting service, in the repository's issues
+      do: >
+        only when a deadline was selected and a person confirmed it, open a new issue with the
+        title and the text just written. Check first that no open issue carries the mark, so
+        that nothing is filed twice.
+      expertise: opening an issue in the repository hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md; a person may instead sign in with
+            their own account that may open issues in the repository
+      done: the issue is open with the deadline's mark, or no deadline was to be filed

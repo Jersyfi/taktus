@@ -55,8 +55,9 @@ a tenant's open deadlines, ordered by when they fall due, and shows and sets its
 holds (ADR-0138). `stage` declares a tenant's introduction in stages, shows each with its
 figures and what is missing, and opens one as a person (ADR-0137). `skill` registers, evaluates,
 approves and puts skills into production, and prints the skill part of a process's takeover
-instructions (ADR-0162). `agent` proposes a shared agent's core, sets its role profiles, calls
-it and draws it (ADR-0163). The others need
+instructions (ADR-0162). `takeover` shows a process's takeover instructions and records a trial
+of them by a person (ADR-0180). `agent` proposes a shared agent's core, sets its role profiles,
+calls it and draws it (ADR-0163). The others need
 services, which the composition root provides as the typer context object (see `wiring`); the
 console script `taktusctl` therefore starts in `taktus.composition.taktusctl`, and this module
 exposes the application for it.
@@ -109,6 +110,7 @@ from taktus.adapters.driving.cli import (
     stop_command,
     subject_command,
     submit_command,
+    takeover_command,
     tenant_command,
     trace_command,
     units_command,
@@ -166,6 +168,7 @@ app.add_typer(units_command.units, name="units")
 app.add_typer(deadline_command.deadline, name="deadline")
 app.add_typer(stop_command.stop, name="stop")
 app.add_typer(trace_command.trace, name="trace")
+app.add_typer(takeover_command.takeover, name="takeover")
 app.add_typer(stage_command.stage, name="stage")
 app.add_typer(skill_command.skill, name="skill")
 app.add_typer(agent_command.agent, name="agent")

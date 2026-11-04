@@ -16,6 +16,7 @@ from typing import Any
 import pytest
 from fakes import FakeClock
 from fakes.guarded import NoWholeReads
+from fakes.takeover import instructed
 
 from taktus.adapters.driven.memory import MemoryLedgerStore, MemoryPersistence, MemoryRepository
 from taktus.components.ledger.application.service import ChainedLedger
@@ -111,7 +112,7 @@ class World:
         self, document: dict[str, Any], approved_by: str | None = None
     ) -> ProcessVersion:
         return await self.register.execute(
-            RegisterProcessVersion(document, tenant=TENANT, approved_by=approved_by)
+            RegisterProcessVersion(instructed(document), tenant=TENANT, approved_by=approved_by)
         )
 
     async def ran(self, *ends: str) -> None:
@@ -339,18 +340,20 @@ def test_no_code_path_stores_a_version_but_the_one_that_asks_for_the_approval() 
 def test_an_action_level_above_the_processs_is_refused() -> None:
     above = {"shell.script": {"level": 3, "reason": "r", "toward_next": "t"}}
     with pytest.raises(InvalidProcess, match="above the process's 2"):
-        parse_bundle(bundle(2, actions=above))
+        parse_bundle(instructed(bundle(2, actions=above)))
 
 
 def test_an_action_no_step_uses_is_refused() -> None:
     unused = {"repository.issues.comment": {"level": 1, "reason": "r", "toward_next": "t"}}
     with pytest.raises(InvalidProcess, match="no step of this process uses"):
-        parse_bundle(bundle(2, actions=unused))
+        parse_bundle(instructed(bundle(2, actions=unused)))
 
 
 def test_an_action_carries_its_reason() -> None:
     with pytest.raises(InvalidProcess, match="reason"):
-        parse_bundle(bundle(3, actions={"shell.script": {"level": 2, "toward_next": "t"}}))
+        parse_bundle(
+            instructed(bundle(3, actions={"shell.script": {"level": 2, "toward_next": "t"}}))
+        )
 
 
 # --- a version that would administer the instance's own platform (ADR-0052, issue #83) ----------

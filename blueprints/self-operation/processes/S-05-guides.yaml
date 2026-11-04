@@ -26,7 +26,7 @@
 # `taktusctl guides publish` does the same by hand (README.md beside this directory).
 
 id: s05-guides
-version: "3"
+version: "4"
 name: S-05 Guides
 autonomy:
   level: 3
@@ -281,3 +281,111 @@ steps:
         withhold: { $from: measure, $select: output.withhold }
         responsible: { $input: responsible }
         reports: { $from: report-edits, $select: output.reports }
+
+# How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
+# every step the system to act in, what to do there, the expertise it needs, each credential by
+# its parameter and where an authorised person finds it, and how to tell that it is done. The
+# section "By hand" of README.md beside this directory says the same, with the commands.
+takeover:
+  sequence: >
+    The guides are brought up to date once a day, at midnight UTC; whoever looks after the
+    documentation starts it. The steps run in order: read the guides' manifest at the branch or
+    commit the guides are to say, list the files it takes parts from, read them all at that one
+    commit, render the pages, read what the knowledge system holds at the guides' place, compare
+    every page with what is held, write the pages that are absent or changed, send every page a
+    person edited by hand to whoever is responsible for the documentation, and write one line
+    with the counts.
+  steps:
+    read-manifest:
+      system: a checkout of the repository, or the repository hosting service
+      do: >
+        update the checkout and switch to the commit the guides are to say, detached from the
+        branch, then read the guides' manifest at the path the run was started with and note
+        the commit
+      expertise: fetching and switching commits with the version control tool
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md; a public repository needs none
+      done: the manifest is read and the full commit it was read at is noted
+    sources:
+      system: the manifest
+      do: list every file the manifest's pages take parts from
+      expertise: reading the manifest's format, which names each page's parts by file and section
+      credentials: []
+      done: the list of source files is complete
+    read-sources:
+      system: the checkout, at the noted commit
+      do: >
+        read every listed file at the noted commit, never from a working tree that may hold
+        other changes; the guides command of the instance's command-line tool reads them through
+        the version control tool at that one commit
+      expertise: reading a file at a given commit with the version control tool
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md; a public repository needs none
+      done: every listed file is read at the same commit
+    render:
+      system: a shell with the instance's command-line tool, in the checkout
+      do: >
+        run the guides check of the command-line tool; it renders every page and names any page
+        whose file or section is gone, or that would carry an address or a key. Fix the
+        repository first if it names one.
+      expertise: running a command in a shell; reading the check's findings
+      credentials: []
+      done: the check renders every page without a finding
+    read-held:
+      system: the knowledge system, the wiki or the directory the guides are published to
+      do: open the guides' place in the knowledge system and note the pages held at and below it
+      expertise: finding pages in the knowledge system
+      credentials:
+        - parameter: KNOWLEDGE_TOKEN
+          where: >
+            the operator's secret store, under the parameter Knowledge token of the requesting
+            identity described in CREDENTIALS.md; a directory needs none
+      done: the pages held at the guides' place are known
+    measure:
+      system: the rendered pages and the pages held
+      do: >
+        for every page, decide whether it is absent, current, changed, edited by a person, out
+        of date, foreign or retired; the guides publish command of the command-line tool, run
+        into a directory, makes the same comparison and writes only a page that holds exactly
+        what was last written there
+      expertise: telling a page a person edited from one only the repository changed
+      credentials: []
+      done: every page has one of the seven findings
+    publish:
+      system: the knowledge system
+      do: >
+        write every page found absent or changed, at its place; keep every page a person
+        edited. For a wiki whose connector is not there, copy each page the publish command
+        printed as created or updated from the directory into the wiki, at the same place.
+      expertise: editing pages in the knowledge system
+      credentials:
+        - parameter: KNOWLEDGE_TOKEN
+          where: >
+            the operator's secret store, under the parameter Knowledge token of the requesting
+            identity described in CREDENTIALS.md; a directory needs none
+      done: every absent or changed page is written, and no page a person edited is overwritten
+    report-edits:
+      system: the owner-facing channel, such as mail or chat
+      do: >
+        send each page that was kept because a person edited it, with its difference from the
+        repository, to whoever holds the role responsible for the documentation, asking for a
+        decision within the number of days the run was started with: does the edit become a
+        change to the repository, or does the page go back to the repository's text. Send one
+        edit once, however many days it is found again.
+      expertise: knowing who holds the role responsible for the documentation
+      credentials: []
+      done: every newly found edit has reached that person, or there was none
+    report:
+      system: the place the daily report is read
+      do: >
+        write one line: the commit, how many pages were created, updated, kept and withheld, and
+        how many edits were reported to the role responsible
+      expertise: none
+      credentials: []
+      done: the line is written

@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
+from fakes.takeover import instructed
 
 from taktus.adapters.driven.memory import MemoryRepository
 from taktus.components.process.application.service.register_version import (
@@ -61,14 +62,16 @@ def bundle(version: str, *, review: bool = False) -> dict[str, Any]:
             }
         )
         work["review"] = {"ask": "sign"}
-    return {
-        "id": "invoices",
-        "version": version,
-        "name": "Invoices",
-        "autonomy": {"level": 2, "reason": "a person confirms", "toward_next": "twenty runs"},
-        "steps": steps,
-        "work": work,
-    }
+    return instructed(
+        {
+            "id": "invoices",
+            "version": version,
+            "name": "Invoices",
+            "autonomy": {"level": 2, "reason": "a person confirms", "toward_next": "twenty runs"},
+            "steps": steps,
+            "work": work,
+        }
+    )
 
 
 async def register(given: Services, document: dict[str, Any], tenant: str = TENANT) -> None:

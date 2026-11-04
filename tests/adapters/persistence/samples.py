@@ -79,6 +79,7 @@ from taktus.components.process.domain.model import (
     ProcessVersion,
     Slo,
     StreamKind,
+    TakeoverTrial,
     Trigger,
     TriggerState,
     ValueStream,
@@ -869,6 +870,19 @@ def deadline(tenant: str = "t") -> Deadline:
         lead_at=AT + timedelta(hours=20),
         created_at=AT,
         lead_taken_at=AT + timedelta(hours=20, seconds=3),
+    )
+
+
+def takeover_trial(tenant: str = "t") -> TakeoverTrial:
+    """A failed trial of a version's takeover instructions, with what was missing (ADR-0180)."""
+    return TakeoverTrial(
+        id="tkt_1",
+        process_id="six-times-seven",
+        process_version="six-times-seven@3",
+        role="owner",
+        passed=False,
+        missing=("where the output is kept",),
+        at=AT,
     )
 
 

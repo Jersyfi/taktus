@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 from fakes import FakeClock
+from fakes.takeover import instructed
 from pydantic import ValidationError
 
 from taktus.adapters.driven.memory import MemoryLedgerStore, MemoryPersistence, MemoryRepository
@@ -71,13 +72,15 @@ def classify(**fallback: Any) -> dict[str, Any]:
 
 def bundle(*steps: dict[str, Any]) -> dict[str, Any]:
     cleaned = [{k: v for k, v in step.items() if v is not None} for step in steps]
-    return {
-        "id": "paid",
-        "version": "1",
-        "name": "paid",
-        "autonomy": {"level": 1, "reason": "a test", "toward_next": "nothing"},
-        "steps": cleaned,
-    }
+    return instructed(
+        {
+            "id": "paid",
+            "version": "1",
+            "name": "paid",
+            "autonomy": {"level": 1, "reason": "a test", "toward_next": "nothing"},
+            "steps": cleaned,
+        }
+    )
 
 
 async def test_without_a_structure_a_human_step_registers_without_a_role() -> None:

@@ -134,3 +134,56 @@ steps:
         - { $from: check-second, $select: output }
       all:
         - { field: outcome, equals: failed }
+
+takeover:
+  sequence: >
+    The process runs every five minutes, on its own schedule; whoever watches the back office
+    takes it over. The steps run in order: ask the back office's health path once, wait one
+    minute, ask it again, and count how many of the two checks failed. A check fails when the
+    answer is not status 200 or takes longer than the limit, 5000 milliseconds unless the run
+    names another. One failure is yellow and waits for the daily report; two failures in a row
+    are red, an outage, and are reported at once to the role the tenant named. Telling customers
+    about a long outage stays with a person.
+  steps:
+    check-first:
+      system: a shell or a browser, against the back office's address
+      do: >
+        request the health path the run was started with, by default the path /health, under
+        the back office's address, sending the check token as a bearer token. Note the status
+        and how long the answer took. The check failed if the status is not 200 or the answer
+        took longer than the limit
+      expertise: sending an HTTP request and reading its status and duration
+      credentials:
+        - parameter: CHECK_TOKEN
+          where: >
+            the operator's secret store, under the parameter Check token of the requesting
+            identity described in CREDENTIALS.md
+      done: the first check is noted as passed or failed, with its status and duration
+    pause:
+      system: none
+      do: wait one minute after the first check; nothing is judged meanwhile
+      expertise: none
+      credentials: []
+      done: one minute has passed since the first check
+    check-second:
+      system: a shell or a browser, against the back office's address
+      do: >
+        request the same health path again, the same way, and note the status and how long the
+        answer took; the check failed if the status is not 200 or the answer took longer than
+        the limit
+      expertise: sending an HTTP request and reading its status and duration
+      credentials:
+        - parameter: CHECK_TOKEN
+          where: >
+            the operator's secret store, under the parameter Check token of the requesting
+            identity described in CREDENTIALS.md
+      done: the second check is noted as passed or failed, with its status and duration
+    failures:
+      system: the two noted checks
+      do: >
+        count how many of the two checks failed. Zero is green. One is yellow: note it for the
+        daily report. Two is red: report the outage at once to the role the tenant named, where
+        an outage is worked
+      expertise: none
+      credentials: []
+      done: the count is written down, and a count of two has been reported as an outage

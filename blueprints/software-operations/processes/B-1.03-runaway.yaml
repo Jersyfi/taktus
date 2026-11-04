@@ -104,3 +104,45 @@ steps:
       order: values.0.value
       descending: true
       limit: 1
+
+# How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
+# every step the system to act in, what to do there, the expertise it needs, each credential by
+# its parameter and where an authorised person finds it, and how to tell that it is done.
+takeover:
+  sequence: >
+    The process runs every five minutes; whoever is on watch for the business's server
+    functions starts it. The steps run in order: run the tenant's query for the calls per second
+    of each function in the metrics store, then take the function called most. A rate far above
+    its usual level, such as a trigger reacting to its own writes or a storm of retries, is the
+    tenant's corridor to judge; a red value is an incident for the role responsible at once.
+    Throttling the function and changing its limit stay with a person.
+  steps:
+    read-rates:
+      system: the business's metrics store, in its query view
+      do: >
+        run the query the run was started with, by default the rate of calls per second of each
+        function over the last five minutes, summed by function. Export the answer as a table
+        with one row per function and its value exactly as the store gives it. Make sure the
+        store answered every series: a cut-off answer is not a complete reading.
+      expertise: running a query in the metrics store's query language and reading its series
+      credentials:
+        - parameter: METRICS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Metrics token of the requesting
+            identity described in CREDENTIALS.md; a person may instead sign in to the store
+            with their own account that may read it
+      done: the table holds every function the query answered, each with its call rate
+    busiest:
+      system: a spreadsheet, on the exported table, and the metrics store's history
+      do: >
+        leave out every row whose value is not a number or is below zero; never read a missing
+        value as zero. Sort the remaining rows by value, largest first, and take the first: that
+        function is called most. Note its name and rate. Compare the rate with the median of
+        earlier readings: above the tenant's yellow bound, three times the median as the bundle
+        proposes, it goes into the daily report; above the red bound, ten times, report it at
+        once to the role responsible as a possible runaway.
+      expertise: >
+        sorting a table, the usual call rates of the business's functions, and the tenant's
+        corridor for them
+      credentials: []
+      done: the busiest function and its rate are written down, and a red rate has been reported

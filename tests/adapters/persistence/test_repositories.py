@@ -43,6 +43,7 @@ from taktus.components.process.domain.model import (
     Evaluation,
     Process,
     ProcessVersion,
+    TakeoverTrial,
     TriggerState,
     ValueStream,
 )
@@ -92,6 +93,7 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (CaseAnswer, samples.case_answer),
     (Deadline, samples.deadline),
     (StagePlan, samples.stage_plan),
+    (TakeoverTrial, samples.takeover_trial),
     (ValueStream, samples.value_stream),
     (WorkingTime, samples.working_time),
     (AdapterStop, samples.adapter_stop),
