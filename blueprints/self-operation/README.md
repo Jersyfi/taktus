@@ -7,7 +7,7 @@ first process is the check of the product's own central claim.
 | Process | State | Bundle |
 |---|---|---|
 | **S-01 Removal test** — one integration is withheld, the processes that use it are exercised, the verdict is recorded | **runs** weekly | [`processes/S-01-removal-test.yaml`](processes/S-01-removal-test.yaml) |
-| S-02 Takeover test — a person runs a process by hand from its instructions | `0.5.0` | — |
+| S-02 Takeover test — a person runs a process by hand from its instructions | **a person's act**, recorded with `taktusctl takeover trial`; every bundle carries its instructions, and the automated test of the path is `tests/composition/test_takeover_test.py` (ADR-0180) | — by design: a trial is what a person did |
 | **S-03 Restore drill** — the newest backup restored without Taktus, into a server of its own, and every tenant's ledger chain verified against the heads taken before | **runs** weekly, from the chart (`backup.drill.enabled`), not from Taktus | — by design: see below |
 | S-04 Load measurement — how many concurrent runs one instance carries | `1.0.0` | — |
 | **S-05 Guides** — the administration guide and the guide for users, rendered from the repository and put into the knowledge system; a hand edit is kept and reported | **runs** daily | [`processes/S-05-guides.yaml`](processes/S-05-guides.yaml) |
