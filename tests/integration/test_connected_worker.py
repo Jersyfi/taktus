@@ -51,6 +51,7 @@ from taktus.components.run.application.service import (
 from taktus.components.run.domain.model import Run, RunState, StepState
 from taktus.components.run.domain.service import provenance
 from taktus.composition.local import LocalWiring
+from taktus.ports.configuration import ConfigurationError
 from taktus.ports.objectstore import ObjectStore
 from taktus.ports.worker import ComputeLimit, Limits, Worker
 from taktus.shared.v1 import (
@@ -308,3 +309,39 @@ async def test_the_removal_test_withholds_a_connected_worker_as_one_at_an_endpoi
     assert exercised["configuration"]["binding"] == "outbound", "taken under the binding"
     (process,) = exercised["processes"]
     assert process["withheld"]["at_step"] == "compute", "withheld, the step has no worker"
+
+
+def _connected_configuration(key_file: Path, **more: str) -> EnvironmentConfiguration:
+    key_file.write_text(KEY)
+    return EnvironmentConfiguration(
+        {
+            "TAKTUS_WORKERS": NAME,
+            f"TAKTUS_WORKER_{NAME.upper()}_EXECUTION": "connected",
+            f"TAKTUS_WORKER_{NAME.upper()}_CONNECT_KEY_FILE": str(key_file),
+            **more,
+        }
+    )
+
+
+async def test_a_command_against_the_instance_s_database_reaches_a_connected_worker(
+    tmp_path: Path, postgres_url: str
+) -> None:
+    """`taktusctl` on an instance with a connected worker: the relay is the database's, as the
+    daemon's is, so a command that registers a bundle or records a worker's conformance opens
+    its services instead of stopping at the worker."""
+    configuration = _connected_configuration(
+        tmp_path / "connect.key", TAKTUS_DATABASE_URL=postgres_url
+    )
+    async with LocalWiring(configuration).services(
+        state_dir=tmp_path / "state", worker_endpoint="http://unused"
+    ) as services:
+        assert services.queued
+
+
+async def test_without_a_database_no_relay_reaches_a_connected_worker(tmp_path: Path) -> None:
+    configuration = _connected_configuration(tmp_path / "connect.key")
+    with pytest.raises(ConfigurationError, match="only an instance with its database"):
+        async with LocalWiring(configuration).services(
+            state_dir=tmp_path / "state", worker_endpoint="http://unused"
+        ):
+            pass
