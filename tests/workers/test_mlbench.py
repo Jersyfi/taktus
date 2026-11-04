@@ -149,6 +149,18 @@ class QuietFiles(SimpleHTTPRequestHandler):
 
 @pytest.fixture
 def ml_bench(tmp_path: Path) -> Iterator[Bench]:
+    yield from bench_at(tmp_path)
+
+
+@pytest.fixture
+def generous_bench(tmp_path: Path) -> Iterator[Bench]:
+    """The bench estimating twice its expected demand. A run of many cases on a machine whose
+    cores run the rest of the suite measured a step 1 ms over the bare estimate and halted at
+    the limit, as it must; a test of what a move costs is not a test of that halt."""
+    yield from bench_at(tmp_path, "--estimate-factor", "2")
+
+
+def bench_at(tmp_path: Path, *options: str) -> Iterator[Bench]:
     served = tmp_path / "served"
     served.mkdir()
     server = ThreadingHTTPServer(
@@ -168,6 +180,7 @@ def ml_bench(tmp_path: Path) -> Iterator[Bench]:
                 str(tmp_path / "state"),
                 "--epoch-floor",
                 "0.15",
+                *options,
             ],
             stdout=handle,
             stderr=subprocess.STDOUT,
