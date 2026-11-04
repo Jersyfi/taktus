@@ -1,0 +1,160 @@
+# B-1.08 Backups — UC-03 §4.1: whether the business's backups ran, and whether its last restore
+# drill succeeded, read daily from its metrics store through the capability `metrics.series`;
+# a backup or a drill too old is judged against its corridor (UC-4.16, UC-6.13, ADR-0198).
+#
+# The business's backup job and its monthly restore drill report the moment of their last
+# success, as their scheduler is watched. The drill restores into a test environment and
+# compares samples; a drill whose samples differ reports no success, so its age grows. Two
+# queries are the tenant's, each answering an age in seconds per job, for example
+# `time() - backup_last_success_timestamp_seconds`. The rule `filter` takes the oldest of each;
+# a value the store could not give as a number is left out, never read as zero (`exact`).
+#
+# Two signals judge it, each a corridor of the tenant's with fixed thresholds in seconds:
+#
+#     uv run taktusctl signal configure backup.age --process b-1-08 \
+#         --step oldest-backup --select first.values.0.value --bounds fixed --direction above \
+#         --yellow 93600 --red 180000 --fresh 2d \
+#         --role <role> --case <where a backup is worked>
+#     uv run taktusctl signal configure backup.restore_drill_age --process b-1-08 \
+#         --step oldest-drill --select first.values.0.value --bounds fixed --direction above \
+#         --yellow 2764800 --red 3456000 --fresh 2d \
+#         --role <role> --case <where a backup is worked>
+#
+# A backup older than 26 hours is yellow, older than 50 red; a drill older than 32 days yellow,
+# older than 40 red.
+#
+# Not built here: the restore and the comparison of samples themselves, which are acts on the
+# business's systems with no generic interface; they are the drill job's. A restore in an
+# emergency stays with a person (UC-03 §4.1).
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-1.08-backups.yaml \
+#         --input 'backups=time() - backup_last_success_timestamp_seconds' \
+#         --input 'drills=time() - restore_drill_last_success_timestamp_seconds'
+#
+# Switching it off (`taktusctl deactivate --process b-1-08`) changes nothing at the store.
+
+id: b-1-08
+version: "1"
+name: B-1.08 Backups
+autonomy:
+  level: 1
+  reason: >
+    the process only reads the metrics store and takes the oldest backup and drill by a fixed
+    rule; nothing leaves the system, so at level 1 every step runs and none acts; a red value
+    reaches a person at once as an incident; it starts at level 1, observing, as UC-03 starts
+    every process at level 1 or 2 when its stage opens
+  toward_next: >
+    stage 1 of the tenant's plan open, and two months of runs whose findings a person checked
+    against the backups and found right; then Taktus proposes level 2, and level 3 after it,
+    its target in UC-03 (UC-7.1, UC-9.6)
+author: the repository
+reason: a backup that stopped or a restore drill that failed found the next morning without a person looking (UC-03 B-1.08)
+
+triggers:
+  - schedule: "0 6 * * *"
+    inputs:
+      backups: time() - backup_last_success_timestamp_seconds
+      drills: time() - restore_drill_last_success_timestamp_seconds
+
+inputs:
+  backups:
+    description: the tenant's query for the age of each job's last successful backup, in seconds
+    example: time() - backup_last_success_timestamp_seconds
+  drills:
+    description: >
+      the tenant's query for the age of each job's last restore drill whose samples matched, in
+      seconds
+    example: time() - restore_drill_last_success_timestamp_seconds
+
+limits:
+  quota: { units: 4 }
+
+steps:
+  - id: read-backups
+    method: rule
+    reason: the store's figures are read verbatim, each value as the store gave it
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving metrics.series is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: metrics.series.query
+      input:
+        query: { $input: backups }
+      credentials:
+        - { name: METRICS_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the store answered more series than were read" }
+
+  - id: oldest-backup
+    method: rule
+    reason: >
+      the oldest backup is a fixed ordering of the store's own figures; a value the store could
+      not give as a number is left out, never read as zero
+    rejected:
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the job whose last backup is oldest }
+    depends_on: [read-backups]
+    work:
+      rule: filter
+      items: { $from: read-backups, $select: output.series }
+      all:
+        - { field: values.0.value, at_least: 0 }
+      order: values.0.value
+      descending: true
+      limit: 1
+
+  - id: read-drills
+    method: rule
+    reason: >
+      the store's figures are read verbatim, each value as the store gave it; after the
+      backups, so that one run of the process is one graph and asks the store once at a time
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving metrics.series is unavailable
+      to: human
+      role: owner
+    depends_on: [read-backups]
+    work:
+      rule: connector
+      operation: metrics.series.query
+      input:
+        query: { $input: drills }
+      credentials:
+        - { name: METRICS_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the store answered more series than were read" }
+
+  - id: oldest-drill
+    method: rule
+    reason: >
+      the oldest successful restore drill is a fixed ordering of the store's own figures; a
+      value the store could not give as a number is left out, never read as zero
+    rejected:
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the job whose last restore drill is oldest }
+    depends_on: [read-drills]
+    work:
+      rule: filter
+      items: { $from: read-drills, $select: output.series }
+      all:
+        - { field: values.0.value, at_least: 0 }
+      order: values.0.value
+      descending: true
+      limit: 1

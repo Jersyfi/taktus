@@ -29,7 +29,9 @@ import yaml
 from fakes import (
     FakeIdentifiers,
     FakeWorker,
+    calendar_service,
     error_tracking_service,
+    expiry_service,
     mail_service,
     metrics_service,
     payment_service,
@@ -40,6 +42,10 @@ from fakes.identity import FixedTenants
 from fakes.maturity import VERIFIED
 from fakes.model import FakeModel
 from fakes.owner_channel import OWNER, TENANT, owner_channel, people
+from taktus_connectors.calendar.operations import Config as CalendarConfig
+from taktus_connectors.calendar.server import build_server as calendar_server
+from taktus_connectors.expiry.operations import Config as ExpiryConfig
+from taktus_connectors.expiry.server import build_server as expiry_server
 from taktus_connectors.github.server import Config as RepositoryConfig
 from taktus_connectors.github.server import build_server as repository_server
 from taktus_connectors.httpcheck.operations import Config as CheckConfig
@@ -116,12 +122,17 @@ CREDENTIALS = (
     "REPOSITORY_TOKEN",
     "ERRORS_TOKEN",
     "CHECK_TOKEN",
+    "CHECK_STRANGER_TOKEN",
     "METRICS_TOKEN",
     "MAIL_PASSWORD",
     "PAYMENTS_TOKEN",
     "ENTITLEMENTS_TOKEN",
+    "EXPIRY_TOKEN",
+    "CALENDAR_TOKEN",
 )
 MAILBOX = "support@mail.example"
+STRANGER = "stranger-" + secrets.token_hex(12)
+"""The value of `CHECK_STRANGER_TOKEN`: another account's than every other credential's."""
 
 
 def bundle(name: str) -> dict[str, Any]:
@@ -141,12 +152,20 @@ class Outside:
     metrics: str
     payments: str
     mail: mail_service.Running
+    rdap: str
+    calendar: str
+    tls: expiry_service.TlsEndpoint
     product: entitlements.State = field(default_factory=entitlements.State)
 
     def submitted(self) -> int:
         """How many messages were submitted for sending."""
         state = httpx.get(f"http://127.0.0.1:{self.mail.http_port}/_fake/state", timeout=5)
         return int(state.json()["submitted"])
+
+    def service_tokens(self) -> list[str]:
+        """The bearer tokens the checked service saw, in order."""
+        state = httpx.get(f"{self.metrics}/_fake/state", timeout=5)
+        return list(state.json()["seen_tokens"])
 
     def send(self, method: str, path: str, body: dict[str, Any] | None = None) -> Any:
         answer = httpx.request(
@@ -168,17 +187,21 @@ class Outside:
 def outside(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Outside]:
     for name in CREDENTIALS:
         path = tmp_path / name
-        path.write_text(TOKEN, encoding="utf-8")
+        path.write_text(STRANGER if name == "CHECK_STRANGER_TOKEN" else TOKEN, encoding="utf-8")
         monkeypatch.setenv(f"TAKTUS_CREDENTIAL_{name}_FILE", str(path))
     servers = [
         repository_service.make_server("127.0.0.1", 0, {TOKEN: "write"}),
         error_tracking_service.make_server("127.0.0.1", 0, {TOKEN}),
         metrics_service.make_server("127.0.0.1", 0, {TOKEN}),
         payment_service.make_server("127.0.0.1", 0, {TOKEN}),
+        expiry_service.make_server("127.0.0.1", 0, {TOKEN}),
+        calendar_service.make_server("127.0.0.1", 0, {TOKEN}),
     ]
-    urls = [_serving(s) for s in servers]
+    repository, errors, metrics, payments, rdap, calendar = [_serving(s) for s in servers]
     mail = mail_service.start("127.0.0.1", {MAILBOX: TOKEN})
-    yield Outside(*urls, mail)
+    tls = expiry_service.tls_endpoint(12)
+    yield Outside(repository, errors, metrics, payments, mail, rdap, calendar, tls)
+    tls.stop()
     mail.stop()
     for server in servers:
         server.shutdown()
@@ -271,6 +294,23 @@ class World:
                         )
                     )
                 ),
+            ),
+            (
+                "connector.expiry",
+                served(
+                    expiry_server(
+                        ExpiryConfig(
+                            frozenset({("127.0.0.1", outside.tls.port)}),
+                            outside.rdap,
+                            outside.tls.ca_file,
+                            timeout=5.0,
+                        )
+                    )
+                ),
+            ),
+            (
+                "connector.calendar",
+                served(calendar_server(CalendarConfig(outside.calendar, timeout=5.0))),
             ),
             (
                 "connector.mail",
@@ -629,6 +669,165 @@ async def test_b_1_04_takes_the_function_with_the_highest_rate_as_the_store_gave
     assert worst["count"] == 1 and worst["first"]["values"][0]["value"] == 1
     (judged,) = (await w.signals.watch.look(TENANT)).judged
     assert judged.level is Level.RED
+
+
+@pytest.mark.parametrize(
+    ("name", "inputs", "step", "label", "value", "corridor", "level"),
+    [
+        # The fake's run times: export 4.2, login 0.3, resize NaN, which is left out.
+        ("B-1.02-run-times.yaml", {"query": "function_duration_seconds"}, "slowest",
+         ("function", "export"), 4.2, ("cost.function_run_time", 2, 4), Level.RED),
+        ("B-1.03-runaway.yaml", {"query": "function_calls_per_second"}, "busiest",
+         ("function", "sync"), 180, ("load.function_calls", 50, 100), Level.RED),
+        ("B-2.03-quotas.yaml", {"query": "quota_used_ratio"}, "fullest",
+         ("service", "payments"), 0.91, ("cost.quota_used", 0.8, 0.95), Level.YELLOW),
+    ],
+)  # fmt: skip
+async def test_a_figure_watcher_takes_the_highest_value_as_the_store_gave_it_and_is_judged(
+    outside: Outside,
+    name: str,
+    inputs: dict[str, str],
+    step: str,
+    label: tuple[str, str],
+    value: float,
+    corridor: tuple[str, float, float],
+    level: Level,
+) -> None:
+    w = await World(outside).ready()
+    version = await w.registered(name)
+    signal, yellow, red = corridor
+    await w.corridor(
+        signal,
+        version.process_id,
+        step=step,
+        select="first.values.0.value",
+        bounds="fixed",
+        direction="above",
+        yellow=yellow,
+        red=red,
+    )
+    run = await w.start(version, **inputs)
+    assert run.state is RunState.FINISHED, [(s.step_id, s.reason) for s in run.step_runs]
+    selected = await w.result(run, step)
+    assert selected["count"] == 1
+    assert selected["first"]["labels"][label[0]] == label[1]
+    assert selected["first"]["values"][0]["value"] == value
+    (judged,) = (await w.signals.watch.look(TENANT)).judged
+    assert judged.level is level
+
+
+async def test_b_1_08_judges_the_oldest_backup_and_the_oldest_restore_drill_each_by_its_corridor(
+    outside: Outside,
+) -> None:
+    w = await World(outside).ready()
+    version = await w.registered("B-1.08-backups.yaml")
+    for signal, step, yellow, red in (
+        ("backup.age", "oldest-backup", 93600, 180000),
+        ("backup.restore_drill_age", "oldest-drill", 2764800, 3456000),
+    ):
+        await w.corridor(
+            signal,
+            version.process_id,
+            step=step,
+            select="first.values.0.value",
+            bounds="fixed",
+            direction="above",
+            yellow=yellow,
+            red=red,
+        )
+    run = await w.start(version, backups="backup_age_seconds", drills="restore_drill_age_seconds")
+    assert run.state is RunState.FINISHED, [(s.step_id, s.reason) for s in run.step_runs]
+    backup = (await w.result(run, "oldest-backup"))["first"]
+    drill = (await w.result(run, "oldest-drill"))["first"]
+    assert (backup["labels"]["job"], backup["values"][0]["value"]) == ("files", 7200)
+    assert (drill["labels"]["job"], drill["values"][0]["value"]) == ("database", 2851200)
+    judged = {j.signal: j.level for j in (await w.signals.watch.look(TENANT)).judged}
+    assert judged == {"backup.age": Level.NORMAL, "backup.restore_drill_age": Level.YELLOW}
+
+
+async def test_b_1_07_a_record_refused_to_a_stranger_is_normal_and_one_answered_is_an_incident(
+    outside: Outside,
+) -> None:
+    w = await World(outside).ready()
+    version = await w.registered("B-1.07-database-rules.yaml")
+    await w.corridor(
+        "security.data_rules",
+        version.process_id,
+        step="admitted",
+        select="count",
+        bounds="fixed",
+        direction="above",
+        yellow=0.25,
+        red=0.5,
+    )
+    run = await w.start(version, other="/records/1002", next="/records/1003")
+    assert run.state is RunState.FINISHED, [(s.step_id, s.reason) for s in run.step_runs]
+    assert (await w.result(run, "admitted"))["count"] == 0
+    seen = outside.service_tokens()
+    assert seen[-2:] == [STRANGER, STRANGER], "the stranger's token, not the identity's own"
+    (judged,) = (await w.signals.watch.look(TENANT)).judged
+    assert judged.level is Level.NORMAL
+
+    leaky = await w.start(version, other="/leaky/1002", next="/records/1003")
+    assert (await w.result(leaky, "admitted"))["count"] == 1
+    looked = await w.signals.watch.look(TENANT)
+    (judged,) = looked.judged
+    assert judged.level is Level.RED and judged.run_id == leaky.id
+    assert len(looked.incidents) == 1
+
+
+async def test_b_1_09_takes_what_expires_first_of_a_certificate_and_a_domain(
+    outside: Outside,
+) -> None:
+    w = await World(outside).ready()
+    version = await w.registered("B-1.09-expiry.yaml")
+    await w.corridor(
+        "expiry.days_left",
+        version.process_id,
+        step="soonest",
+        select="first.days_left",
+        bounds="fixed",
+        direction="below",
+        yellow=30,
+        red=7,
+    )
+    # The fake's certificate expires in 12 days, the domain in 25.
+    run = await w.start(
+        version, host="127.0.0.1", port=outside.tls.port, domain="example-product.test"
+    )
+    assert run.state is RunState.FINISHED, [(s.step_id, s.reason) for s in run.step_runs]
+    soonest = (await w.result(run, "soonest"))["first"]
+    assert soonest["key"].startswith(f"certificate:127.0.0.1:{outside.tls.port}:")
+    assert soonest["days_left"] in (11, 12) and soonest["trusted"] is True
+    domain = await w.result(run, "read-domain")
+    assert domain["output"]["days_left"] in (24, 25)
+    (judged,) = (await w.signals.watch.look(TENANT)).judged
+    assert judged.level is Level.YELLOW
+
+
+async def test_b_10_01_files_each_deadline_within_its_lead_time_once_a_person_confirmed_it(
+    outside: Outside,
+) -> None:
+    w = await World(outside).ready()
+    version = await w.registered("B-10.01-deadlines.yaml")
+    before = len(outside.issues())
+    inputs = {"calendar": "/calendars/upcoming.ics", "lead": 30}
+    run = await w.start(version, **inputs)
+    assert run.state is RunState.WAITING_HUMAN, "at level 2 nothing is filed before a person"
+    assert len(outside.issues()) == before
+    run = await w.confirmed(run)
+    assert run.state is RunState.FINISHED, [(s.step_id, s.reason) for s in run.step_runs]
+    # The fake's calendar from today: insurance in 10 days, a notice due in 20, a licence in 60.
+    [filed] = outside.issues()[: len(outside.issues()) - before]
+    assert filed["title"].startswith("Deadline ") and filed["title"].endswith(": Insurance renews")
+    assert "deadline:insurance@upcoming.example@" in filed["body"]
+
+    second = await w.confirmed(await w.start(version, **inputs))
+    assert (await w.result(second, "select"))["first"]["uid"] == "supplier-notice@upcoming.example"
+    third = await w.confirmed(await w.start(version, **inputs))
+    assert third.state is RunState.FINISHED
+    assert (await w.result(third, "select"))["count"] == 0, "each filed once, the licence later"
+    assert len(outside.issues()) == before + 2
 
 
 # --- stage 2: B-3.02 Drafting a reply -----------------------------------------------------------
