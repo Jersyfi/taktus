@@ -136,6 +136,19 @@ async def test_the_web_app_is_served_under_the_prefix_where_it_was_built(
         assert bare.status_code == 308 and bare.headers["location"] == "app/"
 
 
+async def test_the_web_apps_fonts_are_served_as_fonts(prefix: str, tmp_path: Path) -> None:
+    (tmp_path / "index.html").write_text("<!doctype html><title>Taktus</title>", "utf-8")
+    (tmp_path / "fonts").mkdir()
+    (tmp_path / "fonts" / "plex.woff2").write_bytes(b"wOF2")
+    app = build_app(services(), prefix=prefix, web=tmp_path)
+    base = "" if prefix == "/" else prefix
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://taktus.test"
+    ) as http:
+        font = await http.get(f"{base}/app/fonts/plex.woff2")
+        assert font.status_code == 200 and font.headers["content-type"] == "font/woff2"
+
+
 async def test_without_a_build_no_web_app_is_served(prefix: str, tmp_path: Path) -> None:
     app = build_app(services(), prefix=prefix, web=tmp_path)
     base = "" if prefix == "/" else prefix
