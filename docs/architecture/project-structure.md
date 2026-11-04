@@ -416,7 +416,8 @@ role it would tie the core to a model stack and the removal test would be lost.
   connect keys `composition/settings.py` reads, `composition/pools.py` names the binding in its
   configuration, and `composition/conformance.py` runs the instance's suite over it;
   `composition/local.py` uses the database's relay, so that `taktusctl` against an instance's
-  database opens its services as the daemon does (#672), and takes another one in tests.
+  database opens its services and runs a connected worker's suite over the binding as the
+  daemon does (#672), and takes another one in tests.
 - **A decision that takes effect** on the HTTP surface (`adapters/driving/rest/app.py`) or in
   the owner's channel (`composition/owner_channel.py`) is handed to the run engine, which
   continues or halts the run it holds, and to `composition/moves.py` with its request. A

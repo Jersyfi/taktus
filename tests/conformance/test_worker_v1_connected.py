@@ -25,6 +25,7 @@ from taktus.components.catalog.application.service import RunConformance, RunCon
 from taktus.components.catalog.domain.model import AdapterMaturity
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.composition.conformance import InstanceSuites, worker_suites
+from taktus.composition.local import LocalWiring
 from taktus.composition.pools import Pools
 from taktus.composition.settings import load_workers
 
@@ -105,3 +106,41 @@ async def test_the_instance_runs_the_suite_over_its_binding_and_records_the_bind
     assert evidence["configuration"]["binding"] == "outbound", "the record names the binding"
     assert value not in json.dumps(evidence)
     assert await relay.take(ADAPTER) is None, "nothing of the suite is left in the relay"
+
+
+async def test_taktusctl_records_the_suite_over_the_instance_s_binding(tmp_path: Path) -> None:
+    """`taktusctl conformance record` opens the services through `LocalWiring`: its suite of a
+    connected worker runs over the relay the services hold, not at the worker's name as an
+    endpoint (#672)."""
+    relay = MemoryRelay()
+    key_file = tmp_path / "connect.key"
+    key_file.write_text("k-site")
+    task = tmp_path / "task.json"
+    task.write_text(json.dumps(TASK), encoding="utf-8")
+    value = "conf-" + secrets.token_hex(12)
+    configuration = EnvironmentConfiguration(
+        {
+            "TAKTUS_WORKERS": NAME,
+            f"TAKTUS_WORKER_{NAME.upper()}_EXECUTION": "connected",
+            f"TAKTUS_WORKER_{NAME.upper()}_CONNECT_KEY_FILE": str(key_file),
+            "TAKTUS_CONFORMANCE_WORKER_TASK": str(task),
+            "TAKTUS_CONFORMANCE_WORKER_HOSTS": HOST,
+            "TAKTUS_CONFORMANCE_WORKER_CREDENTIAL": CREDENTIAL,
+            "TAKTUS_CREDENTIAL_" + CREDENTIAL.upper(): value,
+            "TAKTUS_CONFORMANCE_TIMEOUT": "90",
+            "TAKTUS_CONFORMANCE_IDLE_TIMEOUT": "30",
+        }
+    )
+    async with hosting(relay, {NAME: "k-site"}, free_port()) as base:
+        with connected(base, tmp_path, "k-site", "--step-seconds", "0.2", env={CREDENTIAL: value}):
+            async with LocalWiring(configuration).services(
+                state_dir=tmp_path / "state", worker_endpoint="http://unused", relay=relay
+            ) as services:
+                assert services.conformance is not None
+                maturity, _ = await services.conformance.execute(
+                    RunConformance(ADAPTER, "t", actor="idn_test")
+                )
+    result = maturity.conformance
+    assert result is not None and result.failed == (), result.failed
+    assert "W-01" not in result.inconclusive, "the worker answered over the relay"
+    assert result.configuration.document()["binding"] == "outbound"

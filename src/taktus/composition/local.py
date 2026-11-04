@@ -463,6 +463,7 @@ class LocalWiring:
                         self._configuration,
                         state_dir=state_dir,
                         endpoint=worker_endpoint,
+                        relay=relay if relay is not None else stores.relay,
                     ),
                     connectors=connectors,
                     model_endpoint=model.endpoint,
