@@ -280,6 +280,31 @@ not `127.0.0.1`: the browser keeps the sign-in only for `localhost` or for an ad
 over HTTPS. Paste the account key and sign in. The start page shows what your tenant holds,
 which is nothing yet. The sign-in lasts twelve hours in every tab, or until *Sign out*.
 
+### 5.1 Name the owner
+
+The pages *Needs*, *Findings*, *Alerts* and *Backup* are read by the tenant's **owner** and the
+people the owner named. Until an owner is named, nobody reads them, and each of them says so.
+The owner is named with the **owner-facing channel**: the conversation in a chat where what is
+needed from the owner reaches them (ADR-0045). It needs a connector of the capability
+`channel.chat`; the page *Configuring* names the settings for connectors. Write
+`owner-channel.json` with your identity and that conversation:
+
+```json
+{
+  "owner": "idn_admin",
+  "channel": "channel.chat",
+  "address": "<the conversation's identifier in your chat>",
+  "language": "en"
+}
+```
+
+```bash
+docker compose -f deploy/docker/compose.yml exec -T taktus sh -c 'cat > /tmp/owner-channel.json && taktusctl owner-channel set /tmp/owner-channel.json --tenant <tenant> --identity idn_admin' < owner-channel.json
+```
+
+It answers `owner-facing channel of <tenant> configured: channel.chat, in en, 0 named`. To let
+someone read and answer in your place, add their identity under `"named"` and run it again.
+
 ## 6. A first process
 
 ### 6.1 From the gallery

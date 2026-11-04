@@ -4,6 +4,7 @@
 	with `POST /trials/offers/decline`, and the page reads the trials again.
 -->
 <script lang="ts">
+	import Unavailable from '../../lib/Unavailable.svelte';
 	import { read, send, surface } from '../../lib/api';
 	import SignInForm from '../../lib/SignInForm.svelte';
 	import TrialsView from '../../lib/TrialsView.svelte';
@@ -52,7 +53,7 @@
 {:else if trials}
 	<TrialsView {trials} {problem} onStart={start} onDecline={decline} />
 {:else if problem}
-	<p class="status">{problem}</p>
+	<Unavailable eyebrow="Trials" {problem} />
 {:else}
 	<p class="status">Reading the model trials…</p>
 {/if}

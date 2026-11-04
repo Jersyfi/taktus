@@ -3,6 +3,7 @@
 	opening, for the owner and whom the owner named.
 -->
 <script lang="ts">
+	import Unavailable from '../../lib/Unavailable.svelte';
 	import { read, surface } from '../../lib/api';
 	import { needsOf, type OwnerReport } from '../../lib/governance';
 	import SignInForm from '../../lib/SignInForm.svelte';
@@ -28,7 +29,7 @@
 {:else if needs}
 	<NeedsView {needs} />
 {:else if problem}
-	<p role="alert">{problem}</p>
+	<Unavailable eyebrow="Needs" {problem} />
 {:else}
 	<p class="status">Reading the needs…</p>
 {/if}

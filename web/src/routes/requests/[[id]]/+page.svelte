@@ -84,7 +84,7 @@
 			{#if list === null}
 				<p class="muted">Reading the requests addressed to you…</p>
 			{:else if list.requests.length === 0}
-				<p>Nothing waits for you.</p>
+				<p class="muted">No request is open.</p>
 			{:else}
 				<ul>
 					{#each list.requests as r (r.id)}
@@ -108,7 +108,9 @@
 							? 'Nothing waits for you.'
 							: `${list.requests.length} ${list.requests.length === 1 ? 'question waits' : 'questions wait'} for you.`}
 					</h1>
-					<p class="muted">None is an alarm: each one is a planned question, with an answer proposed.</p>
+					{#if list.requests.length > 0}
+						<p class="muted">None is an alarm: each one is a planned question, with an answer proposed.</p>
+					{/if}
 				{/if}
 			{:else if absent}
 				<p>No request {requestId} addressed to you.</p>

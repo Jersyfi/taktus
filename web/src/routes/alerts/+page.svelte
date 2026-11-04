@@ -3,6 +3,7 @@
 	the owner named read them; anyone else is told so.
 -->
 <script lang="ts">
+	import Unavailable from '../../lib/Unavailable.svelte';
 	import { read, surface } from '../../lib/api';
 	import AlertsView from '../../lib/AlertsView.svelte';
 	import SignInForm from '../../lib/SignInForm.svelte';
@@ -28,7 +29,7 @@
 {:else if found}
 	<AlertsView alerts={found} />
 {:else if problem}
-	<p class="status">{problem}</p>
+	<Unavailable eyebrow="Alerts" {problem} />
 {:else}
 	<p class="status">Reading the alerts…</p>
 {/if}

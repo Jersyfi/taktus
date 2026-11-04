@@ -4,6 +4,7 @@
 	admits the plan's responsible role and says so to anyone else.
 -->
 <script lang="ts">
+	import Unavailable from '../../lib/Unavailable.svelte';
 	import { read, send, surface } from '../../lib/api';
 	import IntroductionView from '../../lib/IntroductionView.svelte';
 	import type { Introduction, StageDocument } from '../../lib/introduction';
@@ -41,7 +42,7 @@
 {:else if intro}
 	<IntroductionView {intro} {problem} {opening} onOpen={open} />
 {:else if problem}
-	<p class="status" role="alert">{problem}</p>
+	<Unavailable eyebrow="Introduction" {problem} />
 {:else}
 	<p class="status">Reading the introduction…</p>
 {/if}
