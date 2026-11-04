@@ -98,7 +98,8 @@ e-mail or payment method: matching an entitlement needs none of them.
   `error_tracking_service.py` and `payment_service.py`; `tests/conformance/test_connector_v1_business.py` runs the suite
   and every fault against each.
 - `CREDENTIALS.md`: `BILLING_KEY`, `MODEL_COSTS_TOKEN`, `ERRORS_TOKEN`, `PAYMENTS_TOKEN`.
-  NEED-0035 and NEED-0036 ask for the first two on the project's own instance.
+  Neither has a need of its own: the project uses neither service, and a tenant creates them
+  for its own instance (DEC-0225).
 - Each is added to an instance by one entry of `TAKTUS_CONNECTORS`. S-01 tests each like any
   connector.
 - `composition/shipped.json` lists the five, so a lack is classified against them (ADR-0118).
@@ -106,7 +107,7 @@ e-mail or payment method: matching an entitlement needs none of them.
 ## Where this promise ends
 
 Each connector is proven against a fake of its product's API that its tests own. No real
-provider has been reached by them yet; NEED-0035 and NEED-0036 open that for two of them, the cost report first. A
+provider has been reached by them yet: the first live run is a tenant's (DEC-0225). A
 change of a provider's API is found by a live run, not by these tests. The cloud billing
 connector reads at most ten pages, the error tracker ten, the payment provider a hundred, and
 each says `complete: false` where it stopped early. The cloud billing figures of the newest day

@@ -95,3 +95,10 @@ kubectl get nodes --selector accelerator=gpu --output name | wc -l
 
 It prints `1` or more. For way 2, on the machine itself, the vendor's tool that lists the
 accelerators prints one, with its memory, and no process using it.
+
+## Outcome
+
+**Superseded by:** DEC-0226
+**Provided:** 2026-11-03
+**Confirmed by:** the owner's answer to DEC-0226: the accelerator is proven at a tenant that has one, and the project proves the bench on an ordinary processor.
+**Recorded in:** this pull request
