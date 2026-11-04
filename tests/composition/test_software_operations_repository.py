@@ -1,3 +1,4 @@
+# ruff: noqa: F811 — every test requests the imported fixture `outside` by its name
 """The repository and release processes of the blueprint `software-operations`, each registered
 as shipped and run against fakes of the systems behind its capabilities (UC-03 §4.1, §4.7, §4.8;
 ADR-0193, ADR-0194, ADR-0195).
@@ -50,10 +51,8 @@ from .test_software_operations import (
     TOKEN,
     Outside,
     World,
+    outside,  # noqa: F401 — the fixture, requested by name
     states,
-)
-from .test_software_operations import (
-    outside as outside_fixture,  # noqa: F401 — registers the fixture `outside`
 )
 
 CODE = ("code.read", "code.edit", "code.test", "shell.sandboxed")

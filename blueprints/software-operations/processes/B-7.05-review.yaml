@@ -124,6 +124,22 @@ steps:
       max_output_tokens: 600
       pattern: "(?is)correctness.*security.*missing"
 
+  - id: cut
+    method: rule
+    reason: which patches the review did not see in full is a fixed reading of the service's own flag, said in the comment
+    rejected:
+      - method: llm
+        why: a flag needs no judgement, and a model could claim to have read what it was not given
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the patches that were cut }
+    depends_on: [read-files]
+    work:
+      rule: filter
+      items: { $from: read-files, $select: output.files }
+      all:
+        - { field: patch_cut, equals: true }
+
   - id: compose
     method: rule
     reason: the comment is the review between fixed words, with the service's own count of the balance
@@ -131,14 +147,15 @@ steps:
       - method: llm
         why: a fixed composition and a count need no model
     exactness: sourced
-    depends_on: [read-files, review]
+    depends_on: [read-files, review, cut]
     work:
       rule: template
       text: |
         ${review}
 
         Balance, as the repository counts it: ${count} path(s), ${additions} line(s) added,
-        ${deletions} removed. Every patch read in full: ${complete}.
+        ${deletions} removed. Patches the review saw cut short: ${cut}; every path listed:
+        ${complete}.
 
         Written by Taktus, process B-7.05 Review, once a person confirmed it. It approves and
         merges nothing.
@@ -148,6 +165,7 @@ steps:
         additions: { $from: read-files, $select: output.additions }
         deletions: { $from: read-files, $select: output.deletions }
         complete: { $from: read-files, $select: output.complete }
+        cut: { $from: cut, $select: count }
 
   - id: comment
     method: rule

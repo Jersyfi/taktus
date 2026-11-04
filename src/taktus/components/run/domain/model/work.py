@@ -144,6 +144,20 @@ class VerifyArtifactRule(Value):
     pattern: str | None = None
 
 
+def _compiles(*patterns: str | None) -> None:
+    """A pattern a step tests is refused when the version is read, never when the step runs: an
+    invalid one ended the run's process with an error instead of the step (ADR-0193)."""
+    for pattern in patterns:
+        if pattern is None:
+            continue
+        try:
+            re.compile(pattern)
+        except re.error as error:
+            raise ValueError(
+                f"the pattern {pattern!r} is not a regular expression: {error}"
+            ) from None
+
+
 class Condition(Value):
     """One machine check over a value: equal to something, matching a pattern, or not. A value
     that is not a string is matched as its JSON text. `equals: null` counts as not given."""
@@ -153,6 +167,11 @@ class Condition(Value):
     equals: Any | None = None
     matches: str | None = None
     not_matches: str | None = None
+
+    @model_validator(mode="after")
+    def _patterns_compile(self) -> Condition:
+        _compiles(self.matches, self.not_matches)
+        return self
 
 
 class CheckRule(Value):
@@ -372,6 +391,7 @@ class Bound(Value):
         tests = (self.equals, self.matches, self.not_matches, self.at_least, self.at_most)
         if all(t is None for t in tests):
             raise ValueError(f"the condition on {self.field!r} tests nothing")
+        _compiles(self.matches, self.not_matches)
         return self
 
 
