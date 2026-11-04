@@ -244,6 +244,25 @@ read -r s c <<<"$(state_of "$parked")"
 [ "$s" = halted ] && [ "$c" = parked ] || { echo "the parked run woke before the upgrade ended: ${s} ${c}"; exit 1; }
 
 say "6. each run continued, as its operator would"
+# This checkout registers a bundle only with takeover instructions (ADR-0180); the previous
+# release may not know the section, so only the copies this checkout reads carry it.
+python3 - "$work" <<'PY'
+import json, sys
+from pathlib import Path
+
+for path in Path(sys.argv[1]).glob("*.yaml"):
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document.setdefault("takeover", {
+        "sequence": "the steps in the order the bundle gives them",
+        "steps": {step["id"]: {"system": "the upgrade test's own instance",
+                               "do": f"do by hand what the step {step['id']} does",
+                               "expertise": "none beyond the step's own",
+                               "credentials": [],
+                               "done": "its result is written down"}
+                  for step in document["steps"]},
+    })
+    path.write_text(json.dumps(document), encoding="utf-8")
+PY
 for name in finished waiting parked halted escalated; do
     current cp "$work/${name}.yaml" "taktus:/tmp/upgrade-${name}.yaml" >/dev/null 2>&1
 done

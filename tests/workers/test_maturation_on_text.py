@@ -23,7 +23,7 @@ from taktus.components.run.domain.service import maturation
 from taktus.shared.v1 import Commissioned, Method, Plan, PlanResult, PlanStatus, Step
 
 from .test_mlbench import Bench
-from .test_mlbench import ml_bench as ml_bench  # the fixture
+from .test_mlbench import generous_bench as generous_bench  # the fixture
 from .test_mlbench_embeddings import TOPICS
 
 PROCESS = "titles@1"
@@ -90,9 +90,9 @@ async def proposed(w: Titles) -> Any:
 
 
 async def test_a_step_that_reads_text_is_proposed_a_model_the_bench_trained_on_its_embedding(
-    ml_bench: Bench,
+    generous_bench: Bench,
 ) -> None:
-    async with HttpWorker(ml_bench.endpoint) as bench:
+    async with HttpWorker(generous_bench.endpoint) as bench:
         w = Titles(workers=[bench], uncalibrated_margin=1.0)
         outcome = await proposed(w)
     assert outcome.proposed, outcome.findings
@@ -116,9 +116,9 @@ async def test_a_step_that_reads_text_is_proposed_a_model_the_bench_trained_on_i
 
 
 async def test_the_moved_step_predicts_its_text_case_and_refuses_an_empty_text(
-    ml_bench: Bench,
+    generous_bench: Bench,
 ) -> None:
-    async with HttpWorker(ml_bench.endpoint) as bench:
+    async with HttpWorker(generous_bench.endpoint) as bench:
         w = Titles(workers=[bench], uncalibrated_margin=1.0)
         outcome = await proposed(w)
         proposal = outcome.proposal

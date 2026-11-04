@@ -44,6 +44,13 @@ from fakes.ports import free_port
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKER = ROOT / "workers" / "mlbench" / "worker.py"
+# The variables the numerical libraries read for how many threads they start.
+THREAD_LIMITS = (
+    "OMP_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+)
 TOOLS = ["data.read", "data.generate", "ml.train", "ml.evaluate", "ml.predict", "ml.embed"]
 
 type Json = dict[str, Any]
@@ -154,10 +161,11 @@ def ml_bench(tmp_path: Path) -> Iterator[Bench]:
 
 @pytest.fixture
 def generous_bench(tmp_path: Path) -> Iterator[Bench]:
-    """The bench estimating twice its expected demand. A run of many cases on a machine whose
-    cores run the rest of the suite measured a step 1 ms over the bare estimate and halted at
-    the limit, as it must; a test of what a move costs is not a test of that halt."""
-    yield from bench_at(tmp_path, "--estimate-factor", "2")
+    """The bench estimating ten times its expected demand. On a machine whose cores run the rest
+    of the suite, fitting a text's encoders measured up to seven times the bare estimate and
+    halted at the limit, as it must; a test of what a move proposes or costs is not a test of
+    that halt (#520)."""
+    yield from bench_at(tmp_path, "--estimate-factor", "10")
 
 
 def bench_at(tmp_path: Path, *options: str) -> Iterator[Bench]:
@@ -184,7 +192,9 @@ def bench_at(tmp_path: Path, *options: str) -> Iterator[Bench]:
             ],
             stdout=handle,
             stderr=subprocess.STDOUT,
-            env=dict(os.environ),
+            # One thread for numpy, as the estimate assumes one core: several benches of a
+            # parallel suite otherwise each take every core.
+            env=os.environ | dict.fromkeys(THREAD_LIMITS, "1"),
         )
     endpoint = f"http://127.0.0.1:{port}"
     try:
