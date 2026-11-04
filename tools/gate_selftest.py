@@ -190,7 +190,9 @@ def a_promising_adr(root: Path) -> str:
 
 
 def a_requirement_and_its_code(root: Path) -> None:
-    rel = first(root, "docs/usecases/run/UC-*.md", "\nstate: specified\n")
+    # Any use case of the area: the rule holds whatever its state, and every use case of `run`
+    # may be verified.
+    rel = first(root, "docs/usecases/run/UC-*.md", "\n## 1. What must be achieved\n")
     substitute(
         root,
         rel,
