@@ -31,9 +31,11 @@ run and accounting components.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
-from datetime import datetime
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from datetime import datetime, timedelta
 from typing import Any, Protocol
+
+import structlog
 
 from taktus.components.accounting.application.service import (
     OCCASIONS,
@@ -51,8 +53,9 @@ from taktus.components.process.domain.model import Process, ProcessVersion
 from taktus.components.run.application.service import RunEngine, StartRun
 from taktus.components.run.domain.model import LlmWork, Run, RunError, parse_work
 from taktus.composition.evaluations import Evaluations, settled
+from taktus.composition.tenancy import this_round
 from taktus.ports.clock import Clock, Identifiers
-from taktus.ports.identity import IdentityResolver
+from taktus.ports.identity import IdentityResolver, ServedTenants
 from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.model import ResolvedModel
 from taktus.ports.objectstore import ObjectStore
@@ -70,6 +73,10 @@ DECLINABLE = ("introduced", "proposed", "changed")
 MAX_NAMED = 50
 """The most cases a person may name for one trial: each runs once per candidate."""
 STEP_FINISHED = "step.finished"
+ROUTING_SECONDS = 3600
+"""How often routing's switches are read for a trial to propose: once an hour."""
+
+log = structlog.get_logger("taktusd")
 
 
 class Models(Protocol):
@@ -376,6 +383,62 @@ class Trials:
                 ),
             )
 
+    async def routed(self, tenant: Tenant) -> list[tuple[str, str]]:
+        """Model routing's proposals (#328, ADR-0149 §3, ADR-0200): every member of a
+        purpose's chain behind its first that answered a step of the purpose — the chain
+        switched to it at a step boundary — and that no trial of the purpose included, is
+        proposed for a trial, once. The proposals made now, as `(purpose, member)`. A member
+        proposed before is not proposed again: a decline of it stands until a person tries it
+        or Taktus has a new reason."""
+        async with self._work.transaction(tenant):
+            entries = await self._ledger.of_kinds(tenant, {STEP_FINISHED, OFFERED})
+        trials = await self.of_tenant(tenant)
+        proposed: set[tuple[str, str]] = set()
+        for entry in entries:
+            if entry.kind != OFFERED or entry.content_digest is None:
+                continue
+            content = await self._objects.get(entry.content_digest)
+            if content is not None:
+                said = json.loads(content)
+                proposed.add((str(said["purpose"]), str(said["candidate"])))
+        purposes: dict[str, dict[str, str]] = {}
+        answered: dict[tuple[str, str], int] = {}
+        for entry in entries:
+            refs = entry.refs
+            if (
+                entry.kind != STEP_FINISHED
+                or entry.adapter is None
+                or entry.rehearsal
+                or refs.process_version is None
+                or refs.step_id is None
+            ):
+                continue
+            if refs.process_version not in purposes:
+                async with self._work.transaction(tenant):
+                    version = await self._versions.get(tenant, refs.process_version)
+                purposes[refs.process_version] = {} if version is None else _step_purposes(version)
+            purpose = purposes[refs.process_version].get(refs.step_id)
+            if purpose is not None:
+                key = (purpose, entry.adapter)
+                answered[key] = answered.get(key, 0) + 1
+        made: list[tuple[str, str]] = []
+        for (purpose, member), steps in sorted(answered.items()):
+            chain = [m.adapter for m in await self._models.chain(purpose)]
+            if member not in chain[1:] or (purpose, member) in proposed:
+                continue
+            if _tried(trials, purpose, member, None):
+                continue
+            await self.propose(
+                tenant,
+                purpose,
+                member,
+                f"routing switched {purpose} from {chain[0]} to {member}, which answered "
+                f"{steps} step{'s' if steps != 1 else ''} without having been tried on the "
+                "purpose's cases",
+            )
+            made.append((purpose, member))
+        return made
+
     async def decline(
         self, tenant: Tenant, purpose: str, occasion: str, model: str, by: str, reason: str
     ) -> None:
@@ -527,6 +590,57 @@ def _purposes(version: ProcessVersion) -> set[str]:
     return found
 
 
+def _step_purposes(version: ProcessVersion) -> dict[str, str]:
+    """The purpose each step on a language model of the version asks for, by step."""
+    examples = {name: given.example for name, given in version.inputs.items()}
+    found: dict[str, str] = {}
+    for step in version.ordered():
+        try:
+            work = parse_work(step, version.work.get(step.id), examples)
+        except RunError:
+            continue
+        if isinstance(work, LlmWork):
+            found[step.id] = work.purpose
+    return found
+
+
+def trials_tick(
+    trials: Trials,
+    tenants: ServedTenants,
+    clock: Clock,
+    *,
+    interval_seconds: int = ROUTING_SECONDS,
+) -> Callable[[], Awaitable[None]]:
+    """What the scheduler calls on every tick: once an hour, every tenant's steps are read for
+    a member routing switched to that was never tried, and a trial is proposed for it. A look
+    that fails is logged and made again: it never stops the scheduler."""
+    last: list[datetime] = []
+
+    async def tick() -> None:
+        now = clock.now()
+        if last and now - last[0] < timedelta(seconds=interval_seconds):
+            return
+        last[:] = [now]
+        for tenant in await this_round(tenants, "scheduler"):
+            try:
+                made = await trials.routed(tenant)
+            except Exception as error:  # a look must never take the scheduler down
+                log.error(
+                    "routing not read for trials; the next look tries again",
+                    tenant=tenant,
+                    error=f"{type(error).__name__}: {error}",
+                )
+                continue
+            for purpose, member in made:
+                log.info(
+                    "a trial was proposed for a member routing switched to",
+                    purpose=purpose,
+                    member=member,
+                )
+
+    return tick
+
+
 def _tried(trials: Sequence[Trial], purpose: str, model: str, since: datetime | None) -> bool:
     """Whether a trial of the purpose included the model, started at or after `since`."""
     return any(
@@ -562,4 +676,4 @@ def _canonical(document: Mapping[str, Any]) -> bytes:
     return json.dumps(document, sort_keys=True, separators=(",", ":"), default=str).encode()
 
 
-__all__ = ["Trials"]
+__all__ = ["Trials", "trials_tick"]

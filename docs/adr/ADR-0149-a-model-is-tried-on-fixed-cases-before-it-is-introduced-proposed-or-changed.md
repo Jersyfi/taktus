@@ -112,8 +112,8 @@ Issue #448, the remainder that needed no one outside. Both are built, in this sh
 - The figures are as complete as the workers' reports (ADR-0148).
 - A rehearsal answers outward calls from recordings; a candidate's difference that only a live
   outward call would show is not seen.
-- Nothing in the instance proposes a model yet. `Trials.propose` is the hook model routing
-  (#328) and method maturation call when they do; until then no `proposed` offer appears.
+- Model routing proposes a member it switched to once (ADR-0200). Method maturation proposes
+  no model: a trained model is not a chain member.
 - A declined offer is declined for the whole tenant, not only for the person who declined it.
 - A case a person names is judged by its run's ending alone: it carries no target to score.
 - A case's verdict is the run's own ending: the scorers of ADR-0134 do not run on a trial's

@@ -27,6 +27,7 @@ from taktus.components.accounting.application.service import (
 )
 from taktus.components.run.application.service import RunEngine
 from taktus.composition.trials import Trials
+from taktus.ports.ledger import Fact
 
 from .test_evaluations import SORRY, TENANT, WHO, Speaker, World
 
@@ -223,3 +224,40 @@ async def test_a_case_a_person_names_runs_beside_the_evaluation_cases() -> None:
             TENANT, "drafting", ["model.fake"], WHO, own=[NamedCase(process="absent")]
         )
     assert elsewhere.value.kind == "invalid" and "case 1" in str(elsewhere.value)
+
+
+# --- model routing proposes a trial of a member it switched to (ADR-0200, #448) ---------------
+
+
+async def test_a_member_routing_switched_to_is_proposed_for_a_trial_once() -> None:
+    t = await trying()
+    t.pool = StaticModelPool(
+        [
+            ("model.fake", ["drafting", "judging"], t.world.model, "fake-model@1"),
+            ("model.other", ["drafting"], t.other, "other-model@1"),
+        ]
+    )
+    t.trials._models = t.pool
+    run = await t.world.real_run({"message": "late"})
+    assert await t.trials.routed(TENANT) == [], "the first member answered: nothing switched"
+    async with t.world.persistence.transaction(TENANT):
+        (answered,) = [
+            e
+            for e in await t.world.ledger.entries(TENANT, run.id)
+            if e.kind == "step.finished" and e.adapter == "model.fake"
+        ]
+        await t.world.ledger.record(
+            TENANT,
+            Fact(
+                kind="step.finished",
+                refs=answered.refs,
+                method=answered.method,
+                adapter="model.other",
+                outcome="succeeded",
+            ),
+        )
+    assert await t.trials.routed(TENANT) == [("drafting", "model.other")]
+    offers = [o for o in await t.trials.offers(TENANT) if o.occasion == "proposed"]
+    (offer,) = offers
+    assert offer.model == "model.other" and "routing switched drafting" in offer.reason
+    assert await t.trials.routed(TENANT) == [], "proposed once"
