@@ -244,14 +244,16 @@ read -r s c <<<"$(state_of "$parked")"
 [ "$s" = halted ] && [ "$c" = parked ] || { echo "the parked run woke before the upgrade ended: ${s} ${c}"; exit 1; }
 
 say "6. each run continued, as its operator would"
-# This checkout registers a bundle only with takeover instructions (ADR-0180); the previous
-# release may not know the section, so only the copies this checkout reads carry it.
+# This checkout registers a bundle only with takeover instructions (ADR-0180), which the
+# previous release may not know. A registered version never changes, so the copies this checkout
+# reads are the processes' next version, carrying them; the runs keep the version they began on.
 python3 - "$work" <<'PY'
 import json, sys
 from pathlib import Path
 
 for path in Path(sys.argv[1]).glob("*.yaml"):
     document = json.loads(path.read_text(encoding="utf-8"))
+    document["version"] = "2"
     document.setdefault("takeover", {
         "sequence": "the steps in the order the bundle gives them",
         "steps": {step["id"]: {"system": "the upgrade test's own instance",
@@ -266,7 +268,8 @@ PY
 for name in finished waiting parked halted escalated; do
     current cp "$work/${name}.yaml" "taktus:/tmp/upgrade-${name}.yaml" >/dev/null 2>&1
 done
-next() { current exec -T taktus taktusctl submit --process "/tmp/upgrade-$1.yaml" --identity "$identity" "${@:2}" 2>/dev/null | tail -1; }
+# Its refusal, if any, stays in the log: the answer to a waiting step is what this part tests.
+next() { current exec -T taktus taktusctl submit --process "/tmp/upgrade-$1.yaml" --identity "$identity" "${@:2}" | tail -1; }
 # Whatever waits for a person is confirmed, as the operator would, until the run finishes.
 drive() {  # NAME RUN
     for _ in $(seq 1 720); do
