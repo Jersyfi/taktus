@@ -1,0 +1,341 @@
+# B-8.04 Staged rollout — UC-03 §4.8: a release that runs beside the current one as a canary
+# is raised in stages while its error rate stays below a limit, and halted by itself on a rise
+# (UC-6.13, UC-7.2). Resuming after a halt stays with a person.
+#
+# The canary is a deployment of its own that already carries the release, beside the stable
+# one behind the same service. Its replicas are raised through the capability
+# `deployment.workloads` (ADR-0195) to the three stages the inputs name. After each stage the run
+# waits ten minutes and reads the canary's error rate through `metrics.series`, with the
+# tenant's query. A rate below the limit raises the next stage. A rate at or above it scales the
+# canary to zero: the halt is the process's own, by rule, and the stages after it do not run. A
+# person who resumes starts a new run. The tenant's corridor on the rate reports beside it.
+#
+# At level 2 every step waits for a person's confirmation, the halt among them; at level 3, its
+# target in UC-03, the stages and the halt run on their own.
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-8.04-staged-rollout.yaml \
+#         --input canary=web-canary --input first=1 --input second=3 --input third=10 \
+#         --input 'error_rate_query=sum(rate(http_errors_total{track="canary"}[10m]))/sum(rate(http_requests_total{track="canary"}[10m]))' \
+#         --input max_error_rate=0.02
+#
+# Switching it off (`taktusctl deactivate --process b-8-04`) changes nothing in the cluster.
+
+id: b-8-04
+version: "1"
+name: B-8.04 Staged rollout
+autonomy:
+  level: 2
+  reason: >
+    raising the canary leaves the system and reaches more users at each stage, so a person
+    confirms each step, as every process of UC-03 starts at level 1 or 2 when its stage opens
+  toward_next: >
+    four weeks of rollouts a person confirmed with every rise halted, and stage 3 of the tenant's
+    plan open; then Taktus proposes level 3, its target in UC-03, at which the stages and the halt
+    run on their own (UC-7.1, UC-9.6)
+author: the repository
+reason: a release reaches all users only while its error rate holds, and is halted without a person on a rise (UC-03 B-8.04)
+
+inputs:
+  canary:
+    description: the deployment that carries the release beside the stable one
+    example: web-canary
+  first:
+    description: the canary's replicas at the first stage
+    example: 1
+  second:
+    description: the canary's replicas at the second stage
+    example: 3
+  third:
+    description: the canary's replicas at the third stage
+    example: 10
+  error_rate_query:
+    description: the tenant's query that answers the canary's error rate over the last ten minutes, one number
+    example: sum(rate(http_errors_total{track="canary"}[10m]))/sum(rate(http_requests_total{track="canary"}[10m]))
+  max_error_rate:
+    description: the rate at or above which the rollout halts, a decimal
+    example: "0.02"
+
+limits:
+  quota: { units: 40 }
+
+steps:
+  - id: raise-1
+    method: rule
+    reason: the canary's replicas are set to the stage's number by an API call; at level 2 a person confirms it
+    rejected:
+      - method: worker
+        why: the cluster scales the deployment itself; nothing here needs a sandbox
+    exactness: sourced
+    fallback:
+      when: the connector serving deployment.workloads is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: deployment.workloads.scale
+      input:
+        name: { $input: canary }
+        replicas: { $input: first }
+      credentials:
+        - { name: WORKLOADS_TOKEN, injected_as: env }
+
+  - id: pause-1
+    method: wait
+    reason: ten minutes of traffic on the stage tell its error rate; nothing is judged meanwhile
+    rejected: []
+    depends_on: [raise-1]
+    work:
+      seconds: 600
+
+  - id: rate-1
+    method: rule
+    reason: the store's figure for the canary is read verbatim, as the store gave it
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving metrics.series is unavailable
+      to: human
+      role: owner
+    depends_on: [pause-1]
+    work:
+      rule: connector
+      operation: metrics.series.query
+      input:
+        query: { $input: error_rate_query }
+      credentials:
+        - { name: METRICS_TOKEN, injected_as: env }
+
+  - id: rise-1
+    method: rule
+    reason: a rate at or above the limit is a threshold over the store's own figure; a value the store could not give as a number is left out, never read as zero
+    rejected:
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the canary's error rate at or above the limit after stage 1 }
+    depends_on: [rate-1]
+    work:
+      rule: filter
+      items: { $from: rate-1, $select: output.series }
+      all:
+        - { field: values.0.value, at_least: { $input: max_error_rate } }
+
+  - id: halt-1
+    method: rule
+    reason: on a rise the canary is scaled to zero by rule, so that no more users reach the release; resuming stays with a person
+    rejected:
+      - method: human
+        why: a halt that waits for a person lets the rise reach users meanwhile; the rule is fixed (ADR-0023)
+    exactness: sourced
+    fallback:
+      when: the connector serving deployment.workloads is unavailable
+      to: human
+      role: owner
+    depends_on: [rise-1]
+    work:
+      when:
+        - { value: { $from: rise-1, $select: count }, matches: "^[1-9]" }
+      rule: connector
+      operation: deployment.workloads.scale
+      input:
+        name: { $input: canary }
+        replicas: 0
+      credentials:
+        - { name: WORKLOADS_TOKEN, injected_as: env }
+
+  - id: raise-2
+    method: rule
+    reason: the canary's replicas are set to the stage's number by an API call; at level 2 a person confirms it
+    rejected:
+      - method: worker
+        why: the cluster scales the deployment itself; nothing here needs a sandbox
+    exactness: sourced
+    fallback:
+      when: the connector serving deployment.workloads is unavailable
+      to: human
+      role: owner
+    depends_on: [rise-1]
+    work:
+      when:
+        - { value: { $from: rise-1, $select: count }, matches: "^0$" }
+      rule: connector
+      operation: deployment.workloads.scale
+      input:
+        name: { $input: canary }
+        replicas: { $input: second }
+      credentials:
+        - { name: WORKLOADS_TOKEN, injected_as: env }
+
+  - id: pause-2
+    method: wait
+    reason: ten minutes of traffic on the stage tell its error rate; nothing is judged meanwhile
+    rejected: []
+    depends_on: [raise-2]
+    work:
+      when:
+        - { value: { $from: rise-1, $select: count }, matches: "^0$" }
+      seconds: 600
+
+  - id: rate-2
+    method: rule
+    reason: the store's figure for the canary is read verbatim, as the store gave it
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving metrics.series is unavailable
+      to: human
+      role: owner
+    depends_on: [pause-2]
+    work:
+      when:
+        - { value: { $from: rise-1, $select: count }, matches: "^0$" }
+      rule: connector
+      operation: metrics.series.query
+      input:
+        query: { $input: error_rate_query }
+      credentials:
+        - { name: METRICS_TOKEN, injected_as: env }
+
+  - id: rise-2
+    method: rule
+    reason: a rate at or above the limit is a threshold over the store's own figure; a value the store could not give as a number is left out, never read as zero
+    rejected:
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the canary's error rate at or above the limit after stage 2 }
+    depends_on: [rate-2]
+    work:
+      when:
+        - { value: { $from: rise-1, $select: count }, matches: "^0$" }
+      rule: filter
+      items: { $from: rate-2, $select: output.series }
+      all:
+        - { field: values.0.value, at_least: { $input: max_error_rate } }
+
+  - id: halt-2
+    method: rule
+    reason: on a rise the canary is scaled to zero by rule, so that no more users reach the release; resuming stays with a person
+    rejected:
+      - method: human
+        why: a halt that waits for a person lets the rise reach users meanwhile; the rule is fixed (ADR-0023)
+    exactness: sourced
+    fallback:
+      when: the connector serving deployment.workloads is unavailable
+      to: human
+      role: owner
+    depends_on: [rise-2]
+    work:
+      when:
+        - { value: { $from: rise-2, $select: count }, matches: "^[1-9]" }
+      rule: connector
+      operation: deployment.workloads.scale
+      input:
+        name: { $input: canary }
+        replicas: 0
+      credentials:
+        - { name: WORKLOADS_TOKEN, injected_as: env }
+
+  - id: raise-3
+    method: rule
+    reason: the canary's replicas are set to the stage's number by an API call; at level 2 a person confirms it
+    rejected:
+      - method: worker
+        why: the cluster scales the deployment itself; nothing here needs a sandbox
+    exactness: sourced
+    fallback:
+      when: the connector serving deployment.workloads is unavailable
+      to: human
+      role: owner
+    depends_on: [rise-2]
+    work:
+      when:
+        - { value: { $from: rise-2, $select: count }, matches: "^0$" }
+      rule: connector
+      operation: deployment.workloads.scale
+      input:
+        name: { $input: canary }
+        replicas: { $input: third }
+      credentials:
+        - { name: WORKLOADS_TOKEN, injected_as: env }
+
+  - id: pause-3
+    method: wait
+    reason: ten minutes of traffic on the stage tell its error rate; nothing is judged meanwhile
+    rejected: []
+    depends_on: [raise-3]
+    work:
+      when:
+        - { value: { $from: rise-2, $select: count }, matches: "^0$" }
+      seconds: 600
+
+  - id: rate-3
+    method: rule
+    reason: the store's figure for the canary is read verbatim, as the store gave it
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving metrics.series is unavailable
+      to: human
+      role: owner
+    depends_on: [pause-3]
+    work:
+      when:
+        - { value: { $from: rise-2, $select: count }, matches: "^0$" }
+      rule: connector
+      operation: metrics.series.query
+      input:
+        query: { $input: error_rate_query }
+      credentials:
+        - { name: METRICS_TOKEN, injected_as: env }
+
+  - id: rise-3
+    method: rule
+    reason: a rate at or above the limit is a threshold over the store's own figure; a value the store could not give as a number is left out, never read as zero
+    rejected:
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the canary's error rate at or above the limit after stage 3 }
+    depends_on: [rate-3]
+    work:
+      when:
+        - { value: { $from: rise-2, $select: count }, matches: "^0$" }
+      rule: filter
+      items: { $from: rate-3, $select: output.series }
+      all:
+        - { field: values.0.value, at_least: { $input: max_error_rate } }
+
+  - id: halt-3
+    method: rule
+    reason: on a rise the canary is scaled to zero by rule, so that no more users reach the release; resuming stays with a person
+    rejected:
+      - method: human
+        why: a halt that waits for a person lets the rise reach users meanwhile; the rule is fixed (ADR-0023)
+    exactness: sourced
+    fallback:
+      when: the connector serving deployment.workloads is unavailable
+      to: human
+      role: owner
+    depends_on: [rise-3]
+    work:
+      when:
+        - { value: { $from: rise-3, $select: count }, matches: "^[1-9]" }
+      rule: connector
+      operation: deployment.workloads.scale
+      input:
+        name: { $input: canary }
+        replicas: 0
+      credentials:
+        - { name: WORKLOADS_TOKEN, injected_as: env }

@@ -1,0 +1,328 @@
+# B-7.04 Keeping pull requests mergeable — UC-03 §4.7: an open pull request is brought up to
+# date with its base, and a red pipeline on it is repaired, so that it stays ready for its
+# merge (UC-01 P-03). The merge stays with a person.
+#
+# Several times a day the open pull requests are read through `repository.pullrequests` with
+# their state: how far each head is behind its base, the pipeline's word for it, and the key
+# its head commit carries (ADR-0193). One pull request is taken per run, by rule:
+#
+# - behind its base: the one idle longest. The base is merged into its branch, one commit that
+#   carries the run's key (`repository.branches.update`); a conflict writes nothing and goes to
+#   a person;
+# - otherwise red and not behind, its head not a commit Taktus wrote: the one idle longest. A
+#   repair Taktus made that the pipeline still refuses goes to a person, never to the next
+#   repair (UC-03 B-11.07). The coding worker clones the pull request's branch and repairs it,
+#   with the discussion of the pull request as context; its changeset goes onto the same branch,
+#   on top of the commit it cloned and no other (`repository.branches.commit`).
+#
+# A repair that changes a protected path — a test, the pipeline, a security rule, a feature flag
+# — is not written on its own: the commit waits for a person's decision, at every level (UC-03
+# §6, ADR-0194). Only pull requests whose head branch matches `^taktus/` are kept: the branches
+# Taktus's own processes open. Both patterns are this version's; a tenant changes them by a
+# version of its own.
+#
+# At level 2 every step waits for a person's confirmation (UC-03 §5, stage 0).
+#
+# Several times a day is the tenant's trigger: its version adds a schedule, every four hours
+# for example, with the inputs of its own clone — where the worker clones from, its host and the
+# name of the worker's credential — which only the tenant knows (ADR-0092). This bundle starts
+# by hand until then.
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-7.04-mergeable.yaml \
+#         --input repository_url=https://git.example/acme/product.git \
+#         --input repository_host=git.example --input coding_credential=CODING_TOKEN
+#
+# Switching it off (`taktusctl deactivate --process b-7-04`) changes nothing in the repository.
+
+id: b-7-04
+version: "1"
+name: B-7.04 Keeping pull requests mergeable
+autonomy:
+  level: 2
+  reason: >
+    which pull request is taken is a fixed rule over the repository's own reading; bringing it
+    up to date and the worker's repair leave the system, so a person confirms them, as every
+    process of UC-03 starts at level 1 or 2 when its stage opens
+  toward_next: >
+    four weeks of updates and repairs a person confirmed without changing them, and stage 4 of
+    the tenant's plan open; then Taktus proposes level 3, and level 4 after it, its target in
+    UC-03 (UC-7.1, UC-9.6). The merge stays with a person at every level
+author: the repository
+reason: open pull requests stay mergeable without a person rebasing and repairing them (UC-03 B-7.04)
+
+inputs:
+  repository_url:
+    description: where the coding worker clones the repository from
+    example: https://git.example/acme/product.git
+  repository_host:
+    description: the clone's host, which the worker may reach
+    example: git.example
+  coding_credential:
+    description: the name of the credential the coding worker's authentication needs
+    example: CODING_TOKEN
+
+limits:
+  quota: { units: 400 }
+  currency: { usd: 5.0 }
+
+steps:
+  - id: read-pulls
+    method: rule
+    reason: the open pull requests and their state are read verbatim from the system of record
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.pullrequests is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: repository.pullrequests.list
+      input:
+        state: open
+        with_state: true
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: behind
+    method: rule
+    reason: >
+      a pull request behind its base is a fixed reading of the service's comparison; of those
+      Taktus keeps, the one idle longest is taken
+    rejected:
+      - method: llm
+        why: a count of commits needs no judgement, and a model's pick could differ between two runs
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the pull request behind its base taken }
+    depends_on: [read-pulls]
+    work:
+      rule: filter
+      items: { $from: read-pulls, $select: output.pulls }
+      all:
+        - { field: draft, equals: false }
+        - { field: head, matches: "^taktus/" }
+        - { field: behind, at_least: 1 }
+      order: idle_hours
+      descending: true
+      limit: 1
+
+  - id: red
+    method: rule
+    reason: >
+      a red pull request is the pipeline's own word for its head; one whose head Taktus wrote is
+      left out, so that a repair the pipeline refuses goes to a person; the one idle longest is
+      taken
+    rejected:
+      - method: llm
+        why: the pipeline's verdict is read, not judged
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the red pull request taken }
+    depends_on: [read-pulls]
+    work:
+      rule: filter
+      items: { $from: read-pulls, $select: output.pulls }
+      all:
+        - { field: draft, equals: false }
+        - { field: head, matches: "^taktus/" }
+        - { field: behind, at_most: 0 }
+        - { field: pipeline, equals: failure }
+        - { field: head_key, matches: "^null$" }
+      order: idle_hours
+      descending: true
+      limit: 1
+
+  - id: update
+    method: rule
+    reason: >
+      merging the base into the branch is an API call, one commit that carries the run's key; a
+      conflict writes nothing; the effect leaves the system, so at level 2 a person confirms it
+    rejected:
+      - method: worker
+        why: the service merges two branches itself; nothing here needs a sandbox
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.branches is unavailable, or the merge conflicts
+      to: human
+      role: owner
+    depends_on: [behind]
+    work:
+      when:
+        - { value: { $from: behind, $select: count }, matches: "^[1-9]" }
+      rule: connector
+      operation: repository.branches.update
+      input:
+        name: { $from: behind, $select: first.head }
+        base: { $from: behind, $select: first.base }
+        expected: { $from: behind, $select: first.head_sha }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: read-discussion
+    method: rule
+    reason: the pull request's discussion, its review comments among it, is context for the worker
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.comments is unavailable
+      to: human
+      role: owner
+    depends_on: [behind, red]
+    work:
+      when:
+        - { value: { $from: behind, $select: count }, matches: "^0$" }
+        - { value: { $from: red, $select: count }, matches: "^[1-9]" }
+      rule: connector
+      operation: repository.comments.list
+      input:
+        number: { $from: red, $select: first.number }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: repair
+    method: worker
+    reason: >
+      making a red pipeline pass is multi-step work with tools in an isolated clone of the
+      branch, which is what a worker offers; the worker proposes, the pipeline decides
+    rejected:
+      - method: llm
+        why: a single completion cannot run a repository's checks and revise
+      - method: rule
+        why: the core executes no code itself; that is the adapter obligation
+    exactness: tolerant
+    fallback:
+      when: the coding worker is unavailable, or the assignment fails or is stopped
+      to: human
+      role: owner
+    requires: [code.read, code.edit, code.test, shell.sandboxed]
+    depends_on: [red, read-discussion]
+    work:
+      when:
+        - { value: { $from: behind, $select: count }, matches: "^0$" }
+        - { value: { $from: red, $select: count }, matches: "^[1-9]" }
+      task:
+        goal: >
+          make the pipeline of the pull request given in the inputs pass again, on its own
+          branch, without changing what the change does
+        acceptance:
+          - the repository's own checks that the pipeline runs pass in the workspace
+          - >
+            the change keeps what the pull request intends: its title and its discussion say
+            what that is; a review comment in the discussion that asks for a change is worked in
+            where it does not contradict that
+          - >
+            no test, no pipeline definition, no security rule and no feature flag is changed to
+            make a check pass; where only such a change would, the summary names it and says why
+          - no secret value is written into any file
+          - the summary says what failed, what was changed and why
+        inputs:
+          pull: { $from: red, $select: first.number }
+          title: { $from: red, $select: first.title }
+          branch: { $from: red, $select: first.head }
+          discussion: { $from: read-discussion, $select: output.comments }
+      max_steps: 40
+      workspace:
+        kind: git
+        location: { $input: repository_url }
+        ref: { $from: red, $select: first.head }
+      allowed_hosts:
+        - { $input: repository_host }
+      credentials:
+        - { name: { $input: coding_credential }, injected_as: env }
+
+  - id: protected
+    method: rule
+    reason: >
+      whether the repair touches a protected path is a fixed pattern over the changeset's paths
+      (UC-03 §6, ADR-0194)
+    rejected:
+      - method: llm
+        why: a pattern over paths needs no model, and the rule that keeps cheating to green with a person must not vary
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the protected paths the repair touches }
+    depends_on: [repair]
+    work:
+      when:
+        - { value: { $from: behind, $select: count }, matches: "^0$" }
+        - { value: { $from: red, $select: count }, matches: "^[1-9]" }
+      rule: filter
+      items: { $from: repair, $artifact: changeset, $select: files }
+      any:
+        - field: path
+          matches: "(^|/)(tests?|spec|specs|__tests__|e2e)/|(^|/)[^/]*(_test|\\.test|\\.spec)\\.[a-z]+$|^\\.github/|^\\.gitlab-ci|(^|/)CODEOWNERS$|(?i:security|feature.?flags?|acceptance)"
+
+  - id: commit
+    method: rule
+    reason: >
+      the worker's changeset goes onto the pull request's branch through the connector, on top
+      of the commit the worker cloned and no other; the run writes outward, never the worker
+    rejected:
+      - method: worker
+        why: a worker that pushes has a credential to the repository and writes outward past the ledger
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.branches is unavailable, or the branch moved
+      to: human
+      role: owner
+    depends_on: [red, repair, protected]
+    work:
+      when:
+        - { value: { $from: protected, $select: count }, matches: "^0$" }
+      rule: connector
+      operation: repository.branches.commit
+      input:
+        name: { $from: red, $select: first.head }
+        expected: { $from: repair, $artifact: changeset, $select: source }
+        message: { $from: red, $select: first.title }
+        files: { $from: repair, $artifact: changeset, $select: files }
+        deleted: { $from: repair, $artifact: changeset, $select: deleted }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: commit-protected
+    method: rule
+    reason: >
+      a repair that touches a protected path is written only after a person decided it: the
+      step asks at every level, and a decline writes nothing (UC-03 §6, ADR-0194)
+    rejected:
+      - method: worker
+        why: a worker that pushes has a credential to the repository and writes outward past the ledger
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.branches is unavailable, or the branch moved
+      to: human
+      role: owner
+    depends_on: [red, repair, protected]
+    work:
+      when:
+        - { value: { $from: protected, $select: count }, matches: "^[1-9]" }
+      ask:
+        question: "Write a repair that changes a protected path onto ${branch}?"
+        situation: >
+          The pipeline of the pull request on ${branch} is red. The coding worker's repair
+          changes ${count} protected path(s), the first ${path}: a test, the pipeline, a
+          security rule or a feature flag. A change there can make a check pass without fixing
+          what it checks.
+        proposal: the repair is written onto the branch as the worker proposed it
+        values:
+          branch: { $from: red, $select: first.head }
+          count: { $from: protected, $select: count }
+          path: { $from: protected, $select: first.path }
+      rule: connector
+      operation: repository.branches.commit
+      input:
+        name: { $from: red, $select: first.head }
+        expected: { $from: repair, $artifact: changeset, $select: source }
+        message: { $from: red, $select: first.title }
+        files: { $from: repair, $artifact: changeset, $select: files }
+        deleted: { $from: repair, $artifact: changeset, $select: deleted }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }

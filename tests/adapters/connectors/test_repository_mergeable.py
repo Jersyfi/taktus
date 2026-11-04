@@ -66,7 +66,9 @@ def head(service: Service, branch: str) -> str:
     return str(api(service, "GET", f"/git/ref/heads/{branch}")["object"]["sha"])
 
 
-async def on_branch(service: Service, name: str, base: str, files: dict[str, str], key: str) -> Json:
+async def on_branch(
+    service: Service, name: str, base: str, files: dict[str, str], key: str
+) -> Json:
     entries = [{"path": p, "content": c} for p, c in files.items()]
     return await ok(
         "repository.branches.create",

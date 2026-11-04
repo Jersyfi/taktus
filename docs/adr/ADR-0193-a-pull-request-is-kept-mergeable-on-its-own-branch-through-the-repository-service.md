@@ -47,6 +47,11 @@ The changeset goes onto the same branch (`repository.branches.commit`), with `ex
 the commit the worker cloned. A head that moved meanwhile is a conflict, and nothing is written
 over another's work.
 
+The branch the worker clones is known only once a step before it has selected the pull request.
+A worker step's `workspace.ref` may therefore be a reference to an earlier result, `{"$from": …}`,
+as a task's inputs may be. It is resolved when the step runs, as the inputs are; a reference that
+does not resolve to a text fails the step before anything is handed to the worker.
+
 ### 3. Ages are the connector's arithmetic over the service's timestamps
 
 `idle_hours`, `open_hours` and `age_minutes` count whole units between the service's own
@@ -75,7 +80,9 @@ reproducible from the reading. The service's timestamp is never changed.
   use: the comparison, the merge, a pull request's files, a reference moved forward, the runs by
   status.
 - A pull request reading carries the head's commit and whether it is a draft. An issue reading
-  carries `updated_at`.
+  carries `updated_at`, and an issue list `idle_hours`.
+- The run's worker work gains `workspace_ref`: a reference under `workspace.ref` is moved there
+  when the work is read, and resolved when the step runs.
 
 ## Where this promise ends
 

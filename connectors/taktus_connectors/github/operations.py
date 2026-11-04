@@ -199,7 +199,12 @@ async def list_issues(api: Api, input: Json, key: str) -> Outcome:
         page, next_url = await api.get_url(next_url)
         found.extend(page)
         pages += 1
-    issues = [issue_output(item) for item in found if "pull_request" not in item]
+    now = _now()
+    issues = [
+        {**issue_output(item), "idle_hours": _whole(item.get("updated_at"), now, 3600)}
+        for item in found
+        if "pull_request" not in item
+    ]
     output = {"state": state, "issues": issues, "complete": next_url is None}
     return Outcome(output, read_effect())
 

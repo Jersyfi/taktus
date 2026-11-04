@@ -39,7 +39,7 @@ registering its own version. Two classes are shipped:
 
 | Class | Holds when |
 |---|---|
-| documentation | every changed path is documentation: under `docs/`, or a Markdown or plain-text file |
+| documentation | every changed path is documentation: under `docs/`, or a Markdown, reStructuredText or AsciiDoc file |
 | patch update | every changed path is a dependency manifest or lock file, and the title says one dependency moves from `x.y.z` to `x.y.w`: the same major and minor version |
 
 Nothing is merged when the pull request is not open, is a draft, or changes no path. Nothing is
@@ -50,13 +50,15 @@ the author.
 ### 3. A protected path halts the step with a request
 
 The version declares the protected paths as a pattern. A rule counts the changed paths that match
-it. Where the count is not zero, the step that would act does not run. A step of its own takes its
-place, which carries `ask` (ADR-0088): a decision request to the deciding role, at every level,
-which no tenant configuration removes. Declined, nothing is written.
+it. Where the count is not zero, the act waits for a person: a step that carries `ask` (ADR-0088)
+raises a decision request to the deciding role, at every level, and no tenant configuration
+removes it. Declined, nothing is written.
 
-B-7.12 does this before a merge, over the pull request's paths at the head it will merge. B-7.04
-does it before a commit, over the paths of the worker's changeset. A repair that would change a
-test to make the pipeline pass is asked, never written on its own.
+B-7.12 does this before a merge, over the pull request's paths at the head it will merge: a step
+that asks stands before both merge steps. B-7.04 does it before a commit, over the paths of the
+worker's changeset: the commit that touches a protected path is a step of its own that asks, in
+place of the commit that does not. A repair that would change a test to make the pipeline pass
+is asked, never written on its own.
 
 ## Alternatives
 

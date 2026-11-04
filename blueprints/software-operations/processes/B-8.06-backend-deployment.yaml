@@ -1,0 +1,179 @@
+# B-8.06 Backend deployment — UC-03 §4.8: a backend release is deployed, its error rate is
+# watched for thirty minutes, and a rollback is proposed on a rise (UC-6.13). The rollback stays
+# with a person.
+#
+# The image is released through the capability `deployment.workloads` (ADR-0195); the run waits
+# until the rollout is complete, then thirty minutes more, and reads the error rate through
+# `metrics.series` with the tenant's query. A rate at or above the limit counts by rule, and
+# the rollback to the revision before is put to a person as a decision request, at every level.
+#
+# The query and the limit are inputs: the query is the tenant's, written for its own metrics,
+# and answers one number, the backend's error rate over the last thirty minutes.
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-8.06-backend-deployment.yaml \
+#         --input deployment=api --input container=app \
+#         --input image=registry.example/api:2.4.1 \
+#         --input 'error_rate_query=sum(rate(http_errors_total[30m]))/sum(rate(http_requests_total[30m]))' \
+#         --input max_error_rate=0.02
+#
+# Switching it off (`taktusctl deactivate --process b-8-06`) changes nothing in the cluster.
+
+id: b-8-06
+version: "1"
+name: B-8.06 Backend deployment
+autonomy:
+  level: 2
+  reason: >
+    the release leaves the system and reaches every user of the backend, so a person confirms
+    it, as every process of UC-03 starts at level 1 or 2 when its stage opens; the rollback asks
+    a person at every level
+  toward_next: >
+    four weeks of releases a person confirmed with every rise followed by a decided rollback,
+    and stage 3 of the tenant's plan open; then Taktus proposes level 3, its target in UC-03
+    (UC-7.1, UC-9.6)
+author: the repository
+reason: a backend release is watched after it lands, and a rise is put to a person with the rollback ready (UC-03 B-8.06)
+
+inputs:
+  deployment:
+    description: the deployment the release goes to
+    example: api
+  container:
+    description: the container of the deployment whose image is set
+    example: app
+  image:
+    description: the image of the release, by registry, name and tag or digest
+    example: registry.example/api:2.4.1
+  error_rate_query:
+    description: the tenant's query that answers the backend's error rate over the last thirty minutes, one number
+    example: sum(rate(http_errors_total[30m]))/sum(rate(http_requests_total[30m]))
+  max_error_rate:
+    description: the rate at or above which the release counts as a rise, a decimal
+    example: "0.02"
+
+limits:
+  quota: { units: 80 }
+
+steps:
+  - id: release
+    method: rule
+    reason: setting the image is an API call that carries the run's key; the effect leaves the system, so at level 2 a person confirms it
+    rejected:
+      - method: worker
+        why: the cluster's own interface rolls the release out; nothing here needs a sandbox
+    exactness: sourced
+    fallback:
+      when: the connector serving deployment.workloads is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: deployment.workloads.release
+      input:
+        name: { $input: deployment }
+        container: { $input: container }
+        image: { $input: image }
+      credentials:
+        - { name: WORKLOADS_TOKEN, injected_as: env }
+
+  - id: rolled-out
+    method: wait
+    reason: the cluster rolls the release out on its own time; the run waits for every replica to be updated and available
+    rejected: []
+    fallback:
+      when: the connector serving deployment.workloads is unavailable, or the rollout does not complete in fifteen minutes
+      to: human
+      role: owner
+    depends_on: [release]
+    work:
+      until:
+        operation: deployment.workloads.read
+        input:
+          name: { $input: deployment }
+        credentials:
+          - { name: WORKLOADS_TOKEN, injected_as: env }
+        select: rolled_out
+        expect: [true]
+        poll_seconds: 15
+        timeout_seconds: 900
+
+  - id: watch
+    method: wait
+    reason: the error rate of thirty minutes under load is what tells a good release from a bad one; nothing is judged meanwhile
+    rejected: []
+    depends_on: [rolled-out]
+    work:
+      seconds: 1800
+
+  - id: read-rate
+    method: rule
+    reason: the store's figure is read verbatim, as the store gave it
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving metrics.series is unavailable
+      to: human
+      role: owner
+    depends_on: [watch]
+    work:
+      rule: connector
+      operation: metrics.series.query
+      input:
+        query: { $input: error_rate_query }
+      credentials:
+        - { name: METRICS_TOKEN, injected_as: env }
+
+  - id: rise
+    method: rule
+    reason: a rate at or above the limit is a threshold over the store's own figure; a value the store could not give as a number is left out, never read as zero
+    rejected:
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the error rate at or above the limit }
+    depends_on: [read-rate]
+    work:
+      rule: filter
+      items: { $from: read-rate, $select: output.series }
+      all:
+        - { field: values.0.value, at_least: { $input: max_error_rate } }
+
+  - id: rollback
+    method: rule
+    reason: >
+      a release whose error rate rose is rolled back to the revision before it, by an API call;
+      the rollback stays with a person, so the step asks at every level
+    rejected:
+      - method: worker
+        why: the cluster keeps the earlier revision itself; nothing here needs a sandbox
+    exactness: sourced
+    fallback:
+      when: the connector serving deployment.workloads is unavailable
+      to: human
+      role: owner
+    depends_on: [rise]
+    work:
+      when:
+        - { value: { $from: rise, $select: count }, matches: "^[1-9]" }
+      ask:
+        question: "Roll ${deployment} back to the revision before ${image}?"
+        situation: >
+          Thirty minutes after ${image} rolled out to ${deployment}, its error rate is
+          ${rate}, at or above the limit of ${limit}. The cluster keeps the revision before it.
+        proposal: the deployment is rolled back to the revision before this release
+        values:
+          deployment: { $input: deployment }
+          image: { $input: image }
+          rate: { $from: rise, $select: first.values.0.value }
+          limit: { $input: max_error_rate }
+      rule: connector
+      operation: deployment.workloads.rollback
+      input:
+        name: { $input: deployment }
+      credentials:
+        - { name: WORKLOADS_TOKEN, injected_as: env }

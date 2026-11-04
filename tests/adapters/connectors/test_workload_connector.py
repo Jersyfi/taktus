@@ -61,6 +61,10 @@ def connector(url: str) -> McpActionConnector:
     return McpActionConnector(build_server(Config(url, "default", timeout=5.0)))
 
 
+def stall(url: str) -> None:
+    httpx.post(f"{url}/_fake/rollout", json={"stalled": True}, timeout=5).raise_for_status()
+
+
 def state(url: str) -> dict[str, Any]:
     found: dict[str, Any] = httpx.get(f"{url}/_fake/state", timeout=5).json()["deployments"]
     return found
@@ -75,7 +79,7 @@ async def test_a_deployment_is_read_with_whether_its_rollout_is_complete(cluster
     assert output["containers"] == [{"name": "app", "image": "registry.example/app:1.0.0"}]
     assert output["replicas"] == 3 and output["revision"] == 1 and output["rolled_out"] is True
 
-    httpx.post(f"{cluster}/_fake/rollout", json={"stalled": True}, timeout=5)
+    stall(cluster)
     held = await connector(cluster).call(
         "deployment.workloads.read", context("read"), {"name": "web"}
     )
@@ -98,7 +102,9 @@ async def test_an_image_is_released_once_per_key_and_found_in_the_kept_revisions
     # Somebody else releases after it: the key is no longer on the deployment, but on a kept
     # revision, and a repeat still finds it there.
     await connector(cluster).call(
-        "deployment.workloads.release", context("other"), {**input, "image": "registry.example/app:2"}
+        "deployment.workloads.release",
+        context("other"),
+        {**input, "image": "registry.example/app:2"},
     )
     late = await connector(cluster).call("deployment.workloads.release", context("release"), input)
     assert late.effect.replayed is True

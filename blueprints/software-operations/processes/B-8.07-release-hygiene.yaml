@@ -1,0 +1,132 @@
+# B-8.07 Release hygiene — UC-03 §4.8: a release pull request open past its limit gets a
+# reminder that names what blocks it (UC-4.17).
+#
+# Every morning the open pull requests are read with their state through the capability
+# `repository.pullrequests` (ADR-0193). A rule keeps the release pull requests — their head
+# branch starts with `release/` — open for at least three days, the oldest first, and takes one.
+# The reminder names what blocks it, as the repository says it: the pipeline's word for its
+# head, how many commits it is behind its base, whether it is a draft. It is written as a
+# comment on the pull request once a person confirmed it, at level 2.
+#
+# The branch pattern and the limit are this version's; a tenant changes them by a version of
+# its own. One pull request is reminded per run; a reminder is written each day the limit is
+# passed.
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-8.07-release-hygiene.yaml
+#
+# Switching it off (`taktusctl deactivate --process b-8-07`) changes nothing in the repository.
+
+id: b-8-07
+version: "1"
+name: B-8.07 Release hygiene
+autonomy:
+  level: 2
+  reason: >
+    which pull request is reminded is a fixed rule over the repository's reading; the comment
+    leaves the system, so a person confirms it, as every process of UC-03 starts at level 1 or 2
+    when its stage opens
+  toward_next: >
+    four weeks of reminders a person confirmed unchanged, and stage 3 of the tenant's plan open;
+    then Taktus proposes level 3, its target in UC-03 (UC-7.1, UC-9.6)
+author: the repository
+reason: a release that lies still is named with its blockers without a person looking for it (UC-03 B-8.07)
+
+triggers:
+  - schedule: "0 7 * * *"
+
+limits:
+  quota: { units: 120 }
+
+steps:
+  - id: read-pulls
+    method: rule
+    reason: the open pull requests and their state are read verbatim from the system of record
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.pullrequests is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: repository.pullrequests.list
+      input:
+        state: open
+        with_state: true
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: overdue
+    method: rule
+    reason: a release pull request open past its limit is a branch pattern and a threshold over the service's own timestamp
+    rejected:
+      - method: llm
+        why: a threshold over a count needs no judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the release pull request open past its limit }
+    depends_on: [read-pulls]
+    work:
+      rule: filter
+      items: { $from: read-pulls, $select: output.pulls }
+      all:
+        - { field: head, matches: "^release/" }
+        - { field: open_hours, at_least: 72 }
+      order: open_hours
+      descending: true
+      limit: 1
+
+  - id: compose
+    method: rule
+    reason: the reminder is the repository's own figures between fixed words
+    rejected:
+      - method: llm
+        why: a fixed composition needs no model
+    exactness: sourced
+    depends_on: [overdue]
+    work:
+      when:
+        - { value: { $from: overdue, $select: count }, matches: "^[1-9]" }
+      rule: template
+      text: |
+        This release pull request has been open for ${hours} hours, past its limit of 72.
+
+        What the repository says blocks it:
+        - the pipeline on its head: ${pipeline}
+        - commits behind ${base}: ${behind}
+        - a draft: ${draft}
+
+        Written by Taktus, process B-8.07 Release hygiene, once a person confirmed it.
+      values:
+        hours: { $from: overdue, $select: first.open_hours }
+        pipeline: { $from: overdue, $select: first.pipeline }
+        base: { $from: overdue, $select: first.base }
+        behind: { $from: overdue, $select: first.behind }
+        draft: { $from: overdue, $select: first.draft }
+
+  - id: remind
+    method: rule
+    reason: writing the comment is an API call; the effect leaves the system, so at level 2 a person confirms it first
+    rejected:
+      - method: worker
+        why: nothing here needs a sandbox or tools
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.comments is unavailable
+      to: human
+      role: owner
+    depends_on: [overdue, compose]
+    work:
+      when:
+        - { value: { $from: overdue, $select: count }, matches: "^[1-9]" }
+      rule: connector
+      operation: repository.comments.create
+      input:
+        number: { $from: overdue, $select: first.number }
+        body: { $from: compose }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }

@@ -611,6 +611,11 @@ class WorkerWork(Value):
     """The hosts the worker may reach for this step; nothing else. Empty — the default — means
     no outbound access, which is right for most work."""
     workspace: Workspace = Workspace(kind="none")
+    workspace_ref: Any = None
+    """The workspace's ref when the step names it by a reference to an earlier result — the
+    branch of a pull request a step before it selected (ADR-0193 §2): `workspace.ref` given as
+    `{"$from": …}` is moved here when the work is read, and resolved when the step runs. None
+    when the ref is a text or absent."""
     credentials: tuple[CredentialReference, ...] = ()
     """The credentials the assignment references by name; the execution adapter, or whoever
     runs an endpoint worker, supplies the values."""
@@ -1104,7 +1109,7 @@ def parse_work(
                 raise UnsupportedWork(step.id, "a worker step carries its task under `work`")
             if not step.required_capabilities:
                 raise UnsupportedWork(step.id, "a worker step names the capabilities it requires")
-            return WorkerWork.model_validate(given)
+            return WorkerWork.model_validate(_workspace_ref_moved(given))
         if step.method is Method.ML:
             if given is None:
                 raise UnsupportedWork(
@@ -1272,12 +1277,22 @@ def select(value: Any, path: Any) -> Any:
     return current
 
 
+def _workspace_ref_moved(given: Mapping[str, Any]) -> Mapping[str, Any]:
+    """A worker's work with a reference under `workspace.ref` moved to `workspace_ref`: the
+    workspace is typed, a reference is resolved only when the step runs (ADR-0193 §2)."""
+    workspace = given.get("workspace")
+    if not isinstance(workspace, Mapping) or not isinstance(workspace.get("ref"), Mapping):
+        return given
+    rest = {k: v for k, v in workspace.items() if k != "ref"}
+    return {**given, "workspace": rest, "workspace_ref": workspace["ref"]}
+
+
 def referenced_values(work: Work) -> list[Any]:
     """The untyped parts of a work that may carry `$from` references."""
     if isinstance(work, MlWork) and work.fallback is not None:
         return [work.task.inputs, work.fallback.values]
     if isinstance(work, WorkerWork):
-        return [work.task.inputs]
+        return [work.task.inputs, work.workspace_ref]
     if isinstance(work, ConnectorRule):
         return [work.input]
     if isinstance(work, CheckRule):
