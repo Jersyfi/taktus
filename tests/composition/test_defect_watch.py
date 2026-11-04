@@ -7,13 +7,17 @@ five daily runs of `billing`, the partner's adapter a new version from run r3.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import timedelta
+from typing import Any
 
 from fakes.clock import FakeClock
 from governance.test_result_defects import AT, RECORDS, TENANT
 
+from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.adapters.driven.memory import (
     MemoryLedgerStore,
+    MemoryObjectStore,
     MemoryPersistence,
     MemoryProvenanceStore,
     MemoryRepository,
@@ -27,9 +31,11 @@ from taktus.components.governance.domain.model.incident import (
 )
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.domain.service.autonomy import history
-from taktus.composition.defects import DefectWatch
+from taktus.components.run.ports.anchors import Verdict
+from taktus.composition.defects import DefectWatch, IncidentDelivery
+from taktus.ports.connector import CallContext, Capabilities, Effect, EffectReport, Record, Result
 from taktus.ports.ledger import Fact
-from taktus.shared.v1 import LedgerEntry, LedgerRefs
+from taktus.shared.v1 import Consumption, LedgerEntry, LedgerRefs
 
 
 class World:
@@ -39,6 +45,7 @@ class World:
         self.ledger = ChainedLedger(MemoryLedgerStore(self.persistence), self.clock)
         self.provenance = MemoryProvenanceStore(self.persistence)
         self.incidents = MemoryRepository(self.persistence, Incident)
+        self.objects = MemoryObjectStore()
         self.watch = DefectWatch(
             self.ledger,
             ResultDefects(
@@ -135,3 +142,191 @@ async def test_the_raised_defect_ends_the_clean_row_of_the_quality_history() -> 
     await w.watch.sweep(TENANT)
     after = history(await w.entries(), "billing")
     assert (after.clean, after.ended, after.last_failed) == (1, 5, "r4")
+
+
+# --- a sample judged wrong and a result marked suspect, assessed by themselves (ADR-0179 §2) -----
+
+
+class Answered:
+    """The verdicts of sample requests, as the decision component would give them."""
+
+    def __init__(self, **options: str) -> None:
+        self.options = options
+
+    async def verdict(self, tenant: str, request_id: str) -> Verdict | None:
+        option = self.options.get(request_id)
+        return None if option is None else Verdict(applied=True, option=option)
+
+
+async def sampled(w: World, run_id: str, step_id: str, request: str) -> None:
+    async with w.persistence.transaction(TENANT):
+        await w.ledger.record(
+            TENANT,
+            Fact(
+                kind="check.sampled",
+                refs=LedgerRefs(
+                    tenant=TENANT,
+                    run_id=run_id,
+                    step_id=step_id,
+                    process_version="billing@1",
+                    decision_request_id=request,
+                ),
+                outcome="check_1",
+            ),
+        )
+
+
+async def test_a_sample_judged_wrong_is_raised_by_itself_and_one_judged_right_is_not() -> None:
+    w = World()
+    w.watch = DefectWatch(
+        w.ledger, w.watch._defects, w.persistence, verdicts=Answered(req_wrong="B", req_right="A")
+    )
+    await w.ran()
+    await sampled(w, "r4", "import", "req_wrong")
+    await sampled(w, "r5", "import", "req_right")
+    await sampled(w, "r3", "import", "req_open")
+    (raised,) = await w.watch.sweep(TENANT)
+    async with w.persistence.transaction(TENANT):
+        incident = await w.incidents.get(TENANT, raised)
+    assert incident is not None and incident.facts["found"] == "sampled"
+    assert incident.run_id == "r4"
+    assert await w.watch.sweep(TENANT) == []
+
+
+async def test_a_result_marked_suspect_by_a_check_applied_again_is_raised() -> None:
+    w = World()
+    await w.ran()
+    async with w.persistence.transaction(TENANT):
+        await w.ledger.record(
+            TENANT,
+            Fact(
+                kind="check.suspect",
+                refs=LedgerRefs(
+                    tenant=TENANT, run_id="r5", step_id="import", process_version="billing@1"
+                ),
+                outcome="check_1",
+            ),
+        )
+    (raised,) = await w.watch.sweep(TENANT)
+    async with w.persistence.transaction(TENANT):
+        incident = await w.incidents.get(TENANT, raised)
+    assert incident is not None and incident.facts["found"] == "rechecked"
+
+
+# --- the incident delivered into the tracking system (ADR-0179 §4, UC-6.8) -----------------------
+
+
+class Tracker:
+    """A tracking system reached through `repository.issues`: issues and their comments."""
+
+    def __init__(self) -> None:
+        self.issues: dict[int, dict[str, Any]] = {}
+        self.comments: list[tuple[int, str]] = []
+        self.keys: dict[str, int] = {}
+
+    async def capabilities(self) -> Capabilities:
+        return Capabilities.model_validate(
+            {
+                "contract": "connector/v1",
+                "version": "1.0.0",
+                "capabilities": ["repository.issues", "repository.comments"],
+                "operations": [
+                    {
+                        "name": "repository.issues.create",
+                        "capability": "repository.issues",
+                        "effect": "write",
+                        "idempotency": "marked",
+                        "demand": {"quota_units": 1},
+                        "summary": "open an issue",
+                    },
+                    {
+                        "name": "repository.comments.create",
+                        "capability": "repository.comments",
+                        "effect": "write",
+                        "idempotency": "marked",
+                        "demand": {"quota_units": 1},
+                        "summary": "comment on an issue",
+                    },
+                ],
+                "credentials": [{"name": "TRACKER_TOKEN", "purpose": "actions"}],
+                "consumption": {"kinds": ["quota"], "unit": "requests", "window_seconds": 60},
+                "permissions": "passthrough",
+            }
+        )
+
+    async def call(self, operation: str, context: CallContext, input: Mapping[str, Any]) -> Result:
+        assert context.identity == "taktus"
+        assert [c.name for c in context.credentials] == ["TRACKER_TOKEN"]
+        if operation == "repository.issues.create":
+            number = self.keys.setdefault(context.idempotency_key, len(self.issues) + 1)
+            self.issues[number] = dict(input)
+            output: dict[str, Any] = {"number": number}
+        else:
+            self.comments.append((int(input["number"]), str(input["body"])))
+            output = {"id": len(self.comments)}
+        return Result(
+            output=output,
+            effect=EffectReport(
+                kind=Effect.WRITE, replayed=False, records=(Record(kind="issue", id="1"),)
+            ),
+            consumption=Consumption(quota_units=1),
+        )
+
+
+async def test_a_result_defect_is_delivered_once_with_its_package_and_updated_in_place() -> None:
+    w = World()
+    tracker = Tracker()
+    delivery = IncidentDelivery(
+        StaticConnectorPool([("tracker.issues", tracker)]),
+        w.incidents,
+        w.watch._defects,
+        w.ledger,
+        w.objects,
+        w.persistence,
+    )
+    await w.ran()
+    await w.corrected("r4", "import")
+    (raised,) = await w.watch.sweep(TENANT)
+    assert await delivery.deliver(TENANT) == [raised]
+    ((number, issue),) = tracker.issues.items()
+    body = issue["body"]
+    for part in (
+        "What happened",
+        "What was tried",
+        "What is affected",
+        "Options and their risks",
+        "Documentation and access needed",
+        "Remediation plan",
+    ):
+        assert part in body, part
+    assert "This package lacks" not in body
+    assert "idn_corrector" not in body and "idn_corrector" not in issue["title"], "no person"
+    assert await delivery.deliver(TENANT) == [], "delivered once"
+    async with w.persistence.transaction(TENANT):
+        await w.ledger.record(
+            TENANT,
+            Fact(
+                kind="remediation.started",
+                refs=LedgerRefs(tenant=TENANT, incident_id=raised, run_id="run_remedy_x"),
+                outcome="carried",
+            ),
+        )
+    assert await delivery.deliver(TENANT) == [raised]
+    assert len(tracker.issues) == 1, "an update goes to the same object"
+    assert tracker.comments == [(number, tracker.comments[0][1])]
+    assert "run_remedy_x" in tracker.comments[0][1]
+    assert await delivery.deliver(TENANT) == []
+    egress = [e for e in await w.entries() if e.kind == "egress.delivery"]
+    assert [e.outcome for e in egress] == ["delivered", "updated"]
+    assert all(e.refs.incident_id == raised and e.adapter == "tracker.issues" for e in egress)
+
+
+async def test_without_a_connector_for_the_tracking_system_nothing_is_delivered() -> None:
+    w = World()
+    delivery = IncidentDelivery(
+        StaticConnectorPool([]), w.incidents, w.watch._defects, w.ledger, w.objects, w.persistence
+    )
+    await w.ran()
+    await w.corrected("r4", "import")
+    await w.watch.sweep(TENANT)
+    assert await delivery.deliver(TENANT) == []

@@ -758,6 +758,7 @@ class LocalWiring:
                         stores.provenance_store,
                         stores.of(Request),
                         stores.of(TakeoverTrial),
+                        tenants=stores.tenants,
                     ),
                     traces=stores.traces,
                     work=stores.work,

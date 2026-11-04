@@ -138,10 +138,11 @@
 			type="button"
 			aria-pressed={calm}
 			disabled={motion.reducedBySystem}
+			title={motion.reducedBySystem ? 'Your system asks for reduced motion' : undefined}
 			onclick={() => (motion.stoppedByReader = !motion.stoppedByReader)}
 		>
 			<Icon name="motion" size={16} />
-			<span class="label">Stop motion{#if motion.reducedBySystem}{' '}(the system asks for it){/if}</span>
+			<span class="label">Reduce motion</span>
 		</button>
 		<button class="pill" type="button" onclick={leave}>
 			<Icon name="leave" size={16} />

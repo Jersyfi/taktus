@@ -44,7 +44,14 @@ from taktus.components.reporting.domain.model import (
     Wait,
 )
 from taktus.components.run.domain.model import WAITING, WORKING, Run, RunState, StepRun, StepState
-from taktus.ports.persistence import ProvenanceStore, Queried, Repository, Tenant, UnitOfWork
+from taktus.ports.persistence import (
+    ProvenanceStore,
+    Queried,
+    Repository,
+    Tenant,
+    TenantStore,
+    UnitOfWork,
+)
 from taktus.shared.v1 import DecisionStatus, Provenance
 
 
@@ -60,6 +67,7 @@ class RepositoryLevelRecords:
         provenance: ProvenanceStore,
         requests: Repository[Request],
         trials: Repository[TakeoverTrial] | None = None,
+        tenants: TenantStore | None = None,
     ) -> None:
         self._trials = trials
         """The trials of takeover instructions (ADR-0180 §3). None: none is recorded, and a
@@ -70,6 +78,7 @@ class RepositoryLevelRecords:
         self._versions = versions
         self._provenance = provenance
         self._requests = requests
+        self._tenants = tenants
 
     async def run(self, tenant: Tenant, run_id: str) -> RunFacts | None:
         async with self._work.transaction(tenant):
@@ -173,6 +182,7 @@ class RepositoryLevelRecords:
             counted = await self._runs.count(tenant, ("process_version", "state"))
             running = await self._runs.having(tenant, "step_runs.state", str(StepState.RUNNING))
             trials = await self._tried(tenant)
+            entry = None if self._tenants is None else await self._tenants.get(tenant)
         summaries = []
         for process in processes:
             active = versions.get(f"{process.id}@{process.active_version}")
@@ -200,6 +210,7 @@ class RepositoryLevelRecords:
             )
         return OverviewFacts(
             tenant=tenant,
+            tenant_name=None if entry is None else entry.name,
             processes=tuple(summaries),
             counts=counts_of(tenant, counted),
             runs=tuple(activity_of(run) for run in running),

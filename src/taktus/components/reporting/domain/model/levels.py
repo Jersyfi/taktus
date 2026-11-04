@@ -273,6 +273,9 @@ class OverviewFacts(Value):
     running now, as their components record them. No run is read to count it."""
 
     tenant: str = Field(min_length=1)
+    tenant_name: str | None = Field(default=None, min_length=1)
+    """The tenant's display name, as the instance's registry holds it; None where it holds
+    none."""
     processes: tuple[ProcessSummary, ...] = ()
     counts: tuple[RunCount, ...] = ()
     runs: tuple[RunActivity, ...] = ()

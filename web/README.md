@@ -58,7 +58,13 @@ origin.
 - **Model trials** (#448, ADR-0149) — the trials offered now, each startable with the
   candidates it names, a trial started by hand, and each trial's report: per candidate the
   cases passed, money, tokens and wall time charted, and each case's results side by side. The
-  report is read again while its runs have not settled. Starting a trial binds no model.
+  report is read again while its runs have not settled. Starting a trial binds no model. An
+  offer is declined in place, and a trial started by hand takes cases a person names, each a
+  process and the inputs of one run.
+- **The introduction in stages** (ADR-0137, ADR-0191) — `#/introduction`, for the plan's
+  responsible role: each stage with its condition, the figures the rule read, its processes with
+  their versions, levels, runs, missed runs and incidents, what its opening lacks, and the open
+  action where nothing is lacking, asked back before it is sent.
 
 ## How it is built
 
@@ -105,6 +111,8 @@ origin.
 | `src/lib/Graph.svelte` | steps as a graph, placed by their dependencies |
 | `src/lib/RunView.svelte` | the run level, and its text equivalent |
 | `src/lib/takeover.ts`, `TakeoverPanel.svelte` | a running step taken over: the steps that offer it, where an ask stands, the state, the lease, the result read back before it is handed back (ADR-0128); the reader's own ask is held while the page is open, and stored nowhere |
+| `src/lib/introduction.ts`, `IntroductionView.svelte` | a tenant's introduction in stages: their shapes, the open action's rule, the lines in words |
+| `static/fonts/` | IBM Plex Sans, Sans Condensed and Mono in Latin subsets and `plex.css`, served with the app; licence `OFL.txt` (ADR-0177) |
 | `src/lib/StagesPage.svelte` | the stages of a run for a participant, `#/stages/<run>`: done, current, ahead, the role a stage waits for, live from the run's stream, with a link to the run level (UC-6.15) |
 | `src/lib/OverviewView.svelte` | the overview, and its text equivalent |
 | `src/lib/OriginView.svelte` | the origin of a result, and its text equivalent |

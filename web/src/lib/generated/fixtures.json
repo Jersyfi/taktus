@@ -4017,5 +4017,143 @@
       ],
       "summary": "Order to cash (core): from A customer wants to buy to the customer has what they paid for, the role sales-lead responsible; 2 processes, 5 steps, 40 % reproducible; flow efficiency 50 % over 1 run; 1 department boundary crossed. 2 roles act along it."
     }
+  },
+  "stages": {
+    "summary": "3 stages declared; the furthest open is stage 1, Watching, open, and holding.",
+    "stages": [
+      {
+        "stage": {
+          "id": "watch",
+          "name": "Watching",
+          "processes": {
+            "error-rate": 3,
+            "backups": 3
+          },
+          "condition": {
+            "weeks": 2,
+            "runs": 10,
+            "missed": 0,
+            "incidents": 1
+          }
+        },
+        "position": 1,
+        "state": "holding",
+        "opened_at": "2026-09-19T09:00:00Z",
+        "holds": true,
+        "figures": {
+          "since": "2026-09-19T09:00:00Z",
+          "until": "2026-10-10T09:00:00Z",
+          "weeks": 3.0,
+          "runs": 42,
+          "missed": 0,
+          "incidents": 1,
+          "undecided": 0,
+          "reports_missed": 0
+        },
+        "missing": [],
+        "proposed": false,
+        "processes": [
+          {
+            "process": "error-rate",
+            "version": "error-rate@3",
+            "level": 3,
+            "granted": 3,
+            "runs": 21,
+            "missed": 0,
+            "incidents": 0,
+            "last_finished": "2026-10-10T08:00:00Z"
+          },
+          {
+            "process": "backups",
+            "version": "backups@1",
+            "level": 3,
+            "granted": 3,
+            "runs": 21,
+            "missed": 0,
+            "incidents": 1,
+            "last_finished": "2026-10-10T03:00:00Z"
+          }
+        ],
+        "condition": [
+          "open for at least 2 week(s)",
+          "at least 10 run(s) finished",
+          "at most 0 expected run(s) missed",
+          "at most 1 incident(s)"
+        ],
+        "text": "Stage 1 — Watching: open, and holding."
+      },
+      {
+        "stage": {
+          "id": "support",
+          "name": "Support answered",
+          "processes": {
+            "support": 2
+          },
+          "condition": {
+            "weeks": 4,
+            "runs": 20,
+            "correction_rate": 0.1
+          }
+        },
+        "position": 2,
+        "state": "closed",
+        "holds": false,
+        "missing": [],
+        "proposed": true,
+        "processes": [
+          {
+            "process": "support",
+            "version": "support@2",
+            "level": 2,
+            "granted": 2,
+            "runs": 0,
+            "missed": 0,
+            "incidents": 0
+          }
+        ],
+        "condition": [
+          "open for at least 4 week(s)",
+          "at least 20 run(s) finished",
+          "no correction rate above 10%"
+        ],
+        "text": "Stage 2 — Support answered: not open."
+      },
+      {
+        "stage": {
+          "id": "release",
+          "name": "Releases",
+          "processes": {
+            "release": 3
+          },
+          "condition": {
+            "weeks": 4,
+            "runs": 8,
+            "incidents": 0
+          }
+        },
+        "position": 3,
+        "state": "closed",
+        "holds": false,
+        "missing": [
+          "stage 'support' before it is not open"
+        ],
+        "proposed": false,
+        "processes": [
+          {
+            "process": "release",
+            "granted": 3,
+            "runs": 0,
+            "missed": 0,
+            "incidents": 0
+          }
+        ],
+        "condition": [
+          "open for at least 4 week(s)",
+          "at least 8 run(s) finished",
+          "at most 0 incident(s)"
+        ],
+        "text": "Stage 3 — Releases: not open. Missing: stage 'support' before it is not open."
+      }
+    ]
   }
 }

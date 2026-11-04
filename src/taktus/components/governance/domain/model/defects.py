@@ -42,6 +42,9 @@ class Found(StrEnum):
     """A person recorded what the result should have been (`step.corrected`)."""
     SAMPLED = "sampled"
     """A person judged a sampled result wrong (`check.sampled`, ADR-0152)."""
+    RECHECKED = "rechecked"
+    """A check that reads a source failed when it was applied again after the result counted
+    (`check.suspect`, ADR-0179 §1)."""
 
 
 class Position(StrEnum):
@@ -239,3 +242,23 @@ class Plan(Value):
     def runs_unattended(self) -> bool:
         """Whether the plan runs at the process's level without a halt: nothing has left."""
         return not self.outward
+
+
+PARTS = ("happened", "tried", "affected", "options", "needed")
+"""The five parts of a situation package, as UC-4.5 names them for a failure's escalation."""
+
+
+class SituationPackage(Value):
+    """What the person a result defect brings in receives (UC-6.8, ADR-0179 §4): what happened,
+    what was tried, what is affected, the options with their risks, and the documentation and
+    access needed. A part that cannot be said is empty, and the package says which it lacks."""
+
+    happened: str = ""
+    tried: str = ""
+    affected: str = ""
+    options: tuple[str, ...] = ()
+    needed: tuple[str, ...] = ()
+
+    @property
+    def lacking(self) -> tuple[str, ...]:
+        return tuple(part for part in PARTS if not getattr(self, part))

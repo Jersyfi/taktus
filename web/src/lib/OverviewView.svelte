@@ -12,6 +12,7 @@
 	import Graph from './Graph.svelte';
 	import { chosen } from './motion.svelte';
 	import { processLink, runLink } from './links';
+	import { areaTitle } from './today';
 	import type { Snippet } from 'svelte';
 	import type { OverviewLevel } from './types';
 
@@ -42,9 +43,11 @@
 	{@render between?.()}
 	<h2 class="what-runs">What runs</h2>
 	{#each level.areas as area (area.id)}
-		<section class="area" aria-label="Area {area.name}" data-area={area.id}>
+		{@const headed = areaTitle(area)}
+		<section class="area" aria-label="Area {headed.title}" data-area={area.id}>
 			<div class="area-head">
-				<h2>{area.name}</h2>
+				<h2>{headed.title}</h2>
+				{#if headed.detail}<p class="area-id" title="The tenant's identifier">{headed.detail}</p>{/if}
 				<p class="figures" data-figures="area:{area.id}">
 					{area.working} working · {area.waiting} waiting
 				</p>
@@ -120,6 +123,12 @@
 </section>
 
 <style>
+	.area-id {
+		margin: 0;
+		font-family: var(--font-mono);
+		font-size: var(--fs-075);
+		color: var(--text-secondary);
+	}
 	.hero {
 		position: relative;
 		padding: var(--sp-300) 0 var(--sp-400);

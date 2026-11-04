@@ -4,10 +4,10 @@ title: Deviation detection
 component: run
 epic: E4
 serves: [P8, P10, P12]
-state: specified
+state: building
 version: 0.5.0
-tests: []
-adrs: {ADR-0018: 17c99e0eaa3c, ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0023: 949c6f4e13af, ADR-0024: 52ba89e4adec}
+tests: [tests/exactness/test_recheck.py::test_a_source_that_changed_underneath_a_result_marks_it_suspect_once, tests/exactness/test_recheck.py::test_a_rehearsal_or_an_unknown_run_is_not_checked_again, tests/composition/test_defect_watch.py::test_a_result_marked_suspect_by_a_check_applied_again_is_raised]
+adrs: {ADR-0018: 17c99e0eaa3c, ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0023: 949c6f4e13af, ADR-0024: 52ba89e4adec, ADR-0179: b70d264ab655}
 supersedes: null
 ---
 
@@ -92,3 +92,14 @@ check. Written first in `UC-4-result-defects.md`, which no longer exists: its ot
 into this format too (UC-4.11, UC-4.12, UC-6.8, UC-7.2). The definition's `UC-4.5` asked for
 quality monitoring of every process, and this is the part of it that concerns results; the part that
 concerns completion and performance is UC-4.6 (`NUMBERING.md`).
+
+## 5. What is proven so far
+
+The checks are the rows of the catalogue of UC-4.13, run before a value counts; that part is
+proven there. A check that reads a source — reconciliation, agreement, completeness — is applied
+again after the result counted, once a day for thirty days (ADR-0179 §1). One that fails now marks
+the result suspect, once per check, naming the check, its family and what it compared with the
+source as read now, on the run and the step; the run is unchanged, and a rehearsal is not checked.
+The suspect mark is raised as a result defect by itself (UC-4.11) — by the named tests. Not built:
+a distribution check against a moving median of earlier results as a family of its own; a statistic
+as a check's method; a result recorded as **unchecked** where its step declares none.
