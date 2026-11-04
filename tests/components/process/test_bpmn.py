@@ -103,9 +103,17 @@ def fill(document: dict[str, Any]) -> dict[str, Any]:
         step.update(answers[step["id"]])
         step["reason"] = f"what {step['name']} needs"
         step["rejected"] = [{"method": "llm", "why": "it adds nothing here"}]
+        step["takeover"] = {
+            "system": "the system the lane names",
+            "do": f"do by hand what {step['name']} does",
+            "expertise": "the lane's own",
+            "credentials": [],
+            "done": "its result is written down",
+        }
         if step["id"] == "book-invoice":
             step["work"] = {"rule": "check", "conditions": [{"value": "x", "equals": "x"}]}
     document["confirmed"] = list(document["roles"].values())
+    document["sequence"] = "on each incoming invoice, the steps in the model's order"
     return document
 
 

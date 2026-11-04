@@ -184,3 +184,80 @@ steps:
         body: { $from: compose }
       credentials:
         - { name: REPOSITORY_TOKEN, injected_as: env }
+
+# How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
+# every step the system to act in, what to do there, the expertise it needs, each credential by
+# its parameter and where an authorised person finds it, and how to tell that it is done.
+takeover:
+  sequence: >
+    The process runs every hour; whoever watches the business's errors starts it. The steps run
+    in order: list the error tracker's unresolved errors of the last hour, list the repository's
+    open issues, pick the one error that matters and is not filed yet, write the issue's text,
+    and open the issue once a person confirmed it. An error matters when it reaches at least ten
+    users, or when its place is a payment or sign-in path. One issue per run; the next run takes
+    the next error. The fix is worked on that issue, and its merge stays with a person.
+  steps:
+    read-errors:
+      system: the error tracker
+      do: >
+        list the unresolved errors that had events in the period the run was started with, by
+        default the last hour, sorted by the number of users affected, at most a hundred. For
+        each, note its identifier at the tracker, title, place in the code, project, users,
+        events, first and last seen, and its link.
+      expertise: filtering and sorting errors in the error tracker
+      credentials:
+        - parameter: ERRORS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Error tracking token of the
+            requesting identity described in CREDENTIALS.md; a person may instead sign in to the
+            tracker with their own account that may read its errors
+      done: the list of unresolved errors of the period is noted with those fields
+    read-filed:
+      system: the repository hosting service, in the repository's issue list
+      do: >
+        list every open issue and keep their texts at hand, so that an error already filed is
+        recognised. Make sure every page of the list was read.
+      expertise: searching issues in the repository hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md; a person may instead sign in with
+            their own account that may read the repository's issues
+      done: every open issue has been read
+    select:
+      system: the two lists noted before
+      do: >
+        keep the errors that reach at least ten users, or whose place in the code names a
+        payment, checkout, billing, subscription, sign-in, log-in or authentication path. Leave
+        out every error whose mark, the words errors-issue and a colon followed by the error's
+        identifier at the tracker, already stands in the text of an open issue. Of the rest,
+        take the one with the most users. If none is left, the process ends here.
+      expertise: none beyond reading the two lists
+      credentials: []
+      done: one error is selected, or it is clear that no error is to be filed
+    compose:
+      system: a text editor
+      do: >
+        only when an error was selected, write the issue's text: that the error tracker reports
+        a new error that matters, with its title; where it happens, its project, users affected
+        and events, first and last seen, and its link at the tracker; that the issue was filed
+        once a person confirmed it, that a fix is worked on it and that the merge stays with a
+        person. End with the mark: errors-issue, a colon and the error's identifier.
+      expertise: none
+      credentials: []
+      done: the issue's text is written and ends with the error's mark
+    file:
+      system: the repository hosting service, in the repository's issues
+      do: >
+        only when an error was selected and a person confirmed it, open a new issue whose title
+        is the error's title and whose text is the one just written. Check first that no open
+        issue carries the mark, so that nothing is filed twice.
+      expertise: opening an issue in the repository hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md; a person may instead sign in with
+            their own account that may open issues in the repository
+      done: the issue is open with the error's mark, or no error was to be filed

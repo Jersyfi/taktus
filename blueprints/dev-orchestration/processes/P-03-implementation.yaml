@@ -82,7 +82,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p03-implementation
-version: "23"
+version: "24"
 name: P-03 Implementation
 autonomy:
   level: 4
@@ -1076,3 +1076,384 @@ steps:
         body: { $from: give-back-notice }
       credentials:
         - { name: REPOSITORY_TOKEN, injected_as: env }
+
+# What a person does without Taktus, step by step. Every repository step names the parameter
+# Taktus reaches the hosting service with; a person may act with their own account instead,
+# with the same rights (the blueprint's README.md, "By hand").
+takeover:
+  sequence: >
+    It starts when the owner, or the roadmap control process, adds the label to-taktus to an
+    issue; a person may also start it by hand for one issue. A person who takes it over works
+    in the repository's hosting service and in a clone of the repository with its toolchain.
+    In order: read the issue, its discussion, the open issues and the open records; decide
+    whether the issue is ready; claim it with the label in-progress and say so in a comment;
+    check that the branch taktus/issue-N (N the issue's number) is free and that the pipeline
+    of main is green; make the change in the clone; reserve the numbers of any register records
+    the change adds; push the branch; wait for its pipeline and check that it passed; compose
+    the title and description; open the pull request and label it taktus. A person merges it.
+    If any step after the claim fails, the last three steps give the claim back: remove the
+    label in-progress and comment which step failed and why. Nothing is given back once the
+    pull request is open.
+  steps:
+    read-issue:
+      system: the repository's hosting service
+      do: >
+        open the issue whose number the run was started with, and note its title, its text,
+        its labels, its milestone and whether it is open or a pull request
+      expertise: reading an issue in the repository's hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter REPOSITORY_TOKEN described in
+            CREDENTIALS.md; or the person's own account on the hosting service with read access
+      done: the issue's title, text, labels and milestone are noted
+    read-comments:
+      system: the repository's hosting service
+      do: read every comment of the same issue, in order
+      expertise: reading an issue's discussion in the repository's hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter REPOSITORY_TOKEN described in
+            CREDENTIALS.md; or the person's own account on the hosting service with read access
+      done: every comment of the issue has been read
+    context:
+      system: a text file
+      do: >
+        put the issue's title as a heading, its text below it, and the discussion below that,
+        as one text to work from
+      expertise: none
+      credentials: []
+      done: one text holds the title, the text and the discussion
+    read-open-issues:
+      system: the repository's hosting service
+      do: >
+        list every open issue of the repository, every page to the last, so that each issue
+        named under "Blocked by" can be checked for being open
+      expertise: filtering the issue list of the repository's hosting service by state
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter REPOSITORY_TOKEN described in
+            CREDENTIALS.md; or the person's own account on the hosting service with read access
+      done: the list of open issues is complete, to its last page
+    read-open-records:
+      system: the repository's hosting service, or a clone of the repository at main
+      do: >
+        list the files in the directory of open records on main (docs/decisions/open in this
+        repository, the directory the run was started with); a record named under "Blocked by"
+        is open while its file is there
+      expertise: browsing a directory of a branch in the repository's hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter REPOSITORY_TOKEN described in
+            CREDENTIALS.md; or the person's own account on the hosting service with read access
+      done: the names of the files in the directory are listed
+    admit:
+      system: the notes of the steps before
+      do: >
+        check the ready standard of docs/process/README.md, section Ready: the three sections
+        What must be achieved, How it is verified and Where the boundary lies, a component, a
+        milestone, one priority label, the label ready, and nothing open under "Blocked by".
+        Check too that the issue is open, is not a pull request, is not labelled as no work,
+        does not carry in-progress, carries to-taktus, and names no architecture decision
+        record under "Blocked by". If any fails, stop and note every reason; make backlog in a
+        clone prints the same verdict
+      expertise: the repository's ready standard and its section on tasks handed to Taktus
+      credentials: []
+      done: every condition holds, or the process stops with every failed condition noted
+    claim:
+      system: the repository's hosting service
+      do: add the label in-progress to the issue; if it is already there, add nothing
+      expertise: setting a label on an issue
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter REPOSITORY_TOKEN described in
+            CREDENTIALS.md; or the person's own account on the hosting service with the right
+            to set labels
+      done: the issue carries the label in-progress
+    claim-notice:
+      system: a text file
+      do: >
+        write the comment that says who took the issue: that it was claimed with the label
+        in-progress, and that the work ends in a pull request that closes the issue, or the
+        issue is given back with the reason; merging stays with a person
+      expertise: none
+      credentials: []
+      done: the comment's text is written
+    announce-claim:
+      system: the repository's hosting service
+      do: >
+        post the comment just written on the issue, unless a comment saying the same is
+        already there
+      expertise: commenting on an issue
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter REPOSITORY_TOKEN described in
+            CREDENTIALS.md; or the person's own account on the hosting service with the right
+            to comment
+      done: the issue carries the comment once
+    branch-name:
+      system: a text file
+      do: name the branch taktus/issue-N, where N is the issue's number
+      expertise: none
+      credentials: []
+      done: the branch name is written down
+    read-branch:
+      system: the repository's hosting service
+      do: >
+        look for a branch of that name. If none exists, it is free. If one exists and is not
+        the one being continued (its head commit's trailer Taktus-Idempotency-Key names
+        another run, or it has none), stop before any work: look at the branch, delete or
+        rename it, give the claim back as the last three steps say, and hand the task over
+        again
+      expertise: finding a branch and reading a commit's message in the hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter REPOSITORY_TOKEN described in
+            CREDENTIALS.md; or the person's own account on the hosting service with read access
+      done: the branch is known to be free, or the process stops with the branch named
+    wait-for-main:
+      system: the repository's hosting service, its pipeline view
+      do: >
+        look at the newest run of the workflow ci on main's head commit; while it is still
+        running, wait and look again about once a minute, for at most half an hour
+      expertise: reading the state of a pipeline run in the hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter REPOSITORY_TOKEN described in
+            CREDENTIALS.md; or the person's own account on the hosting service with read access
+      done: the run on main's head has finished, or main's head has no ci run
+    read-main:
+      system: the repository's hosting service, its pipeline view
+      do: >
+        read the verdict of that run. If it failed, stop before any work: give the claim back
+        as the last three steps say, and hand the task over again once main is green
+      expertise: reading the state of a pipeline run in the hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter REPOSITORY_TOKEN described in
+            CREDENTIALS.md; or the person's own account on the hosting service with read access
+      done: main's verdict is success or there is none, or the process stops naming the failed run
+    implement:
+      system: a clone of the repository with its toolchain installed (make install)
+      do: >
+        on a branch from main, make the change the issue asks for, so that every condition
+        under How it is verified holds, within Where the boundary lies, and following the
+        repository's own rules for a change. Run its checks: make check, and the tests of each
+        test file the change adds or changes. Write no secret value into any file. Change no
+        file of the repository's pipeline workflows. Give a record added under docs/decisions/
+        the next free number of its kind. Then write the pull request description in the
+        shape of the repository's pull request template, its headings copied exactly, without
+        the last, generated section, and with no ellipsis or placeholder words such as TODO.
+        Finally run python3 tools/check_status.py --print in the clone and keep what it prints
+      expertise: >
+        software development in the repository's language and tools, its contribution rules
+        (CLAUDE.md) and its pull request template
+      credentials:
+        - parameter: CODING_AGENT_API_KEY
+          where: >
+            the operator's secret store, under the parameter CODING_AGENT_API_KEY described in
+            CREDENTIALS.md (the name the run was started with); needed only when the person
+            has a coding agent make the change. A change made by hand needs none, only a clone
+      done: >
+        the change is in the clone, its checks pass, the description is written and the
+        generated section is kept
+    read-register:
+      system: the repository's hosting service, or a clone of the repository at main
+      do: list the records under docs/decisions on main
+      expertise: browsing a directory of a branch in the repository's hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter REPOSITORY_TOKEN described in
+            CREDENTIALS.md; or the person's own account on the hosting service with read access
+      done: the names of the records on main are listed
+    read-register-open:
+      system: the repository's hosting service, or a clone of the repository at main
+      do: list the records in the directory of open records on main
+      expertise: browsing a directory of a branch in the repository's hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter REPOSITORY_TOKEN described in
+            CREDENTIALS.md; or the person's own account on the hosting service with read access
+      done: the names of the open records on main are listed
+    record-references:
+      system: the clone and the two lists just made
+      do: >
+        list every record the change adds under docs/decisions/ (a decision, a notice or a
+        needs request) whose identifier main does not already hold
+      expertise: the repository's register of records and how their numbers are reserved
+      credentials: []
+      done: the list of new record identifiers is written, possibly empty
+    reserve-records:
+      system: the clone of the repository
+      do: >
+        for each identifier on the list, reserve its number with make reserve ID= followed by
+        the identifier. If it is taken, take the next free one with make reserve KIND= and the
+        kind, and renumber the record and every mention of it. With an empty list, skip this
+        step
+      expertise: the repository's reservation of record numbers
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter REPOSITORY_TOKEN described in
+            CREDENTIALS.md; or the person's own account on the hosting service with the right
+            to push
+      done: every new record's number is reserved, or the list was empty
+    create-branch:
+      system: the clone of the repository
+      do: >
+        commit the change with the issue's title as the message and push it as the branch
+        taktus/issue-N, which was found free; never push over a branch not looked at
+      expertise: committing and pushing a branch
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter REPOSITORY_TOKEN described in
+            CREDENTIALS.md; or the person's own account on the hosting service with the right
+            to push a branch
+      done: the branch is on the repository with the change
+    wait-for-pipeline:
+      system: the repository's hosting service, its pipeline view
+      do: >
+        wait until the pipeline for the pushed branch has a verdict, looking about once a
+        minute, for at most forty minutes
+      expertise: reading the state of a pipeline run in the hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter REPOSITORY_TOKEN described in
+            CREDENTIALS.md; or the person's own account on the hosting service with read access
+      done: the branch's pipeline has finished
+    read-pipeline:
+      system: the repository's hosting service, its pipeline view
+      do: read the verdict of the branch's pipeline
+      expertise: reading the state of a pipeline run in the hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter REPOSITORY_TOKEN described in
+            CREDENTIALS.md; or the person's own account on the hosting service with read access
+      done: the verdict is noted
+    verify:
+      system: the verdict just read
+      do: >
+        the change is acceptable only if the verdict is success; otherwise go back to the
+        change, fix it and push again
+      expertise: none
+      credentials: []
+      done: the verdict is success
+    pull-request-title:
+      system: a text file
+      do: >
+        write the title as type(scope): the issue's title (#N). The type comes from a label
+        type: on the issue; else docs if every file changed is under docs/, test if every one
+        is under tests/; else the type that fits the change, one of build, chore, ci, docs,
+        feat, fix, perf, refactor, revert, style, test. The scope is optional
+      expertise: the Conventional Commits form of a commit title
+      credentials: []
+      done: the title is written
+    pull-request-title-form:
+      system: the title just written
+      do: >
+        check that it has one of those types, an optional scope in brackets, a colon, a text,
+        and the issue's number in brackets at the end; if not, correct it before going on
+      expertise: the Conventional Commits form of a commit title
+      credentials: []
+      done: the title has the form
+    closing-section:
+      system: a text file
+      do: >
+        put the heading Needed from the owner, at the second level, above what the command
+        run at the end of the change printed
+      expertise: none
+      credentials: []
+      done: the closing section is written
+    pull-request-body:
+      system: a text file
+      do: >
+        compose the description: the line Closes #N. first, then a sentence saying how the
+        change was made, then the description written with the change, then the closing
+        section last
+      expertise: none
+      credentials: []
+      done: the description is composed
+    pull-request-body-form:
+      system: the description just composed
+      do: >
+        check that it has the sections What this is about, Decisions required, Behaviour
+        changes, What was done, Why this way and What to check, in that order and none empty,
+        and that the written part has no ellipsis and none of TODO, TBD, FIXME or XXX; if not,
+        correct it before going on
+      expertise: the repository's rules for a pull request description
+      credentials: []
+      done: the description has the form and no placeholder
+    open-pr:
+      system: the repository's hosting service
+      do: >
+        open a pull request from the branch taktus/issue-N against main, with the title and
+        the description; if one is already open for the branch, use it
+      expertise: opening a pull request
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter REPOSITORY_TOKEN described in
+            CREDENTIALS.md; or the person's own account on the hosting service with the right
+            to open pull requests
+      done: the pull request is open
+    label:
+      system: the repository's hosting service
+      do: >
+        add the label taktus to the pull request when the change was made by a run that
+        stopped after its change was made; a change the person made carries no label
+      expertise: setting a label on a pull request
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter REPOSITORY_TOKEN described in
+            CREDENTIALS.md; or the person's own account on the hosting service with the right
+            to set labels
+      done: the pull request carries the label, or needs none
+    give-back:
+      system: the repository's hosting service
+      do: >
+        only when a step after the claim failed and the work stops there, and not once the pull
+        request is open: remove the label in-progress from the issue; leave to-taktus
+      expertise: removing a label from an issue
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter REPOSITORY_TOKEN described in
+            CREDENTIALS.md; or the person's own account on the hosting service with the right
+            to set labels
+      done: the issue no longer carries in-progress
+    give-back-notice:
+      system: a text file
+      do: >
+        under the same condition, write the comment that says the issue is given back, at
+        which step the work stopped and why, that in-progress is removed, and that to-taktus
+        stays: remove it to leave the task to a session, or remove and add it again to hand it
+        to Taktus once more
+      expertise: none
+      credentials: []
+      done: the comment's text is written
+    announce-give-back:
+      system: the repository's hosting service
+      do: >
+        under the same condition, post that comment on the issue, unless it is already there
+      expertise: commenting on an issue
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter REPOSITORY_TOKEN described in
+            CREDENTIALS.md; or the person's own account on the hosting service with the right
+            to comment
+      done: the issue carries the comment once

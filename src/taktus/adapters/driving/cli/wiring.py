@@ -46,6 +46,7 @@ from taktus.components.process.application.service.deactivate import DeactivateP
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
+from taktus.components.process.application.service.takeover import TakeoverTrials
 from taktus.components.process.domain.model import Evaluation, ProcessVersion
 from taktus.components.reporting.application.service import (
     Alerts,
@@ -267,6 +268,9 @@ class Services:
     agents: AgentActs | None = None
     """Shared agents with role profiles: called, their core evaluated (`taktusctl agent`,
     ADR-0163)."""
+    instructions: TakeoverTrials | None = None
+    """A process's takeover instructions shown, and a trial of them recorded
+    (`taktusctl takeover`, ADR-0180)."""
 
 
 class Evidence(Protocol):

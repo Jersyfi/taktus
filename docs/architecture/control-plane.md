@@ -192,6 +192,14 @@ Until the bundle format exists (`0.3.0`), a bundle is this process version writt
 one addition per step — `work`, what the step does when it runs — carried as data and interpreted
 by the run. `examples/README.md` is the reference for that shape.
 
+Every version carries its **takeover instructions** under `takeover`: how a person runs the
+process without Taktus, step by step — the system, what to do, the expertise, each credential by
+its parameter and where to find it, and how to tell that the step is done; the skills a step uses
+are derived when they are read. Registration refuses a version without them, with an entry for
+a step it does not have or none for one it has, or with a credential a step names and its entry
+does not. A trial of them by a person is kept with the version; a version at level 3 or 4
+without a passed trial is shown as *untried* beside its level (UC-6.3, ADR-0180).
+
 `taktusctl bundle check` holds a bundle to the rules registration holds it to, with the same
 code and without an instance, a database or a login, so that a repository holding bundles checks
 them in its own CI (ADR-0113 §4, `examples/README.md`).

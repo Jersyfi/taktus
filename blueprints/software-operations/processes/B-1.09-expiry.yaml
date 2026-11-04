@@ -131,3 +131,54 @@ steps:
         - { field: days_left, at_least: -36500 }
       order: days_left
       limit: 1
+
+# How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
+# every step the system to act in, what to do there, the expertise it needs, each credential by
+# its parameter and where an authorised person finds it, and how to tell that it is done.
+takeover:
+  sequence: >
+    The process runs every day at 06:15 UTC, for one endpoint and one domain of the business;
+    whoever looks after the business's certificates and domains starts it. The steps run in
+    order: read the certificate the endpoint presents, read the domain's registration, and
+    take the one that expires first. Fewer than 30 days left is yellow and fewer than 7 red, as
+    the bundle proposes for the tenant's corridor; an expired one has negative days and is red.
+    A renewal, above all one that costs money, stays with a person.
+  steps:
+    read-certificate:
+      system: a TLS client in a terminal, or a browser's certificate view
+      do: >
+        connect to the host and port the run was started with, by default port 443, and read
+        the certificate the endpoint presents: its subject, its issuer, the moment it stops
+        being valid, and whether it verifies against the trusted authorities. Count the whole
+        days left from now until it stops being valid. A certificate that does not verify is
+        noted with the reason.
+      expertise: reading a certificate's validity and verifying its chain
+      credentials:
+        - parameter: EXPIRY_TOKEN
+          where: >
+            not needed by hand: reading a certificate sends no credential. The parameter Expiry
+            token of the requesting identity described in CREDENTIALS.md lies in the operator's
+            secret store
+      done: the certificate's expiry, days left and whether it verifies are noted
+    read-domain:
+      system: the domain registry's public registration data service over RDAP
+      do: >
+        look up the domain the run was started with, in its ASCII form, and read the moment its
+        registration expires. Count the whole days left from now until then.
+      expertise: looking up a domain's registration over RDAP
+      credentials:
+        - parameter: EXPIRY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Expiry token of the requesting
+            identity described in CREDENTIALS.md, sent as a bearer token; a public registration
+            service needs none
+      done: the registration's expiry and days left are noted
+    soonest:
+      system: the two noted readings
+      do: >
+        leave out a reading that carries no expiry; never read it as zero. Of the rest, take the
+        one with the fewest days left. Compare its days left with 30 for yellow and 7 for red,
+        and report a red one, or an expired one, at once to the role responsible.
+      expertise: the tenant's corridor for expiry
+      credentials: []
+      done: the thing that expires first and its days left are written down and judged

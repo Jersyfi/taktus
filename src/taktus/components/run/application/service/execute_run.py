@@ -2229,6 +2229,9 @@ class RunEngine:
                     step_id=held.step_id,
                     taken_at=now,
                     artifact_ids=tuple(a.id for a in artifacts),
+                    # The steps after it read the person's value, as they read a rule's: what
+                    # a `$from` of the step resolves to (ADR-0180 §5).
+                    result_digest=result.digest,
                 ),
             )
             claim = Claim(

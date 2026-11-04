@@ -13,7 +13,7 @@
 # arrives at 0.3.0 (docs/roadmap.md); until then examples/README.md is the reference.
 
 id: six-times-seven
-version: "2"
+version: "3"
 name: Six times seven, checked
 autonomy:
   level: 2
@@ -147,3 +147,45 @@ steps:
             - "true"
             - "true"
       max_steps: 100
+
+# How a person runs this process without Taktus (UC-6.3, ADR-0180): the sequence, and for every
+# step the system to act in, what to do there, the expertise it needs, each credential by its
+# parameter and where an authorised person finds it, and how to tell that it is done.
+takeover:
+  sequence: >
+    A person starts it whenever they want to see the example work. The five steps run in order:
+    write down the command, run it in a shell, pause briefly, check that the output is 42, and
+    note that the last step is not carried out because it asks for more than the budget allows.
+  steps:
+    prepare-commands:
+      system: a text file or a sheet of paper
+      do: write down the one command to run, expr 6 '*' 7
+      expertise: none
+      credentials: []
+      done: the command is written down exactly as given
+    compute:
+      system: a shell on any computer with a POSIX shell
+      do: run the written command, expr 6 '*' 7, and keep what it prints
+      expertise: running a command in a shell
+      credentials: []
+      done: the command ran and its output is kept
+    settle:
+      system: none
+      do: wait a moment before going on; nothing has to be confirmed
+      expertise: none
+      credentials: []
+      done: the moment has passed
+    verify-answer:
+      system: the kept output
+      do: compare the output with 42; the output is the process's result only if it is exactly 42
+      expertise: none
+      credentials: []
+      done: the output is exactly 42, or the process stops here with the output as found
+    overreach:
+      system: none
+      do: >
+        do not run it; this step asks for thirty commands, more than the process's limit of two
+        seconds of compute allows, and exists to show that it is refused before it starts
+      expertise: none
+      credentials: []
+      done: the step is recorded as not carried out

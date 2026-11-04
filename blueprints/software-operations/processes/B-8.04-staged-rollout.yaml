@@ -339,3 +339,196 @@ steps:
         replicas: 0
       credentials:
         - { name: WORKLOADS_TOKEN, injected_as: env }
+
+
+takeover:
+  sequence: >
+    A person who releases the service starts the process once a release runs as a canary: a
+    deployment of its own beside the stable one, behind the same service. The canary is raised in
+    three stages, to the replica counts the run was started with. After each stage, wait ten
+    minutes, then read the canary's error rate with the tenant's query. A rate below the limit the
+    run was started with raises the next stage. A rate at or above it scales the canary to zero at
+    once, and no later stage runs. Resuming after a halt is a new start, by a person.
+  steps:
+    raise-1:
+      system: the workload cluster, the canary deployment the run was started with
+      do: >
+        set the canary deployment's replica count to the first stage's number, the one the run was
+        started with, using the cluster's own scale command. Watch the new replicas become ready.
+      expertise: scaling a deployment in the cluster and reading whether its replicas are ready
+      credentials:
+        - parameter: WORKLOADS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Workload cluster token of the
+            requesting identity described in CREDENTIALS.md; a person working by hand uses their own
+            access to the cluster, which may scale deployments of its namespace
+      done: the canary runs the first stage's number of replicas
+    pause-1:
+      system: none
+      do: >
+        wait ten minutes, so that the stage carries real traffic. Judge nothing meanwhile.
+      expertise: none
+      credentials: []
+      done: ten minutes have passed since the stage was raised
+    rate-1:
+      system: the metrics store
+      do: >
+        run the tenant's query for the canary's error rate over the last ten minutes, the query the
+        run was started with. Write down the number exactly as the store gives it.
+      expertise: running a query in the metrics store
+      credentials:
+        - parameter: METRICS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Metrics token of the requesting
+            identity described in CREDENTIALS.md; a person working by hand signs in to the metrics
+            store with their own account, which may run queries
+      done: >
+        the canary's error rate is written down, or it is written down that the store gave no number
+    rise-1:
+      system: the number written down
+      do: >
+        compare the error rate with the limit the run was started with. It is a rise when the rate
+        is at or above the limit. A missing number is not a rise and is not read as zero; write down
+        that it is missing.
+      expertise: none
+      credentials: []
+      done: it is written down whether the rate is a rise
+    halt-1:
+      system: the workload cluster, the canary deployment
+      do: >
+        Only if the rate after stage 1 was a rise: scale the canary deployment to zero replicas at
+        once, without asking anyone first, so that no more users reach the release. Run no later
+        stage. Tell the people who release the service that the rollout halted, with the rate and
+        the limit.
+      expertise: scaling a deployment in the cluster
+      credentials:
+        - parameter: WORKLOADS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Workload cluster token of the
+            requesting identity described in CREDENTIALS.md; a person working by hand uses their own
+            access to the cluster, which may scale deployments of its namespace
+      done: the canary runs no replica, or there was no rise
+    raise-2:
+      system: the workload cluster, the canary deployment the run was started with
+      do: >
+        Only if the error rate after stage 1 was below the limit: set the canary deployment's
+        replica count to the second stage's number, the one the run was started with, using the
+        cluster's own scale command. Watch the new replicas become ready.
+      expertise: scaling a deployment in the cluster and reading whether its replicas are ready
+      credentials:
+        - parameter: WORKLOADS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Workload cluster token of the
+            requesting identity described in CREDENTIALS.md; a person working by hand uses their own
+            access to the cluster, which may scale deployments of its namespace
+      done: the canary runs the second stage's number of replicas, or the stage is skipped
+    pause-2:
+      system: none
+      do: >
+        Only if the error rate after stage 1 was below the limit: wait ten minutes, so that the
+        stage carries real traffic. Judge nothing meanwhile.
+      expertise: none
+      credentials: []
+      done: ten minutes have passed since the stage was raised, or the stage is skipped
+    rate-2:
+      system: the metrics store
+      do: >
+        Only if the error rate after stage 1 was below the limit: run the tenant's query for the
+        canary's error rate over the last ten minutes, the query the run was started with. Write
+        down the number exactly as the store gives it.
+      expertise: running a query in the metrics store
+      credentials:
+        - parameter: METRICS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Metrics token of the requesting
+            identity described in CREDENTIALS.md; a person working by hand signs in to the metrics
+            store with their own account, which may run queries
+      done: >
+        the canary's error rate is written down, or it is written down that the store gave no
+        number, or the stage is skipped
+    rise-2:
+      system: the number written down
+      do: >
+        Only if the error rate after stage 1 was below the limit: compare the error rate with the
+        limit the run was started with. It is a rise when the rate is at or above the limit. A
+        missing number is not a rise and is not read as zero; write down that it is missing.
+      expertise: none
+      credentials: []
+      done: it is written down whether the rate is a rise, or the stage is skipped
+    halt-2:
+      system: the workload cluster, the canary deployment
+      do: >
+        Only if the rate after stage 2 was a rise: scale the canary deployment to zero replicas at
+        once, without asking anyone first, so that no more users reach the release. Run no later
+        stage. Tell the people who release the service that the rollout halted, with the rate and
+        the limit.
+      expertise: scaling a deployment in the cluster
+      credentials:
+        - parameter: WORKLOADS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Workload cluster token of the
+            requesting identity described in CREDENTIALS.md; a person working by hand uses their own
+            access to the cluster, which may scale deployments of its namespace
+      done: the canary runs no replica, or there was no rise
+    raise-3:
+      system: the workload cluster, the canary deployment the run was started with
+      do: >
+        Only if the error rate after stage 2 was below the limit: set the canary deployment's
+        replica count to the third stage's number, the one the run was started with, using the
+        cluster's own scale command. Watch the new replicas become ready.
+      expertise: scaling a deployment in the cluster and reading whether its replicas are ready
+      credentials:
+        - parameter: WORKLOADS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Workload cluster token of the
+            requesting identity described in CREDENTIALS.md; a person working by hand uses their own
+            access to the cluster, which may scale deployments of its namespace
+      done: the canary runs the third stage's number of replicas, or the stage is skipped
+    pause-3:
+      system: none
+      do: >
+        Only if the error rate after stage 2 was below the limit: wait ten minutes, so that the
+        stage carries real traffic. Judge nothing meanwhile.
+      expertise: none
+      credentials: []
+      done: ten minutes have passed since the stage was raised, or the stage is skipped
+    rate-3:
+      system: the metrics store
+      do: >
+        Only if the error rate after stage 2 was below the limit: run the tenant's query for the
+        canary's error rate over the last ten minutes, the query the run was started with. Write
+        down the number exactly as the store gives it.
+      expertise: running a query in the metrics store
+      credentials:
+        - parameter: METRICS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Metrics token of the requesting
+            identity described in CREDENTIALS.md; a person working by hand signs in to the metrics
+            store with their own account, which may run queries
+      done: >
+        the canary's error rate is written down, or it is written down that the store gave no
+        number, or the stage is skipped
+    rise-3:
+      system: the number written down
+      do: >
+        Only if the error rate after stage 2 was below the limit: compare the error rate with the
+        limit the run was started with. It is a rise when the rate is at or above the limit. A
+        missing number is not a rise and is not read as zero; write down that it is missing.
+      expertise: none
+      credentials: []
+      done: it is written down whether the rate is a rise, or the stage is skipped
+    halt-3:
+      system: the workload cluster, the canary deployment
+      do: >
+        Only if the rate after stage 3 was a rise: scale the canary deployment to zero replicas at
+        once, without asking anyone first, so that no more users reach the release. Run no later
+        stage. Tell the people who release the service that the rollout halted, with the rate and
+        the limit.
+      expertise: scaling a deployment in the cluster
+      credentials:
+        - parameter: WORKLOADS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Workload cluster token of the
+            requesting identity described in CREDENTIALS.md; a person working by hand uses their own
+            access to the cluster, which may scale deployments of its namespace
+      done: the canary runs no replica, or there was no rise

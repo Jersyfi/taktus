@@ -32,6 +32,7 @@ from typing import Any
 import pytest
 from fakes import FakeClock, FakeConnector, FakeIdentifiers, FakeMaturities
 from fakes.factory_service import FakeFactory
+from fakes.takeover import instructed
 
 from taktus.adapters.driven.memory import (
     MemoryLedgerStore,
@@ -249,7 +250,9 @@ async def test_withholding_the_factory_changes_the_step_to_the_other(
     hosts = [factories[ABROAD].factory.host, factories[INSIDE].factory.host]
     pool = StaticWorkerPool([(a, HttpWorker(factories[a].endpoint)) for a in (ABROAD, INSIDE)])
     services = connector_services(FakeConnector(), workers=pool)
-    await services.register_version.execute(RegisterProcessVersion(bundle(hosts), tenant=TENANT))
+    await services.register_version.execute(
+        RegisterProcessVersion(instructed(bundle(hosts)), tenant=TENANT)
+    )
     run = await run_removal(services, ABROAD)
     assert run.state is RunState.FINISHED, run.reason
 

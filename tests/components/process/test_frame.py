@@ -10,6 +10,7 @@ from typing import Any
 
 import pytest
 from fakes import FakeClock
+from fakes.takeover import instructed
 
 from taktus.adapters.driven.memory import MemoryLedgerStore, MemoryPersistence, MemoryRepository
 from taktus.components.ledger.application.service import ChainedLedger
@@ -56,14 +57,16 @@ def connector(id: str, operation: str, **frame: Any) -> dict[str, Any]:
 
 
 def bundle(*steps: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "id": "framed",
-        "version": "1",
-        "name": "framed",
-        "autonomy": {"level": 3, "reason": "a test", "toward_next": "nothing"},
-        "inputs": {"customer": {"description": "the case's customer", "example": "cust-1"}},
-        "steps": list(steps),
-    }
+    return instructed(
+        {
+            "id": "framed",
+            "version": "1",
+            "name": "framed",
+            "autonomy": {"level": 3, "reason": "a test", "toward_next": "nothing"},
+            "inputs": {"customer": {"description": "the case's customer", "example": "cust-1"}},
+            "steps": list(steps),
+        }
+    )
 
 
 ANALYTIC = {"source": "analytics.cohorts"}

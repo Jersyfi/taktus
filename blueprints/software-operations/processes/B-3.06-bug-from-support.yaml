@@ -206,3 +206,89 @@ steps:
         body: { $from: compose }
       credentials:
         - { name: REPOSITORY_TOKEN, injected_as: env }
+
+takeover:
+  sequence: >
+    The process runs once for a customer's message to support; the person who looks after
+    support starts it for a message, or the mailbox's arrival starts it. The steps run in order:
+    read the message and the repository's open issues, decide whether the message reports a
+    defect and write down what it says, give the issue a title, check that the message was not
+    filed already, compose the issue's text, and open the issue. A message that reports no
+    defect, or one already filed, files nothing. At level 2 the owner confirms the issue before
+    it is opened.
+  steps:
+    read-message:
+      system: the support mailbox, in a mail client
+      do: >
+        open the customer's message by the message identifier the run was started with, and
+        note its subject and its full text
+      expertise: finding a message in a mail client by its message identifier
+      credentials:
+        - parameter: MAIL_PASSWORD
+          where: >
+            the operator's secret store, under the parameter Mail password of the requesting
+            identity described in CREDENTIALS.md; it opens the support mailbox's own account
+      done: the subject and the full text of the message are noted
+    read-filed:
+      system: the repository hosting service, the repository's issues
+      do: list every open issue of the repository, with its text; make sure the list is complete
+      expertise: listing a repository's open issues in its hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md; a person signs in with their own
+            account that may read the repository's issues
+      done: every open issue is listed
+    report:
+      system: a text editor
+      do: >
+        decide whether the message reports that something does not work as it should. If it
+        does not, write no defect and stop here. If it does, write four lines: a short title of
+        the defect; what the message says about how it happens; the device or system it names,
+        or not given; the version it names, or not given. Write nothing about the sender: no
+        name, no address, no account
+      expertise: the product, well enough to recognise a defect report
+      credentials: []
+      done: the four lines are written, or no defect is written
+    title:
+      system: the four lines
+      do: >
+        take the title line as the issue's title, at most 120 characters; where there is no
+        title line, nothing is filed
+      expertise: none
+      credentials: []
+      done: the issue's title is written down, or it is decided that nothing is filed
+    unfiled:
+      system: the list of open issues
+      do: >
+        search the open issues' text for the mark support-case: followed by the message
+        identifier. If an open issue carries it, the message is filed already and nothing more
+        is filed
+      expertise: none
+      credentials: []
+      done: it is known whether an open issue already carries the message's mark
+    compose:
+      system: a text editor
+      do: >
+        only when there is a title and no open issue carries the mark, write the issue's text:
+        a first line saying a customer reported a defect to support; the four lines of the
+        report; a line naming the support message by its identifier as the case, where the reply
+        to the customer is worked; and as the last line the mark support-case: followed by the
+        message identifier
+      expertise: none
+      credentials: []
+      done: the issue's text is written with the report and the mark
+    file:
+      system: the repository hosting service, the repository's issues
+      do: >
+        only when there is a title and no open issue carries the mark, and after the owner
+        confirmed it, open a new issue with the title and the composed text
+      expertise: opening an issue in the repository hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md; a person signs in with their own
+            account that may open issues
+      done: the issue is open and carries the mark, or nothing was filed for a stated reason

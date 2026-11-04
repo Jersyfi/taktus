@@ -162,9 +162,10 @@ in `LedgerEntry` names the stage an entry is about.
 
 ## Where this promise ends
 
-The takeover instructions of UC-6.3 do not exist on a process version yet. Until they do, the
-composition root answers that no process has them, and no stage opens on an instance. This
-holds UC-9.6's rule strictly; it does not make it usable before UC-6.3. The ceiling is enforced
+A process has takeover instructions when its active version carries them (ADR-0180 §6); a
+version stored before they were required carries none, and keeps a stage that adds it closed
+until a version with them is registered. Whether the instructions are right is not checked at
+the opening: a trial finds that (UC-6.3). The ceiling is enforced
 where a version is registered. A version that already ran above it when the plan was stored is
 refused at declaration, not lowered. A stage that falls lowers the processes it adds, not the
 stages after it; those show their predecessor as not holding and keep their own grants. The
@@ -176,3 +177,7 @@ not show it yet. The plan of the second tenant is its configuration on its own i
 not in this repository; the blueprint proposes it. The instance does not carry the blueprints:
 the floor a plan is held to is the `stages.yaml` the operator hands over with the plan, and the
 plan records the blueprint's name, not its digest.
+
+*Amended 2026-11-03 (#627, ADR-0180): the section said no process version carries takeover
+instructions, so no stage opens on an instance. Every version now carries them, and the port
+answers from the active version.*

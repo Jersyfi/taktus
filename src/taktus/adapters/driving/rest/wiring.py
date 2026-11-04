@@ -30,11 +30,13 @@ from taktus.components.governance.domain.model import Incident
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.application.service.streams import DeclareStream
+from taktus.components.process.application.service.takeover import RecordTrial
 from taktus.components.process.domain.model import (
     CorrectedCase,
     Evaluation,
     ProcessVersion,
     Proposal,
+    TakeoverTrial,
     ValueStream,
 )
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
@@ -219,6 +221,18 @@ class Takeovers(Protocol):
         """A person's message to a running step, asked on the run's job; its identifier
         (ADR-0156)."""
         ...
+
+
+class InstructionActs(Protocol):
+    """A process's takeover instructions and the trials of them (ADR-0180)."""
+
+    async def read(self, tenant: Tenant, process_id: str) -> dict[str, Any] | None: ...
+
+    async def record(self, command: RecordTrial) -> TakeoverTrial: ...
+
+    async def of_step(
+        self, tenant: Tenant, process_version: str, step_id: str
+    ) -> dict[str, Any] | None: ...
 
 
 class StartRefused(Exception):
@@ -487,6 +501,11 @@ class RestServices(Protocol):
     @property
     def takeovers(self) -> Takeovers:
         """A running step taken over and handed back (ADR-0128)."""
+        ...
+
+    @property
+    def takeover_instructions(self) -> InstructionActs:
+        """A process's takeover instructions and the trials of them (ADR-0180)."""
         ...
 
     @property

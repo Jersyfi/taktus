@@ -30,6 +30,7 @@ from fakes import FakeClock, FakeConnector, FakeIdentifiers, FakeWorker
 from fakes.connector import READ, WRITE
 from fakes.identity import added_by_command_line, directory
 from fakes.maturity import VERIFIED
+from fakes.takeover import instructed
 
 from integration.test_first_slice import taktusctl
 from taktus.adapters.driven.connectors.loopback import ADAPTER as LOOPBACK
@@ -135,7 +136,7 @@ async def test_withholding_the_only_worker_changes_the_example_and_is_recorded(
         assert "shell.script" in described["output"]["serves"]
         assert described["output"]["alternatives"]["shell.script"] == []
         assert described["output"]["processes"] == [
-            {"process": "six-times-seven@2", "steps": ["compute", "overreach"]}
+            {"process": "six-times-seven@3", "steps": ["compute", "overreach"]}
         ]
         assert described["effect"] == {"kind": "read"}, "nothing leaves the system"
 
@@ -145,7 +146,7 @@ async def test_withholding_the_only_worker_changes_the_example_and_is_recorded(
         assert result["configuration"]["adapter"] == "worker.endpoint"
         assert "shell.script" in result["configuration"]["serves"]
         (process,) = result["processes"]
-        assert process["process"] == "six-times-seven@2" and process["exercised"] == "run"
+        assert process["process"] == "six-times-seven@3" and process["exercised"] == "run"
         assert process["verdict"] == "changed"
         compute = next(s for s in process["steps"] if s["step"] == "compute")
         assert compute["fallback"] == "human" and compute.get("alternative") is None
@@ -176,7 +177,7 @@ async def test_withholding_the_only_worker_changes_the_example_and_is_recorded(
         assert tested[0].refs.run_id == run.id
         assert tested[0].content_digest == recorded["output"]["content_digest"]
         rehearsals = {
-            e.refs.run_id for e in entries if e.refs.process_version == "six-times-seven@2"
+            e.refs.run_id for e in entries if e.refs.process_version == "six-times-seven@3"
         }
         assert len(rehearsals) == 2, "the example ran twice: with and without the worker"
         assert all(e.rehearsal is True for e in entries if e.refs.run_id in rehearsals), (
@@ -269,45 +270,47 @@ def test_the_bundle_and_the_blueprint_describe_the_same_process() -> None:
 # --- a connector whose write leaves the system ------------------------------------------------
 
 RECORDS = "connector.fake"
-FAKE_PROCESS: dict[str, Any] = {
-    "id": "fake-records",
-    "version": "1",
-    "name": "Read a record, write one",
-    "autonomy": {
-        "level": 3,
-        "reason": "a test process: a read, and a write that leaves the system, run unattended",
-        "toward_next": "nothing; it exists for the removal test's tests",
-    },
-    "author": "the tests",
-    "reason": "the shape of every real process here: it reads, then it writes outward",
-    "limits": {"quota": {"units": 20}},
-    "inputs": {"id": {"description": "the record to read", "example": "issue-1"}},
-    "steps": [
-        {
-            "id": "read",
-            "method": "rule",
-            "reason": "a read through the connector",
-            "rejected": [{"method": "llm", "why": "a read needs no judgement"}],
-            "exactness": "sourced",
-            "fallback": {"when": "no connector serves it", "to": "human"},
-            "work": {"rule": "connector", "operation": READ, "input": {"id": {"$input": "id"}}},
+FAKE_PROCESS: dict[str, Any] = instructed(
+    {
+        "id": "fake-records",
+        "version": "1",
+        "name": "Read a record, write one",
+        "autonomy": {
+            "level": 3,
+            "reason": "a test process: a read, and a write that leaves the system, run unattended",
+            "toward_next": "nothing; it exists for the removal test's tests",
         },
-        {
-            "id": "write",
-            "method": "rule",
-            "reason": "a write through the connector, which leaves the system",
-            "rejected": [{"method": "llm", "why": "a write needs no judgement"}],
-            "exactness": "sourced",
-            "fallback": {"when": "no connector serves it", "to": "human"},
-            "depends_on": ["read"],
-            "work": {
-                "rule": "connector",
-                "operation": WRITE,
-                "input": {"title": {"$from": "read", "$select": "output.title"}},
+        "author": "the tests",
+        "reason": "the shape of every real process here: it reads, then it writes outward",
+        "limits": {"quota": {"units": 20}},
+        "inputs": {"id": {"description": "the record to read", "example": "issue-1"}},
+        "steps": [
+            {
+                "id": "read",
+                "method": "rule",
+                "reason": "a read through the connector",
+                "rejected": [{"method": "llm", "why": "a read needs no judgement"}],
+                "exactness": "sourced",
+                "fallback": {"when": "no connector serves it", "to": "human"},
+                "work": {"rule": "connector", "operation": READ, "input": {"id": {"$input": "id"}}},
             },
-        },
-    ],
-}
+            {
+                "id": "write",
+                "method": "rule",
+                "reason": "a write through the connector, which leaves the system",
+                "rejected": [{"method": "llm", "why": "a write needs no judgement"}],
+                "exactness": "sourced",
+                "fallback": {"when": "no connector serves it", "to": "human"},
+                "depends_on": ["read"],
+                "work": {
+                    "rule": "connector",
+                    "operation": WRITE,
+                    "input": {"title": {"$from": "read", "$select": "output.title"}},
+                },
+            },
+        ],
+    }
+)
 
 
 def connector_services(

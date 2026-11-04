@@ -2730,9 +2730,9 @@ paths:
       - takeover
       summary: The state a step was taken over in
       description: The step's goal, acceptance criteria and inputs, the worker's checkpoint, what the
-        worker produced so far by identifier and digest, and until when you hold it. Answered `404` while
-        the take-over is asked and not yet served, and once it was handed back or its lease lapsed (ADR-0128
-        §3).
+        worker produced so far by identifier and digest, until when you hold it, and how a person does
+        the step by hand under `instructions` (ADR-0180 §4). Answered `404` while the take-over is asked
+        and not yet served, and once it was handed back or its lease lapsed (ADR-0128 §3).
       operationId: state_runs__run_id__takeovers__takeover_id__get
       parameters:
       - name: run_id
@@ -2826,6 +2826,98 @@ paths:
             application/problem+json: {}
         '404':
           description: No such run or take-over that you may see.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /processes/{process_id}/takeover:
+    get:
+      tags:
+      - takeover
+      summary: How a person runs the process without Taktus, and the trials of it
+      description: 'The active version''s takeover instructions: the sequence, and for every step the
+        system to act in, what to do, the expertise, each credential by its parameter and where to find
+        it, how to tell it is done, and the skills it uses at their version in production. With them the
+        trials recorded and whether the version is untried: level 3 or 4 without a passed trial on it
+        (ADR-0180).'
+      operationId: instructions_processes__process_id__takeover_get
+      parameters:
+      - name: process_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Process Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The instructions and the trials.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such process that you may see.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /processes/{process_id}/takeover/trials:
+    post:
+      tags:
+      - takeover
+      summary: Record a trial of the takeover instructions
+      description: A person ran the process by hand from the active version's instructions. The trial
+        names the version, the role that ran it, whether it passed and what was missing; it is the ledger
+        entry `takeover.trial`, with you as its actor (ADR-0180 §3).
+      operationId: trial_processes__process_id__takeover_trials_post
+      parameters:
+      - name: process_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Process Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrialBody'
+      responses:
+        '201':
+          description: The trial, as recorded.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such process that you may see.
           content:
             application/problem+json: {}
         '422':
@@ -4402,6 +4494,28 @@ components:
       - name
       title: TenantName
       description: A field the surface does not know — an identifier among them — is refused.
+    TrialBody:
+      properties:
+        role:
+          type: string
+          pattern: ^[a-z][a-z0-9-]*$
+          title: Role
+          description: 'The role that ran the process by hand: a role, never a person.'
+        passed:
+          type: boolean
+          title: Passed
+          description: Whether the process could be run from the instructions alone.
+        missing:
+          items:
+            type: string
+          type: array
+          title: Missing
+          description: What the instructions lacked, one point per entry.
+      type: object
+      required:
+      - role
+      - passed
+      title: TrialBody
     taktus__adapters__driving__rest__app__ConfirmBody:
       properties:
         confirmed:

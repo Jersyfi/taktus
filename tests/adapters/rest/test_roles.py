@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
+from fakes.takeover import instructed
 
 from taktus.adapters.driven.memory import MemoryRepository
 from taktus.components.process.application.service.register_version import (
@@ -76,7 +77,9 @@ async def world(given: Services) -> dict[str, str]:
         MemoryRepository(given.persistence, Process),
         ledger=given.ledger,
     )
-    await register.execute(RegisterProcessVersion(BUNDLE, tenant=TENANT, by="idn_owner"))
+    await register.execute(
+        RegisterProcessVersion(instructed(BUNDLE), tenant=TENANT, by="idn_owner")
+    )
     return keys
 
 

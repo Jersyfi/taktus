@@ -10,6 +10,7 @@ from typing import Any
 
 import pytest
 import yaml
+from fakes.takeover import instructed
 
 from taktus.components.process.application.service.register_version import parse_bundle
 from taktus.components.process.domain.model import Event, InvalidProcess, Kind, holds
@@ -29,28 +30,30 @@ def event(kind: Kind = Kind.ISSUE_LABELLED, **context: Any) -> Event:
 
 
 def bundle(*triggers: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "id": "p",
-        "version": "1",
-        "name": "P",
-        "autonomy": {"level": 2, "reason": "a test", "toward_next": "nothing"},
-        "inputs": {
-            "issue": {"description": "the issue", "example": 11},
-            "path": {"description": "a path", "example": "docs"},
-        },
-        "triggers": list(triggers),
-        "steps": [
-            {
-                "id": "one",
-                "method": "rule",
-                "reason": "r",
-                "rejected": [],
-                "exactness": "exact",
-                "checks": [{"kind": "recomputation"}],
-                "work": {"rule": "constant", "value": 1},
-            }
-        ],
-    }
+    return instructed(
+        {
+            "id": "p",
+            "version": "1",
+            "name": "P",
+            "autonomy": {"level": 2, "reason": "a test", "toward_next": "nothing"},
+            "inputs": {
+                "issue": {"description": "the issue", "example": 11},
+                "path": {"description": "a path", "example": "docs"},
+            },
+            "triggers": list(triggers),
+            "steps": [
+                {
+                    "id": "one",
+                    "method": "rule",
+                    "reason": "r",
+                    "rejected": [],
+                    "exactness": "exact",
+                    "checks": [{"kind": "recomputation"}],
+                    "work": {"rule": "constant", "value": 1},
+                }
+            ],
+        }
+    )
 
 
 def test_every_entry_must_hold_and_each_holds_for_any_of_its_values() -> None:

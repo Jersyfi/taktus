@@ -754,7 +754,7 @@
             ],
             "text": "Process Example (example@1) at autonomy level 2: 1 run working, 1 waiting; running now: score in run_example, draft in run_example, review in run_example.",
             "exactness": {
-              "process_version": "six-times-seven@2",
+              "process_version": "six-times-seven@3",
               "name": "Six times seven, checked",
               "parts": [
                 {
@@ -793,7 +793,8 @@
                   ]
                 }
               ]
-            }
+            },
+            "untried": false
           },
           {
             "id": "quiet",
@@ -804,7 +805,8 @@
             "waiting": 0,
             "running": [],
             "cells": [],
-            "text": "Process Quiet (quiet@3) at autonomy level 4: 0 runs working, 0 waiting."
+            "text": "Process Quiet (quiet@3) at autonomy level 4: 0 runs working, 0 waiting.",
+            "untried": false
           }
         ],
         "text": "Area default: 2 processes, 1 run working, 1 waiting."
@@ -1278,7 +1280,7 @@
     ],
     "summary": "1 of 10 steps completed. Now: score (statistics), draft (language model), review (person), pipeline (wait). It waits for a person.",
     "exactness": {
-      "process_version": "six-times-seven@2",
+      "process_version": "six-times-seven@3",
       "name": "Six times seven, checked",
       "parts": [
         {
@@ -1336,7 +1338,8 @@
         "toward_next": "twenty runs without a result defect"
       },
       "autonomy_text": "Runs at autonomy level 2: a person confirms each step. Toward level 3: twenty runs without a result defect.",
-      "text": "Process Example (example@1), the active version, with 10 steps and 1 run. Runs at autonomy level 2: a person confirms each step. Toward level 3: twenty runs without a result defect."
+      "text": "Process Example (example@1), the active version, with 10 steps and 1 run. Runs at autonomy level 2: a person confirms each step. Toward level 3: twenty runs without a result defect.",
+      "untried": false
     },
     "steps": [
       {
@@ -1755,7 +1758,7 @@
     ],
     "summary": "10 steps: 6 reproducible, 2 variable, 1 with a person, 1 waiting. 3 steps running now.",
     "exactness": {
-      "process_version": "six-times-seven@2",
+      "process_version": "six-times-seven@3",
       "name": "Six times seven, checked",
       "parts": [
         {

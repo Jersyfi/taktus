@@ -104,3 +104,43 @@ steps:
       order: values.0.value
       descending: true
       limit: 1
+
+# How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
+# every step the system to act in, what to do there, the expertise it needs, each credential by
+# its parameter and where an authorised person finds it, and how to tell that it is done.
+takeover:
+  sequence: >
+    The process runs once a month, on the first day at 06:00 UTC; whoever watches the cost of
+    the business's server functions starts it. The steps run in order: run the tenant's query
+    for the run time per function in the metrics store, then take the function with the longest
+    run time. Whether that run time is a deviation is the tenant's corridor, judged against the
+    store's own history of earlier months. Expensive queries, egress and storage are not part of
+    it. Proposing and prioritising an optimisation stays with a person.
+  steps:
+    read-run-times:
+      system: the business's metrics store, in its query view
+      do: >
+        run the query the run was started with, by default the 95th percentile of each
+        function's call duration over the last 30 days, grouped by function. Export the answer
+        as a table with one row per function and its value exactly as the store gives it. Make
+        sure the store answered every series: a cut-off answer is not a complete reading.
+      expertise: running a query in the metrics store's query language and reading its series
+      credentials:
+        - parameter: METRICS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Metrics token of the requesting
+            identity described in CREDENTIALS.md; a person may instead sign in to the store
+            with their own account that may read it
+      done: the table holds every function the query answered, each with its run time
+    slowest:
+      system: a spreadsheet, on the exported table
+      do: >
+        leave out every row whose value is not a number or is below zero; never read a missing
+        value as zero. Sort the remaining rows by value, largest first, and take the first: that
+        function is the slowest. Compare its run time with the median of the slowest run times
+        of earlier months: above the tenant's yellow bound, one and a half times the median as
+        the bundle proposes, it goes into the report; above the red bound, three times, it goes
+        at once to the role responsible.
+      expertise: sorting a table and comparing a value with the tenant's corridor for run times
+      credentials: []
+      done: the slowest function and its run time are written down and judged against the corridor

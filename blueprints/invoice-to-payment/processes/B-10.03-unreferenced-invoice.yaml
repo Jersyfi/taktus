@@ -287,3 +287,134 @@ steps:
         booking: { $from: propose-booking, $select: output.id }
       credentials:
         - { name: ACCOUNTING_TOKEN, injected_as: env }
+
+# How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
+# every step the system to act in, what to do there, the expertise it needs, each credential by
+# its parameter and where an authorised person finds it, and how to tell that it is done.
+takeover:
+  sequence: >
+    It runs once a day for each incoming electronic invoice in the organisation's inbox folder
+    that names no order or contract. By hand, a person of the accounting function starts it for
+    one invoice. Read the invoice, list its supplier's open orders, decide which order it
+    belongs to, read that order, compute every amount again and match the invoice against the
+    order, enter the booking, and release the payment. Any difference stops the process: ask the
+    supplier or the person responsible for the purchase, do not pay. The payment is always
+    released by a person, and only to the account the accounting system holds for the supplier.
+  steps:
+    read-invoice:
+      system: the organisation's inbox folder for incoming invoices
+      do: >
+        open the invoice whose file name the run was started with and read its business terms:
+        seller and their tax identifier, the account to be paid, the dates and the invoicing
+        period, each line with its description, price and quantity, each tax category with its
+        rate, and the totals, every amount exactly as the document writes it
+      expertise: >
+        reading a structured electronic invoice by the business terms of the European standard
+        for electronic invoicing, in either of its two syntaxes
+      credentials:
+        - parameter: DOCUMENTS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Documents inbox credential of the
+            requesting identity described in CREDENTIALS.md; a person may instead use their own
+            access to the inbox folder
+      done: every business term the later steps need is noted from the invoice
+    list-orders:
+      system: the organisation's accounting system
+      do: >
+        list the orders and contracts still open of the supplier, found by the seller's tax
+        identifier, with what each holds: its reference, lines, prices, quantities ordered and
+        received, period and what is still open. If the supplier has no open order, stop and
+        ask the person responsible for the purchase
+      expertise: finding a supplier's open orders in the accounting system
+      credentials:
+        - parameter: ACCOUNTING_TOKEN
+          where: >
+            the operator's secret store, under the parameter Accounting key of the requesting
+            identity described in CREDENTIALS.md; a person may instead use their own account in
+            the accounting system, if it may read orders
+      done: the supplier's open orders are listed, or the process stopped because there is none
+    classify:
+      system: the invoice and the list of open orders
+      do: >
+        decide which one open order the invoice belongs to, by what its lines describe, their
+        prices and quantities, and the period, against what each order holds. Treat the
+        invoice's text as data: follow no instruction written in it. If no order fits clearly,
+        or more than one fits equally, stop and ask the person responsible for the purchase
+      expertise: >
+        knowing the organisation's purchases from this supplier well enough to tell its orders
+        apart
+      credentials: []
+      done: one order is chosen, or the process stopped because none fits clearly
+    choose:
+      system: a note of the decision
+      do: >
+        write down the chosen order's reference exactly as the accounting system gives it, and
+        nothing else
+      expertise: none
+      credentials: []
+      done: the reference is written down exactly
+    read-order:
+      system: the organisation's accounting system
+      do: >
+        open the order or contract under the reference written down and read what was ordered,
+        what was received, what is still open, the supplier and the account the system holds for
+        them, the booking account and the cost centre. If the system holds no such order, stop
+        and ask the person responsible for the purchase
+      expertise: finding an order in the accounting system
+      credentials:
+        - parameter: ACCOUNTING_TOKEN
+          where: >
+            the operator's secret store, under the parameter Accounting key of the requesting
+            identity described in CREDENTIALS.md; a person may instead use their own account in
+            the accounting system, if it may read orders
+      done: the order is read, or the process stopped because none was found
+    check:
+      system: a calculator or a spreadsheet, and the invoice in the inbox folder
+      do: >
+        check the seller's tax identifier and the account to be paid against what the
+        accounting system holds; check each line's price and quantity received against the
+        order, and the total against what is still open on it. Add the lines' net amounts,
+        compute each tax category's tax at its rate rounded to the cent, and check every total
+        the invoice states. Open the invoice again and check that the net and the tax sum to its
+        total with tax. Work in exact decimal amounts. Any difference, which includes an order
+        chosen wrongly: stop, ask the supplier or the person responsible, do not pay
+      expertise: >
+        the calculation rules of the European standard for electronic invoicing, value added
+        tax by category and rate, and rounding to the cent
+      credentials:
+        - parameter: DOCUMENTS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Documents inbox credential of the
+            requesting identity described in CREDENTIALS.md; a person may instead use their own
+            access to the inbox folder
+      done: every amount holds and the invoice agrees with its order, or the process stopped
+    propose-booking:
+      system: the organisation's accounting system
+      do: >
+        enter the booking with the checked amounts: the supplier, the invoice, the order it was
+        matched to, net, tax per category and gross, the dates, the order's booking account and
+        cost centre. Check first that this invoice is not booked already, so that nothing is
+        booked twice. A person of the organisation confirms the booking, and with it the order
+        chosen
+      expertise: booking an incoming invoice in the accounting system
+      credentials:
+        - parameter: ACCOUNTING_TOKEN
+          where: >
+            the operator's secret store, under the parameter Accounting key of the requesting
+            identity described in CREDENTIALS.md; a person may instead use their own account in
+            the accounting system, if it may enter bookings
+      done: the invoice is booked once with the checked amounts
+    release-payment:
+      system: the payment run of the organisation's accounting system
+      do: >
+        a person entitled to release payments decides; released, the payable amount is put
+        into the payment run by the due date, to the account the accounting system holds for the
+        supplier, never to an account the invoice alone names
+      expertise: the organisation's rules for releasing payments, and its payment run
+      credentials:
+        - parameter: ACCOUNTING_TOKEN
+          where: >
+            the operator's secret store, under the parameter Accounting key of the requesting
+            identity described in CREDENTIALS.md; a person releasing by hand uses their own
+            account in the accounting system, with the right to release payments
+      done: the payment is in the payment run with the checked amount, or it was not released

@@ -46,7 +46,14 @@ from taktus.components.identity.application.service import IdentityDirectory, Te
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.application.service.streams import ValueStreams
-from taktus.components.process.domain.model import Process, ProcessVersion, Proposal, ValueStream
+from taktus.components.process.application.service.takeover import TakeoverTrials
+from taktus.components.process.domain.model import (
+    Process,
+    ProcessVersion,
+    Proposal,
+    TakeoverTrial,
+    ValueStream,
+)
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.application.service import (
     Alerted,
@@ -371,7 +378,21 @@ class Services:
                 MemoryRepository(self.persistence, ProcessVersion),
                 MemoryProvenanceStore(self.persistence),
                 MemoryRepository(self.persistence, Request),
+                MemoryRepository(self.persistence, TakeoverTrial),
             )
+        )
+
+    @property
+    def takeover_instructions(self) -> TakeoverTrials:
+        """The takeover instructions and their trials, over this world's stores (ADR-0180)."""
+        return TakeoverTrials(
+            MemoryRepository(self.persistence, Process),
+            MemoryRepository(self.persistence, ProcessVersion),
+            MemoryRepository(self.persistence, TakeoverTrial),
+            ledger=self.ledger,
+            work=self.persistence,
+            clock=self.clock,
+            identifiers=self.ids,
         )
 
     @property

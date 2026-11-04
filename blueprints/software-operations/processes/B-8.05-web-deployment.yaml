@@ -169,3 +169,80 @@ steps:
         name: { $input: deployment }
       credentials:
         - { name: WORKLOADS_TOKEN, injected_as: env }
+
+takeover:
+  sequence: >
+    A person who releases the web service starts the process when a release is published; the
+    release names the deployment, the container, the image and the smoke test's path. The steps
+    run in order: set the new image on the deployment, wait until the rollout is complete, ask the
+    service the smoke test's path as a user would, and count whether the check failed. A failed
+    check makes the owner decide on a rollback to the revision before. A rollout that does not
+    complete within fifteen minutes goes to the owner, and no rollback starts for it.
+  steps:
+    release:
+      system: the workload cluster, the deployment the run was started with
+      do: >
+        set the image of the named container of the deployment to the release's image, by
+        registry, name and tag or digest, exactly as the release names it. Use the cluster's own
+        command for setting a deployment's image, so that it rolls out a new revision.
+      expertise: releasing an image to a deployment in the cluster
+      credentials:
+        - parameter: WORKLOADS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Workload cluster token of the
+            requesting identity described in CREDENTIALS.md; a person working by hand uses their
+            own access to the cluster, which may release images to deployments of its namespace
+      done: the deployment names the release's image and a new revision is rolling out
+    rolled-out:
+      system: the workload cluster, the deployment's rollout status
+      do: >
+        watch the rollout until every wanted replica is updated and available; look again every
+        fifteen seconds or so. If it has not completed after fifteen minutes, stop here and hand
+        it to the owner; start no rollback.
+      expertise: reading a deployment's rollout status in the cluster
+      credentials:
+        - parameter: WORKLOADS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Workload cluster token of the
+            requesting identity described in CREDENTIALS.md; a person working by hand uses their
+            own access to the cluster, which may read deployments of its namespace
+      done: every wanted replica is updated and available, or the owner has the stalled rollout
+    smoke:
+      system: the web service, from outside, as a user reaches it
+      do: >
+        request the smoke test's path under the service's address once, the path the run was
+        started with. The check passes when the answer has status 200 and arrives within five
+        seconds. Write down the status and the time it took.
+      expertise: sending a request to a web address and reading its status and duration
+      credentials:
+        - parameter: CHECK_TOKEN
+          where: >
+            the operator's secret store, under the parameter Check token of the requesting
+            identity described in CREDENTIALS.md; it is needed only where the service asks for a
+            token on that path
+      done: the status and the duration of the request are written down
+    failed:
+      system: the result written down
+      do: >
+        decide by rule whether the smoke test failed: it failed when the status was not 200, or
+        the answer took longer than five seconds, or no answer came.
+      expertise: none
+      credentials: []
+      done: it is written down whether the smoke test failed
+    rollback:
+      system: the workload cluster, the deployment
+      do: >
+        only if the smoke test failed: put to the owner whether to roll the deployment back to
+        the revision before this release, naming the deployment, the image and the path that
+        failed. Only if the owner agrees, roll the deployment back to its previous revision with
+        the cluster's own rollback command, and watch that rollout complete.
+      expertise: rolling a deployment back to its previous revision in the cluster
+      credentials:
+        - parameter: WORKLOADS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Workload cluster token of the
+            requesting identity described in CREDENTIALS.md; a person working by hand uses their
+            own access to the cluster, which may roll back deployments of its namespace
+      done: >
+        the smoke test passed, or the owner's decision is recorded and, if the owner agreed, the
+        deployment runs the revision before the release

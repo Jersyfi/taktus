@@ -122,7 +122,7 @@ async def test_choosing_makes_a_first_version_with_the_choices_and_it_goes_live_
     proposal = await gallery.propose(
         TENANT, "family", "shopping-list", {"household": "the Jansens", "day": "Friday"}, WHO
     )
-    assert proposal.base_version is None and proposal.version == "1"
+    assert proposal.base_version is None and proposal.version == "2"
     assert proposal.request == "from the gallery: A family"
     (trigger,) = proposal.bundle["triggers"]
     assert trigger["inputs"]["household"] == "the Jansens"
@@ -135,10 +135,10 @@ async def test_choosing_makes_a_first_version_with_the_choices_and_it_goes_live_
     assert finished.state is RunState.FINISHED
     assert world.connector.calls == []
     version = await world.acts.commission(TENANT, "shopping-list", rehearsed.id, WHO)
-    assert version.version == "1" and version.autonomy_level == 2
+    assert version.version == "2" and version.autonomy_level == 2
     async with world.persistence.transaction(TENANT):
         live = await world.processes.get(TENANT, "shopping-list")
-    assert live is not None and live.active_version == "1"
+    assert live is not None and live.active_version == "2"
 
 
 async def test_every_gallery_process_rehearses_to_its_end_on_an_instance_with_no_connector() -> (
@@ -179,4 +179,4 @@ async def test_a_process_the_tenant_has_already_is_proposed_as_its_next_version(
     await world.run_through(run.id)
     await world.acts.commission(TENANT, "shopping-list", first.id, WHO)
     again = await gallery.propose(TENANT, "family", "shopping-list", {"day": "Monday"}, WHO)
-    assert (again.base_version, again.version) == ("1", "2")
+    assert (again.base_version, again.version) == ("2", "3")

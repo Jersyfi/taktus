@@ -11,6 +11,7 @@ from datetime import timedelta
 from typing import Any
 
 import httpx
+from fakes.takeover import instructed
 
 from taktus.adapters.driven.memory import MemoryRepository
 from taktus.components.process.application.service.register_version import (
@@ -84,15 +85,16 @@ async def world(given: Services) -> dict[str, str]:
     )
     for process, role in [("order", "sales"), ("invoice", "accounting")]:
         await register.execute(
-            RegisterProcessVersion(bundle(process, role), tenant=TENANT, by="idn_owner")
+            RegisterProcessVersion(instructed(bundle(process, role)), tenant=TENANT, by="idn_owner")
         )
     return keys
 
 
 def stored(given: Services) -> tuple[str, int]:
-    """Everything the memory persistence holds, to show that a read writes nothing."""
-    tables = repr(sorted((k, repr(v)) for k, v in given.persistence._tables.items()))
-    return tables, sum(len(e) for e in given.persistence._ledger.values())
+    """Everything the memory persistence holds, to show that a read writes nothing. A table a
+    read only looked into holds nothing, and is left out."""
+    tables = sorted((k, repr(v)) for k, v in given.persistence._tables.items() if any(v.values()))
+    return repr(tables), sum(len(e) for e in given.persistence._ledger.values())
 
 
 async def test_only_the_owner_declares_a_stream_and_a_changed_one_is_a_new_revision(

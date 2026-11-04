@@ -5,7 +5,7 @@
 # and its rehearsal runs to its end. Its choices are the inputs its weekly trigger gives.
 
 id: shopping-list
-version: "1"
+version: "2"
 name: The week's shopping list
 autonomy:
   level: 2
@@ -70,3 +70,27 @@ steps:
         household: { $input: household }
         day: { $input: day }
         staples: { $input: staples }
+
+# How a person runs this process without Taktus (ADR-0180): the sequence, and for every step the
+# system to act in, what to do there, the expertise it needs, each credential, and how to tell
+# that it is done.
+takeover:
+  sequence: >
+    Once a week, before the shopping day, someone in the household writes the list. Two steps, in
+    order: check that there is something on the list of what is bought every week, then write
+    the week's list.
+  steps:
+    check:
+      system: the household's note of what it buys every week
+      do: make sure the note names at least one thing
+      expertise: none
+      credentials: []
+      done: the note names something, or the list waits until it does
+    write:
+      system: a sheet of paper or a note on a phone
+      do: >
+        write the shopping list for the household and the shopping day, with everything bought
+        every week, and ask the others to add what is missing before that day
+      expertise: none
+      credentials: []
+      done: the list names the household, the day and every staple

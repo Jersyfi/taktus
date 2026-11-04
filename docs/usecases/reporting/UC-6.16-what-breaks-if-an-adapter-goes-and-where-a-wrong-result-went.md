@@ -4,9 +4,9 @@ title: What breaks if an adapter goes, and where a wrong result went
 component: reporting
 epic: E6
 serves: [P6, P11, P12, P13]
-state: building
+state: verified
 version: 0.5.0
-tests: [tests/components/reporting/test_acting.py::test_removing_an_adapter_splits_what_breaks_from_what_degrades, tests/components/reporting/test_acting.py::test_a_wrong_result_is_followed_forward_and_every_egress_is_marked, tests/components/reporting/test_acting.py::test_where_data_goes_is_held_against_the_rule, tests/composition/test_acting.py::test_removing_an_adapter_reads_the_configuration_as_it_is_now, tests/composition/test_acting.py::test_a_wrong_result_is_followed_forward_across_processes_to_what_left, tests/composition/test_acting.py::test_residency_is_held_against_the_tenant_s_rule, tests/adapters/persistence/test_provenance_store.py::test_what_was_built_on_a_step_run_walks_forward_across_runs_in_one_query, tests/adapters/rest/test_acting.py::test_dependencies_answer_and_a_run_one_may_not_see_is_none]
+tests: [tests/components/reporting/test_acting.py::test_removing_an_adapter_splits_what_breaks_from_what_degrades, tests/components/reporting/test_acting.py::test_a_wrong_result_is_followed_forward_and_every_egress_is_marked, tests/components/reporting/test_acting.py::test_where_data_goes_is_held_against_the_rule, tests/composition/test_acting.py::test_removing_an_adapter_reads_the_configuration_as_it_is_now, tests/composition/test_acting.py::test_a_wrong_result_is_followed_forward_across_processes_to_what_left, tests/composition/test_acting.py::test_residency_is_held_against_the_tenant_s_rule, tests/composition/test_acting.py::test_the_views_act_on_nothing, tests/adapters/persistence/test_provenance_store.py::test_what_was_built_on_a_step_run_walks_forward_across_runs_in_one_query, tests/adapters/rest/test_acting.py::test_dependencies_answer_and_a_run_one_may_not_see_is_none]
 adrs: {ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0030: 232318604b2d, ADR-0055: 6ea439834b2c, ADR-0116: fdaf116b5e47, ADR-0147: c8a0fb9085c0}
 supersedes: null
 ---
@@ -52,6 +52,7 @@ counts it shows; the decision of ADR-0147. The owner accepted it as F5 of DEC-01
 ## 5. What is proven so far
 
 Every condition of section 2 by the named tests, over the domain, the composition with memory
-adapters, PostgreSQL for the forward walk, and the HTTP surface. The web app's pages are tested
-in `web/src/lib/acting.test.ts`. The view is drawn as lists from one selected node, not yet as a
-laid-out graph.
+adapters, PostgreSQL for the forward walk, and the HTTP surface; that the views act on nothing
+by a test that reads every record, ledger entry and provenance record before and after them. The web app's pages are tested
+in `web/src/lib/acting.test.ts`. The view is drawn as lists from one selected node, not as a laid-out
+graph, which section 2 does not ask for.

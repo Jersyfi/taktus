@@ -117,3 +117,55 @@ steps:
         - { field: idle_hours, at_least: 168 }
       order: idle_hours
       descending: true
+
+takeover:
+  sequence: >
+    The process runs every morning at five UTC, on its own schedule; whoever looks after the
+    repository's order of work takes it over. The steps run in order: list the open pull
+    requests, list the open issues, keep the pull requests idle for two weeks, and keep the
+    started issues that did not move for a week. Both lists, the longest idle first, go into
+    the daily report when the tenant's corridor on either count says so. Closing or cleaning up
+    the work stays with a person.
+  steps:
+    read-pulls:
+      system: the repository hosting service, the repository's pull requests
+      do: >
+        list every open pull request with whether it is a draft and when it was last updated,
+        and work out for each the whole hours since that update
+      expertise: listing a repository's open pull requests in its hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md; a person signs in with their own
+            account that may read the repository
+      done: every open pull request is listed with its draft state and its hours since update
+    read-issues:
+      system: the repository hosting service, the repository's issues
+      do: >
+        list every open issue with its labels and when it was last updated, and work out for
+        each the whole hours since that update
+      expertise: listing a repository's open issues in its hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md
+      done: every open issue is listed with its labels and its hours since update
+    abandoned-pulls:
+      system: the list of pull requests
+      do: >
+        keep the pull requests that are not drafts and were not updated for at least 336 hours,
+        two weeks; order them by hours since update, the longest first, and count them
+      expertise: none
+      credentials: []
+      done: the idle pull requests are listed, longest idle first, and counted
+    abandoned-issues:
+      system: the list of issues
+      do: >
+        keep the issues carrying a label that says the work started (in progress, started,
+        doing or claimed) and that were not updated for at least 168 hours, one week; order them
+        by hours since update, the longest first, and count them
+      expertise: none
+      credentials: []
+      done: the started issues without movement are listed, longest idle first, and counted

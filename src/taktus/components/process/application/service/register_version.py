@@ -48,6 +48,11 @@ Registering is where a declared evaluation must hold: its scorers score steps th
 result, each by a rule or by a judge that says why no rule can and names its fallback, and its
 cases give the inputs the version requires (UC-4.18, ADR-0134 §1).
 
+Registering is where a version must carry its takeover instructions: a bundle without
+`takeover`, with an entry for a step it does not have or none for one it has, with a credential
+a step names and its entry does not, or naming an identifier a person could not look up without
+Taktus, is refused (UC-6.3, ADR-0180 §2).
+
 Registering is where a person's step must name its role once the tenant has a structure: a
 `human` step, or a fallback to a person, without a role, or naming a role no identity of the
 tenant holds, is refused (UC-4.20, ADR-0146). While no identity holds a role, nothing is
@@ -75,6 +80,7 @@ from taktus.components.process.domain.model import (
     ProcessVersion,
     RaiseRefused,
     Slo,
+    TakeoverInstructions,
     Trigger,
 )
 from taktus.components.process.domain.model.exactness import (
@@ -82,6 +88,7 @@ from taktus.components.process.domain.model.exactness import (
     InvalidStatement,
 )
 from taktus.components.process.domain.service import autonomy, evaluation, exactness, frame
+from taktus.components.process.domain.service import takeover as instructed
 from taktus.components.process.domain.service.quality import QUALITY
 from taktus.components.process.ports import (
     FreeSources,
@@ -489,12 +496,17 @@ def parse_bundle(bundle: Document) -> ProcessVersion:
             open_work=_open_work(bundle.get("open_work")),
             deadlines=_deadlines(bundle.get("deadlines")),
             evaluation=_evaluation(bundle.get("evaluation")),
+            takeover=_takeover(bundle.get("takeover")),
             author=bundle.get("author"),
             reason=bundle.get("reason"),
         )
     except ValidationError as error:
         raise InvalidProcess(tuple(_describe("bundle", error))) from error
     refused = exactness.findings(version.steps)
+    if version.takeover is not None:
+        refused.extend(
+            instructed.findings(version.takeover, version.steps, credentials_named(version))
+        )
     refused.extend(evaluation.findings(version.steps, version.work))
     refused.extend(frame.findings(version.steps, version.work, version.inputs))
     try:
@@ -667,6 +679,19 @@ def _action(raw: Any, where: str) -> dict[str, Any] | None:
     if not isinstance(target, str):
         raise InvalidProcess((f"`{where}.{kind}` names a role, never a person",))
     return {"kind": kind, "role": target}
+
+
+def _takeover(raw: Any) -> TakeoverInstructions:
+    """`takeover`: the sequence, and per step how a person does it by hand (ADR-0180 §1). A
+    bundle without it does not register (UC-6.3 §2)."""
+    if raw is None:
+        raise InvalidProcess((instructed.MISSING,))
+    if not isinstance(raw, Mapping):
+        raise InvalidProcess(("`takeover` is not a mapping of `sequence` and `steps`",))
+    try:
+        return TakeoverInstructions.model_validate(raw)
+    except ValidationError as error:
+        raise InvalidProcess(tuple(_describe("takeover", error))) from error
 
 
 def _evaluation(raw: Any) -> EvaluationSpec | None:

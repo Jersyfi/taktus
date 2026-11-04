@@ -6,7 +6,7 @@ Each recording says where it was taken, in its own `recording.json` (`"taken"`):
 |---|---|---|
 | `p01-roadmap-control` | local | no run of P-01 on the instance yet |
 | `p02-refinement` | instance | `run_30ad9fcaf2fb24e441ba` of `p02-refinement@5`, on #528, 2026-10-18 |
-| `p03-implementation` | local | no run of the current version on the instance yet; taken of version 22 and relabelled 23, which adds only a role to every fallback to a person (ADR-0146) |
+| `p03-implementation` | local | no run of the current version on the instance yet; taken of version 22 and relabelled 24: 23 adds only a role to every fallback to a person (ADR-0146), 24 only the takeover instructions (ADR-0180) |
 | `s07-change-in-dialogue` | local | S-07 is not installed on the instance yet |
 
 `tests/rehearsal/test_replay.py` holds this table to the `taken` of each recording.

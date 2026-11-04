@@ -13,7 +13,7 @@
 # same file starts another run of the same version.
 
 id: first-process
-version: "1"
+version: "2"
 name: First process
 autonomy:
   level: 2
@@ -64,3 +64,31 @@ steps:
       rule: constant
       value:
         done: true
+
+# How a person runs this process without Taktus (ADR-0180): the sequence, and for every step the
+# system to act in, what to do there, the expertise it needs, each credential, and how to tell
+# that it is done.
+takeover:
+  sequence: >
+    The administrator of a new instance runs it once, as the last step of the install, to see a
+    process run. Three steps, in order: write down a greeting, pause, and write down that it is
+    done.
+  steps:
+    greet:
+      system: a text file or a sheet of paper
+      do: write down the greeting, the instance runs a process
+      expertise: none
+      credentials: []
+      done: the greeting is written down exactly as given
+    settle:
+      system: none
+      do: wait two seconds before going on; nothing has to be confirmed
+      expertise: none
+      credentials: []
+      done: the two seconds have passed
+    confirm:
+      system: the same text file or sheet of paper
+      do: write down that the process is done
+      expertise: none
+      credentials: []
+      done: the confirmation is written down

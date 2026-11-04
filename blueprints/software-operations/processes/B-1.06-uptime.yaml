@@ -135,3 +135,59 @@ steps:
         - { $from: check-second, $select: output }
       all:
         - { field: outcome, equals: failed }
+
+# How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
+# every step the system to act in, what to do there, the expertise it needs, each credential by
+# its parameter and where an authorised person finds it, and how to tell that it is done.
+takeover:
+  sequence: >
+    The process runs every five minutes, for one path of one of the business's services; whoever
+    is on watch for the services starts it. The steps run in order: ask the service at the path,
+    wait a minute, ask it again, and count how many of the two checks failed. One failure is a
+    blip and waits for the daily report; two in a row are an outage, reported at once to the
+    role responsible. Telling customers about a long outage stays with a person.
+  steps:
+    check-first:
+      system: a terminal with an HTTP client, or a browser, on the service's address
+      do: >
+        request the path the run was started with, by default the service's health path, under
+        the service's address, as a user would. The check passes when the answer has status 200
+        and arrives within the longest time the run was started with, by default 5000
+        milliseconds; any other status, a slower answer or no answer is a failed check. Note the
+        status, the duration and the verdict.
+      expertise: sending an HTTP request and reading its status and duration
+      credentials:
+        - parameter: CHECK_TOKEN
+          where: >
+            the operator's secret store, under the parameter Check token of the requesting
+            identity described in CREDENTIALS.md, sent as a bearer token; a service that admits
+            anyone at the path needs none
+      done: the first check's verdict is noted, passed or failed
+    pause:
+      system: none
+      do: wait sixty seconds after the first check before the second; nothing is judged meanwhile
+      expertise: none
+      credentials: []
+      done: a minute has passed since the first check
+    check-second:
+      system: a terminal with an HTTP client, or a browser, on the service's address
+      do: >
+        request the same path again, in the same way and against the same status and longest
+        time as the first check, and note the status, the duration and the verdict.
+      expertise: sending an HTTP request and reading its status and duration
+      credentials:
+        - parameter: CHECK_TOKEN
+          where: >
+            the operator's secret store, under the parameter Check token of the requesting
+            identity described in CREDENTIALS.md, sent as a bearer token; a service that admits
+            anyone at the path needs none
+      done: the second check's verdict is noted, passed or failed
+    failures:
+      system: the two noted verdicts
+      do: >
+        count how many of the two checks failed. None is fine. One is yellow and is noted for
+        the daily report. Two are red: report the outage at once to the role responsible, with
+        the path, both statuses and the times of the checks.
+      expertise: the tenant's corridor for uptime
+      credentials: []
+      done: the count is written down, and two failures have been reported

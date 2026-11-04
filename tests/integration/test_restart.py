@@ -58,6 +58,8 @@ def bundle() -> dict[str, Any]:
     document["autonomy"] = {"level": 3, "reason": "a test of the restart", "toward_next": "-"}
     document["limits"] = {"compute": {"seconds": 60, "resource_class": "cpu.small"}}
     document["steps"] = [s for s in document["steps"] if s["id"] != "overreach"]
+    # Its takeover instructions go with the step (ADR-0180).
+    document["takeover"]["steps"].pop("overreach")
     compute = next(s for s in document["steps"] if s["id"] == "compute")
     compute["work"]["max_steps"] = COMMANDS
     prepare = next(s for s in document["steps"] if s["id"] == "prepare-commands")

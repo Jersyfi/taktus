@@ -254,7 +254,16 @@ class SkillLifecycle:
             )
         if version is None:
             raise SkillError("unknown", f"the process {process_id!r} has no active version")
-        steps: list[dict[str, Any]] = []
+        by_step = await self.of_version(tenant, version)
+        return [{"step": step, "skills": list(skills)} for step, skills in by_step.items()]
+
+    async def of_version(
+        self, tenant: Tenant, version: ProcessVersion
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Per step that uses skills, each skill at its version in production with its
+        instructions, in the order the steps run: what takeover instructions derive (ADR-0180
+        §1)."""
+        steps: dict[str, list[dict[str, Any]]] = {}
         used = version.skills_used()
         for step in version.ordered():
             named = [name for name, at in used.items() if step.id in at]
@@ -272,7 +281,7 @@ class SkillLifecycle:
                         "instructions": current.file.instructions,
                     }
                 )
-            steps.append({"step": step.id, "skills": entries})
+            steps[step.id] = entries
         return steps
 
     # --- the look --------------------------------------------------------------------------

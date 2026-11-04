@@ -102,3 +102,41 @@ steps:
       order: values.0.value
       descending: true
       limit: 1
+
+# How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
+# every step the system to act in, what to do there, the expertise it needs, each credential by
+# its parameter and where an authorised person finds it, and how to tell that it is done.
+takeover:
+  sequence: >
+    The process runs every day at 07:00 UTC; whoever watches the business's outside services
+    starts it. The steps run in order: run the tenant's query for the share of each outside
+    service's quota that is used, such as mail sending, payments, data services or the
+    repository hosting service's rate limits, then take the fullest one. A share of 0.8 or more
+    is yellow and 0.95 or more red, as the bundle proposes for the tenant's corridor. Changing a
+    plan stays with a person.
+  steps:
+    read-quotas:
+      system: the business's metrics store, in its query view
+      do: >
+        run the query the run was started with, by default each service's quota used divided by
+        its quota limit, the largest per service. Export the answer as a table with one row per
+        service and its share, from 0 to 1, exactly as the store gives it. Make sure the store
+        answered every series.
+      expertise: running a query in the metrics store's query language and reading its series
+      credentials:
+        - parameter: METRICS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Metrics token of the requesting
+            identity described in CREDENTIALS.md; a person may instead sign in to the store
+            with their own account that may read it
+      done: the table holds every service the query answered, each with its share used
+    fullest:
+      system: a spreadsheet, on the exported table
+      do: >
+        leave out every row whose value is not a number or is below zero; never read a missing
+        value as zero. Sort by share, largest first, and take the first: that service's quota is
+        the fullest. Compare its share with 0.8 for yellow and 0.95 for red, and report a red
+        one at once to the role responsible, before a send or a payment is refused.
+      expertise: sorting a table and the tenant's corridor for quotas
+      credentials: []
+      done: the fullest service and its share are written down and judged

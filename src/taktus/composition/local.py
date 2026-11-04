@@ -118,12 +118,14 @@ from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
+from taktus.components.process.application.service.takeover import TakeoverTrials
 from taktus.components.process.domain.model import (
     CorrectedCase,
     Evaluation,
     Process,
     ProcessVersion,
     Proposal,
+    TakeoverTrial,
 )
 from taktus.components.reporting.application.service import Kept, ProductFindings, StepTraces
 from taktus.components.run.application.query import (
@@ -755,7 +757,8 @@ class LocalWiring:
                         stores.of(ProcessVersion),
                         stores.provenance_store,
                         stores.of(Request),
-                        stores.tenants,
+                        stores.of(TakeoverTrial),
+                        tenants=stores.tenants,
                     ),
                     traces=stores.traces,
                     work=stores.work,
@@ -767,6 +770,16 @@ class LocalWiring:
                 agents=shared_agents,
                 subjects=subjects,
                 evidence=evidence,
+                instructions=TakeoverTrials(
+                    stores.of(Process),
+                    stores.of(ProcessVersion),
+                    stores.of(TakeoverTrial),
+                    ledger=ledger,
+                    work=stores.work,
+                    clock=clock,
+                    identifiers=ids,
+                    skills=skill_lifecycle.of_version,
+                ),
             )
             telemetry.shutdown()
 

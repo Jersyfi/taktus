@@ -18,6 +18,7 @@ from typing import Any
 
 import pytest
 import yaml
+from fakes.takeover import instructed
 from pydantic import ValidationError
 from typer.testing import CliRunner
 
@@ -48,13 +49,15 @@ EXAMPLE = ROOT / "examples" / "processes" / "six-times-seven.yaml"
 
 
 def bundle(*steps: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "id": "p",
-        "version": "1",
-        "name": "P",
-        "autonomy": {"level": 2, "reason": "r", "toward_next": "t"},
-        "steps": list(steps),
-    }
+    return instructed(
+        {
+            "id": "p",
+            "version": "1",
+            "name": "P",
+            "autonomy": {"level": 2, "reason": "r", "toward_next": "t"},
+            "steps": list(steps),
+        }
+    )
 
 
 def rule_step(step_id: str = "s", exactness: str = "exact", **more: Any) -> dict[str, Any]:

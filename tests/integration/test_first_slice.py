@@ -51,6 +51,8 @@ def bundle(*, budget_seconds: float = 2, with_overreach: bool = True) -> dict[st
     document["limits"] = {"compute": {"seconds": budget_seconds, "resource_class": "cpu.small"}}
     if not with_overreach:
         document["steps"] = [s for s in document["steps"] if s["id"] != "overreach"]
+        # Its takeover instructions go with the step (ADR-0180).
+        document["takeover"]["steps"].pop("overreach")
     return document
 
 
