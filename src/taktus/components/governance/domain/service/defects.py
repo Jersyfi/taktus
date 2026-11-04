@@ -275,11 +275,7 @@ def package(
     affected = (
         f"{len(analysis.affected)} results in {analysis.window_runs} runs, the strictest of "
         f"class {analysis.strictest.value if analysis.strictest else 'none'}; "
-        + (
-            f"{len(left)} of them left the system."
-            if left
-            else "none of them left the system."
-        )
+        + (f"{len(left)} of them left the system." if left else "none of them left the system.")
     )
     options = [
         "Carry out the remediation plan as written: inside steps run again at the process's "

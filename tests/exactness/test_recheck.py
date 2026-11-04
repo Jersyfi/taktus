@@ -3,9 +3,9 @@ suspect when the source no longer agrees with it (#92, ADR-0179 §1, UC-4.10).""
 
 from __future__ import annotations
 
-from exactness.test_checks import RECONCILED, TOTAL_READ, after, booking, world
 from governance.test_anchors import TENANT
 
+from exactness.test_checks import RECONCILED, TOTAL_READ, after, booking, world
 from taktus.components.run.domain.model import RunState
 from taktus.shared.v1 import InputKind
 
