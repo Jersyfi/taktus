@@ -6,7 +6,7 @@ epic: E9
 serves: [P7, P10]
 state: built
 version: 0.7.0
-tests: [tests/components/value/test_figures.py::test_a_units_maturity_is_computed_from_its_processes_and_linked_to_its_value]
+tests: [tests/components/value/test_figures.py::test_a_units_maturity_is_computed_from_its_processes_and_linked_to_its_value, tests/adapters/rest/test_figures.py::test_the_backlog_takes_a_proposal_a_discovered_process_and_entered_potential]
 adrs: {ADR-0026: ccc4bd1f5423, ADR-0244: 0e3d5ef324fa}
 supersedes: null
 ---
@@ -50,8 +50,10 @@ the session's proposal.
 
 ## 5. What is proven so far
 
-Built (ADR-0244). By the named test: a unit's maturity is computed from its processes' autonomy
+Built (ADR-0244). By the named tests: a unit's maturity is computed from its processes' autonomy
 levels, method kinds and test results; progress is measured against the plan; the change in time
 saved against the period before is linked to it; the backlog takes proposals, discovered
 processes and entered potential, each marked as an expectation (`GET /value/transformation`).
-Not yet shown by a test: the backlog's three sources over HTTP.
+Over HTTP, an open proposal, a discovered process valued by its stages and potential entered with
+the value basis each arrive in the backlog with their expected benefit and its basis, marked as
+an expectation, the largest expected benefit first.

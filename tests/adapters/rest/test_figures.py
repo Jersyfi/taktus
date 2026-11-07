@@ -23,6 +23,7 @@ from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
 from taktus.components.process.domain.model import Process, ProcessVersion
+from taktus.components.process.domain.model.proposal import Difference, Proposal
 from taktus.components.run.domain.model import Run, StepState
 from taktus.ports.ledger import Fact
 from taktus.ports.worker import ComputeLimit, Limits
@@ -516,6 +517,81 @@ async def test_a_discovered_process_passes_its_stages_in_order_and_a_person_deci
     assert kinds == [
         f"discovery.{s}" for s in ("visible", "documented", "valued", "decided", "automated")
     ]
+
+
+async def test_the_backlog_takes_a_proposal_a_discovered_process_and_entered_potential(
+    client: Client,
+) -> None:
+    """UC-9.2: every entry of the backlog comes from a recorded source — an open proposal, a
+    discovered process the organisation agreed on, potential a person entered with the basis —
+    and names its expected benefit with the basis of that figure, marked as an expectation."""
+    http, given, base = client
+    keys = await world(given)
+    owner = bearer(keys["idn_owner"])
+    async with given.persistence.transaction(TENANT):
+        version = await MemoryRepository(given.persistence, ProcessVersion).get(TENANT, "invoice@1")
+        assert version is not None
+        await MemoryRepository(given.persistence, Proposal).put(
+            TENANT,
+            Proposal(
+                id="prp_1",
+                tenant=TENANT,
+                process_id="invoice",
+                base_version="1",
+                version="2",
+                bundle={},
+                requested_by="idn_owner",
+                difference=Difference(
+                    autonomy_before=version.autonomy, autonomy_after=version.autonomy
+                ),
+                created_at=given.clock.now(),
+            ),
+        )
+    found = (
+        await http.post(
+            f"{base}/discoveries",
+            headers=owner,
+            json={"title": "Bank check", "origin": "interview", "found": "open items, Fridays"},
+        )
+    ).json()
+    stage = f"{base}/discoveries/{found['id']}/stages"
+    for name, body in (
+        ("documented", {"description": "What: the check", "owner_role": "accounting"}),
+        ("valued", {"minutes_by_hand": 45, "cases_per_month": 4}),
+    ):
+        answer = await http.post(f"{stage}/{name}", headers=owner, json=body)
+        assert answer.status_code == 200, answer.text
+    answer = await http.put(
+        f"{base}/value/basis",
+        headers=owner,
+        json={
+            "processes": [{"process": "invoice", "minutes_by_hand": 30}],
+            "backlog": [
+                {
+                    "id": "dunning",
+                    "title": "Dunning letters",
+                    "hours_per_month": 12,
+                    "basis": "two clerks' estimate, March",
+                }
+            ],
+        },
+    )
+    assert answer.status_code == 200, answer.text
+
+    answer = await http.get(f"{base}/value/transformation", headers=owner)
+    assert answer.status_code == 200, answer.text
+    backlog = {entry["kind"]: entry for entry in answer.json()["backlog"]}
+    assert set(backlog) == {"proposal", "discovered", "entered"}
+    assert all(entry["expectation"] is True for entry in backlog.values())
+    assert backlog["proposal"]["id"] == "prp_1"
+    assert backlog["proposal"]["basis"] == "30 minutes by hand per case, stated"
+    assert backlog["discovered"]["id"] == found["id"]
+    assert backlog["discovered"]["hours_per_month"] == 3
+    assert backlog["discovered"]["basis"] == "45 minutes by hand, 4 cases a month"
+    assert backlog["entered"]["id"] == "dunning"
+    assert backlog["entered"]["hours_per_month"] == 12
+    assert backlog["entered"]["basis"] == "two clerks' estimate, March"
+    assert [e["kind"] for e in answer.json()["backlog"]] == ["entered", "discovered", "proposal"]
 
 
 WEB = ROOT / "web" / "src"
