@@ -72,6 +72,18 @@ class IncidentKind(StrEnum):
     BUDGET = "budget.reached"
     """What the tenant's runs of a month cost reached its monthly budget: every run waits at its
     boundary, and the budget's role is told, once a month (ADR-0260)."""
+    LIMIT_ALERT = "limit.alert"
+    """A unit limit's cost, or its forecast's upper edge, reached an alert share of its amount;
+    its role is told once per period, share and basis (ADR-0282 §3)."""
+    LIMIT_REACHED = "limit.reached"
+    """A step did not fit what remains of a unit limit; its role is told once per period
+    (ADR-0282 §3)."""
+    COST_ANOMALY = "cost.anomaly"
+    """A day's cost of a unit limit's runs lay far above the robust median of the days before
+    it (ADR-0282 §3)."""
+    LIMIT_HARMFUL = "limit.harmful"
+    """A unit limit held more runs, or longer, than the tenant's watch allows; its role is told
+    with the change recommended, its cost and its benefit, once per period (ADR-0282 §4)."""
 
 
 class IncidentState(StrEnum):

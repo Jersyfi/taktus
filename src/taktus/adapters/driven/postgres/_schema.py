@@ -498,6 +498,26 @@ tenant_month_budget = Table(
 )
 """One row per tenant that set a monthly budget across all its runs (ADR-0260)."""
 
+unit_limit = Table(
+    "unit_limit",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("unit_limit", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per limit of a unit of the structure, under its name; never deleted (ADR-0282)."""
+
+limit_watch = Table(
+    "limit_watch",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("watch", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per tenant that set its watch over limits that do harm (ADR-0282 §4)."""
+
 working_time = Table(
     "working_time",
     metadata,
@@ -815,6 +835,7 @@ run = Table(
     Column("skills", JSONB),  # the skill versions the run pinned (ADR-0162)
     Column("profile", Text),  # the role profile of a shared agent it serves (ADR-0163)
     Column("org_unit", Text),  # the unit it runs for (ADR-0166)
+    Column("org_path", JSONB),  # where it is attributed in the structure (ADR-0282)
     Column("org_unit_month", Text),  # the month it committed its budget to its unit's quota
     Column("classes", JSONB),  # the levels per class of request it took on (ADR-0215)
     Column("case_class", Text),  # the class its class step named (ADR-0215)

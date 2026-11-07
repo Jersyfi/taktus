@@ -452,6 +452,10 @@ class Run(Value):
     org_unit: str | None = Field(default=None, min_length=1)
     """The organisational unit the run runs for: the department below the tenant that the
     command's structure names, never a person (ADR-0166). None for the tenant itself."""
+    org_path: tuple[str, ...] = ()
+    """Where the run is attributed in the structure below the tenant: where its identity sat
+    when the run was created, `("sales", "field")`; empty for the tenant itself. Every unit
+    limit on this path holds it (ADR-0282 §2)."""
     org_unit_month: str | None = Field(default=None, pattern=r"^[0-9]{4}-[0-9]{2}$")
     """The month in which the run committed its budget to its unit's budget quota; None while
     it committed nothing (ADR-0166 §3)."""

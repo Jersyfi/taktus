@@ -420,6 +420,7 @@ class LocalWiring:
                     masking=known_secrets(os.environ),
                     stops=stops,
                     tenant_budget=decisions.budget_of_the_run,
+                    unit_limits=decisions.unit_limits,
                     messages=decisions.messages,
                     statements=VersionStatements(
                         stores.work, stores.of(ProcessVersion), CorrectionRates(ledger, stores.work)
@@ -779,6 +780,7 @@ class LocalWiring:
                 sources=decisions.sources,
                 messages=decisions.messages.tenant,
                 org_units=decisions.org_units,
+                unit_limits=decisions.unit_limits.limits,
                 deadlines=decisions.deadlines,
                 stops=stops,
                 traces=None

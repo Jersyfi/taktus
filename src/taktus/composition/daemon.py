@@ -689,6 +689,7 @@ async def wire(
                     masking=secrets,
                     stops=stops,
                     tenant_budget=decisions.budget_of_the_run,
+                    unit_limits=decisions.unit_limits,
                     messages=decisions.messages,
                     statements=VersionStatements(
                         persistence,

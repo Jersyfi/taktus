@@ -313,6 +313,7 @@ from taktus.components.run.ports import (
     WorkerPool,
 )
 from taktus.components.run.ports.tenant_budget import MonthBudget, TenantBudget
+from taktus.components.run.ports.unit_limits import AppliedLimit, UnitLimitsPort
 from taktus.ports.administration import Administration
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.connector import (
@@ -801,8 +802,15 @@ class RunEngine:
         statements: Statements | None = None,
         guidance: Guidance | None = None,
         org_units: OrgUnits | None = None,
+        unit_limits: UnitLimitsPort | None = None,
     ) -> None:
         self._org_units = org_units
+        self._unit_limits = unit_limits
+        """The tenant's limits per unit of its structure (ADR-0282). None: no unit limit holds
+        a step, and a run records no path."""
+        self._unit_held: dict[str, str] = {}
+        """Runs whose current step a unit limit refused, with the policy that applies: they
+        halt with cause `parked` for `wait`, `limit` for `halt` (ADR-0282 §2)."""
         """The tenant's quotas per organisational unit and what each unit's runs committed
         (ADR-0166). None: no run commits to a unit's budget quota."""
         self._held_since: ContextVar[datetime | None] = ContextVar("held_since", default=None)
@@ -1041,6 +1049,7 @@ class RunEngine:
             skills=await self._pinned(command),
             profile=command.profile,
             org_unit=command.org_unit,
+            org_path=await self._placed(command.tenant, command.identity, command.org_unit),
             remedy=command.remedy,
             created_at=now,
             updated_at=now,
@@ -2508,9 +2517,12 @@ class RunEngine:
                     cause = Cause.REPEATED
                 elif run.id in self._immature:
                     cause = Cause.MATURITY
+                elif run.id in self._unit_held:
+                    cause = Cause.PARKED if self._unit_held[run.id] == "wait" else Cause.LIMIT
                 else:
                     cause = Cause.NO_ESTIMATE if step_run.estimate is None else Cause.LIMIT
                 self._immature.discard(run.id)
+                self._unit_held.pop(run.id, None)
                 self._administering.discard(run.id)
                 self._repeating.discard(run.id)
                 self._declining.discard(run.id)
@@ -4223,6 +4235,368 @@ class RunEngine:
             digest=digest,
         )
 
+    # --- limits per unit of the structure (ADR-0282) ---------------------------------------
+
+    async def _placed(self, tenant: Tenant, identity: str, org_unit: str | None) -> tuple[str, ...]:
+        """Where the run is attributed: where its identity sits below the tenant now, or the
+        department the command named where the identity sits outside it or is unknown."""
+        named = () if org_unit is None else (org_unit,)
+        if self._unit_limits is None:
+            return named
+        path = await self._unit_limits.placed(tenant, identity)
+        if path is None or (org_unit is not None and path[:1] != (org_unit,)):
+            return named
+        return path
+
+    @staticmethod
+    def _path(run: Run) -> tuple[str, ...]:
+        if run.org_path:
+            return run.org_path
+        return () if run.org_unit is None else (run.org_unit,)
+
+    @staticmethod
+    def _lines(quantities: ConsumptionQuantities, compute: Mapping[str, float]) -> dict[str, float]:
+        """Quantities as a unit limit's lines: money per currency, compute seconds, tokens."""
+        lines = {f"money.{c}": float(v) for c, v in (quantities.currency or {}).items()}
+        seconds = sum(compute.values())
+        if seconds:
+            lines["compute_seconds"] = float(seconds)
+        tokens = (quantities.tokens_in or 0) + (quantities.tokens_out or 0)
+        if not tokens and quantities.tokens_by_model:
+            tokens = sum(
+                (k.input or 0) + (k.output or 0) + (k.cache_read or 0) + (k.cache_write or 0)
+                for k in quantities.tokens_by_model.values()
+            )
+        if tokens:
+            lines["tokens"] = float(tokens)
+        return lines
+
+    def _demand_lines(self, reservation: ConsumptionQuantities) -> dict[str, float]:
+        """A step's reservation priced at the instance's table, as a unit limit's lines."""
+        priced = reservation
+        table = self._options.prices
+        if table is not None:
+            if reservation.tokens_by_model and not reservation.currency:
+                priced = budgeting.with_token_money(priced, reservation.tokens_by_model, table)[0]
+            if reservation.compute_seconds and reservation.resource_class is not None:
+                seconds = {reservation.resource_class: reservation.compute_seconds}
+                priced = budgeting.with_money(priced, seconds, table)[0]
+        compute = (
+            {reservation.resource_class or "": reservation.compute_seconds}
+            if reservation.compute_seconds
+            else {}
+        )
+        return self._lines(priced, compute)
+
+    async def unit_costs(
+        self, tenant: Tenant, viewer: str | None
+    ) -> dict[str, tuple[dict[str, float], dict[date, dict[str, float]]]]:
+        """Per limit the viewer may see: what its runs of the period cost, and what they cost
+        per day, as admission reads them. A limit that names a person is that person's alone
+        (ADR-0282 §6)."""
+        if self._unit_limits is None:
+            return {}
+        every = list(await self._unit_limits.every(tenant))
+        return await self._unit_costs(tenant, None, every, viewer) if every else {}
+
+    async def _unit_costs(
+        self,
+        tenant: Tenant,
+        run: Run | None,
+        limits: Sequence[AppliedLimit],
+        own: str | None,
+    ) -> dict[str, tuple[dict[str, float], dict[date, dict[str, float]]]]:
+        """Per limit: what its runs of the period cost, and what they cost per day, from the
+        period's start or the 28 days before today, whichever is earlier. A run counts on the
+        day it was created; a rehearsal costs nothing. A limit held per person counts only the
+        runs `own` commissioned, and nothing where `own` is None (ADR-0282 §6). A rule over
+        the runs' records."""
+        now = self._clock.now()
+        earliest = min(
+            [now - timedelta(days=UNIT_HISTORY_DAYS + 1), *(lim.starts for lim in limits)]
+        )
+        async with self._work.transaction(tenant):
+            stored = list(await self._runs.list(tenant))
+        runs = stored if run is None else [run, *(r for r in stored if r.id != run.id)]
+        found: dict[str, tuple[dict[str, float], dict[date, dict[str, float]]]] = {
+            lim.name: ({}, {}) for lim in limits
+        }
+        for each in runs:
+            if each.rehearsal or each.created_at < earliest:
+                continue
+            path = self._path(each)
+            process = process_of(each.process_version)
+            matching = [
+                lim
+                for lim in limits
+                if lim.applies(path, process)
+                and (not lim.individually or (own is not None and each.identity == own))
+            ]
+            if not matching:
+                continue
+            lines = self._lines(self._cost(each), each.compute_by_class())
+            day = each.created_at.date()
+            for limit in matching:
+                spent, daily = found[limit.name]
+                per_day = daily.setdefault(day, {})
+                for line, value in lines.items():
+                    per_day[line] = per_day.get(line, 0.0) + value
+                    if limit.starts <= each.created_at < limit.ends:
+                        spent[line] = spent.get(line, 0.0) + value
+        return found
+
+    async def _unit_refusal(
+        self, run: Run, reservation: ConsumptionQuantities
+    ) -> _UnitRefusal | None:
+        """Whether the step's reservation, priced, does not fit what remains of a unit limit
+        on the run's path. Every limit that applies is seen, for its alerts and anomalies;
+        `halt` wins over `wait` where several refuse (ADR-0282 §2)."""
+        if self._unit_limits is None or run.rehearsal:
+            return None
+        limits = list(
+            await self._unit_limits.applying(
+                run.tenant, self._path(run), process_of(run.process_version)
+            )
+        )
+        if not limits:
+            return None
+        costs = await self._unit_costs(run.tenant, run, limits, run.identity)
+        demand = self._demand_lines(reservation)
+        refusals: list[_UnitRefusal] = []
+        for limit in limits:
+            spent, daily = costs[limit.name]
+            await self._unit_limits.observed(
+                run.tenant, limit.name, spent, daily, run.process_version
+            )
+            over = [
+                line
+                for line, amount in limit.lines.items()
+                if spent.get(line, 0.0) >= amount - 1e-9
+                or spent.get(line, 0.0) + demand.get(line, 0.0) > amount + 1e-9
+            ]
+            if over:
+                check_at = (
+                    None
+                    if limit.policy == "halt"
+                    else min(
+                        self._clock.now() + timedelta(seconds=limit.check_every_seconds),
+                        limit.ends,
+                    )
+                )
+                refusals.append(_UnitRefusal(limit, spent, demand, tuple(over), check_at))
+        if not refusals:
+            return None
+        halting = [r for r in refusals if r.limit.policy == "halt"]
+        return (halting or refusals)[0]
+
+    async def _held_at_unit(
+        self,
+        run: Run,
+        step_run: StepRun,
+        adapter: str | None,
+        demand: _Demand,
+        reservation: ConsumptionQuantities,
+        refusal: _UnitRefusal,
+        span: Span,
+        **changes: Any,
+    ) -> tuple[Run, StepRun, bool]:
+        """The step does not fit a unit limit: refused, its block names the limit, and the run
+        halts for a person (`halt`) or parks until the next check or period (`wait`)."""
+        span.record_failure("held at a unit limit")
+        limit = refusal.limit
+        newly = step_run.block is None or step_run.block.limit != limit.name
+        run, step_run = await self._open_block(run, step_run, "limit.budget", block.AT_UNIT_LIMIT)
+        if step_run.block is not None:
+            step_run = step_run.model_copy(
+                update={
+                    "block": step_run.block.model_copy(
+                        update={"limit": limit.name, "next_check_at": refusal.check_at}
+                    )
+                }
+            )
+        facts = {
+            "limit": limit.name,
+            "unit": limit.where(),
+            "period": limit.key,
+            "policy": limit.policy,
+            "lines": dict(limit.lines),
+            "spent": {k: round(v, 6) for k, v in sorted(refusal.spent.items())},
+            "demand": {k: round(v, 6) for k, v in sorted(refusal.demand.items())},
+            "over": list(refusal.over),
+        }
+        digest = await self._objects.put(_canonical(facts))
+        then = (
+            f"it is tried again at {refusal.check_at.isoformat()}"
+            if refusal.check_at is not None
+            else "a person raises the limit and resumes the run"
+        )
+        step_run = step_run.to(
+            StepState.REJECTED,
+            adapter=adapter,
+            estimate=demand.quantities,
+            reservation=reservation,
+            reason=(
+                f"does not fit what remains of the unit limit {limit.name!r} of "
+                f"{limit.where()} for {limit.key} in {', '.join(refusal.over)}; {then} "
+                "(ADR-0282)"
+            ),
+            **changes,
+        )
+        self._unit_held[run.id] = limit.policy
+        held = {
+            "kind": UNIT_LIMIT_HELD,
+            "step": step_run,
+            "outcome": limit.name,
+            "digest": digest,
+            "bare": True,
+        }
+        run = await self._commit(
+            run.with_step_run(step_run),
+            "step.rejected",
+            step=step_run,
+            outcome="rejected_by_unit_limit",
+            after=(held,) if newly else (),
+        )
+        if self._unit_limits is not None:
+            await self._unit_limits.refused(
+                run.tenant, limit.name, run.process_version, refusal.spent, refusal.demand
+            )
+        return run, step_run, False
+
+    async def what_applies(
+        self,
+        tenant: Tenant,
+        *,
+        run_id: str | None = None,
+        process: str | None = None,
+        viewer: str | None = None,
+    ) -> dict[str, Any]:
+        """What a run, or a process, needs, what it used, and every limit that holds it with
+        the unit it comes from (ADR-0282 §5, UC-8.10). What a limit held per person counts is
+        shown only to the person whose runs it counts; anyone else sees the limit without it."""
+        async with self._work.transaction(tenant):
+            if run_id is not None:
+                found = await self._runs.get(tenant, run_id)
+                if found is None:
+                    raise UnknownRun(f"run {run_id!r} is not known")
+                runs = [found]
+            else:
+                stored = list(await self._runs.list(tenant))
+                runs = [r for r in stored if process_of(r.process_version) == process]
+        now = self._clock.now()
+        month = f"{now:%Y-%m}"
+        shown: dict[str, Any] = {}
+        if run_id is not None:
+            run = runs[0]
+            path = self._path(run)
+            name = process_of(run.process_version)
+            reservations = {
+                str(s.step_id): self._demand_lines(s.reservation)
+                for s in run.step_runs
+                if s.reservation is not None
+            }
+            shown.update(
+                {
+                    "run": run.id,
+                    "process": name,
+                    "unit": "/".join(path) if path else "company",
+                    "needs": {
+                        "budget": run.budget.document(),
+                        "held": self._line(run).document(),
+                        "reservations": reservations,
+                    },
+                    "used": self._lines(self._cost(run), run.compute_by_class()),
+                }
+            )
+            limits = (
+                []
+                if self._unit_limits is None
+                else list(await self._unit_limits.applying(tenant, path, name))
+            )
+            subject = run
+        else:
+            month_runs = [r for r in runs if not r.rehearsal and f"{r.created_at:%Y-%m}" == month]
+            costs = [self._lines(self._cost(r), r.compute_by_class()) for r in month_runs]
+            lines = sorted({line for c in costs for line in c})
+            shown.update(
+                {
+                    "process": process,
+                    "needs": {
+                        "runs_this_month": len(month_runs),
+                        "mean": {
+                            lim: round(sum(c.get(lim, 0.0) for c in costs) / len(costs), 6)
+                            for lim in lines
+                        },
+                        "most": {
+                            lim: round(max(c.get(lim, 0.0) for c in costs), 6) for lim in lines
+                        },
+                    },
+                    "used": {lim: round(sum(c.get(lim, 0.0) for c in costs), 6) for lim in lines},
+                }
+            )
+            limits = []
+            if self._unit_limits is not None and process is not None:
+                # A process is run from any unit: every limit that names it or no process.
+                every = await self._unit_limits.every(tenant)
+                limits = [lim for lim in every if lim.process in (None, process)]
+            subject = None
+        own = viewer if subject is None or subject.identity == viewer else None
+        costs_of = await self._unit_costs(tenant, subject, limits, own) if limits else {}
+        shown["limits"] = (
+            []
+            if subject is None
+            else [
+                {
+                    "limit": "the run's budget",
+                    "unit": "run",
+                    "lines": self._line(subject).document(),
+                }
+            ]
+        )
+        for limit in limits:
+            entry: dict[str, Any] = {
+                "limit": limit.name,
+                "unit": limit.where(),
+                "individually": limit.individually,
+                "process": limit.process,
+                "period": limit.key,
+                "policy": limit.policy,
+                "lines": dict(limit.lines),
+            }
+            if limit.individually and own is None:
+                # Another person's consumption is theirs alone (principle 14, DEC-0069).
+                entry["spent"] = "shown to the person whose runs it counts"
+            else:
+                spent = costs_of.get(limit.name, ({}, {}))[0]
+                entry["spent"] = {k: round(v, 6) for k, v in sorted(spent.items())}
+                entry["remaining"] = {
+                    k: round(max(0.0, v - spent.get(k, 0.0)), 6)
+                    for k, v in sorted(limit.lines.items())
+                }
+            shown["limits"].append(entry)
+        if subject is not None and subject.org_unit is not None and self._org_units is not None:
+            quota = await self._org_units.budget(tenant, subject.org_unit)
+            if quota is not None:
+                shown["limits"].append(
+                    {
+                        "limit": "the department's monthly quota",
+                        "unit": subject.org_unit,
+                        "lines": {f"money.{c}": v for c, v in quota.amounts.items()},
+                    }
+                )
+        if self._tenant_budget is not None:
+            budget = await self._tenant_budget.month_budget(tenant)
+            if budget is not None:
+                shown["limits"].append(
+                    {
+                        "limit": "the tenant's monthly budget",
+                        "unit": "tenant",
+                        "lines": {f"money.{c}": v for c, v in budget.amounts.items()},
+                        "role": budget.role,
+                    }
+                )
+        return shown
+
     # --- a stop to repetition (ADR-0132 §5) ----------------------------------------------------
 
     async def _book_call(
@@ -5420,8 +5794,25 @@ class RunEngine:
                 outcome="rejected_by_admission",
             )
             return run, step_run, False
+        refusal = await self._unit_refusal(run, reservation)
+        if refusal is not None:
+            return await self._held_at_unit(
+                run, step_run, adapter, demand, reservation, refusal, span, **changes
+            )
+        released: list[Mapping[str, Any]] = []
         if step_run.block is not None and step_run.block.cause in block.CLOSED_BY_ADMISSION:
             # What refused the step now lets it through: the block ends here.
+            if step_run.block.cause == block.AT_UNIT_LIMIT and step_run.block.limit is not None:
+                held_for = (self._clock.now() - step_run.block.since).total_seconds()
+                released.append(
+                    {
+                        "kind": UNIT_LIMIT_RELEASED,
+                        "step": step_run,
+                        "outcome": step_run.block.limit,
+                        "duration": round(max(held_for, 0.0), 3),
+                        "bare": True,
+                    }
+                )
             run, step_run = await self._close_block(run, step_run)
         step_run = step_run.to(
             StepState.ADMITTED,
@@ -5436,9 +5827,12 @@ class RunEngine:
             "step.admitted",
             step=step_run,
             before=(
-                ({"kind": RETRIED, "step": step_run, "outcome": "after_failure"},)
-                if retried
-                else ()
+                *released,
+                *(
+                    ({"kind": RETRIED, "step": step_run, "outcome": "after_failure"},)
+                    if retried
+                    else ()
+                ),
             ),
         )
         if reservation != demand.quantities:
@@ -7444,9 +7838,25 @@ ORG_UNIT_ADMITTED = "org_unit.admitted"
 """A run committed its budget to its organisational unit's budget quota (ADR-0166)."""
 ORG_UNIT_HELD = "org_unit.held"
 TENANT_BUDGET_HELD = "budget.held"
+UNIT_LIMIT_HELD = "unit_limit.held"
+UNIT_LIMIT_RELEASED = "unit_limit.released"
+UNIT_HISTORY_DAYS = 28
+"""The days before today a unit's cost per day is read for, to judge an anomaly (ADR-0282)."""
 """A run waits at its boundary because the tenant's monthly budget is reached (ADR-0260)."""
 """A run held before its first step by its unit's budget quota, outcome `budget` or
 `no_amount` (ADR-0166)."""
+
+
+@dataclass(frozen=True)
+class _UnitRefusal:
+    """A unit limit a step's reservation does not fit (ADR-0282 §2)."""
+
+    limit: AppliedLimit
+    spent: Mapping[str, float]
+    demand: Mapping[str, float]
+    over: tuple[str, ...]
+    check_at: datetime | None
+    """When a `wait` parks the run until; None for `halt`."""
 
 
 class _OverUnitBudget(Exception):
