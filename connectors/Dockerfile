@@ -50,11 +50,6 @@ COPY --chown=connector:connector connectors/taktus_connectors/anthropic /app/tak
 ENTRYPOINT ["python", "-m", "taktus_connectors.anthropic"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
-FROM base AS appstore
-COPY --chown=connector:connector connectors/taktus_connectors/appstore /app/taktus_connectors/appstore
-ENTRYPOINT ["python", "-m", "taktus_connectors.appstore"]
-CMD ["--host", "0.0.0.0", "--port", "9100"]
-
 FROM base AS appstores
 COPY --chown=connector:connector connectors/taktus_connectors/appstores /app/taktus_connectors/appstores
 ENTRYPOINT ["python", "-m", "taktus_connectors.appstores"]
@@ -133,11 +128,6 @@ CMD ["--host", "0.0.0.0", "--port", "9100"]
 FROM base AS googleanalytics
 COPY --chown=connector:connector connectors/taktus_connectors/googleanalytics /app/taktus_connectors/googleanalytics
 ENTRYPOINT ["python", "-m", "taktus_connectors.googleanalytics"]
-CMD ["--host", "0.0.0.0", "--port", "9100"]
-
-FROM base AS googleplay
-COPY --chown=connector:connector connectors/taktus_connectors/googleplay /app/taktus_connectors/googleplay
-ENTRYPOINT ["python", "-m", "taktus_connectors.googleplay"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
 FROM base AS googleworkspace

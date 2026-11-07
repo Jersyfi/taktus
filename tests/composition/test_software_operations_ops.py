@@ -20,8 +20,8 @@ import pytest
 from fakes import app_store_service, cost_report_service, log_store_service, secret_store_service
 from taktus_connectors.anthropic.operations import Config as CatalogueConfig
 from taktus_connectors.anthropic.server import build_server as catalogue_server
-from taktus_connectors.appstore.operations import Config as StoreConfig
-from taktus_connectors.appstore.server import build_server as store_server
+from taktus_connectors.appstores.operations import Config as StoreConfig
+from taktus_connectors.appstores.server import build_server as store_server
 from taktus_connectors.expiry.operations import Config as ExpiryConfig
 from taktus_connectors.expiry.server import build_server as expiry_server
 from taktus_connectors.loki.operations import Config as LogsConfig
@@ -73,7 +73,7 @@ def systems(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Systems
         ("LOGS_TOKEN", TOKEN),
         ("SECRETS_TOKEN", TOKEN),
         ("MODELS_TOKEN", TOKEN),
-        ("STORE_API_KEY", store_key),
+        ("STORES_KEY", store_key),
     ):
         path = tmp_path / name
         path.write_text(value, encoding="utf-8")
@@ -102,7 +102,10 @@ class OpsWorld(RepositoryWorld):
                     "connector.secrets",
                     served(secrets_server(SecretsConfig(systems.secrets, timeout=5.0))),
                 ),
-                ("connector.store", served(store_server(StoreConfig(systems.store, 5.0)))),
+                (
+                    "connector.store",
+                    served(store_server(StoreConfig(systems.store, systems.store, 5.0))),
+                ),
                 (
                     "connector.expiry",
                     served(

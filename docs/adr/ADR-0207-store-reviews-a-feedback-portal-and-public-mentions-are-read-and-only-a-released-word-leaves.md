@@ -59,6 +59,10 @@ exchanges a service account's signed statement for a token. `canny/` serves `fee
 - Three bundles, run in `tests/composition/test_software_operations_stores.py` and
   `test_software_operations_community.py`.
 
+## Later
+
+- 2026-11-07: `stores.reviews` is served by the connector `appstores` under `STORES_KEY`, the store chosen per call by `platform`; `appstore/` and `googleplay/` were folded into it (ADR-0210, Later). The decision above is unchanged.
+
 ## Where this promise ends
 
 - **No pattern across releases is found.** No rule groups a reading by a field, and the first

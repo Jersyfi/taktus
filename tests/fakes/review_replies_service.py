@@ -2,8 +2,9 @@
 """A fake app store of the second kind: the reviews of the Google Play Developer API and its
 token endpoint, in memory.
 
-The store reviews connector under `connectors/taktus_connectors/googleplay/` exchanges a
-service account's signed statement at `POST /token` and asks
+The app stores connector under `connectors/taktus_connectors/appstores/`, for its
+`stores.reviews` on `android`, exchanges a service account's signed statement at
+`POST /token` and asks
 `GET /androidpublisher/v3/applications/{packageName}/reviews`, `GET …/reviews/{reviewId}` and
 `POST …/reviews/{reviewId}:reply`. This fake answers all four in the shapes the documentation
 states — `reviews`, `tokenPagination.nextPageToken`, `comments` with a `userComment` and a
@@ -16,8 +17,9 @@ What it enforces, because the connector's checks depend on it:
   and an `assertion` signed RS256 by a key the fake was started with: `kid` the key's
   identifier, `iss` its account's address, `scope` the publishing scope, `aud` ending in
   `/token`, and `exp` at most an hour after `iat`. It answers `access_token`, `expires_in` and
-  `token_type`; otherwise 400 `invalid_grant`. The keys are service account key files, JSON
-  (`FAKE_TOKENS`, one file's text); `credential()` makes one.
+  `token_type`; otherwise 400 `invalid_grant`. The key is the connector's credential
+  `STORES_KEY`, its `android` member a service account key file (`FAKE_TOKENS`, one value);
+  `credential()` makes one, its `token_uri` the fake's `/token` it is given.
 - **The API.** Every request needs `Authorization: Bearer <access token>` the endpoint issued;
   otherwise 401 `UNAUTHENTICATED`. An unknown package or review is 404 `NOT_FOUND`. A reply
   without `replyText`, or one of more than 350 characters, is 400 `INVALID_ARGUMENT`. A second
@@ -56,8 +58,12 @@ GRANT = "urn:ietf:params:oauth:grant-type:jwt-bearer"
 PREFIX = f"/androidpublisher/v3/applications/{PACKAGE}/reviews"
 
 
-def credential(email: str = "reviews@project.iam.gserviceaccount.com") -> str:
-    """A fresh service account key file, in the shape the console hands it out."""
+def credential(
+    token_uri: str = "https://oauth2.googleapis.com/token",  # noqa: S107 — an address
+    email: str = "reviews@project.iam.gserviceaccount.com",
+) -> str:
+    """`STORES_KEY` with a fresh service account key file as its `android` member, in the
+    shape the console hands it out, exchanged at `token_uri`."""
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     pem = key.private_bytes(
         serialization.Encoding.PEM,
@@ -66,13 +72,15 @@ def credential(email: str = "reviews@project.iam.gserviceaccount.com") -> str:
     ).decode()
     return json.dumps(
         {
-            "type": "service_account",
-            "project_id": "project",
-            "private_key_id": secrets.token_hex(20),
-            "private_key": pem,
-            "client_email": email,
-            "client_id": "1" + "0" * 20,
-            "token_uri": "https://oauth2.googleapis.com/token",
+            "android": {
+                "type": "service_account",
+                "project_id": "project",
+                "private_key_id": secrets.token_hex(20),
+                "private_key": pem,
+                "client_email": email,
+                "client_id": "1" + "0" * 20,
+                "token_uri": token_uri,
+            }
         }
     )
 
@@ -125,7 +133,7 @@ class State:
     def __init__(self, tokens: set[str]) -> None:
         self.keys: dict[str, tuple[str, Any]] = {}
         for value in tokens:
-            key = json.loads(value)
+            key = json.loads(value)["android"]
             private = serialization.load_pem_private_key(key["private_key"].encode(), None)
             self.keys[key["private_key_id"]] = (key["client_email"], private.public_key())
         self.reviews = default_reviews()

@@ -1,6 +1,6 @@
-"""The signing credentials connector lists a team's certificates and profiles by their expiry,
-the nearest first, signs every request with the team's key, never asks for their content,
-never copies a person, and maps the provider's refusals to the contract's causes.
+"""The app stores connector's `expiry.credentials` lists a team's certificates and profiles by
+their expiry, the nearest first, signs every request with the team's key, never asks for their
+content, never copies a person, and maps the provider's refusals to the contract's causes.
 
 Against the fake under `tests/fakes/app_store_service.py`, in a thread of this process, with a
 P-256 key generated for each run. The connector is served in-process over MCP, as an instance
@@ -9,7 +9,7 @@ reaches it.
 
 from __future__ import annotations
 
-import base64
+import json
 import threading
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -21,16 +21,18 @@ import jwt
 import pytest
 from fakes import app_store_service
 from fakes.ports import free_port
-from taktus_connectors.appstore import token
-from taktus_connectors.appstore.operations import Config
-from taktus_connectors.appstore.server import build_server
+from taktus_connectors.appstores import auth
+from taktus_connectors.appstores.operations import Config
+from taktus_connectors.appstores.server import build_server
+from taktus_connectors.serving import Call
 
 from taktus.adapters.driven.connectors.mcp import McpActionConnector
 from taktus.ports.connector import CallContext, CallFailed, idempotency_key
 from taktus.ports.worker import CredentialReference
 
 VALUE = app_store_service.test_value()
-CREDENTIAL = "STORE_API_KEY"
+CREDENTIAL = "STORES_KEY"
+IOS = json.loads(VALUE)["ios"]
 
 
 def _use(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, value: str) -> None:
@@ -76,7 +78,7 @@ def context() -> CallContext:
 
 
 def connector(url: str) -> McpActionConnector:
-    return McpActionConnector(build_server(Config(url, timeout=5.0)))
+    return McpActionConnector(build_server(Config(url, url, timeout=5.0)))
 
 
 def state(url: str) -> dict[str, Any]:
@@ -117,7 +119,7 @@ async def test_credentials_are_listed_nearest_expiry_first(store: str) -> None:
     assert "Content" not in str(result.output)
     seen = state(store)
     assert seen["content_served"] == 0, "the content is never requested"
-    assert seen["key_ids"] == [VALUE.split(":")[1]] * 2
+    assert seen["key_ids"] == [IOS["key_id"]] * 2
     assert result.consumption.quota_units == 2
 
 
@@ -143,15 +145,14 @@ async def test_pages_are_followed_and_a_limit_cuts_the_nearest(busy: str) -> Non
 
 
 def test_the_token_is_the_one_the_api_documents() -> None:
-    key = token.parse(VALUE)
-    signed = token.sign(key, now=1_800_000_000)
+    signed = auth.app_store_token(Call(token=VALUE, key=""), now=1_800_000_000)
     header = jwt.get_unverified_header(signed)
-    assert header == {"alg": "ES256", "kid": key.key_id, "typ": "JWT"}
+    assert header == {"alg": "ES256", "kid": IOS["key_id"], "typ": "JWT"}
     claims = jwt.decode(signed, options={"verify_signature": False})
     assert claims == {
-        "iss": key.issuer,
+        "iss": IOS["issuer_id"],
         "iat": 1_800_000_000,
-        "exp": 1_800_000_000 + token.LIFETIME,
+        "exp": 1_800_000_000 + auth.APP_STORE_LIFETIME,
         "aud": "appstoreconnect-v1",
     }
     assert claims["exp"] - claims["iat"] <= 1200
@@ -161,13 +162,18 @@ def test_the_token_is_the_one_the_api_documents() -> None:
     "value",
     [
         "not-a-key",
-        "issuer:key",
-        "issuer:key:!!!not-base64!!!",
-        "issuer:key:" + base64.b64encode(b"just text").decode(),
-        "issuer:key:"
-        + base64.b64encode(
-            b"-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----"
-        ).decode(),
+        json.dumps({"ios": "issuer:key"}),
+        json.dumps({"android": {"issuer_id": "issuer", "key_id": "key", "private_key": "x"}}),
+        json.dumps({"ios": {"issuer_id": "issuer", "key_id": "key", "private_key": "just text"}}),
+        json.dumps(
+            {
+                "ios": {
+                    "issuer_id": "issuer",
+                    "key_id": "key",
+                    "private_key": "-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----",
+                }
+            }
+        ),
     ],
 )
 async def test_a_value_that_does_not_parse_is_unauthenticated(
@@ -194,9 +200,8 @@ async def test_a_token_signed_by_another_key_is_refused(
     store: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The right issuer and key id with another key's signature: the fake checks the signature."""
-    issuer, key_id, _ = VALUE.split(":")
-    other = app_store_service.test_value().split(":")[2]
-    _use(tmp_path, monkeypatch, f"{issuer}:{key_id}:{other}")
+    other = json.loads(app_store_service.test_value())["ios"]["private_key"]
+    _use(tmp_path, monkeypatch, json.dumps({"ios": {**IOS, "private_key": other}}))
     with pytest.raises(CallFailed) as failed:
         await connector(store).call("expiry.credentials.list", context(), {})
     assert failed.value.error.cause.value == "unauthenticated"

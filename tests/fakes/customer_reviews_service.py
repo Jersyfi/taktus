@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """A fake app store: the customer reviews of the App Store Connect API, in memory.
 
-The store reviews connector under `connectors/taktus_connectors/appstore/` asks
+The app stores connector under `connectors/taktus_connectors/appstores/` asks, for its
+`stores.reviews` on `ios`,
 `GET /v1/apps/{id}/customerReviews`, `GET /v1/customerReviews/{id}` and
 `POST /v1/customerReviewResponses`. This fake answers all three in the API's JSON:API shapes —
 `data`, `included`, `links.next`, `meta.paging` — with the API's statuses and its `errors`
@@ -13,8 +14,8 @@ What it enforces, because the connector's checks depend on it:
 - **Authentication.** Every request needs `Authorization: Bearer <JSON Web Token>`, signed
   ES256 with a key the fake was started with, carrying that key's identifier as `kid`, its
   issuer as `iss`, the audience `appstoreconnect-v1`, and an `exp` at most twenty minutes after
-  `iat`. Otherwise 401 `NOT_AUTHORIZED`. The keys are credentials in the connector's form,
-  `<issuer id>:<key id>:<base64 of the .p8 file>` (`FAKE_TOKENS`, comma separated);
+  `iat`. Otherwise 401 `NOT_AUTHORIZED`. The key is the connector's credential `STORES_KEY`,
+  its `ios` member `{issuer_id, key_id, private_key}` (`FAKE_TOKENS`, one value);
   `credential()` makes one.
 - **The list.** `limit` is 1 to 200; `sort` one of `rating`, `-rating`, `createdDate`,
   `-createdDate`; `filter[rating]` a comma-separated list of 1 to 5; `include` `response`.
@@ -55,7 +56,7 @@ SORTS = {"rating", "-rating", "createdDate", "-createdDate"}
 
 
 def credential(issuer: str = "57246542-96fe-1a63-e053-0824d011072a", key_id: str = "") -> str:
-    """A fresh key in the connector's form: `<issuer id>:<key id>:<base64 of the .p8 file>`."""
+    """A fresh key in the connector's form: `STORES_KEY` with the key as its `ios` member."""
     key = ec.generate_private_key(ec.SECP256R1())
     pem = key.private_bytes(
         serialization.Encoding.PEM,
@@ -63,7 +64,8 @@ def credential(issuer: str = "57246542-96fe-1a63-e053-0824d011072a", key_id: str
         serialization.NoEncryption(),
     )
     key_id = key_id or base64.b32encode(os.urandom(5)).decode()
-    return f"{issuer}:{key_id}:{base64.b64encode(pem).decode()}"
+    member = {"issuer_id": issuer, "key_id": key_id, "private_key": pem.decode()}
+    return json.dumps({"ios": member})
 
 
 def review(number: int, rating: int, response: str | None = None) -> dict[str, Any]:
@@ -87,9 +89,9 @@ class State:
     def __init__(self, tokens: set[str]) -> None:
         self.keys: dict[str, tuple[str, Any]] = {}
         for value in tokens:
-            issuer, key_id, encoded = value.split(":")
-            private = serialization.load_pem_private_key(base64.b64decode(encoded), None)
-            self.keys[key_id] = (issuer, private.public_key())
+            member = json.loads(value)["ios"]
+            private = serialization.load_pem_private_key(member["private_key"].encode(), None)
+            self.keys[member["key_id"]] = (member["issuer_id"], private.public_key())
         self.reviews = default_reviews()
         self.requests = 0
         self.written: list[dict[str, Any]] = []
@@ -307,7 +309,8 @@ def main() -> int:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=9246)
     args = parser.parse_args()
-    tokens = {t for t in os.environ.get("FAKE_TOKENS", "").split(",") if t}
+    given = os.environ.get("FAKE_TOKENS", "")
+    tokens = {given} if given else set()
     server = make_server(args.host, args.port, tokens)
     sys.stderr.write(f"fake app store at http://{args.host}:{args.port}\n")
     server.serve_forever()

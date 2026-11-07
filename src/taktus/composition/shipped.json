@@ -29,29 +29,25 @@
     },
     {
       "capabilities": [
-        "expiry.credentials"
-      ],
-      "image": "taktus-connector-appstore",
-      "name": "appstore",
-      "operations": [
-        "expiry.credentials.list"
-      ]
-    },
-    {
-      "capabilities": [
+        "expiry.credentials",
         "stores.beta",
-        "stores.releases"
+        "stores.releases",
+        "stores.reviews"
       ],
       "image": "taktus-connector-appstores",
       "name": "appstores",
       "operations": [
+        "expiry.credentials.list",
         "stores.beta.builds",
         "stores.beta.distribute",
         "stores.beta.feedback",
         "stores.releases.halt",
         "stores.releases.raise",
         "stores.releases.read",
-        "stores.releases.submit"
+        "stores.releases.submit",
+        "stores.reviews.list",
+        "stores.reviews.read",
+        "stores.reviews.reply"
       ]
     },
     {
@@ -281,18 +277,6 @@
       "name": "googleanalytics",
       "operations": [
         "analytics.reports.run"
-      ]
-    },
-    {
-      "capabilities": [
-        "stores.reviews"
-      ],
-      "image": "taktus-connector-googleplay",
-      "name": "googleplay",
-      "operations": [
-        "stores.reviews.list",
-        "stores.reviews.read",
-        "stores.reviews.reply"
       ]
     },
     {

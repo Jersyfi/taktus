@@ -3,10 +3,10 @@
 run against fakes of the systems behind its capabilities (UC-03 §4.3, B-3.09; ADR-0207).
 
 The world of `test_software_operations.py`, with the engine wired to the repository service and
-to the store reviews connector of either store, served in-process over MCP as the daemon reaches
-them, and to the tenant's message rules. What is faked: the repository service, each store's API,
-the model and the owner's chat. The process runs unchanged on both stores: one capability, two
-connectors in one shape.
+to the app stores connector over either store's fake, served in-process over MCP as the daemon
+reaches them, and to the tenant's message rules. What is faked: the repository service, each
+store's API, the model and the owner's chat. The process runs unchanged on both stores: one
+capability, one connector, the store named by the run's `platform`.
 """
 
 from __future__ import annotations
@@ -23,12 +23,11 @@ from fakes import FakeIdentifiers, FakeWorker
 from fakes import customer_reviews_service as first_store
 from fakes import review_replies_service as second_store
 from fakes.maturity import VERIFIED
-from taktus_connectors.appstore.operations import Config as FirstConfig
-from taktus_connectors.appstore.server import build_server as first_server
+from fakes.ports import free_port
+from taktus_connectors.appstores.operations import Config as StoresConfig
+from taktus_connectors.appstores.server import build_server as stores_server
 from taktus_connectors.github.server import Config as RepositoryConfig
 from taktus_connectors.github.server import build_server as repository_server
-from taktus_connectors.googleplay.operations import Config as SecondConfig
-from taktus_connectors.googleplay.server import build_server as second_server
 
 from taktus.adapters.driven.connectors.mcp import McpActionConnector
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
@@ -51,13 +50,15 @@ from .test_software_operations import (
 
 TIE = "You tie a customer's review"
 DRAFT = "You draft a public reply"
-CREDENTIAL = "STORE_REVIEWS_KEY"
+CREDENTIAL = "STORES_KEY"
 
 
 @dataclass(frozen=True)
 class Store:
     module: Any
-    server: Callable[[str], Any]
+    platform: str
+    credential: Callable[[str], str]
+    """The store's key as `STORES_KEY`, given the fake's address."""
     app: str
     unanswered: str
     """A review of one star without a response."""
@@ -68,14 +69,16 @@ class Store:
 STORES = {
     "first": Store(
         first_store,
-        lambda url: first_server(FirstConfig(url, timeout=5.0)),
+        "ios",
+        lambda url: first_store.credential(),
         first_store.APP,
         "rev-1",
         "rev-3",
     ),
     "second": Store(
         second_store,
-        lambda url: second_server(SecondConfig(url, "/token", timeout=5.0)),
+        "android",
+        lambda url: second_store.credential(f"{url}/token"),
         second_store.PACKAGE,
         "gp:1",
         "gp:3",
@@ -100,13 +103,15 @@ def store(
     request: pytest.FixtureRequest, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> Iterator[Running]:
     spec = STORES[request.param]
-    value = spec.module.credential()
+    port = free_port()
+    url = f"http://127.0.0.1:{port}"
+    value = spec.credential(url)
     path = tmp_path / CREDENTIAL
     path.write_text(value, encoding="utf-8")
     monkeypatch.setenv(f"TAKTUS_CREDENTIAL_{CREDENTIAL}_FILE", str(path))
-    server = spec.module.make_server("127.0.0.1", 0, {value})
+    server = spec.module.make_server("127.0.0.1", port, {value})
     threading.Thread(target=server.serve_forever, args=(0.05,), daemon=True).start()
-    yield Running(spec, f"http://127.0.0.1:{server.server_address[1]}")
+    yield Running(spec, url)
     server.shutdown()
     server.server_close()
 
@@ -128,7 +133,10 @@ class StoresWorld(World):
                     repository_server(RepositoryConfig(outside.repository, REPOSITORY, timeout=5.0))
                 ),
             ),
-            ("connector.stores", served(store.spec.server(store.url))),
+            (
+                "connector.stores",
+                served(stores_server(StoresConfig(store.url, store.url, timeout=5.0))),
+            ),
         ]
         self.engine = RunEngine(
             maturities=VERIFIED,
@@ -177,7 +185,9 @@ async def test_b_3_09_replies_to_a_low_rating_tied_to_the_open_issue_once_a_pers
     version = await w.registered("B-3.09-store-reviews.yaml")
     number = known_defect(outside)
     answering(w, f"issue: {number}", "Thank you for telling us. We know the export issue.")
-    run = await w.start(version, app=store.spec.app, review=store.spec.unanswered)
+    run = await w.start(
+        version, platform=store.spec.platform, app=store.spec.app, review=store.spec.unanswered
+    )
     assert run.state is RunState.WAITING_HUMAN, "a public reply waits for a person"
     assert store.written() == []
     run = await w.confirmed(run)
@@ -203,7 +213,9 @@ async def test_b_3_09_a_number_no_open_issue_carries_ties_nothing(
     known_defect(outside)
     answering(w, "issue: 999999", "Thank you, we are looking into it.")
     run = await w.confirmed(
-        await w.start(version, app=store.spec.app, review=store.spec.unanswered)
+        await w.start(
+            version, platform=store.spec.platform, app=store.spec.app, review=store.spec.unanswered
+        )
     )
     assert run.state is RunState.FINISHED, "\n".join(
         f"{s.step_id} {s.state} {s.reason}" for s in run.step_runs
@@ -218,7 +230,11 @@ async def test_b_3_09_an_answered_or_good_review_runs_nothing_further(
     w = await StoresWorld(outside, store).ready()
     version = await w.registered("B-3.09-store-reviews.yaml")
     answering(w, "issue: none", "Thanks!")
-    run = await w.confirmed(await w.start(version, app=store.spec.app, review=store.spec.answered))
+    run = await w.confirmed(
+        await w.start(
+            version, platform=store.spec.platform, app=store.spec.app, review=store.spec.answered
+        )
+    )
     assert run.state is RunState.FINISHED, "\n".join(
         f"{s.step_id} {s.state} {s.reason}" for s in run.step_runs
     )
@@ -244,7 +260,9 @@ async def test_b_3_09_money_length_a_rejection_or_a_promise_holds_the_reply(
     version = await w.registered("B-3.09-store-reviews.yaml")
     answering(w, "issue: none", draft, check, classified)
     run = await w.confirmed(
-        await w.start(version, app=store.spec.app, review=store.spec.unanswered)
+        await w.start(
+            version, platform=store.spec.platform, app=store.spec.app, review=store.spec.unanswered
+        )
     )
     assert states(run)["send"] is not StepState.SUCCEEDED
     assert run.state is not RunState.FINISHED

@@ -1,6 +1,8 @@
-"""How the certificates and profiles are listed and their expiry read.
+"""How the signing certificates and provisioning profiles are listed and their expiry read
+(`expiry.credentials`, ADR-0203). App Store Connect only: the Google Play Developer
+API publishes no signing credential with an expiry, so the operation takes no `platform`.
 
-Two endpoints of the API are asked:
+Two endpoints of App Store Connect, under `--app-store-target`, are asked:
 
 - `GET /v1/certificates` with `fields[certificates]=certificateType,serialNumber,platform,
   expirationDate`;
@@ -49,7 +51,8 @@ from typing import Any
 
 import httpx
 
-from taktus_connectors.appstore import token
+from taktus_connectors.appstores import auth
+from taktus_connectors.appstores.config import Config
 from taktus_connectors.serving import (
     Call,
     Outcome,
@@ -60,7 +63,6 @@ from taktus_connectors.serving import (
 
 type Json = dict[str, Any]
 
-TARGET = "https://api.appstoreconnect.apple.com"
 LIMIT = 200
 MAX_LIMIT = 1000
 PAGE = 200
@@ -90,13 +92,6 @@ KINDS: dict[str, Kind] = {
         "profileType",
     ),
 }
-
-
-@dataclass(frozen=True)
-class Config:
-    target: str = TARGET
-    """The API's address; the provider's own, or a fake's."""
-    timeout: float = 30.0
 
 
 def _moment(value: Any) -> datetime | None:
@@ -178,20 +173,20 @@ def _kinds(input: Json) -> list[str]:
     return [k for k in KINDS if k in kinds]
 
 
-async def list_(config: Config, call: Call, input: Json) -> Outcome:
+async def list_credentials(config: Config, call: Call, input: Json) -> Outcome:
     kinds = _kinds(input)
     limit = input.get("limit", LIMIT)
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= MAX_LIMIT:
         raise invalid(f"limit must be a whole number from 1 to {MAX_LIMIT}")
-    key = token.parse(call.token)
-    base = config.target.rstrip("/")
+    signed = auth.app_store_token(call)
+    base = config.app_store_target.rstrip("/")
     found: list[Json] = []
     complete = True
     now = datetime.now(UTC)
     async with httpx.AsyncClient(
         base_url=base,
         timeout=httpx.Timeout(config.timeout, connect=min(10.0, config.timeout)),
-        headers={"Authorization": f"Bearer {token.sign(key)}"},
+        headers={"Authorization": f"Bearer {signed}"},
     ) as client:
         for kind in kinds:
             spec = KINDS[kind]
@@ -239,4 +234,4 @@ async def list_(config: Config, call: Call, input: Json) -> Outcome:
     return Outcome(output=output, effect={"kind": "read"})
 
 
-OPERATIONS = {"expiry.credentials.list": list_}
+OPERATIONS = {"expiry.credentials.list": list_credentials}

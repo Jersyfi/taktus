@@ -2,19 +2,24 @@
 
 from __future__ import annotations
 
+import dataclasses
+
 from mcp.server.mcpserver import MCPServer
 
 from taktus_connectors import serving
 from taktus_connectors.appstores import declaration, operations
-from taktus_connectors.appstores.operations import Config
+from taktus_connectors.appstores.config import Config
 
 FAULTS = {
     **serving.COMMON_FAULTS,
-    "C-05": "the idempotency key is ignored: every write acts with a key of its own",
+    "C-05": "a repeat is not recognised: the idempotency key is ignored, every write acts with "
+    "a key of its own, and a reply is written without reading the response in place",
 }
 
 
 def served(config: Config, fault: str | None = None) -> serving.Served:
+    if fault == "C-05":
+        config = dataclasses.replace(config, blind=True)
     return serving.Served(
         name="stores-connector",
         declaration=declaration.capabilities,

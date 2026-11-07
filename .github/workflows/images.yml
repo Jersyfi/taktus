@@ -127,9 +127,6 @@ jobs:
           - name: taktus-connector-anthropic
             dockerfile: connectors/Dockerfile
             target: anthropic
-          - name: taktus-connector-appstore
-            dockerfile: connectors/Dockerfile
-            target: appstore
           - name: taktus-connector-appstores
             dockerfile: connectors/Dockerfile
             target: appstores
@@ -178,9 +175,6 @@ jobs:
           - name: taktus-connector-googleanalytics
             dockerfile: connectors/Dockerfile
             target: googleanalytics
-          - name: taktus-connector-googleplay
-            dockerfile: connectors/Dockerfile
-            target: googleplay
           - name: taktus-connector-googleworkspace
             dockerfile: connectors/Dockerfile
             target: googleworkspace

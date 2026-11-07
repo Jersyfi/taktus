@@ -33,7 +33,6 @@ WRITERS = frozenset(
         "cloudrun",
         "firebase",
         "freshdesk",
-        "googleplay",
         "hubspot",
         "jira",
         "kubernetes",

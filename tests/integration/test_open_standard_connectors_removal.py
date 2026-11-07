@@ -16,8 +16,6 @@ from typing import Any
 import pytest
 from taktus_connectors.anthropic.operations import Config as CostReportConfig
 from taktus_connectors.anthropic.server import build_server as cost_report_server
-from taktus_connectors.appstore.operations import Config as StoreConfig
-from taktus_connectors.appstore.server import build_server as store_server
 from taktus_connectors.appstores.operations import Config as StoresConfig
 from taktus_connectors.appstores.server import build_server as stores_server
 from taktus_connectors.aws.operations import Config as BillingConfig
@@ -100,7 +98,6 @@ SERVERS: dict[str, Any] = {
     "cloud": lambda: cloud_server(CloudConfig.at("example", target="http://127.0.0.1:9")),
     "logs": lambda: logs_server(LogsConfig("http://127.0.0.1:9")),
     "secrets": lambda: secrets_server(SecretsConfig("http://127.0.0.1:9")),
-    "store": lambda: store_server(StoreConfig("http://127.0.0.1:9")),
     "stores": lambda: stores_server(StoresConfig("http://127.0.0.1:9", "http://127.0.0.1:9")),
     "serverless": lambda: serverless_server(
         ServerlessConfig("http://127.0.0.1:9", "example", "europe-west1")
@@ -136,8 +133,7 @@ SERVES = {
     "cloud": ["billing.costs", "logs.query", "secrets.metadata"],
     "logs": ["logs.query"],
     "secrets": ["secrets.metadata"],
-    "store": ["expiry.credentials"],
-    "stores": ["stores.beta", "stores.releases"],
+    "stores": ["expiry.credentials", "stores.beta", "stores.releases", "stores.reviews"],
     "serverless": ["deployment.workloads"],
     "site-releases": ["deployment.sites"],
     "site-deploys": ["deployment.sites"],

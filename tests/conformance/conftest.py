@@ -34,8 +34,7 @@ import httpx
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from fakes import google_oauth, review_replies_service
-from fakes.app_store_service import test_value as app_store_value
+from fakes import google_oauth
 from fakes.ports import free_port
 
 from taktus.adapters.driven.clock import SystemClock
@@ -1111,9 +1110,6 @@ class BusinessConnector:
     args: tuple[str, ...] = ()
     pair: bool = False
     """The credential is a key pair, `<id>:<secret>`, as a provider that signs takes one."""
-    made: Callable[[], str] | None = None
-    """How a value is made where the provider needs one of its own shape, a signing key the fake
-    verifies against: its maker, from the fake's module (ADR-0207)."""
     key: str | None = None
     """The credential is a signing key the connector exchanges or signs with, generated for the
     fake at its address: `google`, a service account key whose token endpoint is the fake's;
@@ -1123,8 +1119,6 @@ class BusinessConnector:
     key; the fake admits the account by its address."""
 
     def value(self, service_url: str = "") -> str:
-        if self.made is not None:
-            return self.made()
         if self.key == "google":
             return google_oauth.service_account_key(f"{service_url}/token")
         if self.key == "stores":
@@ -1178,9 +1172,6 @@ BUSINESS: dict[str, BusinessConnector] = {
     "anthropic": BusinessConnector(
         "anthropic", FAKES / "cost_report_service.py", "MODEL_COSTS_TOKEN"
     ),
-    "appstore": BusinessConnector(
-        "appstore", FAKES / "app_store_service.py", "STORE_API_KEY", made=app_store_value
-    ),
     "appstores": BusinessConnector(
         "appstores", FAKES / "app_stores_service.py", "STORES_KEY", key="stores"
     ),
@@ -1224,13 +1215,6 @@ BUSINESS: dict[str, BusinessConnector] = {
         "ANALYTICS_KEY",
         ("--property", "123456789"),
         key="google",
-    ),
-    "googleplay": BusinessConnector(
-        "googleplay",
-        FAKES / "review_replies_service.py",
-        "STORE_REVIEWS_KEY",
-        ("--token-url", "/token"),
-        made=review_replies_service.credential,
     ),
     "googleworkspace": BusinessConnector(
         "googleworkspace",

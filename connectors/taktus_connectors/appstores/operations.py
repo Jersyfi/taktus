@@ -1,4 +1,5 @@
-"""How the two stores' APIs are asked, and their answers read.
+"""How the two stores' APIs are asked, and their answers read: the builds, the beta and the
+releases here; the reviews in `reviews.py`; the signing credentials in `credentials.py`.
 
 Every call names its `platform`: `ios` is answered by the App Store Connect API under
 `--app-store-target`, `android` by the Google Play Developer API (`androidpublisher` v3) under
@@ -43,19 +44,17 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
 
 import httpx
 
-from taktus_connectors.appstores import auth
+from taktus_connectors.appstores import auth, credentials, reviews
+from taktus_connectors.appstores.config import Config as Config
 from taktus_connectors.serving import Call, Outcome, TargetError, invalid, unavailable
 
 type Json = dict[str, Any]
 
-APP_STORE = "https://api.appstoreconnect.apple.com"
-PLAY = "https://androidpublisher.googleapis.com"
 PLATFORMS = ("ios", "android")
 APPLE_ID = re.compile(r"^[A-Za-z0-9-]{1,64}$")
 PACKAGE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$")
@@ -105,13 +104,6 @@ REVIEW = {
     "READY_FOR_SALE": "live",
 }
 """The store's word for a version, as the five words a process reads; any other is `other`."""
-
-
-@dataclass(frozen=True)
-class Config:
-    app_store_target: str = APP_STORE
-    play_target: str = PLAY
-    timeout: float = 30.0
 
 
 def _unexpected(detail: str) -> TargetError:
@@ -890,4 +882,6 @@ OPERATIONS = {
     "stores.releases.raise": raise_release,
     "stores.releases.halt": halt,
     "stores.releases.submit": submit,
+    **reviews.OPERATIONS,
+    **credentials.OPERATIONS,
 }

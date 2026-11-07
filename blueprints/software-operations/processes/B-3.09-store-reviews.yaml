@@ -3,8 +3,8 @@
 # a model drafts, checked by rule and by an independent step, labelled as written by an AI
 # system, and published once a person released it (UC-7.6, ADR-0142, ADR-0207).
 #
-# The run serves one review: the app's identifier at the store and the review's. The review is
-# read through `stores.reviews`, the open issues through `repository.issues`. A rule keeps the
+# The run serves one review: the app's platform, which names the store, the app's identifier at
+# the store and the review's. The review is read through `stores.reviews`, the open issues through `repository.issues`. A rule keeps the
 # review only while it has no response and is of one or two stars; a review of three stars or
 # more, or one already answered, runs nothing further. A tenant that answers every new review
 # changes the bound in its own version.
@@ -41,7 +41,8 @@
 # By hand:
 #
 #     uv run taktusctl run --process blueprints/software-operations/processes/B-3.09-store-reviews.yaml \
-#         --input app=<the app at the store> --input review=<the review's identifier>
+#         --input platform=<ios or android> --input app=<the app at the store> \
+#         --input review=<the review's identifier>
 #
 # Switching it off (`taktusctl deactivate --process b-3-09`) leaves the store as it is.
 
@@ -63,6 +64,9 @@ author: the repository
 reason: every low rating in a store gets a reply a person only has to release, tied to the defect it reports where one is known (UC-03 B-3.09)
 
 inputs:
+  platform:
+    description: the platform of the app, ios or android; it names the store
+    example: ios
   app:
     description: the app's identifier at the store, as the store's console shows it
     example: "1234567890"
@@ -89,10 +93,11 @@ steps:
       rule: connector
       operation: stores.reviews.read
       input:
+        platform: { $input: platform }
         app: { $input: app }
         review: { $input: review }
       credentials:
-        - { name: STORE_REVIEWS_KEY, injected_as: env }
+        - { name: STORES_KEY, injected_as: env }
 
   - id: read-issues
     method: rule
@@ -332,11 +337,12 @@ steps:
       rule: connector
       operation: stores.reviews.reply
       input:
+        platform: { $input: platform }
         app: { $input: app }
         review: { $input: review }
         text: { $from: draft, $select: text }
       credentials:
-        - { name: STORE_REVIEWS_KEY, injected_as: env }
+        - { name: STORES_KEY, injected_as: env }
       message:
         text: text
         checks:
@@ -370,10 +376,10 @@ takeover:
         title and text exactly as written, and whether it has a response
       expertise: finding a review in the store's console
       credentials:
-        - parameter: STORE_REVIEWS_KEY
+        - parameter: STORES_KEY
           where: >
-            the operator's secret store, under the parameter Store reviews key of the requesting
-            identity described in CREDENTIALS.md, the key of the store the connector serves;
+            the operator's secret store, under the parameter App stores key of the requesting
+            identity described in CREDENTIALS.md, the key of the store the platform names;
             a person signs in to the store's console with their own account that may read and
             answer reviews
       done: the rating, the title, the text and whether a response is in place are noted
@@ -459,8 +465,8 @@ takeover:
         answered the review. At level 2 the owner releases the reply before it is published
       expertise: the business's rules for public replies; answering a review in the store's console
       credentials:
-        - parameter: STORE_REVIEWS_KEY
+        - parameter: STORES_KEY
           where: >
-            the operator's secret store, under the parameter Store reviews key of the requesting
-            identity described in CREDENTIALS.md, the key of the store the connector serves
+            the operator's secret store, under the parameter App stores key of the requesting
+            identity described in CREDENTIALS.md, the key of the store the platform names
       done: the reply stands as the review's response, pending its publication by the store

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """A fake App Store Connect API: the certificate list and the profile list, in memory.
 
-The signing credentials connector under `connectors/taktus_connectors/appstore/` asks
+The app stores connector under `connectors/taktus_connectors/appstores/` asks, for its
+`expiry.credentials`,
 `GET /v1/certificates` and `GET /v1/profiles`. This fake answers both in the API's shapes and
 statuses, over certificates and profiles it holds in memory. It exists so that the connector
 can be exercised in CI without a network, an account or a secret.
@@ -11,9 +12,9 @@ What it enforces, because the connector's checks depend on it:
 - **The token.** Every request needs `Authorization: Bearer <JWT>`. The header must name
   `alg: ES256`, `typ: JWT` and a `kid`; the payload `aud: appstoreconnect-v1`, an `iss`, an
   `iat` not in the future and an `exp` after now and at most 20 minutes after `iat`. The `kid`
-  and `iss` must be those of a value the fake was started with (`FAKE_TOKENS`, comma
-  separated, each `<issuer id>:<key id>:<base64 of the .p8 PEM file>`, as the connector reads
-  its credential), and the ES256 signature must verify under that key's public half.
+  and `iss` must be those of a value the fake was started with (`FAKE_TOKENS`, one value: the
+  connector's credential `STORES_KEY`, whose `ios` member is `{issuer_id, key_id,
+  private_key}`), and the ES256 signature must verify under that key's public half.
   Otherwise 401 with the API's error shape.
 - **Parameters.** `limit` from 1 to 200; `fields[certificates]` and `fields[profiles]` only
   of the attributes the API documents; `cursor` as a next link names it. Anything else 400.
@@ -89,7 +90,8 @@ CONTENT = {"certificateContent", "profileContent"}
 
 
 def test_value() -> str:
-    """A credential value the connector and this fake both accept: a fresh P-256 key."""
+    """A credential value the connector and this fake both accept: `STORES_KEY` with a fresh
+    P-256 key as its `ios` member."""
     key = ec.generate_private_key(ec.SECP256R1())
     pem = key.private_bytes(
         serialization.Encoding.PEM,
@@ -97,15 +99,17 @@ def test_value() -> str:
         serialization.NoEncryption(),
     )
     key_id = "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(10))
-    return f"{uuid.uuid4()}:{key_id}:{base64.b64encode(pem).decode('ascii')}"
+    member = {"issuer_id": str(uuid.uuid4()), "key_id": key_id, "private_key": pem.decode()}
+    return json.dumps({"ios": member})
 
 
 def keys(values: set[str]) -> dict[tuple[str, str], ec.EllipticCurvePublicKey]:
     """The public key of each value, by its key id and issuer."""
     out: dict[tuple[str, str], ec.EllipticCurvePublicKey] = {}
     for value in values:
-        issuer, key_id, encoded = value.split(":")
-        private = serialization.load_pem_private_key(base64.b64decode(encoded), password=None)
+        member = json.loads(value)["ios"]
+        issuer, key_id = member["issuer_id"], member["key_id"]
+        private = serialization.load_pem_private_key(member["private_key"].encode(), None)
         if not isinstance(private, ec.EllipticCurvePrivateKey):
             raise ValueError("a FAKE_TOKENS key is not an elliptic-curve key")
         out[(key_id, issuer)] = private.public_key()
@@ -358,7 +362,8 @@ def main() -> int:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=9225)
     args = parser.parse_args()
-    values = {t for t in os.environ.get("FAKE_TOKENS", "").split(",") if t}
+    given = os.environ.get("FAKE_TOKENS", "")
+    values = {given} if given else set()
     extra = int(os.environ.get("FAKE_PROFILES", "0"))
     server = make_server(args.host, args.port, values, extra)
     sys.stderr.write(f"fake app store connect at http://{args.host}:{args.port}\n")

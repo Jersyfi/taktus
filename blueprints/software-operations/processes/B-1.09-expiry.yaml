@@ -162,7 +162,7 @@ steps:
       operation: expiry.credentials.list
       input: {}
       credentials:
-        - { name: STORE_API_KEY, injected_as: env }
+        - { name: STORES_KEY, injected_as: env }
       expect:
         - { select: complete, equals: true, says: "the store listed more than was read" }
 
@@ -248,10 +248,10 @@ takeover:
         the whole days left for each. Never download a certificate or a profile.
       expertise: reading certificates and profiles in the app store's developer account
       credentials:
-        - parameter: STORE_API_KEY
+        - parameter: STORES_KEY
           where: >
-            the operator's secret store, under the parameter App store API key of the requesting
-            identity described in CREDENTIALS.md; a person may instead sign in to the developer
+            the operator's secret store, under the parameter App stores key of the requesting
+            identity described in CREDENTIALS.md, its App Store Connect key; a person may instead sign in to the developer
             account with their own account that may read certificates and profiles
       done: every certificate and profile is noted with its days left, or the step is skipped
     soonest-signing:

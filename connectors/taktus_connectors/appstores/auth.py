@@ -54,13 +54,13 @@ def _member(call: Call, platform: str) -> Json:
     return member
 
 
-def app_store_token(call: Call) -> str:
-    """A token for App Store Connect, signed now."""
+def app_store_token(call: Call, now: int | None = None) -> str:
+    """A token for App Store Connect, signed now, or at `now` in Unix seconds."""
     key = _member(call, "ios")
     issuer, key_id, private = key.get("issuer_id"), key.get("key_id"), key.get("private_key")
     if not all(isinstance(v, str) and v for v in (issuer, key_id, private)):
         raise _refused("the App Store Connect key lacks its issuer, identifier or private key")
-    now = int(time.time())
+    now = int(time.time()) if now is None else now
     claims = {"iss": issuer, "iat": now, "exp": now + APP_STORE_LIFETIME, "aud": APP_STORE_AUDIENCE}
     try:
         return jwt.encode(

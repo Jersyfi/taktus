@@ -70,6 +70,10 @@ cluster's is (ADR-0023); resuming after a halt is a new run started by a person.
 - `blueprints/software-operations/processes/` gains B-8.02, B-8.03 and B-8.04's store version.
   A tenant registers the version of b-8-04 that fits its release; a stage counts either.
 
+## Later
+
+- 2026-11-07: The connector `appstores` holds every store capability: besides `stores.beta` and `stores.releases`, `stores.reviews` (ADR-0207) for both stores by `platform`, and `expiry.credentials` (ADR-0203) over App Store Connect alone, as Google Play publishes no signing credential with an expiry. The connectors `appstore` and `googleplay` were folded into it, because a capability resolves to the first connector that declares it and one key per store, `STORES_KEY`, serves every call. The decision above is unchanged.
+
 ## Where this promise ends
 
 - **Two stores.** Another store needs its own connector, and a tenant that uses it with these two

@@ -65,6 +65,10 @@ the serial number stands for it (principle 14).
   `secrets.metadata`; each with a fake of the store's published interface.
 - B-1.10 is built; B-1.09 reads the signing credentials too.
 
+## Later
+
+- 2026-11-07: `expiry.credentials` is served by the connector `appstores` under `STORES_KEY`; `appstore/` was folded into it (ADR-0210, Later). The decision above is unchanged.
+
 ## Where this promise ends
 
 - **The age is the store's statement.** A value replaced outside the store, or a store that

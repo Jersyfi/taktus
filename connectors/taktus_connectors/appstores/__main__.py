@@ -15,7 +15,7 @@ from __future__ import annotations
 import sys
 
 from taktus_connectors import serving
-from taktus_connectors.appstores.operations import APP_STORE, PLAY, Config
+from taktus_connectors.appstores.config import APP_STORE, PLAY, Config
 from taktus_connectors.appstores.server import served
 
 
