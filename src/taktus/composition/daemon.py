@@ -226,6 +226,7 @@ from taktus.composition.owner_channel import (
     owner_channel_wiring,
 )
 from taktus.composition.participants import ParticipantAnswers
+from taktus.composition.personal import ConfiguredPersonalCredentials
 from taktus.composition.profiles import RoleProfiles
 from taktus.composition.proposals import InstanceChanges, ProposalActs
 from taktus.composition.reactions import Reactions, capacity_condition
@@ -696,6 +697,7 @@ async def wire(
                     ),
                     guidance=CatalogGuidance(skill_catalog, agent_catalog),
                     org_units=org_units,
+                    personal=ConfiguredPersonalCredentials(settings.personal_credentials),
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)

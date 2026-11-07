@@ -169,6 +169,7 @@ from taktus.composition.moves import MethodMoves
 from taktus.composition.objects import object_store_of
 from taktus.composition.org_units import OrgUnitsOfTheRun
 from taktus.composition.owner_channel import known_secrets, owner_channel_wiring
+from taktus.composition.personal import ConfiguredPersonalCredentials
 from taktus.composition.proposals import InstanceChanges
 from taktus.composition.settings import (
     ExecutionKind,
@@ -185,6 +186,7 @@ from taktus.composition.settings import (
     load_model,
     load_models,
     load_object_store,
+    load_personal_credentials,
     load_telemetry,
     load_workers,
 )
@@ -423,6 +425,9 @@ class LocalWiring:
                         stores.work, stores.of(ProcessVersion), CorrectionRates(ledger, stores.work)
                     ),
                     org_units=org_units,
+                    personal=ConfiguredPersonalCredentials(
+                        load_personal_credentials(self._configuration)
+                    ),
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)

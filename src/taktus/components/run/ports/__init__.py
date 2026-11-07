@@ -17,6 +17,7 @@ from taktus.components.run.ports.messages import MessageRules, Messages, QuietHo
 from taktus.components.run.ports.models import ModelPool
 from taktus.components.run.ports.open_work import Cap, CountReading, OpenWork
 from taktus.components.run.ports.org_units import OrgUnitBudget, OrgUnits
+from taktus.components.run.ports.personal import PersonalCredentials
 from taktus.components.run.ports.repetition import (
     Repeated,
     Repetition,
@@ -51,6 +52,7 @@ __all__ = [
     "OpenWork",
     "OrgUnitBudget",
     "OrgUnits",
+    "PersonalCredentials",
     "ProposalDecided",
     "QuietHours",
     "Repeated",

@@ -300,6 +300,7 @@ from taktus.components.run.ports import (
     NotRaised,
     OpenWork,
     OrgUnits,
+    PersonalCredentials,
     ProposalDecided,
     Repeated,
     Repetition,
@@ -360,6 +361,7 @@ from taktus.ports.worker import (
     Callback,
     ConsumptionReported,
     Context,
+    CredentialReference,
     Event,
     Frame,
     HandoverRequest,
@@ -797,7 +799,11 @@ class RunEngine:
         statements: Statements | None = None,
         guidance: Guidance | None = None,
         org_units: OrgUnits | None = None,
+        personal: PersonalCredentials | None = None,
     ) -> None:
+        self._own = personal
+        """Where a step on behalf of a person finds that person's own credential (ADR-0264).
+        None: no identity has one, and every such step gets nothing from its source."""
         self._org_units = org_units
         """The tenant's quotas per organisational unit and what each unit's runs committed
         (ADR-0166). None: no run commits to a unit's budget quota."""
@@ -5584,8 +5590,11 @@ class RunEngine:
         if operation.outward and not run.rehearsal:
             input, sent = await self._labelled(run, step_run.step_id, work, operation, input)
             await self._book_call(run, step_run, operation.name, input)
+        credentials = work.credentials
+        if work.on_behalf:
+            credentials = await self._own_credentials(run, step_run, resolved, work)
         result = await self._call(
-            run, step_run, resolved, operation, input, work.credentials, span, scope=scope
+            run, step_run, resolved, operation, input, credentials, span, scope=scope
         )
         document = result.document()
         unmet = [why for e in work.expect if (why := rules.unmet(e, document["output"]))]
@@ -5706,6 +5715,36 @@ class RunEngine:
         return replayed, trace, None, resolved.adapter
 
     # --- end of rehearsal ----------------------------------------------------------------------
+
+    async def _own_credentials(
+        self, run: Run, step_run: StepRun, resolved: ResolvedConnector, work: ConnectorRule
+    ) -> tuple[CredentialReference, ...]:
+        """The credentials of a call on behalf of the run's identity: for each one the step
+        names, that identity's own (ADR-0264). Where it has none, the step fails before the
+        call: Taktus never reads with wider rights of its own than the person it acts for."""
+        own: list[CredentialReference] = []
+        for reference in work.credentials:
+            parameter = (
+                None
+                if self._own is None
+                else await self._own.own(run.tenant, run.identity, reference.name)
+            )
+            if parameter is None:
+                raise _StepFailed(
+                    reason=f"{run.identity} has no credential of its own for "
+                    f"{work.capability} ({reference.name}); the step acts on behalf of it and "
+                    "gets nothing from the source with wider rights",
+                    retryable=False,
+                    consumption=None,
+                    adapter=resolved.adapter,
+                    outcome="unauthenticated",
+                )
+            own.append(reference.model_copy(update={"name": parameter}))
+        if not own:
+            raise UnsupportedWork(
+                step_run.step_id, "a call on behalf of a person names the credential it stands for"
+            )
+        return tuple(own)
 
     async def _call(
         self,

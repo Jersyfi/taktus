@@ -544,14 +544,14 @@ def _document_table(name: str) -> Table:
 
 
 connection_grant = _document_table("connection_grant")
-"""One row per grant made on a connection (ADR-0262); withdrawn by a later row, never deleted."""
+"""One row per grant made on a connection (UC-5.6); withdrawn by a later row, never deleted."""
 
 knowledge_entry = _document_table("knowledge_entry")
-"""One row per place of a connected source that was read (ADR-0265): its reference, link and
+"""One row per place of a connected source that was read (UC-5.5): its reference, link and
 digest, never its content."""
 
 domain_instance = _document_table("domain_instance")
-"""One row per domain instantiated from a blueprint (ADR-0263)."""
+"""One row per domain instantiated from a blueprint (UC-15.1)."""
 
 subject_request = Table(
     "subject_request",

@@ -596,6 +596,10 @@ class ConnectorRule(Value):
     input: dict[str, Any] = Field(default_factory=dict)
     credentials: tuple[CredentialReference, ...] = ()
     expect: tuple[Expectation, ...] = ()
+    on_behalf: bool = False
+    """The call is served with the own credential of the identity the run acts for, in place of
+    every credential named here (ADR-0264): what the source shows that person, and nothing
+    more. An identity without one gets nothing from the source; the step fails and says so."""
 
     @property
     def capability(self) -> str:

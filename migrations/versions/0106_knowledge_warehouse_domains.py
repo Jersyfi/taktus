@@ -1,5 +1,5 @@
-"""Write grants on a connection, the knowledge index, and instantiated domains (ADR-0262,
-ADR-0263, ADR-0265).
+"""Write grants on a connection, the knowledge index, and instantiated domains (UC-5.6,
+UC-5.5, UC-15.1).
 
 Revision: 0106
 Revises: 0100
