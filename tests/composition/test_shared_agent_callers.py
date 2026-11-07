@@ -112,11 +112,16 @@ class World(ag.World):
             instructions="Read the caller's queue.",
             flow="lookup",
             autonomy_level=3,
-            grants=Grants(connectors=("connector.tickets",)),
+            grants=Grants(connectors=("connector.tickets",), tools=("fake.records",)),
             by=AUTHOR,
         )
         await self.agents.set_profile(
-            TENANT, agent="tickets", role="support", version="1", grants=Grants()
+            TENANT,
+            agent="tickets",
+            role="support",
+            version="1",
+            # The flow reads through the connector (ADR-0261 §4).
+            grants=Grants(tools=("fake.records",)),
         )
         for circle_kind, subject in (
             (ShareKind.AGENT, "tickets"),
