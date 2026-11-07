@@ -198,6 +198,10 @@ DECLARED: dict[str, str] = {
 """Every type whose numbers are declared parameters of a process, not figures of anyone."""
 
 OWN: dict[str, str] = {
+    "taktus.components.process.domain.service.proposing.ProcessProposal": (
+        "tests/composition/test_process_proposals.py::"
+        "test_a_process_started_by_hand_every_week_is_proposed_to_that_person_only"
+    ),
     "taktus.components.decision.domain.service.response_times.ResponseTimes": (
         "tests/governance/test_anchors.py::"
         "test_another_identity_cannot_read_a_decider_s_response_time_under_their_name"
