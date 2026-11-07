@@ -630,6 +630,29 @@ async def test_a_failing_assignment_escalates_with_what_it_used() -> None:
     assert fake.assignments[1].context.checkpoint_ref is None
 
 
+async def test_a_running_step_is_never_aborted_to_halt_or_escalate() -> None:
+    """UC-4.5 §2, last condition: the boundary is the step's own (ADR-0005). A step whose worker
+    fails at its second inner step ends where the worker ended it: the engine sends the worker
+    no stop to escalate, the inner step before the failure completed with what it produced,
+    and the run escalates only after the step's own end. The step that would follow never
+    starts."""
+    fake = FakeWorker(
+        script=(InnerStep("one", 1.0, (("out-1", b"1"),)), InnerStep("two", 1.0)),
+        fail_at="two",
+    )
+    h = Harness(worker("do"), wait("after", 0, after=("do",)), workers=[fake])
+    run = await h.start()
+    assert run.state is RunState.ESCALATED and run.cause is Cause.FAILURE
+    assert fake.stops == [], "nothing was sent to the worker to abort its step"
+    do = run.step_run("do")
+    assert do.state is StepState.FAILED
+    assert [a.id for a in do.artifacts] == ["out-1"], "the inner step before the end completed"
+    assert run.step_run("after").state is StepState.PLANNED
+    kinds = await h.kinds(run)
+    assert kinds.index("step.finished:do:failed") < kinds.index("run.escalated::failure")
+    assert not [k for k in kinds if k.startswith("step.started:after")]
+
+
 async def test_a_worker_that_cannot_be_reached_fails_the_step_with_that_cause() -> None:
     """An execution unit that does not start, or an endpoint that does not answer, is a failed
     step and an escalated run — never an exception out of the engine. The reason names what
