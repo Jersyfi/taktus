@@ -1,0 +1,239 @@
+# B-1.10 Rotating a secret — UC-03 §4.1: a secret whose value is older than the tenant's age is
+# identified every week, and its rotation is prepared as an issue; triggering the rotation stays
+# with a person (UC-7.3).
+#
+# The secret store's metadata is read through `secrets.metadata` (ADR-0203): each secret's name,
+# when its current value was set and its whole days since, and what the store states about
+# rotation. No value is ever read: the connectors call no endpoint that returns one. A rule keeps
+# the secret whose value is oldest past `max_age_days`, unless an open issue already carries its
+# mark, and the issue that prepares its rotation is filed once a person confirmed it. The mark
+# names the moment the value was set, so a secret rotated and grown old again is filed again.
+#
+# The rotation itself is the operator's act in the store, which then fills the files Taktus
+# reads (ADR-0187); Taktus changes nothing in the store. Every consumer is not listed: no store
+# states who reads a secret, and the files the store fills are named in the operator's own
+# configuration.
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-1.10-rotation-watch.yaml \
+#         --input max_age_days=90
+#
+# Switching it off (`taktusctl deactivate --process b-1-10`) changes nothing in the store.
+
+id: b-1-10
+version: "1"
+name: B-1.10 Rotating a secret
+autonomy:
+  level: 2
+  reason: >
+    the secret is selected by a fixed rule over the store's own metadata; filing the issue
+    leaves the system, so a person confirms it, as every process of UC-03 starts at level 1 or 2
+    when its stage opens; UC-03 sets B-1.10's target at level 2, because triggering the
+    rotation stays with a person
+  toward_next: >
+    UC-03 keeps B-1.10 at level 2; a higher level is a decision of the tenant, with two months of
+    issues a person confirmed without changing the selection (UC-7.1)
+author: the repository
+reason: a secret due for rotation reaches the repository as a prepared issue without a person keeping a list (UC-03 B-1.10)
+
+triggers:
+  - schedule: "30 6 * * 1"
+    inputs:
+      max_age_days: 90
+
+inputs:
+  max_age_days:
+    description: the age in whole days past which a secret's value is due for rotation
+    example: 90
+
+limits:
+  quota: { units: 1100 }
+
+steps:
+  - id: read-secrets
+    method: rule
+    reason: the store's metadata is read verbatim; no value is read
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving secrets.metadata is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: secrets.metadata.list
+      input:
+        limit: 500
+      credentials:
+        - { name: SECRETS_TOKEN, injected_as: env }
+
+  - id: read-filed
+    method: rule
+    reason: the open issues are read verbatim, so that a rotation already prepared is not filed twice
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.issues is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: repository.issues.list
+      input:
+        state: open
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the open issues were not all read" }
+
+  - id: select
+    method: rule
+    reason: >
+      which secret is due is a threshold over the store's own age of its value; one an open
+      issue carries the mark of is left out; the oldest is taken
+    rejected:
+      - method: llm
+        why: a threshold over a count needs no judgement, and a model's verdict could differ between two runs
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the secret selected from the two readings }
+    depends_on: [read-secrets, read-filed]
+    work:
+      rule: filter
+      items: { $from: read-secrets, $select: output.secrets }
+      all:
+        - { field: age_days, at_least: { $input: max_age_days } }
+      excluding: { $from: read-filed, $select: output.issues }
+      within: body
+      marker: "secret-rotation:${name}:${changed_at}"
+      order: age_days
+      descending: true
+      limit: 1
+
+  - id: compose
+    method: rule
+    reason: the issue's text is the store's metadata between fixed words, with the mark that keeps it from being filed twice
+    rejected:
+      - method: llm
+        why: a fixed composition needs no model
+    exactness: sourced
+    depends_on: [select]
+    work:
+      when:
+        - { value: { $from: select, $select: count }, not_matches: "^0$" }
+      rule: template
+      text: |
+        The secret `${name}` is due for rotation: its current value was set ${changed_at}, ${age_days} days ago.
+
+        - what the store states about rotation: ${rotation}
+        - expires: ${expires_at}
+
+        To rotate it: create a new value at the system the secret opens, set it as the new
+        version of `${name}` in the secret store, wait until the store has filled the files
+        that read it, check that every process that uses it still runs, then revoke the old
+        value at the system. Taktus triggers none of this, and reads no value.
+
+        Filed by Taktus, process B-1.10 Rotating a secret, once a person confirmed it.
+
+        secret-rotation:${name}:${changed_at}
+      values:
+        name: { $from: select, $select: first.name }
+        changed_at: { $from: select, $select: first.changed_at }
+        age_days: { $from: select, $select: first.age_days }
+        rotation: { $from: select, $select: first.rotation }
+        expires_at: { $from: select, $select: first.expires_at }
+
+  - id: file
+    method: rule
+    reason: opening the issue is an API call; the effect leaves the system, so at level 2 a person confirms it first
+    rejected:
+      - method: worker
+        why: nothing here needs a sandbox or tools
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.issues is unavailable
+      to: human
+      role: owner
+    depends_on: [select, compose]
+    work:
+      when:
+        - { value: { $from: select, $select: count }, not_matches: "^0$" }
+      rule: connector
+      operation: repository.issues.create
+      input:
+        title: { $from: select, $select: first.name }
+        body: { $from: compose }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+# How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
+# every step the system to act in, what to do there, the expertise it needs, each credential by
+# its parameter and where an authorised person finds it, and how to tell that it is done.
+takeover:
+  sequence: >
+    The process runs every Monday morning; whoever looks after the business's secrets starts
+    it. The steps run in order: list the secret store's secrets with when each current value was
+    set, list the repository's open issues, pick the secret whose value is oldest past the age
+    the run was started with, by default 90 days, and not yet filed, write the issue's text, and
+    open the issue once a person confirmed it. One issue per run. The rotation itself is done in
+    the secret store by the person responsible, never by Taktus.
+  steps:
+    read-secrets:
+      system: the secret store, in its list of secrets
+      do: >
+        list every secret with when its current value was set, and work out for each the whole
+        days since then. Note what the store says about automatic rotation. Never open a value.
+      expertise: reading a secret store's metadata
+      credentials:
+        - parameter: SECRETS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Secrets metadata token of the
+            requesting identity described in CREDENTIALS.md; a person may instead sign in to
+            the store with their own account that may list its secrets
+      done: every secret is listed with the age of its current value
+    read-filed:
+      system: the repository hosting service, in the repository's issue list
+      do: >
+        list every open issue and keep their texts at hand, so that a rotation already prepared
+        is recognised by its mark.
+      expertise: searching issues in the repository hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md
+      done: every open issue has been read
+    select:
+      system: the two lists noted before
+      do: >
+        keep the secrets whose value is at least the given number of days old, leave out every
+        one an open issue names by the line secret-rotation:<name>:<moment>, and take the oldest.
+      expertise: none
+      credentials: []
+      done: one secret is chosen, or none is due
+    compose:
+      system: a text editor
+      do: >
+        write the issue's text: the secret's name, when its value was set and how many days ago,
+        what the store says about rotation, the steps of the rotation, and the line
+        secret-rotation:<name>:<moment> at the end.
+      expertise: none
+      credentials: []
+      done: the text is written, or nothing is due
+    file:
+      system: the repository hosting service
+      do: >
+        once the person responsible agreed, open the issue with the secret's name as its title
+        and the text as its body.
+      expertise: opening an issue in the repository hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md
+      done: the issue is open, or nothing was due

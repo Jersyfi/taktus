@@ -314,13 +314,13 @@ follows (#447).
 
 | Capability | For | Available |
 |---|---|---|
-| repository service: issues, pull requests, pipelines | §4.7, §4.8, B-1.11, B-1.12 | yes (`github` connector): pull requests listed with their state, a base merged into a branch, a commit onto an existing branch, a pull request's paths, a merge at a head, pipeline runs by status (ADR-0193, ADR-0194) |
+| repository service: issues, pull requests, pipelines | §4.7, §4.8, B-1.11, B-1.12 | yes (`github` connector): pull requests listed with their state, a base merged into a branch, a commit onto an existing branch, a pull request's paths, a merge at a head, pipeline runs by status (ADR-0193, ADR-0194); a run cancelled and rerun, the runners, the branches, the rate limit and the dependency alerts (ADR-0201) |
 | chat | the report, decision requests, steering | yes |
 | mail and helpdesk: receive, draft, send | §4.3, B-10.03 | mail received and sent over IMAP and SMTP (`mail` connector); drafts and a helpdesk: no |
-| cloud billing export, monitoring and logs | §4.1 | metrics by query (`prometheus` connector), an HTTP check (`httpcheck` connector) and the daily cost by service (`billing.costs`); logs: no |
+| cloud billing export, monitoring and logs | §4.1 | metrics by query (`prometheus` connector), an HTTP check (`httpcheck` connector), the daily cost by service (`billing.costs`, from two clouds, ADR-0204), logs queried in each store's own language (`logs.query`, ADR-0202), a secret store's metadata without its values (`secrets.metadata`) and an app store's signing credentials (`expiry.credentials`, ADR-0203) |
 | error tracking | B-1.04, B-1.05, B-7.01 | issues read (`errors.issues`) |
 | payment providers and the product's entitlements | B-3.04, §4.6 | subscriptions read (`payments.subscriptions`); the product's entitlements: no |
-| model providers' credit and use | B-2.01 | the cost per day (`models.costs`); the credit left: no |
+| model providers' credit and use | B-2.01 | the cost per day (`models.costs`); the models listed with their lifecycle (`models.catalogue`, ADR-0204); the credit left: no |
 | app stores: reviews, submission, beta, staged rollout | B-3.09, §4.8 | no |
 | deployment targets with rollback | B-8.04, B-8.05, B-8.06 | a workload of a cluster's API released, rolled back and scaled (`deployment.workloads`, ADR-0195); any other target: no |
 | customer system and feedback portal | B-5.05, B-3.07, B-9.04 | no |

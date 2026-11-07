@@ -1,0 +1,278 @@
+# B-1.11 Dependencies and advisories — UC-03 §4.1: an open dependency alert of the repository
+# that a patched version fixes is filed every day as an issue whose goal is the update, so that
+# the implementation process applies it (UC-01 P-03, UC-7.1). A major update stays with a
+# person.
+#
+# The alerts are read through `repository.advisories` (ADR-0201): each with its advisory, the
+# package, the vulnerable range and the first patched version, never a person. A rule keeps the
+# oldest open alert of the severities the run names that has a patched version, unless an open
+# issue carries its mark. The issue states the goal in the words P-03's coding worker is given:
+# update the package to the patched version or later, within its major version, and keep the
+# pipeline green. Its label is the one under which the tenant's P-03 takes an issue. P-03 opens
+# the pull request; B-7.04 keeps it mergeable and B-7.12 merges a patch update after a green
+# pipeline. An update that needs another major version is said so in the issue and stays with a
+# person.
+#
+# The tenant's own update tool may open update pull requests of its own; B-7.04 and B-7.12 keep
+# and merge those. This process files what the tool did not.
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-1.11-advisories.yaml \
+#         --input severity=high --input label=ready
+#
+# Switching it off (`taktusctl deactivate --process b-1-11`) changes nothing in the repository.
+
+id: b-1-11
+version: "1"
+name: B-1.11 Dependencies and advisories
+autonomy:
+  level: 2
+  reason: >
+    the alert is selected by a fixed rule over the repository service's own reading; filing the
+    issue leaves the system, so a person confirms it, as every process of UC-03 starts at level 1
+    or 2 when its stage opens
+  toward_next: >
+    four weeks of issues a person confirmed without changing the selection, and stage 1 of the
+    tenant's plan open; then Taktus proposes level 3 for filing; the update itself is P-03's, and
+    its merge B-7.12's, each under its own level (UC-7.1, UC-9.6)
+author: the repository
+reason: a fixed advisory of a dependency reaches the implementation process as a goal without a person watching the alerts (UC-03 B-1.11)
+
+triggers:
+  - schedule: "45 5 * * *"
+    inputs:
+      severity: [critical, high]
+      label: ready
+
+inputs:
+  severity:
+    description: the severities filed, one or a list of low, medium, high and critical
+    example: [critical, high]
+  label:
+    description: the label under which the tenant's implementation process takes an issue
+    example: ready
+
+limits:
+  quota: { units: 40 }
+
+steps:
+  - id: read-alerts
+    method: rule
+    reason: the open alerts are read verbatim, each with its advisory and its patched version
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.advisories is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: repository.advisories.list
+      input:
+        state: open
+        severity: { $input: severity }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: read-filed
+    method: rule
+    reason: the open issues are read verbatim, so that an advisory already filed is not filed twice
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.issues is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: repository.issues.list
+      input:
+        state: open
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the open issues were not all read" }
+
+  - id: select
+    method: rule
+    reason: >
+      which alert is filed is a fixed rule: one a patched version fixes, not yet carried by an
+      open issue's mark, the oldest first
+    rejected:
+      - method: llm
+        why: a selection by fields needs no judgement, and a model's verdict could differ between two runs
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the alert selected from the two readings }
+    depends_on: [read-alerts, read-filed]
+    work:
+      rule: filter
+      items: { $from: read-alerts, $select: output.alerts }
+      all:
+        - { field: patched, not_matches: "^(null)?$" }
+      excluding: { $from: read-filed, $select: output.issues }
+      within: body
+      marker: "advisory:${ghsa_id}:${package}"
+      order: age_days
+      descending: true
+      limit: 1
+
+  - id: compose
+    method: rule
+    reason: the issue's text is the alert's fields between fixed words, the goal stated for the implementation process
+    rejected:
+      - method: llm
+        why: a fixed composition needs no model
+    exactness: sourced
+    depends_on: [select]
+    work:
+      when:
+        - { value: { $from: select, $select: count }, not_matches: "^0$" }
+      rule: template
+      text: |
+        Update `${package}` (${ecosystem}) in `${manifest}` to ${patched} or later.
+
+        The repository's dependency alert ${url} reports ${ghsa_id}, severity ${severity}:
+        ${summary}. The versions ${vulnerable} are affected; ${patched} is the first that is
+        not.
+
+        Goal: raise the requirement of `${package}` to at least ${patched}, within the major
+        version it is on, change no other dependency, and keep the pipeline green. If the
+        patched version is of another major version, change nothing and say so here: a major
+        update stays with a person.
+
+        Filed by Taktus, process B-1.11 Dependencies and advisories, once a person confirmed it.
+
+        advisory:${ghsa_id}:${package}
+      values:
+        package: { $from: select, $select: first.package }
+        ecosystem: { $from: select, $select: first.ecosystem }
+        manifest: { $from: select, $select: first.manifest }
+        patched: { $from: select, $select: first.patched }
+        url: { $from: select, $select: first.url }
+        ghsa_id: { $from: select, $select: first.ghsa_id }
+        severity: { $from: select, $select: first.severity }
+        summary: { $from: select, $select: first.summary }
+        vulnerable: { $from: select, $select: first.vulnerable }
+
+  - id: title
+    method: rule
+    reason: the issue's title is the package and the patched version between fixed words
+    rejected:
+      - method: llm
+        why: a fixed composition needs no model
+    exactness: sourced
+    depends_on: [select]
+    work:
+      when:
+        - { value: { $from: select, $select: count }, not_matches: "^0$" }
+      rule: template
+      text: "Update ${package} to ${patched} (${ghsa_id})"
+      values:
+        package: { $from: select, $select: first.package }
+        patched: { $from: select, $select: first.patched }
+        ghsa_id: { $from: select, $select: first.ghsa_id }
+
+  - id: file
+    method: rule
+    reason: opening the issue is an API call; the effect leaves the system, so at level 2 a person confirms it first
+    rejected:
+      - method: worker
+        why: nothing here needs a sandbox or tools
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.issues is unavailable
+      to: human
+      role: owner
+    depends_on: [select, compose, title]
+    work:
+      when:
+        - { value: { $from: select, $select: count }, not_matches: "^0$" }
+      rule: connector
+      operation: repository.issues.create
+      input:
+        title: { $from: title }
+        body: { $from: compose }
+        labels: [{ $input: label }]
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+# How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
+# every step the system to act in, what to do there, the expertise it needs, each credential by
+# its parameter and where an authorised person finds it, and how to tell that it is done.
+takeover:
+  sequence: >
+    The process runs every morning; whoever looks after the business's dependencies starts it.
+    The steps run in order: list the repository's open dependency alerts of the severities the
+    run names, list the open issues, pick the oldest alert a patched version fixes that is not
+    filed yet, write the issue's text and title, and open the issue with the implementation
+    label once a person confirmed it. One issue per run. The update is made on that issue by the
+    implementation process or a person; a major update stays with a person.
+  steps:
+    read-alerts:
+      system: the repository hosting service, in the repository's security alerts for dependencies
+      do: >
+        list the open alerts of the given severities, and note for each its advisory identifier,
+        summary, package, ecosystem, manifest, vulnerable versions, first patched version, link
+        and age in days.
+      expertise: reading a repository's dependency alerts
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md; a person may instead sign in with
+            their own account that may read the repository's alerts
+      done: every open alert of those severities is noted
+    read-filed:
+      system: the repository hosting service, in the repository's issue list
+      do: >
+        list every open issue and keep their texts at hand, so that an advisory already filed is
+        recognised by its line advisory:<identifier>:<package>.
+      expertise: searching issues in the repository hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md
+      done: every open issue has been read
+    select:
+      system: the two lists noted before
+      do: >
+        keep the alerts that name a first patched version, leave out every one an open issue
+        names, and take the oldest.
+      expertise: none
+      credentials: []
+      done: one alert is chosen, or none is open
+    compose:
+      system: a text editor
+      do: >
+        write the issue's text: the package, the manifest, the advisory with its link, the
+        affected and the patched versions, the goal — update to the patched version within the
+        major version, nothing else, the pipeline green — and the line
+        advisory:<identifier>:<package> at the end.
+      expertise: reading a security advisory
+      credentials: []
+      done: the text is written, or nothing is open
+    title:
+      system: a text editor
+      do: write the title Update <package> to <patched version> (<advisory identifier>)
+      expertise: none
+      credentials: []
+      done: the title is written, or nothing is open
+    file:
+      system: the repository hosting service
+      do: >
+        once the person responsible agreed, open the issue with that title and text and the
+        label under which the implementation process takes an issue.
+      expertise: opening an issue in the repository hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md
+      done: the issue is open, or nothing was open
