@@ -19,7 +19,7 @@
 # Switching it off (`taktusctl deactivate --process b-8-01`) changes nothing in the repository.
 
 id: b-8-01
-version: "1"
+version: "2"
 name: B-8.01 Preparing a release
 autonomy:
   level: 2
@@ -52,11 +52,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.pullrequests.read answered", columns: [state, title] }
     fallback:
       when: the connector serving repository.pullrequests is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.pullrequests.read
       input:
@@ -73,11 +76,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.pullrequests.list answered", columns: [pulls] }
     fallback:
       when: the connector serving repository.pullrequests is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.pullrequests.list
       input:
@@ -147,6 +153,8 @@ steps:
       - method: llm
         why: a fixed composition and a count need no model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "Written by Taktus, process B-8\\.01 Preparing a release, once a person confirmed it\\. These" }
     depends_on: [changes, draft]
     work:
       rule: template
@@ -169,12 +177,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.comments.create answered", columns: [author, body, created_at, id, url] }
     fallback:
       when: the connector serving repository.comments is unavailable
       to: human
       role: owner
     depends_on: [compose]
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.comments.create
       input:

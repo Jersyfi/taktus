@@ -27,7 +27,7 @@
 # Switching it off (`taktusctl deactivate --process b-8-04`) changes nothing at the store.
 
 id: b-8-04
-version: "1"
+version: "2"
 name: B-8.04 Staged rollout, at an app store
 autonomy:
   level: 2
@@ -76,11 +76,14 @@ steps:
       - method: worker
         why: the store rolls the release out itself; nothing here needs a sandbox
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: "what stores.releases.raise answered", pattern: "^\\{" }
     fallback:
       when: the connector serving stores.releases is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: stores.releases.raise
       input:
@@ -105,12 +108,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what metrics.series.query answered", columns: [series] }
     fallback:
       when: the connector serving metrics.series is unavailable
       to: human
       role: owner
     depends_on: [pause-1]
     work:
+      checking: { select: output }
       rule: connector
       operation: metrics.series.query
       input:
@@ -141,12 +147,15 @@ steps:
       - method: human
         why: a halt that waits for a person lets the rise reach users meanwhile; the rule is fixed (ADR-0023)
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: "what stores.releases.halt answered", pattern: "^\\{" }
     fallback:
       when: the connector serving stores.releases is unavailable
       to: human
       role: owner
     depends_on: [rise-1]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: rise-1, $select: count }, matches: "^[1-9]" }
       rule: connector
@@ -164,12 +173,15 @@ steps:
       - method: worker
         why: the store rolls the release out itself; nothing here needs a sandbox
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: "what stores.releases.raise answered", pattern: "^\\{" }
     fallback:
       when: the connector serving stores.releases is unavailable
       to: human
       role: owner
     depends_on: [rise-1]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: rise-1, $select: count }, matches: "^0$" }
       rule: connector
@@ -198,12 +210,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what metrics.series.query answered", columns: [series] }
     fallback:
       when: the connector serving metrics.series is unavailable
       to: human
       role: owner
     depends_on: [pause-2]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: rise-1, $select: count }, matches: "^0$" }
       rule: connector
@@ -238,12 +253,15 @@ steps:
       - method: human
         why: a halt that waits for a person lets the rise reach users meanwhile; the rule is fixed (ADR-0023)
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: "what stores.releases.halt answered", pattern: "^\\{" }
     fallback:
       when: the connector serving stores.releases is unavailable
       to: human
       role: owner
     depends_on: [rise-2]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: rise-2, $select: count }, matches: "^[1-9]" }
       rule: connector
@@ -261,12 +279,15 @@ steps:
       - method: worker
         why: the store rolls the release out itself; nothing here needs a sandbox
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: "what stores.releases.raise answered", pattern: "^\\{" }
     fallback:
       when: the connector serving stores.releases is unavailable
       to: human
       role: owner
     depends_on: [rise-2]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: rise-2, $select: count }, matches: "^0$" }
       rule: connector
@@ -295,12 +316,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what metrics.series.query answered", columns: [series] }
     fallback:
       when: the connector serving metrics.series is unavailable
       to: human
       role: owner
     depends_on: [pause-3]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: rise-2, $select: count }, matches: "^0$" }
       rule: connector
@@ -335,12 +359,15 @@ steps:
       - method: human
         why: a halt that waits for a person lets the rise reach users meanwhile; the rule is fixed (ADR-0023)
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: "what stores.releases.halt answered", pattern: "^\\{" }
     fallback:
       when: the connector serving stores.releases is unavailable
       to: human
       role: owner
     depends_on: [rise-3]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: rise-3, $select: count }, matches: "^[1-9]" }
       rule: connector

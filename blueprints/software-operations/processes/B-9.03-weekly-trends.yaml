@@ -18,7 +18,7 @@
 # Switching it off (`taktusctl deactivate --process b-9-03`) changes nothing.
 
 id: b-9-03
-version: "1"
+version: "2"
 name: B-9.03 Weekly trends
 autonomy:
   level: 2
@@ -47,11 +47,14 @@ steps:
       - method: llm
         why: a figure may not come from a language model (CLAUDE.md §4)
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what analytics.reports.run answered", columns: [rows, sampled, thresholded] }
     fallback:
       when: the connector serving analytics.reports is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: analytics.reports.run
       input:
@@ -155,6 +158,8 @@ steps:
       - method: llm
         why: a fixed composition needs no model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "Written by Taktus, process B-9\\.03 Weekly trends, once a person confirmed it" }
     depends_on: [weeks, reading]
     work:
       rule: template
@@ -180,12 +185,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what chat.threads.post answered", columns: [address, author, text, thread, ts] }
     fallback:
       when: the connector serving chat.threads is unavailable
       to: human
       role: owner
     depends_on: [compose, verify, promises]
     work:
+      checking: { select: output }
       rule: connector
       operation: chat.threads.post
       input:

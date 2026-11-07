@@ -28,7 +28,7 @@
 # Switching it off (`taktusctl deactivate --process b-1-06`) changes nothing at the service: it only asks.
 
 id: b-1-06
-version: "1"
+version: "2"
 name: B-1.06 Uptime
 autonomy:
   level: 1
@@ -70,11 +70,14 @@ steps:
       - method: llm
         why: a request and its status need no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what check.http.run answered", columns: [duration_ms, expectation, failures, method, outcome, path, status] }
     fallback:
       when: the connector serving check.http is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: check.http.run
       input:
@@ -100,12 +103,15 @@ steps:
       - method: llm
         why: a request and its status need no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what check.http.run answered", columns: [duration_ms, expectation, failures, method, outcome, path, status] }
     fallback:
       when: the connector serving check.http is unavailable
       to: human
       role: owner
     depends_on: [pause]
     work:
+      checking: { select: output }
       rule: connector
       operation: check.http.run
       input:

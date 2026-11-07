@@ -68,7 +68,7 @@
 # Switching it off (`taktusctl deactivate --process b-3-02`) leaves the mailbox as it is.
 
 id: b-3-02
-version: "3"
+version: "4"
 name: B-3.02 Drafting a reply
 autonomy:
   level: 2
@@ -177,11 +177,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what mail.messages.read answered", columns: [from, subject, text] }
     fallback:
       when: the connector serving mail.messages is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: mail.messages.read
       input:

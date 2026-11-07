@@ -76,6 +76,7 @@ def bundle(version: str, autonomy: dict[str, Any], answer: str = "how_to") -> di
                     "reason": "r",
                     "rejected": [],
                     "exactness": "sourced",
+                    "checks": [{"kind": "bounds", "pattern": "^\\{"}],
                     "depends_on": ["classify"],
                     "work": {"rule": "connector", "operation": WRITE, "input": {"id": "x"}},
                 },

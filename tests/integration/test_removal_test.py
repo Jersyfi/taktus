@@ -292,6 +292,7 @@ FAKE_PROCESS: dict[str, Any] = instructed(
                 "reason": "a read through the connector",
                 "rejected": [{"method": "llm", "why": "a read needs no judgement"}],
                 "exactness": "sourced",
+                "checks": [{"kind": "bounds", "pattern": "^\\{"}],
                 "fallback": {"when": "no connector serves it", "to": "human"},
                 "work": {"rule": "connector", "operation": READ, "input": {"id": {"$input": "id"}}},
             },
@@ -301,6 +302,7 @@ FAKE_PROCESS: dict[str, Any] = instructed(
                 "reason": "a write through the connector, which leaves the system",
                 "rejected": [{"method": "llm", "why": "a write needs no judgement"}],
                 "exactness": "sourced",
+                "checks": [{"kind": "bounds", "pattern": "^\\{"}],
                 "fallback": {"when": "no connector serves it", "to": "human"},
                 "depends_on": ["read"],
                 "work": {

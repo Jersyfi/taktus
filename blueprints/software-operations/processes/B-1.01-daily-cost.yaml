@@ -37,7 +37,7 @@
 # nothing at the provider: it only reads.
 
 id: b-1-01
-version: "2"
+version: "3"
 name: B-1.01 Daily cost
 autonomy:
   level: 1
@@ -82,11 +82,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what billing.costs.daily answered", columns: [complete, days] }
     fallback:
       when: the connector serving billing.costs is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: billing.costs.daily
       input:

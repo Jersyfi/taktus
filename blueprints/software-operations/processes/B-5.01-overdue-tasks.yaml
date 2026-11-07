@@ -33,7 +33,7 @@
 # the reminders written stay written.
 
 id: b-5-01
-version: "1"
+version: "2"
 name: B-5.01 Overdue tasks
 autonomy:
   level: 2
@@ -73,11 +73,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what tasks.items.read answered", columns: [days_overdue, due] }
     fallback:
       when: the connector serving tasks.items is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: tasks.items.read
       input:
@@ -128,6 +131,8 @@ steps:
       - method: llm
         why: a fixed text needs no model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "Written by Taktus, process B-5\\.01 Overdue tasks, once a person confirmed it" }
     depends_on: [read-task, reminder-day]
     work:
       when:
@@ -149,12 +154,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what tasks.items.remind answered", columns: [comment, task] }
     fallback:
       when: the connector serving tasks.items is unavailable
       to: human
       role: owner
     depends_on: [reminder-day, compose]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: reminder-day, $select: count }, not_matches: "^0$" }
       rule: connector

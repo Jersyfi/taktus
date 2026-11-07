@@ -38,7 +38,7 @@
 # reads.
 
 id: b-1-09
-version: "2"
+version: "3"
 name: B-1.09 Things that expire
 autonomy:
   level: 1
@@ -89,11 +89,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what expiry.certificates.read answered", columns: [days_left, host, issuer, key, names, not_after, not_before, port, read_at, serial, subject, trusted, verify_failure] }
     fallback:
       when: the connector serving expiry.certificates is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: expiry.certificates.read
       input:
@@ -109,11 +112,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what expiry.domains.read answered", columns: [days_left, domain, expires, handle, key, last_changed, read_at, registered, status] }
     fallback:
       when: the connector serving expiry.domains is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: expiry.domains.read
       input:
@@ -150,12 +156,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what expiry.credentials.list answered", columns: [complete, credentials] }
     fallback:
       when: the connector serving expiry.credentials is unavailable
       to: human
       role: owner
     depends_on: [soonest]
     work:
+      checking: { select: output }
       when:
         - { value: { $input: signing, $otherwise: "" }, matches: "^yes$" }
       rule: connector

@@ -36,7 +36,7 @@
 # product, for a person.
 
 id: b-3-08
-version: "1"
+version: "2"
 name: B-3.08 Data protection requests
 autonomy:
   level: 2
@@ -81,11 +81,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what mail.messages.read answered", columns: [from, subject, text] }
     fallback:
       when: the connector serving mail.messages is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: mail.messages.read
       input:
@@ -147,12 +150,15 @@ steps:
       - method: llm
         why: an identity is checked by equality the product holds, never guessed
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what accounts.customers.verify answered", columns: [account, customer, verified] }
     fallback:
       when: the connector serving accounts.customers is unavailable
       to: human
       role: owner
     depends_on: [read-message]
     work:
+      checking: { select: output }
       scope: { subject: { $input: customer } }
       rule: connector
       operation: accounts.customers.verify
@@ -187,12 +193,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what accounts.requests.prepare answered", columns: [customer, id, kind, reference, replayed, state] }
     fallback:
       when: the connector serving accounts.requests is unavailable
       to: human
       role: owner
     depends_on: [kind, verified]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: kind, $select: extracted }, not_matches: "^\\[\\]$" }
         - { value: { $from: verified, $select: count }, matches: "^1$" }

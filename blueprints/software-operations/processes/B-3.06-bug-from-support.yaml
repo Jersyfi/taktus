@@ -58,7 +58,7 @@
 # filed.
 
 id: b-3-06
-version: "2"
+version: "3"
 name: B-3.06 A bug from support
 autonomy:
   level: 2
@@ -97,11 +97,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what mail.messages.read answered", columns: [from, subject, text] }
     fallback:
       when: the connector serving mail.messages is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: mail.messages.read
       input:
@@ -116,11 +119,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.list answered", columns: [complete, issues] }
     fallback:
       when: the connector serving repository.issues is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       when:
         - { value: { $input: fixed, $otherwise: "" }, matches: "^$" }
       rule: connector
@@ -300,6 +306,8 @@ steps:
       - method: llm
         why: a fixed composition needs no model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "Reported by Taktus, process B-3\\.06 A bug from support, once a person confirmed it" }
     depends_on: [report, title, unfiled]
     work:
       when:
@@ -327,12 +335,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.create answered", columns: [author, body, created_at, is_pull_request, labels, milestone, number, state, title, updated_at, url] }
     fallback:
       when: the connector serving repository.issues is unavailable
       to: human
       role: owner
     depends_on: [title, unfiled, known, compose]
     work:
+      checking: { select: output }
       when:
         - { value: { $input: fixed, $otherwise: "" }, matches: "^$" }
         - { value: { $from: title, $select: extracted }, not_matches: "^\\[\\]$" }
@@ -353,12 +364,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.comments.list answered", columns: [comments] }
     fallback:
       when: the connector serving repository.comments is unavailable
       to: human
       role: owner
     depends_on: [known]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: known, $select: differing }, matches: "^\\[\\{" }
       rule: connector
@@ -394,12 +408,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.comments.create answered", columns: [author, body, created_at, id, url] }
     fallback:
       when: the connector serving repository.comments is unavailable
       to: human
       role: owner
     depends_on: [known, uncommented, compose]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: uncommented, $select: count }, matches: "^1$" }
       rule: connector
@@ -417,11 +434,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.read answered", columns: [state] }
     fallback:
       when: the connector serving repository.issues is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       when:
         - { value: { $input: fixed, $otherwise: "" }, matches: "^[0-9]+$" }
       rule: connector
@@ -438,11 +458,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.comments.list answered", columns: [comments] }
     fallback:
       when: the connector serving repository.comments is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       when:
         - { value: { $input: fixed, $otherwise: "" }, matches: "^[0-9]+$" }
       rule: connector
@@ -517,6 +540,8 @@ steps:
       - method: llm
         why: a fixed composition needs no model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "The defect you reported to us is fixed, and the fix is now live\\. Thank you for telling" }
     depends_on: [read-message]
     work:
       when:

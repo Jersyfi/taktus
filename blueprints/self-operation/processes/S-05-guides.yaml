@@ -26,7 +26,7 @@
 # `taktusctl guides publish` does the same by hand (README.md beside this directory).
 
 id: s05-guides
-version: "5"
+version: "6"
 name: S-05 Guides
 autonomy:
   level: 3
@@ -90,11 +90,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.files.read answered", columns: [commit, content] }
     fallback:
       when: the connector serving repository.files is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.files.read
       input:
@@ -128,12 +131,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.files.read_many answered", columns: [commit, files] }
     fallback:
       when: the connector serving repository.files is unavailable
       to: human
       role: owner
     depends_on: [sources]
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.files.read_many
       input:
@@ -178,12 +184,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what knowledge.pages.list answered", columns: [pages] }
     fallback:
       when: the connector serving knowledge.pages is unavailable
       to: human
       role: owner
     depends_on: [render]
     work:
+      checking: { select: output }
       rule: connector
       operation: knowledge.pages.list
       input:
@@ -223,12 +232,15 @@ steps:
       - method: worker
         why: writing pages through a capability needs no sandbox
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what orchestrator.guides.publish answered", columns: [commit, created, kept, updated, withheld] }
     fallback:
       when: the connector serving knowledge.pages is unavailable
       to: human
       role: owner
     depends_on: [measure]
     work:
+      checking: { select: output }
       rule: connector
       operation: orchestrator.guides.publish
       input:
@@ -247,8 +259,11 @@ steps:
       - method: llm
         why: the report is the difference and fixed sentences; a model would only restate it
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what orchestrator.guides.report answered", columns: [reports] }
     depends_on: [publish]
     work:
+      checking: { select: output }
       rule: connector
       operation: orchestrator.guides.report
       input:
@@ -263,6 +278,8 @@ steps:
       - method: llm
         why: a narrative is not needed for one line; the values speak
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "Edits reported to the role" }
     depends_on: [measure, report-edits]
     work:
       rule: template

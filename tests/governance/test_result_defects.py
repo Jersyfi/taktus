@@ -30,6 +30,7 @@ from taktus.components.governance.domain.model.defects import (
     Kind,
     Position,
     Rule,
+    SituationPackage,
     Verdict,
     When,
 )
@@ -355,3 +356,16 @@ async def test_a_reported_result_raises_one_incident_with_what_the_rule_read() -
     assert [e.outcome for e in raised] == ["escalate"]
     assert all(e.refs.actor is None for e in raised)
     assert "idn_" not in str(incident.model_dump())
+
+
+def test_a_package_missing_a_part_says_which_part_it_lacks() -> None:
+    """UC-6.8 §2, as UC-4.5 requires: a part that cannot be said is empty, and the package says
+    which it lacks; a complete one says nothing of the kind."""
+    lacking = SituationPackage(happened="a total was booked twice", options=("reverse it",))
+    assert lacking.lacking == ("tried", "affected", "needed")
+    assert defects.render_package(lacking).endswith("This package lacks: tried, affected, needed.")
+    complete = SituationPackage(
+        happened="h", tried="t", affected="a", options=("o",), needed=("n",)
+    )
+    assert complete.lacking == ()
+    assert "lacks" not in defects.render_package(complete)

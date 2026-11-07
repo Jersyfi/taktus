@@ -90,6 +90,7 @@ def fill(document: dict[str, Any]) -> dict[str, Any]:
     """The person's answers to every question of the model's draft."""
     answers: dict[str, dict[str, Any]] = {
         "read-invoice": {"method": "worker", "exactness": "sourced",
+                         "checks": [{"kind": "sampling", "share": 0.1, "role": "accounting"}],
                          "fallback": {"when": "the document cannot be read", "to": "human"}},
         "check-invoice": {"method": "human"},
         "approve-payment": {"method": "human",

@@ -13,9 +13,10 @@ or to the part of it `checking.select` names. Six kinds judge the value on the s
   a value of the same digest;
 - **completeness** — the parts number the count read through `source` at the moment of the
   check: a list's items, an object's entries, or one value as its only part (DEC-0223);
-- **source shape** — what the step read has the columns it was written for, in order, and its
-  text matches `pattern`: a table read as text by its header row, a list of records by the
-  fields of every record, an object by its keys (DEC-0223).
+- **source shape** — what the step read has the columns it was written for, and its text
+  matches `pattern`: a table read as text by its header row, exactly and in order; a list of
+  records by the fields of every record, an object by its keys, each carrying every declared
+  column in any order, since a step reads an object's members by name (DEC-0223, ADR-0233).
 
 Two kinds bring a person in. **Approval** holds a value above `threshold` for the role before it
 counts. **Sampling** chooses `share` of the results after the fact, by a digest of the run and
@@ -218,8 +219,8 @@ def columns_of(value: Any) -> list[tuple[str, ...]] | None:
 
 
 def source_shape(position: int, check: Check, value: Any) -> Finding:
-    """What the step read has the columns it was written for, in their order, and matches the
-    pattern."""
+    """What the step read has the columns it was written for — a table read as text in their
+    order, an object or every record carrying each of them — and matches the pattern."""
     said: list[str] = []
     if check.columns is not None:
         expected = tuple(check.columns)
@@ -228,8 +229,14 @@ def source_shape(position: int, check: Check, value: Any) -> Finding:
             return Finding(
                 position, check, False, f"what the step read, {_short(value)}, has no columns"
             )
+        # A table read as text has its columns in an order, and a column more shifts every one
+        # after it. An object's members have no order (RFC 8259 §4) — the same answer replayed
+        # from a recording may list them sorted — and a step reads them by name, so a member
+        # more changes nothing it reads. An object, and each record, must carry every declared
+        # column (ADR-0233).
+        ordered = isinstance(value, str)
         for number, columns in enumerate(found, start=1):
-            if columns != expected:
+            if (columns != expected) if ordered else not set(expected) <= set(columns):
                 where = "" if len(found) == 1 else f" in record {number}"
                 return Finding(
                     position,
@@ -238,7 +245,7 @@ def source_shape(position: int, check: Check, value: Any) -> Finding:
                     f"the columns{where} are {', '.join(columns)}; the step was written for "
                     f"{', '.join(expected)}",
                 )
-        said.append(f"the columns are {', '.join(expected)}, in order")
+        said.append(f"the columns are {', '.join(expected)}" + (", in order" if ordered else ""))
     if check.pattern is not None:
         if re.search(check.pattern, text(value)) is None:
             return Finding(

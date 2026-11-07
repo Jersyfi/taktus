@@ -39,7 +39,7 @@
 # Switching it off (`taktusctl deactivate --process b-1-04`) changes nothing at the store.
 
 id: b-1-04
-version: "2"
+version: "3"
 name: B-1.04 Error rate
 autonomy:
   level: 1
@@ -90,11 +90,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what metrics.series.query answered", columns: [complete, series] }
     fallback:
       when: the connector serving metrics.series is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: metrics.series.query
       input:
@@ -134,12 +137,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what deployment.workloads.read answered", columns: [changed_at] }
     fallback:
       when: the connector serving deployment.workloads is unavailable
       to: human
       role: owner
     depends_on: [worst]
     work:
+      checking: { select: output }
       when:
         - { value: { $input: deployment, $otherwise: "" }, matches: "." }
       rule: connector
@@ -156,12 +162,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what logs.query.entries answered", columns: [complete, entries] }
     fallback:
       when: the connector serving logs.query is unavailable
       to: human
       role: owner
     depends_on: [read-deployment]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: read-deployment, $select: output.changed_at }, matches: "^\\d{4}-" }
       rule: connector

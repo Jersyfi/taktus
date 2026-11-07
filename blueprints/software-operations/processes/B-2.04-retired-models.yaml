@@ -23,7 +23,7 @@
 # Switching it off (`taktusctl deactivate --process b-2-04`) changes nothing in the repository.
 
 id: b-2-04
-version: "1"
+version: "2"
 name: B-2.04 Retired models
 autonomy:
   level: 2
@@ -63,11 +63,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what models.catalogue.list answered", columns: [complete, current] }
     fallback:
       when: the connector serving models.catalogue is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: models.catalogue.list
       input: {}
@@ -102,11 +105,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.list answered", columns: [complete, issues] }
     fallback:
       when: the connector serving repository.issues is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.issues.list
       input:
@@ -143,6 +149,8 @@ steps:
       - method: llm
         why: a fixed composition needs no model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "Goal: switch each of them to a current model of the same line, change nothing else, and" }
     depends_on: [unfiled, read-catalogue]
     work:
       when:
@@ -174,12 +182,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.create answered", columns: [author, body, created_at, is_pull_request, labels, milestone, number, state, title, updated_at, url] }
     fallback:
       when: the connector serving repository.issues is unavailable
       to: human
       role: owner
     depends_on: [compose]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: unfiled, $select: count }, not_matches: "^0$" }
       rule: connector
