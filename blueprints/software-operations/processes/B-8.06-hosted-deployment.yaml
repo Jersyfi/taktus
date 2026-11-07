@@ -1,0 +1,315 @@
+# B-8.06 Backend deployment, on a hosted version — UC-03 §4.8: a backend release is deployed,
+# its error rate is watched for thirty minutes, and a rollback is proposed on a rise (UC-6.13).
+# The rollback stays with a person.
+#
+# The version of B-8.06 for a backend a platform builds and serves from a version the
+# business's own build uploaded — a function of a serverless functions platform — rather than a
+# container image (ADR-0211 §2, ADR-0269). It is published through the capability
+# `deployment.sites`. The run first reads which version is live, so that the rollback can name
+# it. It then publishes the release's version, waits until it is ready and live, then thirty
+# minutes more, and reads the error rate through `metrics.series` with the tenant's query. A
+# rate at or above the limit counts by rule, and putting back the version that was live before
+# is put to a person as a decision request, at every level.
+#
+# A tenant registers this version of b-8-06 or the image's (`B-8.06-backend-deployment.yaml`),
+# whichever target serves its backend; the stage counts either (ADR-0191).
+#
+# The target, the version, the query and the limit are inputs: a release names the first two,
+# the tenant writes the query for its own metrics, one number, the backend's error rate over the
+# last thirty minutes.
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-8.06-hosted-deployment.yaml \
+#         --input target=api --input build=example-sources/api/2.4.1.tar.gz#1730000000000002 \
+#         --input 'error_rate_query=sum(rate(http_errors_total[30m]))/sum(rate(http_requests_total[30m]))' \
+#         --input max_error_rate=0.02
+#
+# Switching it off (`taktusctl deactivate --process b-8-06`) changes nothing on the platform.
+
+id: b-8-06
+version: "2"
+name: B-8.06 Backend deployment, on a hosted version
+autonomy:
+  level: 2
+  reason: >
+    the release leaves the system and reaches every user of the backend, so a person confirms
+    it, as every process of UC-03 starts at level 1 or 2 when its stage opens; the rollback asks
+    a person at every level
+  toward_next: >
+    four weeks of releases a person confirmed with every rise followed by a decided rollback,
+    and stage 3 of the tenant's plan open; then Taktus proposes level 3, its target in UC-03
+    (UC-7.1, UC-9.6)
+author: the repository
+reason: a backend release is watched after it lands, and a rise is put to a person with the rollback ready (UC-03 B-8.06)
+
+inputs:
+  target:
+    description: the backend the release goes to, as the platform names it
+    example: api
+  build:
+    description: the version of the backend the release's build uploaded, as the platform names it
+    example: example-sources/api/2.4.1.tar.gz#1730000000000002
+  error_rate_query:
+    description: the tenant's query that answers the backend's error rate over the last thirty minutes, one number
+    example: sum(rate(http_errors_total[30m]))/sum(rate(http_requests_total[30m]))
+  max_error_rate:
+    description: the rate at or above which the release counts as a rise, a decimal
+    example: "0.02"
+
+limits:
+  quota: { units: 200 }
+
+steps:
+  - id: before
+    method: rule
+    reason: which version is live before the release is read verbatim, so that a rollback can name it
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what deployment.sites.read answered", columns: [live] }
+    fallback:
+      when: the connector serving deployment.sites is unavailable
+      to: human
+      role: owner
+    work:
+      checking: { select: output }
+      rule: connector
+      operation: deployment.sites.read
+      input:
+        name: { $input: target }
+      credentials:
+        - { name: SITES_TOKEN, injected_as: env }
+
+  - id: release
+    method: rule
+    reason: publishing the version is an API call that carries the run's key; the effect leaves the system, so at level 2 a person confirms it
+    rejected:
+      - method: worker
+        why: the platform builds and serves the version the business's build uploaded; nothing here needs a sandbox
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what deployment.sites.release answered", columns: [name] }
+    fallback:
+      when: the connector serving deployment.sites is unavailable
+      to: human
+      role: owner
+    depends_on: [before]
+    work:
+      checking: { select: output }
+      rule: connector
+      operation: deployment.sites.release
+      input:
+        name: { $input: target }
+        version: { $input: build }
+      credentials:
+        - { name: SITES_TOKEN, injected_as: env }
+
+  - id: rolled-out
+    method: wait
+    reason: the platform builds and puts the version live on its own time; the run waits until it is ready and live
+    rejected: []
+    fallback:
+      when: the connector serving deployment.sites is unavailable, or the version is not live in fifteen minutes
+      to: human
+      role: owner
+    depends_on: [release]
+    work:
+      until:
+        operation: deployment.sites.read
+        input:
+          name: { $input: target }
+          version: { $input: build }
+        credentials:
+          - { name: SITES_TOKEN, injected_as: env }
+        select: rolled_out
+        expect: [true]
+        poll_seconds: 15
+        timeout_seconds: 900
+
+  - id: watch
+    method: wait
+    reason: the error rate of thirty minutes under load is what tells a good release from a bad one; nothing is judged meanwhile
+    rejected: []
+    depends_on: [rolled-out]
+    work:
+      seconds: 1800
+
+  - id: read-rate
+    method: rule
+    reason: the store's figure is read verbatim, as the store gave it
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what metrics.series.query answered", columns: [series] }
+    fallback:
+      when: the connector serving metrics.series is unavailable
+      to: human
+      role: owner
+    depends_on: [watch]
+    work:
+      checking: { select: output }
+      rule: connector
+      operation: metrics.series.query
+      input:
+        query: { $input: error_rate_query }
+      credentials:
+        - { name: METRICS_TOKEN, injected_as: env }
+
+  - id: rise
+    method: rule
+    reason: a rate at or above the limit is a threshold over the store's own figure; a value the store could not give as a number is left out, never read as zero
+    rejected:
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the error rate at or above the limit }
+    depends_on: [read-rate]
+    work:
+      rule: filter
+      items: { $from: read-rate, $select: output.series }
+      all:
+        - { field: values.0.value, at_least: { $input: max_error_rate } }
+
+  - id: rollback
+    method: rule
+    reason: >
+      a release whose error rate rose is put back on the version live before it, by an API call;
+      the rollback stays with a person, so the step asks at every level
+    rejected:
+      - method: worker
+        why: the platform builds the earlier version again from its upload; nothing here needs a sandbox
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what deployment.sites.rollback answered", columns: [name] }
+    fallback:
+      when: the connector serving deployment.sites is unavailable
+      to: human
+      role: owner
+    depends_on: [before, rise]
+    work:
+      checking: { select: output }
+      when:
+        - { value: { $from: rise, $select: count }, matches: "^[1-9]" }
+      ask:
+        question: "Put ${target} back on ${earlier}, the version live before ${version}?"
+        situation: >
+          Thirty minutes after ${version} went live on ${target}, its error rate is ${rate}, at
+          or above the limit of ${limit}. The platform can build ${earlier}, the version live
+          before it, again from its upload.
+        proposal: the backend is put back on the version live before this release
+        values:
+          target: { $input: target }
+          version: { $input: build }
+          earlier: { $from: before, $select: output.live }
+          rate: { $from: rise, $select: first.values.0.value }
+          limit: { $input: max_error_rate }
+      rule: connector
+      operation: deployment.sites.rollback
+      input:
+        name: { $input: target }
+        version: { $from: before, $select: output.live }
+      credentials:
+        - { name: SITES_TOKEN, injected_as: env }
+
+takeover:
+  sequence: >
+    A person who releases the backend starts the process when a release is published; the
+    release names the backend and the version its build uploaded, and the tenant gives the error
+    rate query and its limit. The steps run in order: write down which version is live, publish
+    the release's version, wait until it is ready and live, wait thirty minutes more under load,
+    read the backend's error rate, and compare it with the limit. A rate at or above the limit
+    makes the owner decide on putting back the version that was live before. A version that is
+    not live within fifteen minutes goes to the owner, and no rollback starts for it.
+  steps:
+    before:
+      system: the platform, the backend the run was started with
+      do: >
+        read which version of the backend is live now, in the platform's console or with its own
+        command line — the uploaded source it was built from — and write down its identifier.
+      expertise: reading a backend's live version on the platform
+      credentials:
+        - parameter: SITES_TOKEN
+          where: >
+            the operator's secret store, under the parameter Sites token of the requesting
+            identity described in CREDENTIALS.md; a person working by hand signs in to the
+            platform with their own account, which may read the backend
+      done: the identifier of the live version is written down
+    release:
+      system: the platform, the backend
+      do: >
+        deploy the version the release names, exactly as the release names it, with the
+        platform's own command for deploying an uploaded source.
+      expertise: deploying an uploaded version of a backend on the platform
+      credentials:
+        - parameter: SITES_TOKEN
+          where: >
+            the operator's secret store, under the parameter Sites token of the requesting
+            identity described in CREDENTIALS.md; a person working by hand uses their own account,
+            which may deploy the backend
+      done: the platform is building and putting the release's version live
+    rolled-out:
+      system: the platform, the backend's state
+      do: >
+        look every fifteen seconds or so until the release's version is built, active and live.
+        If it is not after fifteen minutes, stop here and hand it to the owner; start no rollback.
+      expertise: reading a backend's state on the platform
+      credentials:
+        - parameter: SITES_TOKEN
+          where: >
+            the operator's secret store, under the parameter Sites token of the requesting
+            identity described in CREDENTIALS.md; a person working by hand uses their own account,
+            which may read the backend
+      done: the release's version is live, or the owner has the stalled release
+    watch:
+      system: none
+      do: >
+        wait thirty minutes after the version went live, so that the release carries real load.
+        Judge nothing meanwhile.
+      expertise: none
+      credentials: []
+      done: thirty minutes have passed since the version went live
+    read-rate:
+      system: the metrics store
+      do: >
+        run the tenant's query for the backend's error rate over the last thirty minutes, the
+        query the run was started with. Write down the number exactly as the store gives it.
+      expertise: running a query in the metrics store
+      credentials:
+        - parameter: METRICS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Metrics token of the requesting
+            identity described in CREDENTIALS.md; a person working by hand signs in to the
+            metrics store with their own account, which may run queries
+      done: the error rate is written down, or it is written down that the store gave no number
+    rise:
+      system: the number written down
+      do: >
+        compare the error rate with the limit the run was started with. It is a rise when the
+        rate is at or above the limit. A missing number is not a rise and is not read as zero;
+        write down that it is missing.
+      expertise: none
+      credentials: []
+      done: it is written down whether the rate is a rise
+    rollback:
+      system: the platform, the backend
+      do: >
+        only if the rate was a rise: put to the owner whether to put the backend back on the
+        version written down before the release, naming the backend, the release's version, the
+        rate and the limit. Only if the owner agrees, deploy that earlier version again with the
+        platform's own deploy command, and watch it go live.
+      expertise: deploying an earlier uploaded version of a backend on the platform
+      credentials:
+        - parameter: SITES_TOKEN
+          where: >
+            the operator's secret store, under the parameter Sites token of the requesting
+            identity described in CREDENTIALS.md; a person working by hand uses their own account,
+            which may deploy the backend
+      done: >
+        there was no rise, or the owner's decision is recorded and, if the owner agreed, the
+        backend runs the version that was live before the release
