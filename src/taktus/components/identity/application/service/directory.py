@@ -43,6 +43,7 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import Any
 
+from taktus.components.identity.application.service.structure import OrganisationStructure
 from taktus.components.identity.domain.model import (
     AGENT_KEY_PREFIX,
     CODE,
@@ -162,6 +163,7 @@ class IdentityDirectory(IdentityResolver):
         randomness: Randomness,
         source: IdentitySource | None = None,
         session_lifetime: timedelta = SESSION_LIFETIME,
+        structure: OrganisationStructure | None = None,
     ) -> None:
         self._tenants = tenants
         self._identities = identities
@@ -175,6 +177,27 @@ class IdentityDirectory(IdentityResolver):
         self._clock = clock
         self._randomness = randomness
         self._source = source
+        self._structure = structure
+
+    async def _seen(self, resolution: Resolution) -> Resolution:
+        """The resolution with what the organisation's structure keeps from the identity's
+        sight in its default context (ADR-0275 §4)."""
+        if self._structure is None:
+            return resolution
+        unseen = await self._structure.unseen(
+            resolution.tenant, resolution.identity, resolution.org_path
+        )
+        return resolution.model_copy(update={"unseen": tuple(sorted(unseen))})
+
+    async def unseen(self, tenant: Tenant, identity: str) -> tuple[str, ...]:
+        """`Sight`: what the structure keeps from the identity's sight (ADR-0275 §4)."""
+        if self._structure is None:
+            return ()
+        async with self._work.transaction(tenant):
+            known = await self._identities.get(tenant, identity)
+        if known is None:
+            return ()
+        return tuple(sorted(await self._structure.unseen(tenant, identity, known.org_path)))
 
     async def tenants(self) -> tuple[Tenant, ...]:
         """The tenants the instance serves now."""
@@ -189,7 +212,7 @@ class IdentityDirectory(IdentityResolver):
         searched = served if tenant is None else (tenant,)
         found = await self._active_link(channel, account, searched)
         if found is not None:
-            return _resolution(found[1])
+            return await self._seen(_resolution(found[1]))
         if self._source is None:
             return None
         answer = await self._source.lookup(channel, account)
@@ -206,7 +229,7 @@ class IdentityDirectory(IdentityResolver):
             return None
         async with self._work.transaction(tenant):
             known = await self._identities.get(tenant, identity)
-        return None if known is None else _resolution(known)
+        return None if known is None else await self._seen(_resolution(known))
 
     async def unknown_sender(
         self, channel: Capability, account: str, said: str
@@ -238,7 +261,8 @@ class IdentityDirectory(IdentityResolver):
                 return None
             await self._codes.put(tenant, held.model_copy(update={"used_at": now}))
             await self._put_link(tenant, channel, account, identity.id, LinkOrigin.CONFIRMED, now)
-        return UnknownSenderAnswer(reply=LINKED_REPLY, linked=_resolution(identity))
+        linked = await self._seen(_resolution(identity))
+        return UnknownSenderAnswer(reply=LINKED_REPLY, linked=linked)
 
     # --- a person, in their Taktus account --------------------------------------------------
 
@@ -255,7 +279,7 @@ class IdentityDirectory(IdentityResolver):
                 if identity.key_digest is not None and hmac.compare_digest(
                     identity.key_digest, wanted
                 ):
-                    return _resolution(identity)
+                    return await self._seen(_resolution(identity))
         return None
 
     async def create_link_code(self, who: Resolution, channel: Capability) -> tuple[str, LinkCode]:
@@ -312,7 +336,9 @@ class IdentityDirectory(IdentityResolver):
         if found is None:
             return None
         session, identity = found
-        return _resolution(identity) if session.holds(identity, self._clock.now()) else None
+        if not session.holds(identity, self._clock.now()):
+            return None
+        return await self._seen(_resolution(identity))
 
     async def sign_out(self, token: str) -> bool:
         """The browser session ends now. False when the token names no session that still
@@ -359,7 +385,7 @@ class IdentityDirectory(IdentityResolver):
                 if identity.agent_key_digest is not None and hmac.compare_digest(
                     identity.agent_key_digest, wanted
                 ):
-                    return _resolution(identity)
+                    return await self._seen(_resolution(identity))
         return None
 
     async def issue_agent_key(self, tenant: Tenant, identity: str, *, by: str | None = None) -> str:
@@ -637,7 +663,7 @@ class IdentityDirectory(IdentityResolver):
                     document={"identity": name, "org_path": list(org_path)},
                 )
             await self._put_link(tenant, channel, account, identity.id, LinkOrigin.SOURCE, now)
-        return _resolution(identity)
+        return await self._seen(_resolution(identity))
 
     async def _put_link(
         self,

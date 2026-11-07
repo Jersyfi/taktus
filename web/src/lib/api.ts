@@ -97,3 +97,21 @@ export async function remove<T>(base: URL, path: string, fetcher: typeof fetch =
 	});
 	return answered<T>(response);
 }
+
+/** A JSON write by another method — PUT to set a thing, PATCH to change some of its fields —
+ * as the signed-in reader. A refusal is the surface's problem, never thrown. */
+export async function write<T>(
+	base: URL,
+	path: string,
+	method: 'PUT' | 'PATCH',
+	body: unknown,
+	fetcher: typeof fetch = fetch
+): Promise<Answer<T>> {
+	const response = await fetcher(new URL(path, base), {
+		method,
+		credentials: 'same-origin',
+		headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+		body: JSON.stringify(body)
+	});
+	return answered<T>(response);
+}

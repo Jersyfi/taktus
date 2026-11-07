@@ -84,6 +84,7 @@ from taktus.ports.connector import (
     Result,
     Taken,
 )
+from taktus.ports.identity import Sight
 from taktus.ports.ledger import Ledger
 from taktus.ports.persistence import Repository, Stored, Tenant, UnitOfWork
 from taktus.ports.worker import CredentialReference
@@ -549,6 +550,7 @@ def owner_channel_wiring(
     deliveries: Deliveries | None = None,
     decided: Decided | None = None,
     levels: LevelQueries | None = None,
+    sight: Sight | None = None,
 ) -> OwnerChannelWiring:
     """The owner-facing channel. Given `levels`, its conversation also answers a request for
     the live representation of the overview, a run or a process (ADR-0069)."""
@@ -570,7 +572,7 @@ def owner_channel_wiring(
             answering,
             None
             if levels is None
-            else ShowInChannelHandler(channels, work, levels, carrier, secrets),
+            else ShowInChannelHandler(channels, work, levels, carrier, secrets, sight=sight),
         ),
         decisions=decisions,
         deliveries=carrier,

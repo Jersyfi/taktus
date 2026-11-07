@@ -54,6 +54,7 @@ from starlette.routing import Route
 
 from taktus.adapters.driving.rest import (
     acting,
+    administration,
     agent_surface,
     autonomy,
     catalogue,
@@ -64,6 +65,7 @@ from taktus.adapters.driving.rest import (
     gallery,
     levels,
     operation,
+    planning,
     profiles,
     proposals,
     relay,
@@ -73,6 +75,7 @@ from taktus.adapters.driving.rest import (
     stages,
     steering,
     streams,
+    structure,
     subjects,
     takeover,
     takeover_instructions,
@@ -183,6 +186,9 @@ def build_app(
         app.include_router(proposals.router(services, _authenticated), prefix=base)
         app.include_router(proposals.acts_router(services, _authenticated), prefix=base)
         app.include_router(gallery.router(services, _authenticated), prefix=base)
+        app.include_router(planning.router(services, _authenticated), prefix=base)
+        app.include_router(structure.router(services, _authenticated), prefix=base)
+        app.include_router(administration.router(services, _authenticated), prefix=base)
         app.include_router(evaluations.router(services, _authenticated), prefix=base)
         app.include_router(tenants.router(services), prefix=base)
         app.include_router(findings.router(services), prefix=base)
@@ -1026,7 +1032,7 @@ def _mark(cursor: str) -> Mark | None:
 
 
 def _reader(who: Resolution) -> Reader:
-    return Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+    return Reader(tenant=who.tenant, identity=who.identity, roles=who.roles, unseen=who.unseen)
 
 
 def _sse(event: Snapshot | Change | None) -> str:

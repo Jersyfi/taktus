@@ -33,6 +33,8 @@ from taktus.components.command.application.service import (
     CompleteIntakeHandler,
     ReceiveIntakeHandler,
 )
+from taktus.components.command.application.service.coach import Coach
+from taktus.components.command.application.service.sessions import Sessions
 from taktus.components.command.domain.model import IntakeEvent
 from taktus.components.decision.application.query import DecisionQueries
 from taktus.components.decision.application.service import (
@@ -40,9 +42,10 @@ from taktus.components.decision.application.service import (
     ConfirmRequestHandler,
 )
 from taktus.components.decision.domain.model import Request
-from taktus.components.governance.application.service import Corrections
+from taktus.components.governance.application.service import Corrections, TenantOrgUnits
 from taktus.components.governance.domain.model import Incident
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
+from taktus.components.identity.application.service.structure import OrganisationStructure
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.application.service.streams import ValueStreams
@@ -73,9 +76,11 @@ from taktus.composition.decisions import DecisionWiring, decision_wiring
 from taktus.composition.levels import RepositoryLevelRecords
 from taktus.composition.live import LiveHub, LiveOptions, Records, state_of
 from taktus.composition.owner_channel import KnownSecrets, OwnerChannelWiring, owner_channel_wiring
+from taktus.composition.planning import PlanActs
 from taktus.composition.profiles import RoleProfiles
 from taktus.composition.reports import ReadingWiring, reading_wiring
 from taktus.composition.streams import StreamReads
+from taktus.composition.workspace import Workspace, workspace_of
 from taktus.ports.configuration import Secret
 from taktus.ports.connector import (
     ConnectorError,
@@ -86,7 +91,7 @@ from taktus.ports.connector import (
     Refusal,
 )
 from taktus.ports.ledger import Fact
-from taktus.ports.persistence import Queried, Repository, UnitOfWork
+from taktus.ports.persistence import Queried, Repository, Stored, UnitOfWork
 from taktus.ports.worker import ComputeLimit, Limits
 from taktus.shared.v1 import Command, ExactnessClass, LedgerRefs, Method, Plan, Step
 
@@ -253,6 +258,7 @@ class Services:
     """The model trials (ADR-0149); a test that reaches them sets them. What they do is held by
     `tests/composition/test_trials.py`."""
     built_agent: AgentSurface | None = None
+    built_workspace: Workspace | None = None
     requested: Any = None
     """The data-protection requests (ADR-0176); a test that reaches them sets them. What they
     find and erase is held by `tests/composition/test_subjects.py`."""
@@ -352,6 +358,41 @@ class Services:
     @property
     def identities(self) -> IdentityDirectory:
         return self.identity.directory
+
+    @property
+    def workspace(self) -> Workspace:
+        """The plan dialogue, the coach, the structure and its sessions, over this world's
+        stores (ADR-0279)."""
+        if self.built_workspace is None:
+            assert self.identity.structure is not None
+
+            def of[T: Stored](kind: type[T]) -> Repository[T]:
+                return MemoryRepository(self.persistence, kind)
+
+            self.built_workspace = workspace_of(
+                of, self.persistence, self.ledger, self.clock, self.ids, self.identity.structure
+            )
+        return self.built_workspace
+
+    @property
+    def planning(self) -> PlanActs:
+        return self.workspace.planning
+
+    @property
+    def coach(self) -> Coach:
+        return self.workspace.coach
+
+    @property
+    def structure(self) -> OrganisationStructure:
+        return self.workspace.structure
+
+    @property
+    def sessions(self) -> Sessions:
+        return self.workspace.sessions
+
+    @property
+    def org_units(self) -> TenantOrgUnits:
+        return self.decisions.org_units
 
     @property
     def tenants(self) -> TenantRegistry:
@@ -511,7 +552,7 @@ def services(connector: ScriptedConnector | None = None) -> Services:
     clock = FakeClock()
     scripted = connector or ScriptedConnector(ACCEPTED)
     events: Repository[IntakeEvent] = MemoryRepository(persistence, IntakeEvent)
-    identity = directory((TENANT, OTHER), persistence=persistence, clock=clock)
+    identity = directory((TENANT, OTHER), persistence=persistence, clock=clock, structured=True)
     replies = FakeReplies()
 
     def of(kind: Any) -> Any:

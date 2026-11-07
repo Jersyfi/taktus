@@ -112,6 +112,14 @@ ACTS: dict[str, str] = {
         f"{ACT}: who changed and who commissioned one plan (ADR-0237), and that plan's "
         "version and the estimates of its steps"
     ),
+    "taktus.components.command.domain.model.configuration.ConfigurationChange": (
+        f"{ACT}: the identity one configuration change is made for (ADR-0278), and that "
+        "change's place in its plan"
+    ),
+    "taktus.components.identity.domain.model.structure.StructureUnit": (
+        f"{ACT}: who created one unit and who belongs to it (ADR-0275, ADR-0276); the level is "
+        "the unit's place in the structure, no figure about a person"
+    ),
     "taktus.components.command.application.service.plan_dialogue.OpenDraft": (
         f"{ACT}: the command that opens a plan, with who opens it and its estimates"
     ),

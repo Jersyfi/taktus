@@ -4,10 +4,10 @@ title: Configuring tools after the plan
 component: command
 epic: E1
 serves: [P1, P2, P12]
-state: specified
+state: built
 version: 0.4.0
-tests: []
-adrs: {ADR-0003: d0268914fed9, ADR-0022: 69572977f46b, ADR-0024: 52ba89e4adec, ADR-0025: cba7351885b6}
+tests: [tests/components/command/test_configure.py::test_the_undoing_is_recorded_before_the_change_and_the_change_is_an_egress_entry, tests/components/command/test_configure.py::test_only_a_commissioned_plan_is_configured, tests/components/command/test_configure.py::test_a_change_whose_undoing_cannot_be_stated_is_handed_to_a_person, tests/components/command/test_configure.py::test_a_target_that_cannot_do_what_was_planned_halts_with_the_options, tests/components/command/test_configure.py::test_a_change_the_plan_does_not_name_or_another_result_is_a_deviation, tests/components/command/test_configure.py::test_an_unsafe_change_is_never_sent_again_after_a_restart, tests/components/command/test_configure.py::test_an_identity_without_its_own_credential_hands_the_change_to_a_person]
+adrs: {ADR-0003: d0268914fed9, ADR-0022: 69572977f46b, ADR-0024: 52ba89e4adec, ADR-0025: cba7351885b6, ADR-0278: 0659e568b56b}
 supersedes: null
 ---
 
@@ -56,3 +56,16 @@ configuration change in a target system has left the system. Correcting what has
 is anchored to a person at every autonomy level (ADR-0022). Taktus therefore prepares the undoing
 and records what it needs; carrying it out in the target system is a person's decision. The
 requirement that every step can be undone stands.
+
+## 5. What is proven so far
+
+Built by ADR-0278, and shown by the named tests against a fake target: only a commissioned
+plan's changes are made; what undoing each requires is recorded before it is sent; every change
+is an `egress.write` naming the capability and the plan; a target that cannot do what was
+planned, an output other than planned, or a record the plan does not name halts the
+configuration at that change with the options; a change whose undoing cannot be stated, and one
+for an identity without its own credential, is handed to a person; an operation without a
+recognised repeat is never sent twice.
+
+Not yet: the instance does not carry out a configuration on its own; a person's own credential
+per target is named by the composition, which configures none yet.

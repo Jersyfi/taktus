@@ -56,6 +56,7 @@ from taktus.components.run.domain.model import (
 )
 from taktus.components.run.domain.model.run import IN_FLIGHT
 from taktus.ports.clock import Clock
+from taktus.ports.identity import Sight
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 from taktus.shared.v1 import Capability, Method
 
@@ -100,7 +101,9 @@ class TakeoverInChannel:
         deliveries: Deliveries,
         secrets: SecretValues,
         clock: Clock,
+        sight: Sight | None = None,
     ) -> None:
+        self._sight = sight
         self._channels = channels
         self._pending = pending
         self._runs = runs
@@ -148,7 +151,12 @@ class TakeoverInChannel:
         not_done = (found, book.takeover_not_done, thread, event, REFUSED)
         if not found.may_answer(identity):
             return await self._say(*not_done)
-        reader = Reader(tenant=tenant, identity=identity, roles=roles)
+        reader = Reader(
+            tenant=tenant,
+            identity=identity,
+            roles=roles,
+            unseen=() if self._sight is None else await self._sight.unseen(tenant, identity),
+        )
         if asked.kind == "take_over":
             run = await self._visible(reader, asked.run or "")
             step_run = None if run is None else _step(run, asked.step or "")

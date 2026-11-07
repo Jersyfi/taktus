@@ -95,7 +95,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         who = await authenticated(services, authorization)
         if who is None:
             return problem(401, "an account key is needed: Authorization: Bearer <key>")
-        reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+        reader = Reader(
+            tenant=who.tenant, identity=who.identity, roles=who.roles, unseen=who.unseen
+        )
         level = await services.levels.run(reader, run_id)
         if level is None:
             return problem(404, f"no run {run_id!r} you may see")
@@ -124,7 +126,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         who = await authenticated(services, authorization)
         if who is None:
             return problem(401, "an account key is needed: Authorization: Bearer <key>")
-        reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+        reader = Reader(
+            tenant=who.tenant, identity=who.identity, roles=who.roles, unseen=who.unseen
+        )
         view = await services.levels.stages(reader, run_id)
         if view is None:
             return problem(404, f"no run {run_id!r} you may see")
@@ -150,7 +154,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         who = await authenticated(services, authorization)
         if who is None:
             return problem(401, "an account key is needed: Authorization: Bearer <key>")
-        reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+        reader = Reader(
+            tenant=who.tenant, identity=who.identity, roles=who.roles, unseen=who.unseen
+        )
         return JSONResponse((await services.levels.overview(reader)).document())
 
     @routes.get(
@@ -185,7 +191,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         who = await authenticated(services, authorization)
         if who is None:
             return problem(401, "an account key is needed: Authorization: Bearer <key>")
-        reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+        reader = Reader(
+            tenant=who.tenant, identity=who.identity, roles=who.roles, unseen=who.unseen
+        )
         level = await services.levels.process(reader, process_id, version)
         if level is None:
             named = process_id if version is None else f"{process_id}@{version}"
@@ -219,7 +227,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         who = await authenticated(services, authorization)
         if who is None:
             return problem(401, "an account key is needed: Authorization: Bearer <key>")
-        reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+        reader = Reader(
+            tenant=who.tenant, identity=who.identity, roles=who.roles, unseen=who.unseen
+        )
         level = await services.levels.origin(reader, run_id, step_id)
         if level is None:
             return problem(404, f"no result of {run_id}/{step_id} you may see")
@@ -255,7 +265,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         who = await authenticated(services, authorization)
         if who is None:
             return problem(401, "an account key is needed: Authorization: Bearer <key>")
-        reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+        reader = Reader(
+            tenant=who.tenant, identity=who.identity, roles=who.roles, unseen=who.unseen
+        )
         view = await services.traces.read(reader, run_id, step_id, after=after)
         if view is None:
             return problem(404, f"no trace of {run_id}/{step_id} you may see")
@@ -282,7 +294,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         who = await authenticated(services, authorization)
         if who is None:
             return problem(401, "an account key is needed: Authorization: Bearer <key>")
-        reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+        reader = Reader(
+            tenant=who.tenant, identity=who.identity, roles=who.roles, unseen=who.unseen
+        )
         try:
             view = await services.traces.share(reader, run_id, step_id, body.role)
         except BadRole as error:
@@ -307,7 +321,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         who = await authenticated(services, authorization)
         if who is None:
             return problem(401, "an account key is needed: Authorization: Bearer <key>")
-        reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+        reader = Reader(
+            tenant=who.tenant, identity=who.identity, roles=who.roles, unseen=who.unseen
+        )
         try:
             view = await services.traces.unshare(reader, run_id, step_id, role)
         except BadRole as error:

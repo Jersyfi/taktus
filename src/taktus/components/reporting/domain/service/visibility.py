@@ -8,10 +8,11 @@ Every caller calls it as `visibility.may_see`, through this module, and never im
 function by name: a path that held its own reference would no longer be the one predicate, and
 `tests/adapters/rest/test_reads.py` replaces it here to show that every path follows.
 
-Until the role-based views of UC-6.4 are built (`0.5.0`), the predicate holds the boundary that
-exists: a reader sees the runs and the processes of the tenant their identity belongs to, and
-no other. It knows no roles yet; it receives them, so that the views can narrow it without a
-second path.
+The predicate holds the tenant's boundary, and inside it the organisation's structure: a
+reader does not see a process, nor its runs, that the structure places where the reader's
+context does not see (ADR-0275 §4). The structure is read once, where the reader is formed,
+into `Reader.unseen`; the predicate stays a pure comparison. Roles are received so that the
+views of UC-6.4 can narrow it without a second path.
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ from taktus.components.reporting.domain.model.trace import OWNER
 
 
 def may_see(reader: Reader, run: RunRef) -> bool:
-    return run.tenant == reader.tenant
+    return run.tenant == reader.tenant and run.process not in reader.unseen
 
 
 def may_count(reader: Reader, runs: CountedRuns) -> bool:
@@ -31,14 +32,16 @@ def may_count(reader: Reader, runs: CountedRuns) -> bool:
     run being read (ADR-0094). It never says yes where `may_see` would say no for a run among
     them: until UC-6.4 both hold the tenant boundary. A view of UC-6.4 that tells the runs of one
     version apart changes this predicate with it, or a count would show what `may_see` hides."""
-    return runs.tenant == reader.tenant
+    return (
+        runs.tenant == reader.tenant and runs.process_version.rsplit("@", 1)[0] not in reader.unseen
+    )
 
 
 def may_see_process(reader: Reader, process: ProcessRef) -> bool:
     """Whether a reader may see a process: its graph, its autonomy statement, its versions.
     The runs of a process are asked of `may_see` one by one; a process a reader may see can
     still have runs the reader may not."""
-    return process.tenant == reader.tenant
+    return process.tenant == reader.tenant and process.id not in reader.unseen
 
 
 def may_see_trace(reader: Reader, run: RunRef, shared_with: Collection[str]) -> bool:

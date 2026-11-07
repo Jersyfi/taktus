@@ -1075,6 +1075,11 @@ class RunEngine:
             raise RunError(
                 f"plan {command.plan.id!r} is {command.plan.status}: only a commissioned plan runs"
             )
+        org_unit = command.org_unit
+        if self._org_units is not None:
+            # A run is in its process's unit, where the structure places one (ADR-0275 §2).
+            process = command.process_version.rsplit("@", 1)[0]
+            org_unit = await self._org_units.placed(command.tenant, process) or org_unit
         now = self._clock.now()
         run = Run(
             id=command.run_id or self._ids.new("run"),
@@ -1099,7 +1104,7 @@ class RunEngine:
             bindings=dict(command.bindings),
             skills=await self._pinned(command),
             profile=command.profile,
-            org_unit=command.org_unit,
+            org_unit=org_unit,
             remedy=command.remedy,
             created_at=now,
             updated_at=now,

@@ -4,10 +4,10 @@ title: Projects and spaces
 component: identity
 epic: E1
 serves: [P1, P7, P14]
-state: specified
+state: built
 version: 0.6.0
-tests: []
-adrs: {ADR-0020: aaf943a7f2e5}
+tests: [tests/components/identity/test_structure.py::test_an_identity_creates_a_project_for_each_circle_within_its_rights, tests/components/identity/test_structure.py::test_a_project_refers_to_what_it_brings_together_and_copies_nothing, tests/components/identity/test_structure.py::test_a_private_project_is_in_no_view_and_no_figure_of_the_company_context, tests/components/identity/test_structure.py::test_something_leaves_a_private_project_only_by_its_owner_s_act, tests/adapters/rest/test_structure_and_administration.py::test_a_project_is_created_referred_to_and_holds_one_session]
+adrs: {ADR-0020: aaf943a7f2e5, ADR-0275: d9ba1ed41368, ADR-0276: 4c5930aa672a}
 supersedes: null
 ---
 
@@ -49,3 +49,16 @@ The structure (UC-1.4) and tenants (ADR-0020); budgets per unit (UC-8.5); the ca
 circle (UC-8.6 to UC-8.8, UC-14.3); principle 1, which forbids a task list where a ticket system
 exists, and principle 14. Definition `UC-1.6`. The roadmap names no version; `0.6.0`, with the
 catalogue whose entries a project shares, is the session's proposal.
+
+## 5. What is proven so far
+
+Built by ADR-0276 on the structure of ADR-0275, and shown by the named tests: a project is
+created alone (private), for a team the creator belongs to, for a project team, or for the
+company by a role holding `project.company`; it is a unit of the structure, so visibility,
+sharing and cost follow it; it keeps references to the organisation's tickets and documents and
+copies nothing. One person's private project is in no context but its own: its processes are
+unseen in the company context, its sessions closed to others, its consumption in no figure above
+it. Only its owner moves anything across its edge, and only its owner shares it.
+
+Not yet: as for UC-1.4, the engine does not yet refuse a connector the project does not share;
+and a search in the organisation's own systems is those systems'. The state stays `built`.

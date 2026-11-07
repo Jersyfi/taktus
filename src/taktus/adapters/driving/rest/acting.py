@@ -33,7 +33,7 @@ UNAUTHENTICATED: dict[int | str, dict[str, Any]] = {
 
 async def visible(services: RestServices, who: Resolution) -> frozenset[str]:
     """The processes the reader may see, by the one predicate of the live representation."""
-    reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+    reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles, unseen=who.unseen)
     overview = await services.levels.overview(reader)
     return frozenset(p.id for area in overview.areas for p in area.processes)
 

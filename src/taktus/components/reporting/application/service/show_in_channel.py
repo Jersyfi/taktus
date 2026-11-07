@@ -36,6 +36,7 @@ from taktus.components.reporting.domain.model import OwnerChannel, Reader
 from taktus.components.reporting.domain.service import reading as rules
 from taktus.components.reporting.domain.service.rendering import Level, shown
 from taktus.components.reporting.ports import Deliveries, SecretValues, Sent
+from taktus.ports.identity import Sight
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 from taktus.shared.v1 import Capability
 
@@ -73,7 +74,10 @@ class ShowInChannelHandler:
         levels: LevelQueries,
         deliveries: Deliveries,
         secrets: SecretValues,
+        *,
+        sight: Sight | None = None,
     ) -> None:
+        self._sight = sight
         self._channels = channels
         self._work = work
         self._levels = levels
@@ -99,7 +103,17 @@ class ShowInChannelHandler:
             return None
         said: str | None = None
         if channel.may_answer(command.identity):
-            reader = Reader(tenant=command.tenant, identity=command.identity, roles=command.roles)
+            unseen = (
+                ()
+                if self._sight is None
+                else await self._sight.unseen(command.tenant, command.identity)
+            )
+            reader = Reader(
+                tenant=command.tenant,
+                identity=command.identity,
+                roles=command.roles,
+                unseen=unseen,
+            )
             level: Level | None
             if asked.level == "overview":
                 level = await self._levels.overview(reader)

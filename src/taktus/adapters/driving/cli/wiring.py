@@ -44,6 +44,7 @@ from taktus.components.governance.application.service import (
 )
 from taktus.components.governance.application.service.tenant_budget import TenantBudgets
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
+from taktus.components.identity.application.service.structure import OrganisationStructure
 from taktus.components.knowledge.application.service import PublishGuidesHandler
 from taktus.components.process.application.service.deactivate import DeactivateProcessHandler
 from taktus.components.process.application.service.packages import ProcessPackages
@@ -251,6 +252,9 @@ class Services:
     org_units: TenantOrgUnits | None = None
     """The tenant's quotas per organisational unit, shown and set (`taktusctl units`,
     ADR-0166)."""
+    structure: OrganisationStructure | None = None
+    """The organisation's structure and its projects, shown and shaped (`taktusctl
+    structure`, ADR-0275, ADR-0276)."""
     deadlines: DeadlineKeeper | None = None
     """The tenant's open deadlines and its working time (`taktusctl deadline`, ADR-0133)."""
     stops: Stops | None = None

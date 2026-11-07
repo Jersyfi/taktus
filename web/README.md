@@ -66,6 +66,15 @@ origin.
   their versions, levels, runs, missed runs and incidents, what its opening lacks, and the open
   action where nothing is lacking, asked back before it is sent.
 
+- **Planning, the coach, the structure and the administration** (ADR-0279) — `#/plans`, the
+  guided start and the plan dialogue: it asks what the person wants to automate, one question at
+  a time with its term explained, or every field at once in the expert mode, shows every setting
+  with its value and why, and commissions a version as an act of its own; the mode is chosen for
+  the visit and stored nowhere. `#/coach`, the reader's own hints and settings. `#/structure`, the tree in the
+  organisation's levels with what each unit holds, the reader's projects and their session in
+  one, every statement with its source. `#/administration`, every administrative act of the
+  tenant, each form marked with the act's name the inventory gives it.
+
 ## How it is built
 
 - SvelteKit and TypeScript, built to static files (`npm run build` writes `build/`).

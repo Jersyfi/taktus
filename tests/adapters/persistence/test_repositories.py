@@ -21,6 +21,8 @@ from taktus.components.catalog.domain.model import (
 )
 from taktus.components.command.domain.model import IntakeEvent, PlanDraft
 from taktus.components.command.domain.model.coach import CoachHint, CoachPolicy, CoachSettings
+from taktus.components.command.domain.model.configuration import ConfigurationChange
+from taktus.components.command.domain.model.session import ProjectSession
 from taktus.components.decision.domain.model import DecisionRule, RegisterEntry, Request
 from taktus.components.governance.domain.model import (
     AnchorConfiguration,
@@ -40,6 +42,13 @@ from taktus.components.identity.domain.model import (
     Identity,
     LinkCode,
     RoleRights,
+)
+from taktus.components.identity.domain.model.structure import (
+    Filing,
+    KnowledgeHome,
+    OrgStructure,
+    Placement,
+    StructureUnit,
 )
 from taktus.components.process.domain.model import (
     CorrectedCase,
@@ -126,6 +135,13 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (OwnView, samples.own_view),
     (ValueBasis, samples.value_basis),
     (DiscoveredProcess, samples.discovered_process),
+    (OrgStructure, samples.org_structure),
+    (StructureUnit, samples.structure_unit),
+    (Placement, samples.placement),
+    (Filing, samples.filing),
+    (KnowledgeHome, samples.knowledge_home),
+    (ProjectSession, samples.project_session),
+    (ConfigurationChange, samples.configuration_change),
 ]
 
 

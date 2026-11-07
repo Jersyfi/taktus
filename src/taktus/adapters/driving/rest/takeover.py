@@ -57,7 +57,7 @@ def _refused(error: RunError) -> JSONResponse:
 async def visible_to(services: RestServices, who: Resolution, run_id: str) -> bool:
     """Whether `who` may see the run: what taking its step over, and sending it a message,
     need until rights per role exist (UC-7.3)."""
-    reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+    reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles, unseen=who.unseen)
     async with services.work.transaction(who.tenant):
         run = await services.runs.get(who.tenant, run_id)
     if run is None:

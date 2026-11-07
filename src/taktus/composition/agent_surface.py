@@ -55,7 +55,7 @@ CHANNEL = "channel.agent"
 
 
 def _reader(who: Resolution) -> Reader:
-    return Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+    return Reader(tenant=who.tenant, identity=who.identity, roles=who.roles, unseen=who.unseen)
 
 
 class AgentSurface:

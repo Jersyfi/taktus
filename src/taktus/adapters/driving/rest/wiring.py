@@ -20,6 +20,10 @@ from taktus.components.command.application.service import (
     CompleteIntakeHandler,
     ReceiveIntakeHandler,
 )
+from taktus.components.command.application.service.coach import Coach
+from taktus.components.command.application.service.sessions import Sessions
+from taktus.components.command.domain.model import PlanDraft
+from taktus.components.command.domain.service.guided import Mode
 from taktus.components.decision.application.query import DecisionQueries
 from taktus.components.decision.application.service import (
     AnswerRequestHandler,
@@ -30,9 +34,11 @@ from taktus.components.governance.application.service import (
     Corrections,
     PrepareRequest,
     Stages,
+    TenantOrgUnits,
 )
 from taktus.components.governance.domain.model import Incident, SubjectRequest
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
+from taktus.components.identity.application.service.structure import OrganisationStructure
 from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.application.service.streams import DeclareStream
 from taktus.components.process.application.service.takeover import RecordTrial
@@ -92,6 +98,7 @@ from taktus.ports.configuration import Secret
 from taktus.ports.identity import Resolution
 from taktus.ports.ledger import Ledger
 from taktus.ports.persistence import Queried, Tenant, TenantImported, UnitOfWork
+from taktus.shared.v1 import Plan
 
 
 class StreamsFull(Exception):
@@ -153,6 +160,41 @@ class ProposalActs(Protocol):
         as_version: str | None = None,
         approved_by: str | None = None,
     ) -> ProcessVersion: ...
+
+
+class PlanActs(Protocol):
+    """The plan dialogue as the surfaces present it, in either mode (ADR-0237, ADR-0238,
+    ADR-0279): the composition root's, because a guided answer that chooses a process takes
+    its steps from the process component."""
+
+    async def open(
+        self, tenant: Tenant, identity: str, org_path: tuple[str, ...], said: str
+    ) -> PlanDraft: ...
+
+    async def mine(self, tenant: Tenant, identity: str) -> list[PlanDraft]: ...
+
+    async def get(self, tenant: Tenant, identity: str, draft_id: str) -> PlanDraft: ...
+
+    async def answer(
+        self,
+        tenant: Tenant,
+        identity: str,
+        draft_id: str,
+        field: str,
+        value: Any,
+        *,
+        step_id: str | None = None,
+    ) -> PlanDraft: ...
+
+    async def set(
+        self, tenant: Tenant, identity: str, draft_id: str, fields: Mapping[str, Any]
+    ) -> PlanDraft: ...
+
+    async def commission(self, tenant: Tenant, identity: str, draft_id: str) -> Plan: ...
+
+    async def templates(self, tenant: Tenant) -> list[dict[str, Any]]: ...
+
+    def view(self, draft: PlanDraft, mode: Mode) -> dict[str, Any]: ...
 
 
 class GalleryActs(Protocol):
@@ -601,6 +643,33 @@ class RestServices(Protocol):
     @property
     def gallery(self) -> GalleryActs:
         """The gallery of first processes (UC-10.4, ADR-0136)."""
+        ...
+
+    @property
+    def planning(self) -> PlanActs:
+        """The plan dialogue, guided and expert (ADR-0237, ADR-0238)."""
+        ...
+
+    @property
+    def coach(self) -> Coach:
+        """Each person's own automation coach (ADR-0240)."""
+        ...
+
+    @property
+    def structure(self) -> OrganisationStructure | None:
+        """The organisation's structure and its projects (ADR-0275, ADR-0276); None where the
+        instance keeps none."""
+        ...
+
+    @property
+    def sessions(self) -> Sessions | None:
+        """Sessions with a project's knowledge (ADR-0277); None where the instance keeps no
+        structure."""
+        ...
+
+    @property
+    def org_units(self) -> TenantOrgUnits:
+        """The quotas per organisational unit (ADR-0166)."""
         ...
 
     @property
