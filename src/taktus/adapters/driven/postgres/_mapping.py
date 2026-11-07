@@ -543,6 +543,7 @@ class RunMapper:
                 "skills": document.get("skills") or None,
                 "profile": document.get("profile"),
                 "org_unit": document.get("org_unit"),
+                "org_path": list(document.get("org_path") or ()) or None,
                 "org_unit_month": document.get("org_unit_month"),
                 "classes": document.get("classes"),
                 "case_class": document.get("case_class"),
@@ -778,6 +779,7 @@ class RunMapper:
                 "skills": row.skills,
                 "profile": row.profile,
                 "org_unit": row.org_unit,
+                "org_path": list(row.org_path or ()),
                 "org_unit_month": row.org_unit_month,
                 "classes": row.classes,
                 "case_class": row.case_class,
@@ -1728,6 +1730,46 @@ class TenantMonthBudgetMapper:
         return [dict(row.budget) for row in rows]
 
 
+class UnitLimitMapper:
+    """One row per limit of a unit of the structure (ADR-0282); the limit stays a document."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.unit_limit, tenant, id)
+        return None if row is None else dict(row.unit_limit)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.unit_limit,
+            ("tenant", "id"),
+            {"tenant": tenant, "id": document["id"], "unit_limit": document},
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.unit_limit, tenant, s.unit_limit.c.id)
+        return [dict(row.unit_limit) for row in rows]
+
+
+class LimitWatchMapper:
+    """One row per tenant that set its watch over harmful limits (ADR-0282 §4)."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.limit_watch, tenant, id)
+        return None if row is None else dict(row.watch)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.limit_watch,
+            ("tenant", "id"),
+            {"tenant": tenant, "id": document["id"], "watch": document},
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.limit_watch, tenant, s.limit_watch.c.id)
+        return [dict(row.watch) for row in rows]
+
+
 class WorkingTimeMapper:
     """One row per tenant that set its working time; the working time stays a document."""
 
@@ -2473,6 +2515,8 @@ MAPPERS: dict[str, Mapper] = {
     "adapter_stop": AdapterStopMapper(),
     "domain": DomainMapper(),
     "tenant_month_budget": TenantMonthBudgetMapper(),
+    "unit_limit": UnitLimitMapper(),
+    "limit_watch": LimitWatchMapper(),
     "working_time": WorkingTimeMapper(),
     "correction_limits": CorrectionLimitsMapper(),
     "residency_rule": ResidencyRuleMapper(),

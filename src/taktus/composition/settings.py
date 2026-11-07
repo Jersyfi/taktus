@@ -27,7 +27,8 @@ from taktus.conformance.contracts import contracts_root
 from taktus.ports.administration import NONE, Administration
 from taktus.ports.configuration import Configuration, ConfigurationError, Secret
 from taktus.ports.execution import variable_refusal
-from taktus.ports.model import LOCATIONS, MODEL_CLASSES, PriceTable, WeightingTable
+from taktus.ports.hardware import HardwareNeeds
+from taktus.ports.model import LOCATIONS, MODEL_CLASSES, Location, PriceTable, WeightingTable
 from taktus.ports.worker import Host
 
 
@@ -505,6 +506,11 @@ class ModelSettings:
     location_declared: bool = True
     """Whether `TAKTUS_MODEL_LOCATION` was set. A `generate_content` endpoint that does not
     declare it processes in the region its address names (ADR-0248)."""
+    needs: HardwareNeeds = field(default_factory=HardwareNeeds)
+    """`TAKTUS_MODEL_NEEDS`: what the model needs of the machine it runs on, as `key=value`
+    pairs — `processors=N`, `memory=16GiB`, `accelerator=graphics|accelerator|any`,
+    `accelerator_memory=24GiB`. Checked for a model at location `own` against the instance's
+    hardware (`taktusctl hardware`, ADR-0284); nothing declared by default."""
 
     @property
     def identifier(self) -> str:
@@ -531,6 +537,7 @@ class ModelSettings:
             (f"{prefix}_LOCATION", self.location),
             (f"{prefix}_EXACTNESS", ",".join(self.classes)),
             (f"{prefix}_DIALECT", self.dialect),
+            (f"{prefix}_NEEDS", needs_text(self.needs)),
             (key, credential),
         ]
         if self.member is None:
@@ -750,7 +757,78 @@ def _model_settings(
             "model.dialect", "chat_completions", ("chat_completions", "generate_content")
         ),
         location_declared=configuration.get("model.location") is not None,
+        needs=parse_needs(configuration.name("model.needs"), reader.names("model.needs", ())),
     )
+
+
+SIZE = re.compile(r"^(\d+(?:\.\d+)?)\s*(MiB|GiB|TiB)$")
+SIZE_FACTOR = {"MiB": 1024**2, "GiB": 1024**3, "TiB": 1024**4}
+NEED_KEYS = ("processors", "memory", "accelerator", "accelerator_memory")
+WANTED_ACCELERATORS = ("graphics", "accelerator", "any")
+
+
+def _size(name: str, need: str, text: str) -> int:
+    matched = SIZE.fullmatch(text.strip())
+    if matched is None:
+        raise ConfigurationError(name, f"{need}={text!r} is not a size such as 16GiB or 512MiB")
+    return int(float(matched.group(1)) * SIZE_FACTOR[matched.group(2)])
+
+
+def parse_needs(name: str, pairs: tuple[str, ...]) -> HardwareNeeds:
+    """`TAKTUS_MODEL_NEEDS`: `key=value` pairs separated by commas (ADR-0284 §4)."""
+    given: dict[str, str] = {}
+    for pair in pairs:
+        key, separator, value = pair.partition("=")
+        key, value = key.strip(), value.strip()
+        if not separator or not value:
+            raise ConfigurationError(name, f"{pair!r} is not key=value")
+        if key not in NEED_KEYS:
+            raise ConfigurationError(name, f"{key!r} is not a need; one of {', '.join(NEED_KEYS)}")
+        if key in given:
+            raise ConfigurationError(name, f"{key} is named twice")
+        given[key] = value
+    processors: int | None = None
+    if "processors" in given:
+        try:
+            processors = int(given["processors"])
+        except ValueError:
+            raise ConfigurationError(
+                name, f"processors={given['processors']!r} is not a whole number"
+            ) from None
+        if processors < 1:
+            raise ConfigurationError(name, "processors must be at least 1")
+    accelerator = given.get("accelerator")
+    if accelerator is not None and accelerator not in WANTED_ACCELERATORS:
+        raise ConfigurationError(
+            name,
+            f"accelerator={accelerator!r} is not a kind; one of {', '.join(WANTED_ACCELERATORS)}",
+        )
+    return HardwareNeeds.model_validate(
+        {
+            "processors": processors,
+            "memory_bytes": None
+            if "memory" not in given
+            else _size(name, "memory", given["memory"]),
+            "accelerator": accelerator,
+            "accelerator_memory_bytes": None
+            if "accelerator_memory" not in given
+            else _size(name, "accelerator_memory", given["accelerator_memory"]),
+        }
+    )
+
+
+def needs_text(needs: HardwareNeeds) -> str:
+    """The declaration as it is configured, for `effective()`."""
+    parts: list[str] = []
+    if needs.processors is not None:
+        parts.append(f"processors={needs.processors}")
+    if needs.memory_bytes is not None:
+        parts.append(f"memory={needs.memory_bytes // 1024**2}MiB")
+    if needs.accelerator is not None:
+        parts.append(f"accelerator={needs.accelerator}")
+    if needs.accelerator_memory_bytes is not None:
+        parts.append(f"accelerator_memory={needs.accelerator_memory_bytes // 1024**2}MiB")
+    return ",".join(parts)
 
 
 def _exactness_classes(reader: _Reader, configuration: Configuration) -> tuple[str, ...]:
@@ -823,6 +901,41 @@ def load_connectors(configuration: Configuration) -> Mapping[str, str]:
     serves its actions as well; the run resolves an action's connector by the capabilities
     the connector declares, not by the label."""
     return _Reader(configuration).connectors()
+
+
+def load_connector_locations(configuration: Configuration) -> Mapping[str, Location]:
+    """`TAKTUS_CONNECTOR_LOCATIONS`: `channel.repo=eu,channel.chat=own` — where the system each
+    connector of `TAKTUS_CONNECTORS` reaches processes, as whoever configures it declares it
+    (ADR-0281 §1). A label `TAKTUS_CONNECTORS` does not name is refused; a connector without an
+    entry counts as `elsewhere`. `taktusctl` reads it too."""
+    reader = _Reader(configuration)
+    locations = reader.locations("connector.locations")
+    known = reader.connectors()
+    for label in locations:
+        if label not in known:
+            raise ConfigurationError(
+                configuration.name("connector.locations"),
+                f"{label!r} is not a connector of {configuration.name('connectors')}",
+            )
+    return locations
+
+
+def load_host_locations(configuration: Configuration) -> Mapping[str, Location]:
+    """`TAKTUS_HOST_LOCATIONS`: `api.example.eu=eu,10.0.0.5:8443=own` — where each host an
+    execution unit may reach processes, by the host as a frame or a worker's service hosts
+    name it (ADR-0281 §3). A host without an entry counts as `elsewhere`."""
+    reader = _Reader(configuration)
+    locations = reader.locations("host.locations")
+    for host in locations:
+        try:
+            _HOST.validate_python(host)
+        except ValidationError:
+            raise ConfigurationError(
+                configuration.name("host.locations"),
+                f"{host!r} is not a host: a lowercase host name or an IPv4 address, "
+                "optionally with a port, and no wildcard",
+            ) from None
+    return locations
 
 
 def load_execution(configuration: Configuration) -> ExecutionSettings:
@@ -1238,6 +1351,12 @@ class Settings:
     """What the capacity report is told: thresholds, the database's volume, the interval."""
     connectors: Mapping[str, str]
     """Channel capability → the MCP URL of the connector that serves its intake."""
+    connector_locations: Mapping[str, Location]
+    """`TAKTUS_CONNECTOR_LOCATIONS`: where each connector's system processes, by its label in
+    `TAKTUS_CONNECTORS` (ADR-0281 §1). A connector it does not name counts as `elsewhere`."""
+    host_locations: Mapping[str, Location]
+    """`TAKTUS_HOST_LOCATIONS`: where each host an execution unit may reach processes, by the
+    host as a frame names it (ADR-0281 §3). A host it does not name counts as `elsewhere`."""
     triage: Mapping[str, str]
     """Public channel → the process that triages an unknown sender's contribution there
     (`TAKTUS_TRIAGE`, UC-1.9, ADR-0088). A channel it does not name has no triage."""
@@ -1338,6 +1457,14 @@ class Settings:
             *self.budget.effective(),
             *self.capacity.effective(),
             ("TAKTUS_CONNECTORS", ",".join(f"{c}={u}" for c, u in self.connectors.items())),
+            (
+                "TAKTUS_CONNECTOR_LOCATIONS",
+                ",".join(f"{c}={w}" for c, w in self.connector_locations.items()),
+            ),
+            (
+                "TAKTUS_HOST_LOCATIONS",
+                ",".join(f"{h}={w}" for h, w in self.host_locations.items()),
+            ),
             ("TAKTUS_TRIAGE", ",".join(f"{c}={p}" for c, p in self.triage.items())),
             ("TAKTUS_ROLLOUT", ",".join(f"{c}={a}" for c, a in self.rollout.items())),
             (
@@ -1414,6 +1541,8 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         budget=load_budget(configuration),
         capacity=load_capacity(configuration),
         connectors=reader.connectors(),
+        connector_locations=load_connector_locations(configuration),
+        host_locations=load_host_locations(configuration),
         triage=reader.triage(),
         rollout=reader.rollout(),
         personal_credentials=reader.personal_credentials(),
@@ -1541,6 +1670,28 @@ class _Reader:
         if len(set(items)) != len(items):
             raise ConfigurationError(name, f"{value!r} names an entry twice")
         return items
+
+    def locations(self, key: str) -> dict[str, Location]:
+        """Comma-separated `name=location` pairs, each location `own`, `eu` or `elsewhere`, no
+        name twice (ADR-0281). Unset or empty: none."""
+        name, value = self._raw(key)
+        mapping: dict[str, Location] = {}
+        if value is None:
+            return mapping
+        for entry in (e.strip() for e in value.split(",") if e.strip()):
+            label, separator, location = (part.strip() for part in entry.partition("="))
+            if not separator or not label or not location:
+                raise ConfigurationError(
+                    name, f"{entry!r} is not name=location (for example channel.repo=eu)"
+                )
+            if location not in LOCATIONS:
+                raise ConfigurationError(
+                    name, f"{location!r} is not a location; one of {', '.join(LOCATIONS)}"
+                )
+            if label in mapping:
+                raise ConfigurationError(name, f"{label!r} is given twice")
+            mapping[label] = location
+        return mapping
 
     def hosts(self, key: str) -> tuple[str, ...]:
         """A comma-separated list of hosts, each as a frame names one — a lowercase host name or

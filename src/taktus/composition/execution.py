@@ -45,7 +45,7 @@ from taktus.composition.settings import (
 from taktus.ports.configuration import Configuration, ConfigurationError
 from taktus.ports.connector import ActionConnector
 from taktus.ports.execution import Execution, ExecutionUnit, ResourceLimits
-from taktus.ports.model import Model
+from taktus.ports.model import Location, Model
 from taktus.ports.relay import Relay
 from taktus.ports.worker import Worker
 
@@ -107,17 +107,25 @@ def connector_pool(
     *,
     timeout: float = 120.0,
     also: Sequence[tuple[str, ActionConnector]] = (),
+    locations: Mapping[str, Location] | None = None,
 ) -> StaticConnectorPool:
     """The configured connectors as the run's pool: one MCP client per entry of
     `TAKTUS_CONNECTORS`, registered under the adapter identifier `connector.<label>` — never a
     product name (ADR-0003) — and, after them, the connectors the instance brings itself
-    (`also`: the loopback). The run resolves by the capabilities each declares."""
+    (`also`: the loopback). The run resolves by the capabilities each declares. Each configured
+    connector is where `locations` (`TAKTUS_CONNECTOR_LOCATIONS`, by label) says, `elsewhere`
+    where it says nothing; the instance's own connectors are `own` (ADR-0281 §1)."""
+    declared: dict[str, Location] = {
+        f"connector.{label}": location for label, location in (locations or {}).items()
+    }
+    declared.update({adapter: "own" for adapter, _ in also})
     return StaticConnectorPool(
         [
             (f"connector.{label}", McpActionConnector(endpoint, timeout=timeout))
             for label, endpoint in connectors.items()
         ]
-        + list(also)
+        + list(also),
+        locations=declared,
     )
 
 

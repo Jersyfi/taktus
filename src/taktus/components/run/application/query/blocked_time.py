@@ -17,6 +17,9 @@ Three reads of what ended, and one of what has not:
 - `own` — the waits on a person that `reader` ended by answering. The reader is the identity
   the caller authenticated; a figure of waiting on a person is joined to a name only for the
   person it names (ADR-0015, protective rule; principle 14);
+- `grouped` — the waits on a person per role or per department, and per period: the
+  department is the answerer's, from the port `Departments`. A group that fewer than two
+  persons answered is withheld, as a sum is (ADR-0283 §4);
 - `waiting` — every block that has not ended yet, from the step runs that carry it: what a
   reader needs who must know of a block before it ends, such as the product finding
   (ADR-0046). It is in no sum.
@@ -29,16 +32,21 @@ from collections.abc import Sequence
 
 from taktus.components.run.domain.model.run import Run
 from taktus.components.run.domain.service.blocked import (
+    PERSON_ACCOUNT,
     RECORD_KIND,
     Block,
     BlockedSum,
+    GroupedWait,
+    Grouping,
     Period,
     Waiting,
+    grouped,
     parse,
     sums,
     waiting,
 )
 from taktus.components.run.domain.service.projections import ACTIVITY
+from taktus.components.run.ports.departments import Departments
 from taktus.ports.ledger import Ledger
 from taktus.ports.objectstore import ObjectStore
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
@@ -55,11 +63,13 @@ class BlockedTime:
         objects: ObjectStore,
         work: UnitOfWork,
         runs: Repository[Run] | None = None,
+        departments: Departments | None = None,
     ) -> None:
         self._ledger = ledger
         self._objects = objects
         self._work = work
         self._runs = runs
+        self._departments = departments
 
     async def waiting(self, tenant: Tenant) -> tuple[Waiting, ...]:
         """Every block that has not ended, in the order of the runs and their steps. A
@@ -94,6 +104,29 @@ class BlockedTime:
         answered = _answerers(entries)
         recorded = [(block, answered.get(e.seq)) for e, block in await self._recorded(entries)]
         return sums(recorded, activity.active(period), period)
+
+    async def grouped(
+        self, tenant: Tenant, grouping: Grouping, period: Period = "month"
+    ) -> tuple[GroupedWait, ...]:
+        """The waits on a person per role or per department, and per period. Who answered is
+        counted and placed in a department here, and kept nowhere."""
+        if grouping == "department" and self._departments is None:
+            raise RuntimeError("the departments are read from the identities; none were wired")
+        entries = await self._entries(tenant, {RECORD_KIND, *ANSWERS})
+        answered_by = _answerers(entries)
+        placed: dict[str, str | None] = {}
+        found: list[tuple[Block, str | None, str | None]] = []
+        for entry, block in await self._recorded(entries):
+            if block.account != PERSON_ACCOUNT:
+                continue
+            person = answered_by.get(entry.seq)
+            department = None
+            if grouping == "department" and person is not None and self._departments is not None:
+                if person not in placed:
+                    placed[person] = await self._departments.department(tenant, person)
+                department = placed[person]
+            found.append((block, person, department))
+        return grouped(found, grouping, period)
 
     async def own(self, tenant: Tenant, reader: str) -> tuple[Block, ...]:
         """The waits on a person that `reader` ended: each block of `wait.human` whose step the

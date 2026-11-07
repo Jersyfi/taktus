@@ -8,31 +8,72 @@ owner until one is named. `ownerless` is registration's port: the domain of a pr
 no owner, under which no process is raised in autonomy. `views` shows each domain with its
 owner, its legal anchors in force and whether its takeover and removal tests passed.
 
+`duties` lists what a domain asks of its owner (ADR-0280 §3): its escalations — a run of one of
+its processes that escalated and has not been resumed, and an open incident about one of them,
+a person's stop among them —, the proposals to raise one of its processes' autonomy, and the
+takeover tests no person has passed yet. Each is addressed to the domain's owner, and to nobody
+while it has none. `ConformityEvidence` generates the conformity evidence that names the
+catalogue in force per domain (ADR-0280 §4).
+
 Every change is a ledger entry `domain.*` by the person who made it, in the transaction that
 stores it. The owner is named as the domain's addressee, never measured (principle 14).
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any, Literal
 
 from taktus.components.governance.domain.model.anchors import (
     AnchorConfiguration,
     shipped_default,
 )
 from taktus.components.governance.domain.model.domains import Domain, DomainView
+from taktus.components.governance.domain.model.incident import Incident, IncidentState
 from taktus.components.governance.domain.service.anchors import legal_for
 from taktus.components.governance.ports.domains import DomainTests
 from taktus.components.governance.ports.stages import Identities
 from taktus.ports.clock import Clock
 from taktus.ports.ledger import Fact, Ledger
+from taktus.ports.objectstore import ObjectStore
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
-from taktus.shared.v1 import LedgerRefs
+from taktus.shared.v1 import LedgerEntry, LedgerRefs, Value
 
 INSTANTIATED = "domain.instantiated"
 OWNER_NAMED = "domain.owner_named"
 OWNER_LEFT = "domain.owner_left"
+ESCALATED = "run.escalated"
+RESUMED = "run.resumed"
+PROPOSED = "autonomy.proposed"
+GENERATED = "conformity.generated"
+
+
+class Duty(Value):
+    """One thing a domain asks of its owner (ADR-0280 §3). It names the duty, never how anyone
+    answered it (principle 14)."""
+
+    kind: Literal["escalation", "raise", "takeover"]
+    process: str
+    subject: str
+    """The run that escalated, the incident, the version a raise is proposed for, or the
+    process whose takeover test is due."""
+    at: str | None = None
+    """When it arose, where the record says; None for a takeover test that is due."""
+
+
+class DomainDuties(Value):
+    """A domain's duties, addressed to its owner; to nobody while it has none."""
+
+    domain: str
+    to: str | None
+    duties: tuple[Duty, ...] = ()
+
+
+def _process(version: str | None) -> str:
+    return (version or "").rpartition("@")[0] or (version or "")
 
 
 class DomainRefused(ValueError):
@@ -64,7 +105,11 @@ class TenantDomains:
         work: UnitOfWork,
         clock: Clock,
         tests: DomainTests | None = None,
+        incidents: Repository[Incident] | None = None,
     ) -> None:
+        self._incidents = incidents
+        """The tenant's incidents, read as escalations of a domain. None: only the runs that
+        escalated are."""
         self._domains = domains
         self._anchors = anchors
         self._identities = identities
@@ -172,6 +217,65 @@ class TenantDomains:
             )
         return shown
 
+    async def duties(self, tenant: Tenant, *, owner: str | None = None) -> list[DomainDuties]:
+        """Every domain's duties, each addressed to its owner; with `owner`, only the domains
+        that person owns."""
+        domains = [d for d in await self.every(tenant) if owner is None or d.owner == owner]
+        if not domains:
+            return []
+        async with self._work.transaction(tenant):
+            entries = list(await self._ledger.of_kinds(tenant, (ESCALATED, RESUMED, PROPOSED)))
+            incidents = [] if self._incidents is None else list(await self._incidents.list(tenant))
+        escalated: dict[str, LedgerEntry] = {}
+        for entry in entries:
+            run = entry.refs.run_id
+            if run is None:
+                continue
+            if entry.kind == ESCALATED:
+                escalated[run] = entry
+            elif entry.kind == RESUMED:
+                escalated.pop(run, None)
+        shown: list[DomainDuties] = []
+        for domain in domains:
+            mine = set(domain.processes)
+            duties = [
+                Duty(
+                    kind="escalation",
+                    process=_process(e.refs.process_version),
+                    subject=run,
+                    at=e.ts.isoformat(),
+                )
+                for run, e in sorted(escalated.items(), key=lambda item: item[1].seq)
+                if _process(e.refs.process_version) in mine
+            ]
+            duties += [
+                Duty(
+                    kind="escalation",
+                    process=i.process_id,
+                    subject=i.id,
+                    at=i.raised_at.isoformat(),
+                )
+                for i in sorted(incidents, key=lambda i: i.raised_at)
+                if i.state is IncidentState.OPEN and _concerns(i, mine)
+            ]
+            duties += [
+                Duty(
+                    kind="raise",
+                    process=_process(e.refs.process_version),
+                    subject=e.refs.process_version or "",
+                    at=e.ts.isoformat(),
+                )
+                for e in entries
+                if e.kind == PROPOSED and _process(e.refs.process_version) in mine
+            ]
+            duties += [
+                Duty(kind="takeover", process=p, subject=p)
+                for p in domain.processes
+                if not await self._takeover(tenant, p)
+            ]
+            shown.append(DomainDuties(domain=domain.id, to=domain.owner, duties=tuple(duties)))
+        return shown
+
     async def emptied(self, tenant: Tenant, configuration: AnchorConfiguration) -> Sequence[str]:
         """The domains a configuration would leave without a legal anchor in force: the
         anchors' configuration is refused for each (UC-15.5 §2)."""
@@ -200,3 +304,72 @@ class TenantDomains:
         await self._ledger.record(
             tenant, Fact(kind=kind, refs=LedgerRefs(tenant=tenant, actor=by), outcome=outcome)
         )
+
+
+def _concerns(incident: Incident, processes: set[str]) -> bool:
+    """Whether an incident is about a process of the domain: its subject, or, for a stop, one
+    of the processes whose runs it halted."""
+    if incident.process_id in processes:
+        return True
+    named = incident.facts.get("processes")
+    return isinstance(named, str) and bool(set(named.split(",")) & processes)
+
+
+class ConformityEvidence:
+    """The tenant's conformity evidence for its domains (ADR-0280 §4, UC-15.5 §2): per domain,
+    its owner, its jurisdiction, the legal anchors in force with their scope, and whether its
+    takeover and removal tests passed. Canonical JSON, kept under its digest;
+    `conformity.generated` names the digest and who generated it."""
+
+    def __init__(
+        self,
+        domains: TenantDomains,
+        ledger: Ledger,
+        objects: ObjectStore,
+        work: UnitOfWork,
+        clock: Clock,
+    ) -> None:
+        self._domains = domains
+        self._ledger = ledger
+        self._objects = objects
+        self._work = work
+        self._clock = clock
+
+    async def generate(self, tenant: Tenant, *, by: str) -> dict[str, Any]:
+        views = await self._domains.views(tenant)
+        document: dict[str, Any] = {
+            "kind": "conformity.evidence",
+            "tenant": tenant,
+            "generated_at": self._clock.now().isoformat(),
+            "domains": [
+                {
+                    "domain": v.domain,
+                    "name": v.name,
+                    "owner": v.owner,
+                    "jurisdiction": v.jurisdiction,
+                    "processes": list(v.processes),
+                    "legal_anchors": [a.document() for a in v.legal],
+                    "takeover": v.takeover,
+                    "removal": v.removal,
+                    "runs_without_taktus": v.runs_without_taktus,
+                }
+                for v in views
+            ],
+            "note": (
+                "The legal anchors are the list Taktus enforces, not a legal assessment; which "
+                "acts belong in it for a jurisdiction is reviewed by people with that expertise."
+            ),
+        }
+        content = json.dumps(document, sort_keys=True, separators=(",", ":")).encode()
+        digest = await self._objects.put(content)
+        async with self._work.transaction(tenant):
+            await self._ledger.record(
+                tenant,
+                Fact(
+                    kind=GENERATED,
+                    refs=LedgerRefs(tenant=tenant, actor=by),
+                    outcome="generated",
+                    content_digest=digest,
+                ),
+            )
+        return {**document, "digest": digest, "sha256": hashlib.sha256(content).hexdigest()}

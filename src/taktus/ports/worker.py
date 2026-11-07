@@ -640,6 +640,9 @@ class ResolvedWorker:
     version: str | None = None
     location: DataLocation = "elsewhere"
     """Where the worker declares it stores; `elsewhere` where it declares nothing (ADR-0157)."""
+    hosts: tuple[str, ...] = ()
+    """The hosts the worker's own service may reach, as its configuration names them
+    (ADR-0089): what a step's frame reaches beside its own hosts (ADR-0281 §3)."""
 
 
 class WorkerError(Exception):

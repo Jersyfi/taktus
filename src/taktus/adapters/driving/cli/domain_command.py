@@ -1,12 +1,22 @@
-"""`taktusctl domain`: a domain blueprint admitted, instantiated in dialogue, and exported
-(ADR-0263, UC-15.1).
+"""`taktusctl domain`: a tenant's domains with their owners, duties and legal anchors (ADR-0259,
+ADR-0280, UC-15.5), and the domain blueprints a domain is instantiated from (ADR-0263, UC-15.1).
+
+`create ID --name N --owner IDENTITY --jurisdiction DE --process P` instantiates a domain; one
+without an owner the tenant knows, or under which no legal anchor would be in force, is refused.
+`owner ID IDENTITY` names a new owner, `vacate ID` records that the owner left. `list` prints
+every domain with its owner, its legal anchors in force and whether its takeover and removal
+tests passed. `duties --owner IDENTITY` prints the escalations, raise proposals and takeover
+tests of the domains that person owns, each addressed to them. `evidence` generates the
+conformity evidence that names the catalogue in force per domain, and prints it. These
+authenticate by holding the instance's state, as `budget` does; `--by` names who acts.
 
 A blueprint is named by its directory, the one that holds `blueprint.yaml`. `check` admits each
 directory named or refuses it with every finding. `export` copies an admitted blueprint's files
 into a directory, as plain files. `start` begins an instance and prints its questions; `answer`
 names the tool that serves a capability (`none` where the organisation has none), `leave-out`
-drops processes, `owner` names the domain's one owner. `propose` makes each kept process a
-proposal at level 2 or below once no question is open; a person commissions it. `offer` takes a
+drops processes, `owner INSTANCE IDENTITY --blueprint DIR` names the instance's one owner.
+`propose` makes each kept process a proposal at level 2 or below once no question is open; a
+person commissions it. `offer` takes a
 later version of the blueprint and makes a proposal of each changed bundle: nothing is applied.
 `show` prints an instance, its open questions and its runs counted per process, as JSON.
 
@@ -24,7 +34,7 @@ from typing import Annotated, Any
 
 import typer
 
-from taktus.adapters.driving.cli.incident_command import StateDir, Tenant
+from taktus.adapters.driving.cli.incident_command import By, StateDir, Tenant
 from taktus.adapters.driving.cli.run_command import (
     DEFAULT_STATE_DIR,
     DEFAULT_TENANT,
@@ -34,13 +44,22 @@ from taktus.adapters.driving.cli.run_command import (
 from taktus.adapters.driving.cli.wiring import DomainActs, NotOperable, Services, Wiring
 from taktus.components.catalog.application.service import DomainRefused
 from taktus.components.catalog.domain.model import DomainInstance
+from taktus.components.governance.application.service.domains import (
+    DomainRefused as TenantDomainRefused,
+)
+from taktus.components.governance.application.service.domains import (
+    InstantiateDomain,
+    TenantDomains,
+    UnknownDomain,
+)
 
 EXIT_REFUSED = 1
 EXIT_NOT_RUN = 2
 NONE = "none"
 
 domain = typer.Typer(
-    help="Domain blueprints: admitted, instantiated in dialogue, exported.",
+    help="A tenant's domains, each with one owner, its duties and its legal anchors; and the "
+    "domain blueprints they are instantiated from: admitted, instantiated in dialogue, exported.",
     no_args_is_help=True,
 )
 
@@ -205,19 +224,37 @@ def leave_out(
 @domain.command("owner")
 def owner(
     ctx: typer.Context,
-    instance: Annotated[str, typer.Argument(help="The instance.")],
-    person: Annotated[str, typer.Argument(help="The domain's one owner: an identity.")],
-    blueprint: Blueprint,
+    target: Annotated[
+        str, typer.Argument(help="The domain, or with --blueprint the blueprint's instance.")
+    ],
+    person: Annotated[str, typer.Argument(help="Its one owner from now on: an identity.")],
+    blueprint: Annotated[
+        Path | None,
+        typer.Option(
+            "--blueprint",
+            help="The blueprint's directory: TARGET is an instance of it, not a domain.",
+        ),
+    ] = None,
     tenant: Tenant = DEFAULT_TENANT,
+    by: By = "operator",
     state_dir: StateDir = Path(DEFAULT_STATE_DIR),
 ) -> None:
-    """Name the domain's one owner."""
+    """Name a domain's owner from now on, or, with --blueprint, an instance's one owner."""
+    if blueprint is not None:
+        named = blueprint
 
-    async def act(_: Services, domains: DomainActs) -> dict[str, Any]:
-        changed = await domains.instances.name_owner(tenant, instance, person)
-        return _shown(domains, changed, blueprint)
+        async def instance_owner(_: Services, domains: DomainActs) -> dict[str, Any]:
+            changed = await domains.instances.name_owner(tenant, target, person)
+            return _shown(domains, changed, named)
 
-    _echo(_run(ctx, state_dir, act))
+        _echo(_run(ctx, state_dir, instance_owner))
+        return
+
+    async def domain_owner(services: Services) -> dict[str, Any]:
+        domains = _tenant_domains(services)
+        return (await domains.name_owner(tenant, target, person, by=by)).document()
+
+    _echo(_governed(ctx, state_dir, domain_owner))
 
 
 @domain.command("propose")
@@ -280,3 +317,136 @@ def show(
         return document
 
     _echo(_run(ctx, state_dir, act))
+
+
+# --- a tenant's domains (ADR-0259, ADR-0280) ---------------------------------------------------
+
+
+def _governed[T](ctx: typer.Context, state_dir: Path, act: Callable[[Services], Awaitable[T]]) -> T:
+    wiring: Wiring = ctx.obj
+    where = Path(os.path.expanduser(state_dir))
+
+    async def opened() -> T:
+        async with wiring.services(state_dir=where, worker_endpoint=DEFAULT_WORKER) as services:
+            if services.tenant_domains is None:
+                raise NotOperable("the tenant's domains cannot be read with these services")
+            return await act(services)
+
+    try:
+        return asyncio.run(opened())
+    except (NotOperable, TenantDomainRefused, UnknownDomain, ValueError) as error:
+        typer.echo(f"error: {error}", err=True)
+        raise typer.Exit(code=2) from error
+
+
+def _tenant_domains(services: Services) -> TenantDomains:
+    if services.tenant_domains is None:
+        raise NotOperable("the tenant's domains cannot be read with these services")
+    return services.tenant_domains
+
+
+@domain.command("create")
+def create(
+    ctx: typer.Context,
+    domain_id: Annotated[str, typer.Argument(help="The domain's identifier: finance.")],
+    name: Annotated[str, typer.Option("--name", help="Its name as people say it.")],
+    owner: Annotated[str, typer.Option("--owner", help="The identity that owns it.")],
+    jurisdiction: Annotated[
+        str, typer.Option("--jurisdiction", help="ISO 3166, a country or region: DE, DE-BY.")
+    ],
+    process: Annotated[
+        list[str] | None, typer.Option("--process", help="A process of it. Repeatable.")
+    ] = None,
+    tenant: Tenant = DEFAULT_TENANT,
+    by: By = "operator",
+    state_dir: StateDir = Path(DEFAULT_STATE_DIR),
+) -> None:
+    """Instantiate a domain with its owner, and print it, as JSON."""
+
+    async def act(services: Services) -> dict[str, Any]:
+        domains = _tenant_domains(services)
+        made = await domains.instantiate(
+            InstantiateDomain(
+                tenant=tenant,
+                domain=domain_id,
+                name=name,
+                owner=owner,
+                jurisdiction=jurisdiction,
+                processes=tuple(process or ()),
+            ),
+            by=by,
+        )
+        return made.document()
+
+    _echo(_governed(ctx, state_dir, act))
+
+
+@domain.command("vacate")
+def vacate(
+    ctx: typer.Context,
+    domain_id: Annotated[str, typer.Argument(help="The domain whose owner left.")],
+    tenant: Tenant = DEFAULT_TENANT,
+    by: By = "operator",
+    state_dir: StateDir = Path(DEFAULT_STATE_DIR),
+) -> None:
+    """Record that the owner left: the domain is shown without one until one is named."""
+
+    async def act(services: Services) -> dict[str, Any]:
+        domains = _tenant_domains(services)
+        return (await domains.vacate(tenant, domain_id, by=by)).document()
+
+    _echo(_governed(ctx, state_dir, act))
+
+
+@domain.command("list")
+def list_(
+    ctx: typer.Context,
+    tenant: Tenant = DEFAULT_TENANT,
+    state_dir: StateDir = Path(DEFAULT_STATE_DIR),
+) -> None:
+    """Print every domain with its owner, its legal anchors in force and its tests, as JSON."""
+
+    async def act(services: Services) -> list[dict[str, Any]]:
+        domains = _tenant_domains(services)
+        return [
+            {**v.document(), "runs_without_taktus": v.runs_without_taktus}
+            for v in await domains.views(tenant)
+        ]
+
+    _echo(_governed(ctx, state_dir, act))
+
+
+@domain.command("duties")
+def duties(
+    ctx: typer.Context,
+    owner: Annotated[
+        str | None, typer.Option("--owner", help="Only the domains this identity owns.")
+    ] = None,
+    tenant: Tenant = DEFAULT_TENANT,
+    state_dir: StateDir = Path(DEFAULT_STATE_DIR),
+) -> None:
+    """Print each domain's escalations, raise proposals and takeover tests, addressed to its
+    owner, as JSON."""
+
+    async def act(services: Services) -> list[dict[str, Any]]:
+        domains = _tenant_domains(services)
+        return [d.document() for d in await domains.duties(tenant, owner=owner)]
+
+    _echo(_governed(ctx, state_dir, act))
+
+
+@domain.command("evidence")
+def evidence(
+    ctx: typer.Context,
+    tenant: Tenant = DEFAULT_TENANT,
+    by: By = "operator",
+    state_dir: StateDir = Path(DEFAULT_STATE_DIR),
+) -> None:
+    """Generate the conformity evidence of the tenant's domains, and print it, as JSON."""
+
+    async def act(services: Services) -> dict[str, Any]:
+        if services.conformity is None:
+            raise NotOperable("conformity evidence cannot be generated with these services")
+        return await services.conformity.generate(tenant, by=by)
+
+    _echo(_governed(ctx, state_dir, act))

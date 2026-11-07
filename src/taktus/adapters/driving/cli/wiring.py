@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from taktus.components.accounting.application.service import (
+    BottlenecksHandler,
     CostOfRunHandler,
     SpendHandler,
     TaktRateHandler,
@@ -43,6 +44,7 @@ from taktus.components.governance.application.service import (
     Corrections,
     ExpectedRuns,
     ReportCapacityHandler,
+    ReportHardwareHandler,
     ResultDefects,
     Stages,
     SubjectRequests,
@@ -51,7 +53,13 @@ from taktus.components.governance.application.service import (
     TenantResidency,
     TenantSources,
 )
+from taktus.components.governance.application.service.domains import (
+    ConformityEvidence,
+    TenantDomains,
+)
+from taktus.components.governance.application.service.stop_incidents import StopIncidents
 from taktus.components.governance.application.service.tenant_budget import TenantBudgets
+from taktus.components.governance.application.service.unit_limits import UnitLimits
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.identity.application.service.structure import OrganisationStructure
 from taktus.components.knowledge.application.service import PublishGuidesHandler
@@ -210,6 +218,9 @@ class Services:
     takt_rate: TaktRateHandler | None = None
     """A tenant's Takt consumption and rate over the window of the table in force
     (`taktusctl cost` without a run)."""
+    bottlenecks: BottlenecksHandler | None = None
+    """What a higher limit would have bought, the recommendations, the waits on people by role
+    or department, and the ways to wait less on them (`taktusctl bottlenecks`, ADR-0283)."""
     configure_anchors: ConfigureAnchorsHandler | None = None
     """A tenant's anchors, configured (`taktusctl anchors set`, ADR-0042)."""
     anchors: AnchorsInForce | None = None
@@ -283,11 +294,23 @@ class Services:
     structure: OrganisationStructure | None = None
     """The organisation's structure and its projects, shown and shaped (`taktusctl
     structure`, ADR-0275, ADR-0276)."""
+    unit_limits: UnitLimits | None = None
+    """The tenant's limits per unit of its structure, set, shown and watched (`taktusctl units
+    limit`, ADR-0282)."""
     deadlines: DeadlineKeeper | None = None
     """The tenant's open deadlines and its working time (`taktusctl deadline`, ADR-0133)."""
     stops: Stops | None = None
     """The tenant's stops of adapters, requested, shown and lifted (`taktusctl stop`,
     ADR-0138)."""
+    stop_incidents: StopIncidents | None = None
+    """The incidents and situation packages of the stops a person requested (`taktusctl
+    incident package`, ADR-0280)."""
+    tenant_domains: TenantDomains | None = None
+    """The tenant's domains, their owners, their duties and the conformity evidence of their
+    catalogue (`taktusctl domain`, ADR-0259, ADR-0280)."""
+    conformity: ConformityEvidence | None = None
+    """The conformity evidence of the tenant's domains (`taktusctl domain evidence`,
+    ADR-0280 §4)."""
     traces: StepTraces | None = None
     """How long the tenant keeps the trace inside a step, shown and set (`taktusctl trace`,
     ADR-0135)."""
@@ -421,6 +444,12 @@ class Wiring(Protocol):
         """Open the capacity report against the state where it is configured — no worker, no
         connector: looking at the platform starts nothing. Raises `NotOperable` as
         `services` does."""
+        ...
+
+    def hardware(self) -> ReportHardwareHandler:
+        """The hardware report: the machine this process runs on and every configured model
+        with its declared needs (ADR-0284). No state, no database. Raises `NotOperable` when
+        the models' configuration cannot be read."""
         ...
 
     def catalogue_author(self) -> CatalogueAuthor:

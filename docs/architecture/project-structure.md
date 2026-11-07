@@ -294,7 +294,9 @@ role it would tie the core to a model stack and the removal test would be lost.
   risk classes set on a level, the same way, and `taktusctl anchors set` stores both in one
   document, the column `anchor_configuration.levels` holding the ceilings (ADR-0170). It reaches the tenant's residency rule,
   `TenantResidency`, the same way, and `taktusctl residency` shows and sets it, narrowed per
-  data class and per process; the run asks it with the run's process (ADR-0258). The run and
+  data class and per process; the run asks it with the run's process (ADR-0258). Registration
+  reaches it through `ResidencyBindings`, which `composition/residency.py` answers from the
+  pools and the declared host locations (ADR-0281). The run and
   registration reach the tenant's declaration of its sources, `TenantSources`, the same way,
   and `taktusctl sources` shows and changes it (ADR-0130). Registration reaches the roles the tenant's
   identities hold, `RoleStructure`, from the identity component's `IdentityDirectory`
@@ -304,6 +306,15 @@ role it would tie the core to a model stack and the removal test would be lost.
   removal tests through `composition/domains.py`, and `AnchorsInForce` reads the domains to scope
   the anchors (ADR-0259). Its `TenantBudgets` answers the run's `TenantBudget` through
   `BudgetOfTheRun` in `composition/decisions.py`, and `taktusctl budget` sets it (ADR-0260).
+  Its `UnitLimits` answers the run's `UnitLimitsPort` through `UnitLimitsOfTheRun` in
+  `composition/unit_limits.py`, which reads where an identity sits from the identity component's
+  `IdentityDirectory`; `taktusctl units limit` sets the limits (ADR-0282).
+  The accounting component's `BottlenecksHandler` reads its three ports through
+  `composition/bottlenecks.py`: `RunAccounts` over the run's `BlockedTime`, which hands over the
+  limits and the work held back and the waits on people only grouped; `MethodsOfTheRun` over the
+  step measures; `RulesOfTheDecisions` over the decision component's rules. The run's
+  `Departments` is answered there from the identity directory, and `taktusctl bottlenecks`
+  prints the analysis (ADR-0283).
   `composition/acting.py`'s `ActingReads` gathers what acts for a tenant, what depends on it and
   how a process really runs from the catalog's maturity records, the pools, the process
   versions, the residency rule, the stops, the blocks, the provenance store and the identities'
@@ -646,3 +657,8 @@ role it would tie the core to a model stack and the removal test would be lost.
   per credential, the platforms it administers (`ports/administration.py`, ADR-0052). The
   composition root reads both once and hands the one value to the process component's
   registration and to the run engine's admission; without a platform the daemon warns at start.
+- **The machine's hardware.** The hardware port (`ports/hardware.py`, ADR-0284) is served by
+  `adapters/driven/platform/hardware.py`, which reads the kernel's device classes and runs no
+  program. `composition/hardware.py` hands it, with every configured model and its
+  `TAKTUS_MODEL_NEEDS`, to governance's `ReportHardwareHandler`; `taktusctl hardware` prints the
+  report through `Wiring.hardware`, with no state and no database.

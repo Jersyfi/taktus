@@ -61,6 +61,7 @@ from taktus.components.governance.application.service.tenant_budget import (
     TenantBudgets,
     TenantMonthBudget,
 )
+from taktus.components.governance.application.service.unit_limits import UnitLimits
 from taktus.components.governance.domain.model import (
     AnchorConfiguration,
     CaseAnswer,
@@ -74,6 +75,7 @@ from taktus.components.governance.domain.model import (
     WatchConfiguration,
 )
 from taktus.components.governance.domain.model.domains import Domain
+from taktus.components.governance.domain.model.unit_limits import LimitWatch, UnitLimit
 from taktus.components.identity.application.service import IdentityDirectory
 from taktus.components.process.domain.model import Process, ProcessVersion
 from taktus.components.process.domain.model.takeover import TakeoverTrial
@@ -103,6 +105,7 @@ from taktus.components.run.ports import (
 from taktus.components.run.ports import MessageRules as RunMessageRules
 from taktus.components.run.ports.tenant_budget import MonthBudget
 from taktus.composition.domains import DomainTestsOfTheInstance
+from taktus.composition.unit_limits import UnitLimitsOfTheRun, placed_in
 from taktus.ports.clock import Clock
 from taktus.ports.ledger import Ledger
 from taktus.ports.persistence import Repository, Stored, Tenant, UnitOfWork
@@ -431,11 +434,13 @@ class DecisionWiring:
     """A tenant's quotas per organisational unit (ADR-0166); the run's port over them is
     joined with the store of what was committed where the persistence is known."""
     domains: TenantDomains
+    """A tenant's domains and their owners, and registration's port over them (ADR-0259)."""
     budget: TenantBudgets
     """A tenant's monthly budget across all its runs (ADR-0260)."""
     budget_of_the_run: BudgetOfTheRun
     """The run's port over it."""
-    """A tenant's domains and their owners, and registration's port over them (ADR-0259)."""
+    unit_limits: UnitLimitsOfTheRun
+    """A tenant's limits per unit of its structure, and the run's port over them (ADR-0282)."""
 
 
 def decision_wiring(
@@ -497,9 +502,23 @@ def decision_wiring(
             DomainTestsOfTheInstance(
                 of(Process), of(TakeoverTrial), of(AdapterMaturity), ledger, work
             ),
+            incidents=of(Incident),
         ),
         budget=budgets,
         budget_of_the_run=BudgetOfTheRun(budgets),
+        unit_limits=UnitLimitsOfTheRun(
+            UnitLimits(
+                of(UnitLimit),
+                of(LimitWatch),
+                of(Incident),
+                ledger,
+                work,
+                clock,
+                lambda t, n: _is_identity(directory, t, n),
+            ),
+            placed_in(directory),
+            clock,
+        ),
     )
 
 

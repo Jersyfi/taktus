@@ -109,12 +109,14 @@ from taktus.components.governance.application.service import (
     SubjectRequests,
     TenantOrgUnits,
 )
+from taktus.components.governance.application.service.stop_incidents import StopIncidents
 from taktus.components.governance.domain.model import (
     AnchorConfiguration,
     Incident,
     SubjectRequest,
     WatchConfiguration,
 )
+from taktus.components.governance.domain.model.domains import Domain
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.identity.application.service.structure import OrganisationStructure
 from taktus.components.identity.domain.model import (
@@ -247,6 +249,7 @@ from taktus.composition.proposals import InstanceChanges, ProposalActs
 from taktus.composition.reactions import Reactions, capacity_condition
 from taktus.composition.replies import ConnectorReplies
 from taktus.composition.reports import ReadingWiring, reading_tick, reading_wiring
+from taktus.composition.residency import PoolBindings
 from taktus.composition.run_answers import RunAnswers
 from taktus.composition.settings import (
     CONNECT_KEY,
@@ -264,7 +267,7 @@ from taktus.composition.skills import CatalogGuidance, SkillLifecycle, skills_ti
 from taktus.composition.spend_in_channel import SpendInChannel
 from taktus.composition.stages import stage_wiring, stages_tick
 from taktus.composition.steering import Steering, SteeringConfirmed, SteeringInChannel
-from taktus.composition.stops import RuleStops, StopsConfirmed
+from taktus.composition.stops import RuleStops, StopIncidentsOfGovernance, StopsConfirmed
 from taktus.composition.streams import StreamReads
 from taktus.composition.subjects import ProcessingEvidence, RunHoldings
 from taktus.composition.takeover_in_channel import TakeoverInChannel
@@ -685,6 +688,7 @@ async def wire(
                 connector_pool(
                     settings.connectors,
                     also=[(LOOPBACK, loopback), *served_directory(settings.knowledge_directory)],
+                    locations=settings.connector_locations,
                 ),
                 model_pool(settings.models),
             )
@@ -703,6 +707,17 @@ async def wire(
                 clock,
                 ids,
                 stoppable=pools.identifiers(),
+                followed=StopIncidentsOfGovernance(
+                    StopIncidents(
+                        PostgresRepository(persistence, Incident),
+                        PostgresRepository(persistence, WatchConfiguration),
+                        PostgresRepository(persistence, Domain),
+                        ledger,
+                        objects,
+                        persistence,
+                        clock,
+                    )
+                ),
             )
 
             # Who may use a shared model or connector, with whose credential (ADR-0246,
@@ -769,6 +784,7 @@ async def wire(
                         unit_memory_bytes=memory_demand(settings.workers),
                         park_waits_after_seconds=settings.poll_seconds,
                         model_cool_down_seconds=settings.model.cool_down_seconds,
+                        host_locations=settings.host_locations,
                     ),
                     platform=HostPlatform(clock, state_dir=settings.state_dir),
                     connectors=connectors,
@@ -793,6 +809,7 @@ async def wire(
                     masking=secrets,
                     stops=stops,
                     tenant_budget=decisions.budget_of_the_run,
+                    unit_limits=decisions.unit_limits,
                     messages=decisions.messages,
                     statements=VersionStatements(
                         persistence,
@@ -1007,6 +1024,7 @@ async def wire(
                 structure=identities,
                 rights=identities,
                 domains=decisions.domains,
+                residency=PoolBindings(pools, decisions.residency, settings.host_locations),
             )
             moves = MethodMoves(
                 versions=PostgresRepository(persistence, ProcessVersion),

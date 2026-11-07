@@ -193,7 +193,7 @@ def test_the_effective_configuration_masks_every_secret() -> None:
     assert effective["TAKTUS_ROLES"] == "scheduler"
     assert "hunter2" not in json.dumps(effective)
     assert set(effective) == {name for name, _ in loaded.effective()}
-    assert len(effective) == 93, "every setting is in the startup log"
+    assert len(effective) == 96, "every setting is in the startup log"
 
 
 def test_the_administration_key_is_read_from_a_file_and_masked(tmp_path: Path) -> None:
@@ -561,6 +561,41 @@ def test_a_channel_is_a_rollout_channel_only_where_the_operator_names_its_agent(
             settings(TAKTUS_ROLLOUT=wrong)
 
 
+async def test_a_connector_and_a_host_are_where_the_configuration_declares_them() -> None:
+    """UC-11.1 §2: every connector is configured with a location, by its label, and every host
+    a unit may reach; what nobody declared counts as `elsewhere`, and the instance's own
+    connectors are `own` (ADR-0281 §1, §3)."""
+    from taktus.adapters.driven.connectors.loopback import ADAPTER as LOOPBACK
+    from taktus.adapters.driven.connectors.loopback import LoopbackConnector
+    from taktus.composition.execution import connector_pool
+
+    loaded = settings(
+        TAKTUS_CONNECTORS="channel.repo=http://repo:9100/mcp,channel.chat=http://chat:9101/mcp",
+        TAKTUS_CONNECTOR_LOCATIONS="channel.repo=eu",
+        TAKTUS_HOST_LOCATIONS="api.example.eu=eu,10.0.0.5:8443=own",
+    )
+    assert loaded.connector_locations == {"channel.repo": "eu"}
+    assert loaded.host_locations == {"api.example.eu": "eu", "10.0.0.5:8443": "own"}
+    assert dict(loaded.effective())["TAKTUS_CONNECTOR_LOCATIONS"] == "channel.repo=eu"
+    pool = connector_pool(
+        loaded.connectors,
+        also=[(LOOPBACK, LoopbackConnector())],
+        locations=loaded.connector_locations,
+    )
+    assert pool.location("connector.channel.repo") == "eu"
+    assert pool.location("connector.channel.chat") == "elsewhere"
+    assert pool.location(LOOPBACK) == "own"
+    for variable, value, words in [
+        ("TAKTUS_CONNECTOR_LOCATIONS", "channel.mail=eu", "is not a connector of"),
+        ("TAKTUS_CONNECTOR_LOCATIONS", "channel.repo=mars", "is not a location"),
+        ("TAKTUS_CONNECTOR_LOCATIONS", "channel.repo=eu,channel.repo=own", "given twice"),
+        ("TAKTUS_HOST_LOCATIONS", "*.example.eu=eu", "is not a host"),
+    ]:
+        with pytest.raises(ConfigurationError) as raised:
+            settings(TAKTUS_CONNECTORS="channel.repo=http://repo:9100/mcp", **{variable: value})
+        assert raised.value.setting == variable and words in str(raised.value)
+
+
 def test_the_platform_and_what_each_credential_administers_are_read() -> None:
     """ADR-0052: one setting for the platform, one for every credential's declaration."""
     loaded = settings(
@@ -730,6 +765,33 @@ def test_a_model_is_never_declared_for_exact_results() -> None:
     (only,) = unnamed.models
     assert (only.identifier, only.location) == ("model.endpoint", "elsewhere")
     assert settings().models == ()
+
+
+def test_what_a_local_model_needs_of_the_machine_is_read_and_shown() -> None:
+    """`TAKTUS_MODEL_NEEDS` (ADR-0284 §4): moving a model from a graphics card to an
+    accelerator is this one setting, and a wrong one fails naming it."""
+    from taktus.composition.settings import load_model
+
+    model = load_model(
+        EnvironmentConfiguration(
+            {
+                "TAKTUS_MODEL_ENDPOINT": "http://127.0.0.1:9/v1",
+                "TAKTUS_MODEL_NAME": "m",
+                "TAKTUS_MODEL_LOCATION": "own",
+                "TAKTUS_MODEL_NEEDS": "processors=4, memory=16GiB, accelerator=any, "
+                "accelerator_memory=512MiB",
+            }
+        )
+    )
+    assert (model.needs.processors, model.needs.memory_bytes) == (4, 16 * 1024**3)
+    assert model.needs.accelerator == "any"
+    assert model.needs.accelerator_memory_bytes == 512 * 1024**2
+    shown = dict(model.effective())["TAKTUS_MODEL_NEEDS"]
+    assert shown == "processors=4,memory=16384MiB,accelerator=any,accelerator_memory=512MiB"
+    assert not load_model(EnvironmentConfiguration({})).needs.declared
+    for wrong in ("gpu=yes", "memory=lots", "accelerator=quantum", "processors=0", "memory"):
+        with pytest.raises(ConfigurationError, match="TAKTUS_MODEL_NEEDS"):
+            load_model(EnvironmentConfiguration({"TAKTUS_MODEL_NEEDS": wrong}))
 
 
 def _revealed(secret: Secret | None) -> str | None:

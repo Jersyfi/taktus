@@ -617,6 +617,9 @@ class ConnectorRule(Value):
     """The call is served with the own credential of the identity the run acts for, in place of
     every credential named here (ADR-0264): what the source shows that person, and nothing
     more. An identity without one gets nothing from the source; the step fails and says so."""
+    data_class: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_-]*$")
+    """The class of the data the call carries, as the process declares it: the tenant's
+    residency rule for that class decides whether the connector may be called (ADR-0281 §2)."""
 
     @property
     def capability(self) -> str:

@@ -178,6 +178,23 @@ reserves. Runtimes that reserve gigabytes up front and never touch them would be
 start. Since Linux 4.7, `RLIMIT_DATA` counts every private writable mapping, which is the memory
 a process actually takes.
 
+## 5a. What the machine is, and what each local model needs (ADR-0284)
+
+The platform port says what is free. The hardware port (`ports/hardware.py`) says what there
+is: the processors and their architecture, the memory, and the accelerators. An accelerator
+has a kind, never a product name. `graphics` is a display or 3D controller of the kernel's
+`drm` class. `accelerator` is a device of the kernel's `accel` class. The host adapter
+(`adapters/driven/platform/hardware.py`) reads those classes under `/sys/class` and runs no
+program. Where there is no `/sys` (macOS), the accelerators are *not observed*, with the
+reason, and never "none".
+
+A model on own hardware declares what it needs in `TAKTUS_MODEL_NEEDS`, for example
+`memory=16GiB,accelerator=graphics,accelerator_memory=24GiB`. `taktusctl hardware` prints the
+machine and, for each configured model, every need as `met`, `missing` or `unknown`. Its exit
+code is 1 when a local model needs something this machine lacks. A model at any other location
+runs on someone else's hardware and is only listed. Moving a model from a graphics card to an
+accelerator changes this one setting and nothing in a process.
+
 ## 6. Propose (`0.5.0`) — specification, not built
 
 *Observe* says when a person must act. *Propose* says what acting would buy.

@@ -71,6 +71,7 @@ from taktus.adapters.driving.cli.wiring import (
     Services,
 )
 from taktus.components.accounting.application.service import (
+    BottlenecksHandler,
     CostOfRunHandler,
     SpendHandler,
     TaktRateHandler,
@@ -98,15 +99,19 @@ from taktus.components.decision.domain.model import Request
 from taktus.components.governance.application.service import (
     Drifts,
     ExpectedRuns,
+    ReportHardwareHandler,
     ResultDefects,
     SubjectRequests,
 )
+from taktus.components.governance.application.service.domains import ConformityEvidence
+from taktus.components.governance.application.service.stop_incidents import StopIncidents
 from taktus.components.governance.domain.model import (
     Incident,
     SubjectRequest,
     WatchConfiguration,
 )
 from taktus.components.governance.domain.model.anchors import AnchorConfiguration
+from taktus.components.governance.domain.model.domains import Domain
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.identity.domain.model import (
     BrowserSession,
@@ -146,6 +151,12 @@ from taktus.components.value.application.query import CorrectionRates
 from taktus.composition.acting import ActingReads
 from taktus.composition.agents import SharedAgents
 from taktus.composition.alerts import alerts
+from taktus.composition.bottlenecks import (
+    DirectoryDepartments,
+    MethodsOfTheRun,
+    RulesOfTheDecisions,
+    RunAccounts,
+)
 from taktus.composition.capacity import capacity_report, rules_of
 from taktus.composition.case_spend import InstanceSpend
 from taktus.composition.catalogue import CatalogueAuthor, InstanceCatalogueIndex
@@ -170,6 +181,7 @@ from taktus.composition.execution import (
 )
 from taktus.composition.findings import RunBlocks, RunContent, sending_of
 from taktus.composition.guides import InstanceGuides, served_directory
+from taktus.composition.hardware import hardware_report
 from taktus.composition.interfaces import broken_interfaces
 from taktus.composition.knowledge import IndexedCitations
 from taktus.composition.levels import RepositoryLevelRecords, VersionStatements
@@ -182,6 +194,7 @@ from taktus.composition.org_units import OrgUnitsOfTheRun
 from taktus.composition.owner_channel import known_secrets, owner_channel_wiring
 from taktus.composition.personal import ConfiguredPersonalCredentials
 from taktus.composition.proposals import InstanceChanges
+from taktus.composition.residency import PoolBindings
 from taktus.composition.settings import (
     ExecutionKind,
     load_administration,
@@ -189,10 +202,12 @@ from taktus.composition.settings import (
     load_budget,
     load_capacity,
     load_catalogue,
+    load_connector_locations,
     load_connectors,
     load_database_timeouts,
     load_findings,
     load_findings_connector,
+    load_host_locations,
     load_knowledge_directory,
     load_model,
     load_models,
@@ -207,7 +222,7 @@ from taktus.composition.shipped import product_names
 from taktus.composition.signals import signal_wiring
 from taktus.composition.skills import CatalogGuidance, SkillLifecycle
 from taktus.composition.stages import stage_wiring
-from taktus.composition.stops import RuleStops
+from taktus.composition.stops import RuleStops, StopIncidentsOfGovernance
 from taktus.composition.subjects import ProcessingEvidence, RunHoldings
 from taktus.composition.tenant_export import TenantExports
 from taktus.composition.workspace import structure_of
@@ -286,6 +301,8 @@ class LocalWiring:
             configured = load_workers(self._configuration)
             telemetry = telemetry_of(load_telemetry(self._configuration))
             connectors = load_connectors(self._configuration)
+            connector_locations = load_connector_locations(self._configuration)
+            host_locations = load_host_locations(self._configuration)
             model = load_model(self._configuration)
             models = load_models(self._configuration)
             budget = load_budget(self._configuration)
@@ -362,8 +379,18 @@ class LocalWiring:
                 connector_pool(
                     connectors,
                     also=[(LOOPBACK, loopback), *served_directory(knowledge_directory)],
+                    locations=connector_locations,
                 ),
                 model_pool(models),
+            )
+            stop_incidents = StopIncidents(
+                stores.of(Incident),
+                stores.of(WatchConfiguration),
+                stores.of(Domain),
+                ledger,
+                objects,
+                stores.work,
+                clock,
             )
             stops = Stops(
                 stores.of(AdapterStop),
@@ -374,6 +401,7 @@ class LocalWiring:
                 clock,
                 ids,
                 stoppable=pools.identifiers(),
+                followed=StopIncidentsOfGovernance(stop_incidents),
             )
 
             # Who may use a shared model or connector, with whose credential (ADR-0246,
@@ -427,6 +455,7 @@ class LocalWiring:
                         capacity=rules_of(capacity),
                         unit_memory_bytes=memory_demand(configured),
                         model_cool_down_seconds=model.cool_down_seconds,
+                        host_locations=host_locations,
                     ),
                     platform=HostPlatform(clock, state_dir=state_dir),
                     recordings=recordings,
@@ -449,6 +478,7 @@ class LocalWiring:
                     masking=known_secrets(os.environ),
                     stops=stops,
                     tenant_budget=decisions.budget_of_the_run,
+                    unit_limits=decisions.unit_limits,
                     messages=decisions.messages,
                     statements=VersionStatements(
                         stores.work, stores.of(ProcessVersion), CorrectionRates(ledger, stores.work)
@@ -643,6 +673,7 @@ class LocalWiring:
                 structure=identities,
                 rights=identities,
                 domains=decisions.domains,
+                residency=PoolBindings(pools, decisions.residency, host_locations),
             )
             findings = ProductFindings(
                 RunBlocks(BlockedTime(ledger, objects, stores.work, runs)),
@@ -780,6 +811,19 @@ class LocalWiring:
                 takt_rate=TaktRateHandler(
                     ledger, MemoryObjectStore(state_dir / "objects"), stores.work, clock, weights
                 ),
+                bottlenecks=BottlenecksHandler(
+                    RunAccounts(
+                        BlockedTime(
+                            ledger,
+                            objects,
+                            stores.work,
+                            runs,
+                            DirectoryDepartments(identities),
+                        )
+                    ),
+                    MethodsOfTheRun(maturation.measures, runs, stores.work),
+                    RulesOfTheDecisions(decisions.rules),
+                ),
                 identities=identities,
                 tenants=registry,
                 configure_anchors=decisions.configure,
@@ -842,8 +886,14 @@ class LocalWiring:
                 messages=decisions.messages.tenant,
                 org_units=decisions.org_units,
                 structure=structure,
+                unit_limits=decisions.unit_limits.limits,
                 deadlines=decisions.deadlines,
                 stops=stops,
+                stop_incidents=stop_incidents,
+                tenant_domains=decisions.domains,
+                conformity=ConformityEvidence(
+                    decisions.domains, ledger, objects, stores.work, clock
+                ),
                 traces=None
                 if stores.traces is None
                 else StepTraces(
@@ -932,6 +982,14 @@ class LocalWiring:
                 tenants=await registry.served(),
                 job_memory_bytes=memory_demand(configured),
             )
+
+    def hardware(self) -> ReportHardwareHandler:
+        """Looking at the machine needs no state (ADR-0284)."""
+        try:
+            models = load_models(self._configuration)
+        except ConfigurationError as error:
+            raise NotOperable(str(error)) from error
+        return hardware_report(models, clock=SystemClock())
 
     def catalogue_author(self) -> CatalogueAuthor:
         """Signing a catalogue's index needs no state (ADR-0175 §2)."""

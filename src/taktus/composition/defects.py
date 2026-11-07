@@ -57,7 +57,7 @@ from taktus.components.run.ports import ConnectorPool, ModelPool
 from taktus.components.run.ports.anchors import Verdict
 from taktus.composition.tenancy import this_round
 from taktus.ports.clock import Clock, Identifiers
-from taktus.ports.connector import CallContext
+from taktus.ports.connector import CallContext, ResolvedConnector
 from taktus.ports.identity import ServedTenants
 from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.model import ModelError, Prompt
@@ -75,6 +75,8 @@ RAISED = "incident.raised"
 CLOSED = "incident.closed"
 REMEDIATION = "remediation.started"
 DELIVERY = "egress.delivery"
+RESIDENCY_EGRESS = "residency.egress"
+"""Beside every delivery: where the connector it went through is (ADR-0281 §5)."""
 FINISHED = "run.finished"
 BY_HAND = "incident.by_hand"
 REPORTED = "incident.reported"
@@ -552,7 +554,7 @@ class IncidentDelivery:
                 reference = str(created.output.get("number") or created.output["id"])
                 # The first text already says every change so far; a report follows it.
                 covers = (0, *(c.seq for c in changes if c.kind != REPORTED))
-                await self._record(tenant, incident, resolved.adapter, reference, covers, body)
+                await self._record(tenant, incident, resolved, reference, covers, body)
                 touched.append(incident.id)
                 continue
             reference = delivered[incident.id]
@@ -567,9 +569,7 @@ class IncidentDelivery:
                     if comment == COMMENT
                     else {"id": reference, "text": text},
                 )
-                await self._record(
-                    tenant, incident, resolved.adapter, reference, (change.seq,), text
-                )
+                await self._record(tenant, incident, resolved, reference, (change.seq,), text)
                 if incident.id not in touched:
                     touched.append(incident.id)
         return touched
@@ -621,28 +621,40 @@ class IncidentDelivery:
         self,
         tenant: Tenant,
         incident: Incident,
-        adapter: str,
+        resolved: ResolvedConnector,
         reference: str,
         covers: Sequence[int],
         text: str,
     ) -> None:
         """The delivery as `egress.delivery`, naming the incident, with the external object's
         reference, what it delivered and the changes it covers by digest: 0 for the raise, the
-        sequence number of each later entry about the incident."""
+        sequence number of each later entry about the incident. Beside it, `residency.egress`
+        names where the connector it went through is (ADR-0281 §5)."""
         document = {"reference": reference, "covers": list(covers), "text": text}
         digest = await self._objects.put(_canonical(document))
+        refs = LedgerRefs(
+            tenant=tenant,
+            process_version=incident.process_version,
+            incident_id=incident.id,
+        )
         async with self._work.transaction(tenant):
             await self._ledger.record(
                 tenant,
                 Fact(
                     kind=DELIVERY,
-                    refs=LedgerRefs(
-                        tenant=tenant,
-                        process_version=incident.process_version,
-                        incident_id=incident.id,
-                    ),
-                    adapter=adapter,
+                    refs=refs,
+                    adapter=resolved.adapter,
                     outcome="delivered" if 0 in covers else "updated",
+                    content_digest=digest,
+                ),
+            )
+            await self._ledger.record(
+                tenant,
+                Fact(
+                    kind=RESIDENCY_EGRESS,
+                    refs=refs,
+                    adapter=resolved.adapter,
+                    outcome=resolved.location,
                     content_digest=digest,
                 ),
             )

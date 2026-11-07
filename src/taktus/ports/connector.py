@@ -34,6 +34,7 @@ from typing import Any, Literal, Protocol
 
 from pydantic import Field, model_validator
 
+from taktus.ports.model import Location
 from taktus.ports.worker import ConsumptionDeclaration, CredentialReference
 from taktus.shared.v1 import (
     AutonomyLevel,
@@ -529,6 +530,9 @@ class ResolvedConnector:
     adapter: str
     connector: ActionConnector
     declaration: Capabilities
+    location: Location = "elsewhere"
+    """Where the system the connector reaches processes what it is sent, as whoever configured
+    the connector declared it; `elsewhere` where nobody did (ADR-0281 §1)."""
 
     @property
     def version(self) -> str | None:

@@ -73,6 +73,11 @@ Registering is where a person's step must name its role once the tenant has a st
 `human` step, or a fallback to a person, without a role, or naming a role no identity of the
 tenant holds, is refused (UC-4.20, ADR-0146). While no identity holds a role, nothing is
 required.
+
+Registering is where the tenant's residency rule holds a version: one whose step handling data
+the rule restricts would be bound to a model, a worker, a connector or a host outside the
+permitted location is refused, each finding naming the step, the data class and the adapter
+(UC-11.1, ADR-0281 §4).
 """
 
 from __future__ import annotations
@@ -125,6 +130,7 @@ from taktus.components.process.ports import (
     LoweredLevels,
     LoweredVersions,
     ProcessRights,
+    ResidencyBindings,
     RoleStructure,
     StageCeilings,
 )
@@ -188,7 +194,11 @@ class RegisterProcessVersionHandler:
         structure: RoleStructure | None = None,
         rights: ProcessRights | None = None,
         domains: DomainOwners | None = None,
+        residency: ResidencyBindings | None = None,
     ) -> None:
+        self._residency = residency
+        """Which steps would be bound outside the tenant's residency rule (ADR-0281 §4). None:
+        the run alone holds a step to the rule."""
         self._domains = domains
         """Which processes belong to a domain without an owner (ADR-0259). None: no domain
         holds a level."""
@@ -232,6 +242,9 @@ class RegisterProcessVersionHandler:
         unroled = await self._unroled(tenant, version)
         if unroled:
             raise InvalidProcess(tuple(unroled))
+        outside = [] if self._residency is None else await self._residency.outside(tenant, version)
+        if outside:
+            raise InvalidProcess(tuple(outside))
         above = await self._above_ceiling(tenant, version)
         if above is not None:
             async with self._work.transaction(tenant):

@@ -34,6 +34,7 @@ from taktus.components.run.domain.model import (
     StopState,
 )
 from taktus.components.run.domain.model.stop import process_of
+from taktus.components.run.ports.stop_follow_up import ConfirmedStop, StopFollowUp
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.objectstore import ObjectStore
@@ -92,7 +93,11 @@ class Stops:
         clock: Clock,
         ids: Identifiers,
         stoppable: frozenset[str] | None = None,
+        followed: StopFollowUp | None = None,
     ) -> None:
+        self._followed = followed
+        """What follows a person's stop once it holds: its incident and situation package
+        (ADR-0280 §1). None: the confirmation alone, as a test wires it."""
         self._stops = stops
         self._runs = runs
         self._ledger = ledger
@@ -355,7 +360,27 @@ class Stops:
                 await self._stops.put(tenant, confirmed)
         except _Settled:
             return None
+        if self._followed is not None and confirmed.rule is None:
+            # A rule's stop is carried by the rule's own incident (ADR-0256 §3).
+            await self._followed.confirmed(tenant, await self._confirmation(tenant, confirmed))
         return confirmed
+
+    async def _confirmation(self, tenant: Tenant, stop: AdapterStop) -> ConfirmedStop:
+        processes = {stop.process} if stop.process is not None else set()
+        async with self._work.transaction(tenant):
+            for run_id in stop.stopped:
+                run = await self._runs.get(tenant, run_id)
+                if run is not None:
+                    processes.add(process_of(run.process_version))
+        return ConfirmedStop(
+            stop=stop.id,
+            scope=stop.scope.value,
+            target=stop.target,
+            requested_at=stop.requested_at,
+            confirmed_at=stop.confirmed_at or stop.requested_at,
+            stopped=stop.stopped,
+            processes=tuple(sorted(processes)),
+        )
 
     async def _get(self, tenant: Tenant, stop_id: str) -> AdapterStop:
         async with self._work.transaction(tenant):

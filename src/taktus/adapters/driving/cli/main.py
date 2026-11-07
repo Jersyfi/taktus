@@ -9,10 +9,13 @@ the ledger (ADR-0044); `conformance list` prints every configured adapter with i
 and says which connectors serve a vendor's MCP server and under which manifest (ADR-0117).
 `run` and `submit` drive the control plane: `run` executes a bundle in this process, `submit`
 queues it for the daemon. `capacity` reports what the platform has left
-and the date a person must act by. `catalogue` lists, installs and signs the entries of a
-catalogue of signed adapters and bundles (ADR-0175). `cost` recomputes what a run cost from
-the ledger. `prices import` turns an open model price list into a new price table version, a
-file, and lists what it could not map (#327). `identity`
+and the date a person must act by; `hardware` what the machine is — processors, memory,
+accelerators — and whether each local model has what it needs there (ADR-0284). `catalogue`
+lists, installs and signs the entries of a catalogue of signed adapters and bundles
+(ADR-0175). `cost` recomputes what a run cost from the ledger. `bottlenecks` says what a higher
+limit would have bought and how to wait less on people (ADR-0283). `prices import` turns an open
+model price list into a new price table version, a file, and lists what it could not map
+(#327). `identity`
 adds identities, sets their roles, and lists and revokes the links of channel accounts
 (ADR-0040). `tenant` creates, renames and lists the instance's tenants; Taktus generates each
 identifier (ADR-0104). `first start` creates a new instance's first tenant and its administrator,
@@ -52,7 +55,9 @@ tenant's quotas per organisational unit (ADR-0166). `deadline` lists
 a tenant's open deadlines, ordered by when they fall due, and shows and sets its working time
 (ADR-0133). `trace retention` shows and sets how long the tenant keeps the trace inside a step
 (ADR-0135). `stop` stops every step an adapter serves and prints the confirmation once it
-holds (ADR-0138). `stage` declares a tenant's introduction in stages, shows each with its
+holds (ADR-0138). `domain` instantiates a tenant's domains with their owners, shows each
+owner the duties of their domains and generates the conformity evidence of their catalogue
+(ADR-0259, ADR-0280). `stage` declares a tenant's introduction in stages, shows each with its
 figures and what is missing, and opens one as a person (ADR-0137). `skill` registers, evaluates,
 approves and puts skills into production, and prints the skill part of a process's takeover
 instructions (ADR-0162). `process export` writes a process version as one package of plain
@@ -81,6 +86,7 @@ from taktus.adapters.driving.cli import (
     agent_command,
     alerts_command,
     anchors_command,
+    bottlenecks_command,
     bpmn_command,
     budget_command,
     bundle_command,
@@ -97,6 +103,7 @@ from taktus.adapters.driving.cli import (
     findings_command,
     first_command,
     guides_command,
+    hardware_command,
     identity_command,
     incident_command,
     interfaces_command,
@@ -154,7 +161,9 @@ app.add_typer(catalogue_command.catalogue, name="catalogue")
 app.add_typer(domain_command.domain, name="domain")
 app.add_typer(bpmn_command.bpmn, name="bpmn")
 app.command("capacity")(capacity_command.capacity)
+app.command("hardware")(hardware_command.hardware)
 app.command("cost")(cost_command.cost)
+app.command("bottlenecks")(bottlenecks_command.bottlenecks)
 app.add_typer(prices_command.prices, name="prices")
 app.add_typer(findings_command.findings, name="findings")
 app.command("interfaces")(interfaces_command.interfaces)
@@ -169,6 +178,7 @@ app.add_typer(corrections_command.corrections, name="corrections")
 app.add_typer(defect_command.defect, name="defect")
 app.add_typer(residency_command.residency, name="residency")
 app.add_typer(budget_command.budget, name="budget")
+app.add_typer(domain_command.domain, name="domain")
 app.add_typer(sources_command.sources, name="sources")
 app.add_typer(subject_command.subject, name="subject")
 app.command("evidence")(subject_command.evidence)

@@ -319,6 +319,9 @@ async def test_a_result_defect_is_delivered_once_with_its_package_and_updated_in
     egress = [e for e in await w.entries() if e.kind == "egress.delivery"]
     assert [e.outcome for e in egress] == ["delivered", "updated"]
     assert all(e.refs.incident_id == raised and e.adapter == "tracker.issues" for e in egress)
+    located = [e for e in await w.entries() if e.kind == "residency.egress"]
+    assert [e.outcome for e in located] == ["elsewhere", "elsewhere"], "undeclared: elsewhere"
+    assert all(e.refs.incident_id == raised and e.adapter == "tracker.issues" for e in located)
 
 
 async def test_without_a_connector_for_the_tracking_system_nothing_is_delivered() -> None:
