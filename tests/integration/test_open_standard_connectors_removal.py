@@ -18,12 +18,18 @@ from taktus_connectors.anthropic.operations import Config as CostReportConfig
 from taktus_connectors.anthropic.server import build_server as cost_report_server
 from taktus_connectors.aws.operations import Config as BillingConfig
 from taktus_connectors.aws.server import build_server as billing_server
+from taktus_connectors.canny.operations import Config as FeedbackConfig
+from taktus_connectors.canny.server import build_server as feedback_server
+from taktus_connectors.discourse.operations import Config as ForumConfig
+from taktus_connectors.discourse.server import build_server as forum_server
 from taktus_connectors.httpcheck.operations import Config as CheckConfig
 from taktus_connectors.httpcheck.server import build_server as check_server
 from taktus_connectors.kubernetes.operations import Config as WorkloadsConfig
 from taktus_connectors.kubernetes.server import build_server as workloads_server
 from taktus_connectors.mail.protocol import Config as MailConfig
 from taktus_connectors.mail.server import build_server as mail_server
+from taktus_connectors.mastodon.operations import Config as SocialConfig
+from taktus_connectors.mastodon.server import build_server as social_server
 from taktus_connectors.openai.operations import Config as ModelCostsConfig
 from taktus_connectors.openai.server import build_server as model_costs_server
 from taktus_connectors.prometheus.operations import Config as MetricsConfig
@@ -54,6 +60,9 @@ SERVERS: dict[str, Any] = {
     "model-costs": lambda: model_costs_server(ModelCostsConfig("http://127.0.0.1:9")),
     "cost-report": lambda: cost_report_server(CostReportConfig("http://127.0.0.1:9")),
     "errors": lambda: errors_server(ErrorsConfig("http://127.0.0.1:9", organization="example")),
+    "feedback": lambda: feedback_server(FeedbackConfig("http://127.0.0.1:9")),
+    "mentions-forum": lambda: forum_server(ForumConfig("http://127.0.0.1:9")),
+    "mentions-social": lambda: social_server(SocialConfig("http://127.0.0.1:9")),
     "payments": lambda: payments_server(PaymentsConfig("http://127.0.0.1:9")),
     "workloads": lambda: workloads_server(WorkloadsConfig("http://127.0.0.1:9")),
 }
@@ -65,6 +74,9 @@ SERVES = {
     "model-costs": ["models.costs"],
     "cost-report": ["models.costs"],
     "errors": ["errors.issues"],
+    "feedback": ["feedback.posts"],
+    "mentions-forum": ["mentions.search"],
+    "mentions-social": ["mentions.search"],
     "payments": ["payments.customers", "payments.subscriptions"],
     "workloads": ["deployment.workloads"],
 }

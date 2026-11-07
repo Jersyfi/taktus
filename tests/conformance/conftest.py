@@ -1138,6 +1138,8 @@ BUSINESS: dict[str, BusinessConnector] = {
     ),
     "aws": BusinessConnector("aws", FAKES / "cloud_billing_service.py", "BILLING_KEY", pair=True),
     "calendar": BusinessConnector("calendar", FAKES / "calendar_service.py", "CALENDAR_TOKEN"),
+    "canny": BusinessConnector("canny", FAKES / "feedback_service.py", "FEEDBACK_TOKEN"),
+    "discourse": BusinessConnector("discourse", FAKES / "forum_service.py", "MENTIONS_TOKEN"),
     "einvoice": BusinessConnector(
         "einvoice", FAKES / "document_inbox_service.py", "DOCUMENTS_TOKEN"
     ),
@@ -1153,6 +1155,7 @@ BUSINESS: dict[str, BusinessConnector] = {
         key=review_replies_service.credential,
     ),
     "kubernetes": BusinessConnector("kubernetes", FAKES / "workload_cluster.py", "WORKLOADS_TOKEN"),
+    "mastodon": BusinessConnector("mastodon", FAKES / "social_service.py", "MENTIONS_TOKEN"),
     "openai": BusinessConnector("openai", FAKES / "model_costs_service.py", "MODEL_COSTS_TOKEN"),
     "paypal": BusinessConnector(
         "paypal", FAKES / "billing_plans_service.py", "PAYMENTS_TOKEN", pair=True
