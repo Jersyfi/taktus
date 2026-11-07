@@ -14,6 +14,10 @@ export type IconName =
 	| 'ask'
 	| 'gallery'
 	| 'streams'
+	| 'discover'
+	| 'figures'
+	| 'value'
+	| 'report'
 	| 'levels'
 	| 'stages'
 	| 'findings'
@@ -52,6 +56,10 @@ export const DESTINATIONS: Destination[] = [
 	{ id: 'catalogue', label: 'Ask for', href: '#/catalogue', band: 'start', icon: 'ask', routes: ['/catalogue'] },
 	{ id: 'gallery', label: 'Gallery', href: '#/gallery', band: 'start', icon: 'gallery', routes: ['/gallery'] },
 	{ id: 'streams', label: 'Streams', href: '#/streams', band: 'start', icon: 'streams', routes: ['/streams'] },
+	{ id: 'discoveries', label: 'Discoveries', href: '#/discoveries', band: 'start', icon: 'discover', routes: ['/discoveries'] },
+	{ id: 'views', label: 'Figures', href: '#/views', band: 'steer', icon: 'figures', routes: ['/views'] },
+	{ id: 'value', label: 'Value', href: '#/value', band: 'steer', icon: 'value', routes: ['/value'] },
+	{ id: 'role-reports', label: 'Reports', href: '#/role-reports', band: 'steer', icon: 'report', routes: ['/role-reports'] },
 	{ id: 'autonomy', label: 'Levels', href: '#/autonomy', band: 'steer', icon: 'levels', routes: ['/autonomy'] },
 	{ id: 'introduction', label: 'Introduction', href: '#/introduction', band: 'steer', icon: 'stages', routes: ['/introduction'] },
 	{ id: 'findings', label: 'Findings', href: '#/findings', band: 'steer', icon: 'findings', routes: ['/findings'] },
