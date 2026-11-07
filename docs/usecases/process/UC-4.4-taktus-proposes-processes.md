@@ -7,7 +7,7 @@ serves: [P2, P9, P14]
 state: built
 version: 0.6.0
 tests: [tests/composition/test_skills.py::test_corrections_that_recur_at_one_step_become_a_draft_that_names_no_person, tests/composition/test_skills.py::test_a_skill_that_no_using_process_can_evaluate_stays_a_draft, tests/composition/test_process_proposals.py::test_a_process_started_by_hand_every_week_is_proposed_to_that_person_only, tests/composition/test_process_proposals.py::test_an_irregular_rhythm_or_two_starts_are_not_proposed, tests/composition/test_process_proposals.py::test_a_failure_healed_again_and_again_is_an_improvement_proposal_everyone_sees, tests/composition/test_process_proposals.py::test_the_list_is_ordered_by_how_often_the_work_recurs_and_says_so, tests/composition/test_process_proposals.py::test_each_is_accepted_or_declined_on_its_own_and_accepting_builds_a_proposal, tests/composition/test_process_proposals.py::test_only_the_person_a_proposal_is_shown_to_may_decide_it_and_only_once]
-adrs: {ADR-0004: ffdb1f1537f5, ADR-0015: 3a42705e5561, ADR-0162: 543844829afb, ADR-0270: 970ca723e2d7}
+adrs: {ADR-0004: ffdb1f1537f5, ADR-0015: 3a42705e5561, ADR-0162: 543844829afb, ADR-0251: aad75bb537be, ADR-0270: 970ca723e2d7}
 supersedes: null
 ---
 
