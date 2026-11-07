@@ -428,6 +428,7 @@ class LocalWiring:
                     personal=ConfiguredPersonalCredentials(
                         load_personal_credentials(self._configuration)
                     ),
+                    grants=decisions.connections,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)

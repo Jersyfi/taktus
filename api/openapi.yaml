@@ -1262,6 +1262,55 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /levels/runs/{run_id}/steps/{step_id}/queries:
+    get:
+      tags:
+      - levels
+      summary: The queries a step sent
+      description: 'Every query the step sent through a querying capability — a warehouse''s — oldest
+        first: its operation, its text, its parameters, when it was sent, and the digest of the request,
+        which the ledger''s `query.sent` entry names. The ledger holds the reference, never the text (ADR-0006).
+        Shown to a reader who may see the run (ADR-0262 §3).'
+      operationId: step_queries_levels_runs__run_id__steps__step_id__queries_get
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run Id
+      - name: step_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Step Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The queries of the step; none where it sent none.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: 'No such run or step, or one you may not see: answered alike.'
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
   /levels/runs/{run_id}/steps/{step_id}/trace/shares:
     post:
       tags:
@@ -4478,6 +4527,138 @@ paths:
               schema: {}
         '401':
           description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /connections/{capability}/grant:
+    get:
+      tags:
+      - connections
+      summary: Whether writing is granted on a connection
+      description: 'A new connection reads only: `granted` is false until a person with the right grants
+        writing on it (ADR-0262 §2).'
+      operationId: read_connections__capability__grant_get
+      parameters:
+      - name: capability
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capability
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The grant.
+          content:
+            application/json:
+              schema:
+                title: Response Read Connections  Capability  Grant Get
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No connection of that capability reads until granted.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+    put:
+      tags:
+      - connections
+      summary: Grant writing on a connection
+      description: From now on a step may write through the connection; the warehouse's own rights still
+        decide what. The ledger records `connection.granted` with you as its actor (ADR-0262 §2).
+      operationId: grant_connections__capability__grant_put
+      parameters:
+      - name: capability
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capability
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The grant, in force.
+          content:
+            application/json:
+              schema:
+                title: Response Grant Connections  Capability  Grant Put
+        '403':
+          description: You do not hold the right to grant writing.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No connection of that capability reads until granted.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+    delete:
+      tags:
+      - connections
+      summary: Withdraw the grant of writing on a connection
+      description: 'The connection reads only again: a write is refused before it is sent. The ledger
+        records `connection.withdrawn` with you as its actor (ADR-0262 §2).'
+      operationId: withdraw_connections__capability__grant_delete
+      parameters:
+      - name: capability
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capability
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The grant, withdrawn.
+          content:
+            application/json:
+              schema:
+                title: Response Withdraw Connections  Capability  Grant Delete
+        '403':
+          description: You do not hold the right to grant writing.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No connection of that capability reads until granted.
           content:
             application/problem+json: {}
         '422':

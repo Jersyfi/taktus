@@ -42,6 +42,7 @@ from taktus.components.decision.domain.model import DecisionRule, RegisterEntry,
 from taktus.components.governance.domain.model import (
     AnchorConfiguration,
     CaseAnswer,
+    ConnectionGrant,
     CorrectionLimits,
     Happening,
     Incident,
@@ -754,6 +755,16 @@ def source_declaration(tenant: str = "t") -> SourceDeclaration:
         free=("analytics.cohorts",),
         personal=("customers.accounts",),
         configured_at=AT,
+    )
+
+
+def connection_grant(tenant: str = "t") -> ConnectionGrant:
+    return ConnectionGrant(
+        id="warehouse.queries",
+        tenant=tenant,
+        capability="warehouse.queries",
+        created_at=AT,
+        withdrawn=True,
     )
 
 

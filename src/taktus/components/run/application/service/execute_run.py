@@ -310,10 +310,13 @@ from taktus.components.run.ports import (
     Statements,
     Verdict,
     WorkerPool,
+    WriteGrants,
 )
 from taktus.ports.administration import Administration
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.connector import (
+    QUERYING,
+    READ_UNLESS_GRANTED,
     CallContext,
     CallFailed,
     CaseScope,
@@ -447,6 +450,9 @@ NO_RESULT = b"null"
 SOURCE_REF_LENGTH = 200
 """How much of an operation and its input a provenance source reference keeps (ADR-0021 §4
 bounds an input to 384 bytes)."""
+
+QUERY_SENT = "query.sent"
+"""A query a step sent through a querying capability, its request by digest (ADR-0262 §3)."""
 
 
 @dataclass(frozen=True)
@@ -800,7 +806,11 @@ class RunEngine:
         guidance: Guidance | None = None,
         org_units: OrgUnits | None = None,
         personal: PersonalCredentials | None = None,
+        grants: WriteGrants | None = None,
     ) -> None:
+        self._grants = grants
+        """Whether a person granted writing on a connection that reads until granted
+        (ADR-0262 §2). None: no grant is in force, and every such write is refused."""
         self._own = personal
         """Where a step on behalf of a person finds that person's own credential (ADR-0264).
         None: no identity has one, and every such step gets nothing from its source."""
@@ -5583,9 +5593,12 @@ class RunEngine:
         span.set_attribute("adapter", resolved.adapter)
         # Before the call is booked: a stopped connector is neither called nor counted.
         await self._not_stopped(run, resolved.adapter)
+        await self._write_granted(run, resolved, operation)
         scope = await self._frame(run, step_run.step_id, resolved, operation)
         if run.rehearsal and operation.outward and not self._replaying(run):
             return await self._rehearsed(run, resolved, operation, read)
+        if operation.capability in QUERYING:
+            await self._book_query(run, step_run, operation.name, input)
         sent: Digest | None = None
         if operation.outward and not run.rehearsal:
             input, sent = await self._labelled(run, step_run.step_id, work, operation, input)
@@ -5715,6 +5728,38 @@ class RunEngine:
         return replayed, trace, None, resolved.adapter
 
     # --- end of rehearsal ----------------------------------------------------------------------
+
+    async def _write_granted(
+        self, run: Run, resolved: ResolvedConnector, operation: Operation
+    ) -> None:
+        """An outward operation on a connection that reads until a person grants writing is
+        refused before anything of the call, unless the tenant's grant is in force
+        (ADR-0262 §2). The connector is never called; the step fails, and is not retried."""
+        if not operation.outward or operation.capability not in READ_UNLESS_GRANTED:
+            return
+        if self._grants is not None and await self._grants.granted(
+            run.tenant, operation.capability
+        ):
+            return
+        raise _StepFailed(
+            reason=f"{operation.name} was not called: the connection of {operation.capability} "
+            "reads until a person with the right grants writing on it, and no grant is in force "
+            "(ADR-0262)",
+            retryable=False,
+            consumption=None,
+            adapter=resolved.adapter,
+            outcome="write not granted",
+        )
+
+    async def _book_query(
+        self, run: Run, step_run: StepRun, operation: str, input: Mapping[str, Any]
+    ) -> None:
+        """A query is sent now: the request — the operation and its input, the query's text
+        among it — goes into the object store, and `query.sent` names it by digest with the run
+        and the step, before the call, so that a query the source refuses is recorded too. The
+        ledger holds no query text (ADR-0006, ADR-0262 §3)."""
+        digest = await self._objects.put(_canonical({"operation": operation, "input": dict(input)}))
+        await self._record_fenced(run, QUERY_SENT, step_run, "sent", digest)
 
     async def _own_credentials(
         self, run: Run, step_run: StepRun, resolved: ResolvedConnector, work: ConnectorRule
@@ -5943,6 +5988,8 @@ class RunEngine:
         waited = self._waited_so_far(step_run, resumed)
         limit = self._options.park_waits_after_seconds
         while True:
+            if operation.capability in QUERYING:
+                await self._book_query(run, step_run, operation.name, input)
             try:
                 result = await self._call(
                     run, step_run, resolved, operation, input, until.credentials, span, scope=scope
