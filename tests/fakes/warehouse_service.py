@@ -19,11 +19,30 @@ the API's `{"f": [{"v": ...}]}` shape, `maxResults` per page and a `pageToken` f
   first n-1 polls too; `POST /_fake/page` with `{"size": n}` answers at most n rows a page, as
   the warehouse cuts a page by its size in bytes.
 
+**Changes as jobs** (ADR-0262). `POST /bigquery/v2/projects/example/jobs` (jobs.insert,
+https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs/insert) runs the statement of
+`configuration.query.query` as a job under `jobReference.jobId`, and
+`GET /bigquery/v2/projects/example/jobs/<jobId>` (jobs.get) reads it back, with `status.state`
+and `statistics.query.statementType` and `numDmlAffectedRows` (the `Job` resource). A job whose
+identifier exists already is 409 `duplicate`, as the API answers a resource that exists
+(https://cloud.google.com/bigquery/docs/error-messages). A job needs a token issued for the scope
+`https://www.googleapis.com/auth/bigquery`; one for the read-only scope is 403
+`insufficientPermissions`. `POST /_fake/slow` makes the next job `RUNNING` for its first n reads.
+
+**The warehouse's own rights** (UC-5.6 §2). `POST /_fake/policy` with `{"email", "denied",
+"rows"}` sets, for one service account, the columns it may not read and a row filter
+`{"column", "values"}`. A query whose schema names a denied column is 403 `accessDenied`, as
+column-level access control refuses it
+(https://cloud.google.com/bigquery/docs/column-level-security-intro); its rows are only those
+whose column holds one of the values, as a row access policy filters like a `WHERE` clause and
+shows no row it grants none of
+(https://cloud.google.com/bigquery/docs/row-level-security-intro).
+
 And `POST /token`, the OAuth token endpoint (`google_oauth.py`): every other request needs a
 token it issued. Seeded: `FUNNEL`, the steps of the sign-up funnel with their users. Test-only:
 `GET /_fake/state` counts the queries run (`queries`), the dry runs and the statements run that
-were not a SELECT (`written`); `POST /_fake/seed` with `{"query", "schema", "rows"}` adds one;
-`POST /_fake/reset` restores the start. Runnable as
+were not a SELECT (`written`); `GET /_fake/jobs` lists the jobs run; `POST /_fake/seed` with
+`{"query", "schema", "rows"}` adds one; `POST /_fake/reset` restores the start. Runnable as
 `python3 tests/fakes/warehouse_service.py --port 9238`.
 """
 
@@ -53,6 +72,8 @@ FUNNEL = "SELECT step, users FROM signups_funnel ORDER BY users DESC"
 FUNNEL_SCHEMA = [{"name": "step", "type": "STRING"}, {"name": "users", "type": "INTEGER"}]
 FUNNEL_ROWS = [["visited", "1000"], ["signed_up", "400"], ["activated", "250"],
                ["subscribed", "60"]]  # fmt: skip
+WRITE_SCOPE = "https://www.googleapis.com/auth/bigquery"
+CHANGES = ("INSERT", "UPDATE", "DELETE", "MERGE")
 LEADING = re.compile(r"^(\s+|--[^\n]*(\n|$)|#[^\n]*(\n|$)|/\*.*?\*/)", re.DOTALL)
 
 
@@ -87,14 +108,45 @@ class State:
             FUNNEL: (FUNNEL_SCHEMA, FUNNEL_ROWS)
         }
         self.jobs: dict[str, Json] = {}
+        self.changes: dict[str, Json] = {}
+        self.policies: dict[str, Json] = {}
         self.queries = 0
         self.dry_runs = 0
         self.written = 0
         self.slow = 0
         self.page_size = 100000
 
+    def _visible(self, email: str | None, query: str) -> tuple[list[Json], list[list[Any]]]:
+        """The schema and the rows of a seeded query as the service account may read them."""
+        schema, rows = self.seeded[query]
+        policy = self.policies.get(email or "")
+        if policy is None:
+            return schema, rows
+        names = [f["name"] for f in schema]
+        rule = policy.get("rows")
+        if isinstance(rule, dict) and rule.get("column") in names:
+            at = names.index(rule["column"])
+            allowed = set(rule.get("values") or ())
+            rows = [row for row in rows if row[at] in allowed]
+        return schema, rows
+
+    def _denied(self, email: str | None, query: str) -> tuple[int, Json] | None:
+        policy = self.policies.get(email or "")
+        if policy is None or query not in self.seeded:
+            return None
+        denied = [f["name"] for f in self.seeded[query][0] if f["name"] in policy.get("denied", ())]
+        if not denied:
+            return None
+        return 403, error(
+            403,
+            "accessDenied",
+            "PERMISSION_DENIED",
+            "Access Denied: the user does not have permission to access the column(s) "
+            + ", ".join(denied),
+        )
+
     def page(self, job: Json, start: int, size: int) -> Json:
-        schema, rows = self.seeded[job["query"]]
+        schema, rows = self._visible(job.get("email"), job["query"])
         size = min(size, self.page_size)
         cut = rows[start : start + size]
         answer: Json = {
@@ -118,17 +170,20 @@ class State:
             "jobComplete": False,
         }
 
-    def query(self, body: Json) -> tuple[int, Json]:
+    def query(self, body: Json, email: str | None = None) -> tuple[int, Json]:
         text = str(body.get("query", ""))
         dataset = body.get("defaultDataset") or {}
         if dataset.get("projectId") != PROJECT or dataset.get("datasetId") != DATASET:
             return 404, error(404, "notFound", "NOT_FOUND", "Not found: Dataset")
         kind = statement(text)
+        denied = self._denied(email, text)
         if body.get("dryRun"):
             with self.lock:
                 self.dry_runs += 1
             if kind == "SELECT" and text not in self.seeded:
                 return 400, error(400, "invalidQuery", "INVALID_ARGUMENT", "Not found: Table")
+            if denied is not None:
+                return denied
             return 200, {
                 "kind": "bigquery#queryResponse",
                 "jobReference": {"projectId": PROJECT},
@@ -142,7 +197,14 @@ class State:
             return 200, {"kind": "bigquery#queryResponse", "jobComplete": True}
         if text not in self.seeded:
             return 400, error(400, "invalidQuery", "INVALID_ARGUMENT", "Not found: Table")
-        job = {"id": "job_" + secrets.token_hex(8), "query": text, "polls": self.slow}
+        if denied is not None:
+            return denied
+        job = {
+            "id": "job_" + secrets.token_hex(8),
+            "query": text,
+            "polls": self.slow,
+            "email": email,
+        }
         with self.lock:
             self.queries += 1
             self.jobs[job["id"]] = job
@@ -163,6 +225,66 @@ class State:
         size = int((query.get("maxResults") or ["100000"])[0])
         return 200, {**self.page(job, start, size), "kind": "bigquery#getQueryResultsResponse"}
 
+    def _job(self, job: Json) -> Json:
+        done = job["reads"] <= 0
+        document: Json = {
+            "kind": "bigquery#job",
+            "id": f"{PROJECT}:US.{job['id']}",
+            "jobReference": {"projectId": PROJECT, "jobId": job["id"], "location": "US"},
+            "configuration": {"query": {"query": job["query"], "useLegacySql": False}},
+            "status": {"state": "DONE" if done else "RUNNING"},
+        }
+        if done:
+            document["statistics"] = {
+                "query": {
+                    "statementType": job["statement"],
+                    "numDmlAffectedRows": str(job["affected"]),
+                }
+            }
+        return document
+
+    def insert(self, body: Json, scope: str) -> tuple[int, Json]:
+        if WRITE_SCOPE not in scope.split():
+            return 403, error(
+                403,
+                "insufficientPermissions",
+                "PERMISSION_DENIED",
+                "Request had insufficient authentication scopes.",
+            )
+        reference = body.get("jobReference") or {}
+        job_id = str(reference.get("jobId") or "job_" + secrets.token_hex(8))
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,1024}", job_id):
+            return 400, error(400, "invalid", "INVALID_ARGUMENT", "Invalid job ID")
+        query = (body.get("configuration") or {}).get("query") or {}
+        dataset = query.get("defaultDataset") or {}
+        if dataset.get("projectId") != PROJECT or dataset.get("datasetId") != DATASET:
+            return 404, error(404, "notFound", "NOT_FOUND", "Not found: Dataset")
+        with self.lock:
+            if job_id in self.changes:
+                return 409, error(
+                    409, "duplicate", "ALREADY_EXISTS", f"Already Exists: Job {PROJECT}:US.{job_id}"
+                )
+            job = {
+                "id": job_id,
+                "query": str(query.get("query", "")),
+                "statement": statement(str(query.get("query", ""))),
+                "affected": 1,
+                "reads": self.slow,
+            }
+            self.slow = 0
+            self.changes[job_id] = job
+            if job["statement"] in CHANGES:
+                self.written += 1
+        return 200, self._job(job)
+
+    def get_job(self, job_id: str) -> tuple[int, Json]:
+        with self.lock:
+            job = self.changes.get(job_id)
+            if job is None:
+                return 404, error(404, "notFound", "NOT_FOUND", f"Not found: Job {job_id}")
+            job["reads"] -= 1
+            return 200, self._job(job)
+
 
 def handler(state: State) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
@@ -180,11 +302,11 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
         def body(self) -> bytes:
             return self.rfile.read(int(self.headers.get("Content-Length") or 0))
 
-        def admitted(self) -> bool:
-            if state.tokens.admits(self.headers.get("Authorization")):
-                return True
-            self.answer(401, error(401, "authError", "UNAUTHENTICATED", "Invalid credentials"))
-            return False
+        def holder(self) -> tuple[str, str] | None:
+            found = state.tokens.holder(self.headers.get("Authorization"))
+            if found is None:
+                self.answer(401, error(401, "authError", "UNAUTHENTICATED", "Invalid credentials"))
+            return found
 
         def do_GET(self) -> None:
             parsed = urlparse(self.path)
@@ -198,13 +320,20 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
                     },
                 )
                 return
-            if not self.admitted():
+            if parsed.path == "/_fake/jobs":
+                self.answer(200, {"jobs": sorted(state.changes)})
+                return
+            if self.holder() is None:
                 return
             found = re.fullmatch(rf"/bigquery/v2/projects/{PROJECT}/queries/([^/]+)", parsed.path)
-            if found is None:
-                self.answer(404, error(404, "notFound", "NOT_FOUND", "Not found"))
+            if found is not None:
+                self.answer(*state.results(found.group(1), parse_qs(parsed.query)))
                 return
-            self.answer(*state.results(found.group(1), parse_qs(parsed.query)))
+            found = re.fullmatch(rf"/bigquery/v2/projects/{PROJECT}/jobs/([^/]+)", parsed.path)
+            if found is not None:
+                self.answer(*state.get_job(found.group(1)))
+                return
+            self.answer(404, error(404, "notFound", "NOT_FOUND", "Not found"))
 
         def do_POST(self) -> None:
             path = urlparse(self.path).path
@@ -229,17 +358,30 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
                 state.seeded[str(seed["query"])] = (list(seed["schema"]), list(seed["rows"]))
                 self.answer(200, {})
                 return
-            if not self.admitted():
+            if path == "/_fake/policy":
+                policy = json.loads(raw or b"{}")
+                state.policies[str(policy["email"])] = {
+                    "denied": list(policy.get("denied") or ()),
+                    "rows": policy.get("rows"),
+                }
+                self.answer(200, {})
                 return
-            if path != f"/bigquery/v2/projects/{PROJECT}/queries":
-                self.answer(404, error(404, "notFound", "NOT_FOUND", "Not found: Project"))
+            held = self.holder()
+            if held is None:
                 return
+            email, scope = held
             try:
                 body = json.loads(raw or b"{}")
             except ValueError:
                 self.answer(400, error(400, "invalid", "INVALID_ARGUMENT", "Invalid JSON payload"))
                 return
-            self.answer(*state.query(body))
+            if path == f"/bigquery/v2/projects/{PROJECT}/queries":
+                self.answer(*state.query(body, email))
+                return
+            if path == f"/bigquery/v2/projects/{PROJECT}/jobs":
+                self.answer(*state.insert(body, scope))
+                return
+            self.answer(404, error(404, "notFound", "NOT_FOUND", "Not found: Project"))
 
     return Handler
 

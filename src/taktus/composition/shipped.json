@@ -71,6 +71,7 @@
       "image": "taktus-connector-bigquery",
       "name": "bigquery",
       "operations": [
+        "warehouse.queries.change",
         "warehouse.queries.run"
       ]
     },

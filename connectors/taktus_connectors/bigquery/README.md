@@ -2,7 +2,8 @@
 
 The connector contract v1 ([`contracts/connector/v1`](../../../contracts/connector/v1/README.md))
 over the BigQuery API v2: one read-only query in standard SQL over the dataset the connector is
-configured with. Everywhere else it is the capability `warehouse.queries`. It serves the
+configured with, and one change of data, which the run sends only on a connection a person
+granted writing (ADR-0262). Everywhere else it is the capability `warehouse.queries`. It serves the
 questions about figures and the funnel of UC-03 (ADR-0213) (B-9.02, B-9.06) from the business's copy
 without personal fields (UC-7.7). This directory, this file and the fake's docstring are the
 only places in the repository that name the product.
@@ -26,7 +27,15 @@ The documentation followed:
 `pageToken`, `totalRows`, `totalBytesProcessed`),
 [`jobs.getQueryResults`](https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs/getQueryResults),
 the [`Job` resource](https://cloud.google.com/bigquery/docs/reference/rest/v2/Job) for the
-statement types, and Google's
+statement types, `status.state` and `statistics.query.numDmlAffectedRows`,
+[`jobs.insert`](https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs/insert) and
+[`jobs.get`](https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs/get) for a change,
+the [`JobReference`](https://cloud.google.com/bigquery/docs/reference/rest/v2/JobReference) for
+what a job identifier may hold, the
+[error messages](https://cloud.google.com/bigquery/docs/error-messages) for `duplicate`, the
+[row-level](https://cloud.google.com/bigquery/docs/row-level-security-intro) and
+[column-level](https://cloud.google.com/bigquery/docs/column-level-security-intro) security the
+fake reproduces per service account, and Google's
 [server-to-server OAuth flow](https://developers.google.com/identity/protocols/oauth2/service-account).
 
 ## What it declares
@@ -34,6 +43,7 @@ statement types, and Google's
 | Operation | Effect | What it does |
 |---|---|---|
 | `warehouse.queries.run` | read | the statement checked, run as a dry run, refused unless the warehouse calls it a `SELECT`, then run with `POST /bigquery/v2/projects/<project>/queries`; a job not done at once followed with `GET .../queries/<jobId>`, and further pages read the same way |
+| `warehouse.queries.change` | write, `marked` | the statement checked to begin with `INSERT`, `UPDATE`, `DELETE` or `MERGE`, run as a dry run and refused unless the warehouse calls it one of them, then run as a job with `POST /bigquery/v2/projects/<project>/jobs` under a `jobReference.jobId` the call's idempotency key gives; a repeat is answered 409 `duplicate`, the job read with `GET .../jobs/<jobId>` and reported `replayed`; a job not done at once followed the same way until its `status.state` is `DONE` |
 
 | Input | Meaning |
 |---|---|
@@ -41,7 +51,14 @@ statement types, and Google's
 | `parameters` | named parameters, `@name` in the query: text (`STRING`), whole numbers (`INT64`), decimals (`FLOAT64`) |
 | `limit` | at most this many rows, 1 to 10000 (default 1000), read in at most ten pages |
 
-The output is `schema` (each column's `name` and `type`), `rows` — each `{column: value}`,
+A change takes `query` and `parameters` alike, and answers `statement_type`, `affected_rows` (the
+warehouse's `numDmlAffectedRows`) and `job`. **The run, not the connector, decides whether it may
+be sent**: a connection of `warehouse.queries` reads until a person with the right grants writing
+on it, and a change without the grant is refused before it reaches the connector (ADR-0262 §2).
+Every query and change the run sends is recorded in the ledger as `query.sent`, by reference
+(ADR-0262 §3).
+
+The output of a query is `schema` (each column's `name` and `type`), `rows` — each `{column: value}`,
 every value the text the warehouse gave or null, a nested record as JSON text — `total_rows`,
 `complete`, whether every row is in `rows`, and `bytes_processed`.
 
@@ -63,7 +80,8 @@ outward.
 |---|---|
 | 400 (a query it refuses, `invalidQuery`), 404 (no such project, dataset or table) | `invalid` |
 | 401, a key the token endpoint refuses, a credential that is no key | `unauthenticated` |
-| 403, a dry run that names no `SELECT` | `forbidden` |
+| 403 (a column the identity may not read, a scope that may not write), a dry run that names no `SELECT` — for a change, none of the four | `forbidden` |
+| 409 to a change's job | a repeat: the job read, `replayed` |
 | 429, 5xx, no answer in time, no connection, a job not done in time | `unavailable`, retryable |
 | anything else | `unexpected` |
 
@@ -71,11 +89,12 @@ outward.
 
 | Name | Purpose | How it reaches the connector |
 |---|---|---|
-| `WAREHOUSE_KEY` | actions: the **requesting identity's** service account key, JSON as Google issues it, with *BigQuery Data Viewer* on the copy's dataset and *BigQuery Job User* on the project, and no other role | the file `TAKTUS_CREDENTIAL_WAREHOUSE_KEY_FILE` names, read at the moment of each call, never stored |
+| `WAREHOUSE_KEY` | actions: the **requesting identity's** service account key, JSON as Google issues it, with *BigQuery Data Viewer* on the copy's dataset and *BigQuery Job User* on the project; *BigQuery Data Editor* on a dataset only where a tenant changes data in it | the file `TAKTUS_CREDENTIAL_WAREHOUSE_KEY_FILE` names, read at the moment of each call, never stored |
 
 Each call signs a statement with the key (RS256) for the scope
 `https://www.googleapis.com/auth/bigquery.readonly`, the narrowest that `jobs.query` and
-`jobs.getQueryResults` list, and exchanges it for an access token at the token endpoint (`--token-endpoint`; by default Google's
+`jobs.getQueryResults` list — a change for `https://www.googleapis.com/auth/bigquery`, the
+narrowest `jobs.insert` lists — and exchanges it for an access token at the token endpoint (`--token-endpoint`; by default Google's
 `https://oauth2.googleapis.com/token`, or `<target>/token` where `--target` names another
 address) — never the key's own `token_uri`, which could send a signed statement elsewhere
 ([`auth.py`](auth.py)). Nothing is kept between calls. `CREDENTIALS.md` describes it.
@@ -89,4 +108,11 @@ uv run taktusctl conformance run --contract connector/v1 \
 
 [`scenario.json`](scenario.json) runs the sign-up funnel the fake under
 `tests/fakes/warehouse_service.py` holds (project `example`, dataset `product_copy`), and a
-`DELETE` as the invalid call. It names no write, and C-05 passes as not applicable.
+`DELETE` as the invalid query, and one `INSERT` as its write, which C-05 repeats under the same
+key and finds replayed.
+
+**The warehouse's own rights.** Rows and columns are the warehouse's to limit, never the
+connector's: the identity's own key is passed through (a step `on_behalf`, ADR-0264), and the
+fake limits rows by a row filter and refuses a column per service account, as row access
+policies and column-level access control do
+(`tests/adapters/connectors/test_warehouse_connector.py`, `tests/components/run/test_warehouse.py`).
