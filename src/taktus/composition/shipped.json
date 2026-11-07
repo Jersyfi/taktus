@@ -27,6 +27,18 @@
     },
     {
       "capabilities": [
+        "stores.reviews"
+      ],
+      "image": "taktus-connector-appstore",
+      "name": "appstore",
+      "operations": [
+        "stores.reviews.list",
+        "stores.reviews.read",
+        "stores.reviews.reply"
+      ]
+    },
+    {
+      "capabilities": [
         "billing.costs"
       ],
       "image": "taktus-connector-aws",
@@ -59,6 +71,18 @@
     },
     {
       "capabilities": [
+        "feedback.posts"
+      ],
+      "image": "taktus-connector-canny",
+      "name": "canny",
+      "operations": [
+        "feedback.posts.create",
+        "feedback.posts.list",
+        "feedback.posts.vote"
+      ]
+    },
+    {
+      "capabilities": [
         "knowledge.pages"
       ],
       "image": null,
@@ -67,6 +91,16 @@
         "knowledge.pages.list",
         "knowledge.pages.read",
         "knowledge.pages.write"
+      ]
+    },
+    {
+      "capabilities": [
+        "mentions.search"
+      ],
+      "image": "taktus-connector-discourse",
+      "name": "discourse",
+      "operations": [
+        "mentions.search.query"
       ]
     },
     {
@@ -90,6 +124,19 @@
       "operations": [
         "expiry.certificates.read",
         "expiry.domains.read"
+      ]
+    },
+    {
+      "capabilities": [
+        "helpdesk.tickets"
+      ],
+      "image": "taktus-connector-freshdesk",
+      "name": "freshdesk",
+      "operations": [
+        "helpdesk.tickets.close",
+        "helpdesk.tickets.list",
+        "helpdesk.tickets.note",
+        "helpdesk.tickets.read"
       ]
     },
     {
@@ -140,12 +187,68 @@
     },
     {
       "capabilities": [
+        "audit.events"
+      ],
+      "image": "taktus-connector-githubaudit",
+      "name": "githubaudit",
+      "operations": [
+        "audit.events.list"
+      ]
+    },
+    {
+      "capabilities": [
+        "stores.reviews"
+      ],
+      "image": "taktus-connector-googleplay",
+      "name": "googleplay",
+      "operations": [
+        "stores.reviews.list",
+        "stores.reviews.read",
+        "stores.reviews.reply"
+      ]
+    },
+    {
+      "capabilities": [
+        "audit.events"
+      ],
+      "image": "taktus-connector-googleworkspace",
+      "name": "googleworkspace",
+      "operations": [
+        "audit.events.list"
+      ]
+    },
+    {
+      "capabilities": [
         "check.http"
       ],
       "image": "taktus-connector-httpcheck",
       "name": "httpcheck",
       "operations": [
         "check.http.run"
+      ]
+    },
+    {
+      "capabilities": [
+        "crm.contacts"
+      ],
+      "image": "taktus-connector-hubspot",
+      "name": "hubspot",
+      "operations": [
+        "crm.contacts.create",
+        "crm.contacts.find",
+        "crm.contacts.note"
+      ]
+    },
+    {
+      "capabilities": [
+        "tasks.items"
+      ],
+      "image": "taktus-connector-jira",
+      "name": "jira",
+      "operations": [
+        "tasks.items.list",
+        "tasks.items.read",
+        "tasks.items.remind"
       ]
     },
     {
@@ -159,6 +262,18 @@
         "deployment.workloads.release",
         "deployment.workloads.rollback",
         "deployment.workloads.scale"
+      ]
+    },
+    {
+      "capabilities": [
+        "tasks.items"
+      ],
+      "image": "taktus-connector-linear",
+      "name": "linear",
+      "operations": [
+        "tasks.items.list",
+        "tasks.items.read",
+        "tasks.items.remind"
       ]
     },
     {
@@ -205,12 +320,35 @@
     },
     {
       "capabilities": [
+        "mentions.search"
+      ],
+      "image": "taktus-connector-mastodon",
+      "name": "mastodon",
+      "operations": [
+        "mentions.search.query"
+      ]
+    },
+    {
+      "capabilities": [
         "models.costs"
       ],
       "image": "taktus-connector-openai",
       "name": "openai",
       "operations": [
         "models.costs.daily"
+      ]
+    },
+    {
+      "capabilities": [
+        "payments.customers",
+        "payments.subscriptions"
+      ],
+      "image": "taktus-connector-paypal",
+      "name": "paypal",
+      "operations": [
+        "payments.customers.subscriptions",
+        "payments.subscriptions.list",
+        "payments.subscriptions.read"
       ]
     },
     {
@@ -222,6 +360,31 @@
       "operations": [
         "metrics.series.query",
         "metrics.series.range"
+      ]
+    },
+    {
+      "capabilities": [
+        "payments.customers",
+        "payments.subscriptions"
+      ],
+      "image": "taktus-connector-revenuecat",
+      "name": "revenuecat",
+      "operations": [
+        "payments.customers.subscriptions",
+        "payments.subscriptions.list",
+        "payments.subscriptions.read"
+      ]
+    },
+    {
+      "capabilities": [
+        "directory.accounts",
+        "directory.groups"
+      ],
+      "image": "taktus-connector-scim",
+      "name": "scim",
+      "operations": [
+        "directory.accounts.list",
+        "directory.groups.list"
       ]
     },
     {
@@ -261,6 +424,22 @@
         "payments.customers.subscriptions",
         "payments.subscriptions.list",
         "payments.subscriptions.read"
+      ]
+    },
+    {
+      "capabilities": [
+        "helpcentre.articles",
+        "helpdesk.tickets"
+      ],
+      "image": "taktus-connector-zendesk",
+      "name": "zendesk",
+      "operations": [
+        "helpcentre.articles.draft",
+        "helpcentre.articles.list",
+        "helpdesk.tickets.close",
+        "helpdesk.tickets.list",
+        "helpdesk.tickets.note",
+        "helpdesk.tickets.read"
       ]
     }
   ],

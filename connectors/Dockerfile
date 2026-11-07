@@ -50,6 +50,11 @@ COPY --chown=connector:connector connectors/taktus_connectors/anthropic /app/tak
 ENTRYPOINT ["python", "-m", "taktus_connectors.anthropic"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
+FROM base AS appstore
+COPY --chown=connector:connector connectors/taktus_connectors/appstore /app/taktus_connectors/appstore
+ENTRYPOINT ["python", "-m", "taktus_connectors.appstore"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
 FROM base AS aws
 COPY --chown=connector:connector connectors/taktus_connectors/aws /app/taktus_connectors/aws
 ENTRYPOINT ["python", "-m", "taktus_connectors.aws"]
@@ -65,6 +70,16 @@ COPY --chown=connector:connector connectors/taktus_connectors/calendar /app/takt
 ENTRYPOINT ["python", "-m", "taktus_connectors.calendar"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
+FROM base AS canny
+COPY --chown=connector:connector connectors/taktus_connectors/canny /app/taktus_connectors/canny
+ENTRYPOINT ["python", "-m", "taktus_connectors.canny"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
+FROM base AS discourse
+COPY --chown=connector:connector connectors/taktus_connectors/discourse /app/taktus_connectors/discourse
+ENTRYPOINT ["python", "-m", "taktus_connectors.discourse"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
 FROM base AS einvoice
 COPY --chown=connector:connector connectors/taktus_connectors/einvoice /app/taktus_connectors/einvoice
 ENTRYPOINT ["python", "-m", "taktus_connectors.einvoice"]
@@ -75,9 +90,29 @@ COPY --chown=connector:connector connectors/taktus_connectors/expiry /app/taktus
 ENTRYPOINT ["python", "-m", "taktus_connectors.expiry"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
+FROM base AS freshdesk
+COPY --chown=connector:connector connectors/taktus_connectors/freshdesk /app/taktus_connectors/freshdesk
+ENTRYPOINT ["python", "-m", "taktus_connectors.freshdesk"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
 FROM base AS github
 COPY --chown=connector:connector connectors/taktus_connectors/github /app/taktus_connectors/github
 ENTRYPOINT ["python", "-m", "taktus_connectors.github"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
+FROM base AS githubaudit
+COPY --chown=connector:connector connectors/taktus_connectors/githubaudit /app/taktus_connectors/githubaudit
+ENTRYPOINT ["python", "-m", "taktus_connectors.githubaudit"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
+FROM base AS googleplay
+COPY --chown=connector:connector connectors/taktus_connectors/googleplay /app/taktus_connectors/googleplay
+ENTRYPOINT ["python", "-m", "taktus_connectors.googleplay"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
+FROM base AS googleworkspace
+COPY --chown=connector:connector connectors/taktus_connectors/googleworkspace /app/taktus_connectors/googleworkspace
+ENTRYPOINT ["python", "-m", "taktus_connectors.googleworkspace"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
 FROM base AS httpcheck
@@ -85,9 +120,24 @@ COPY --chown=connector:connector connectors/taktus_connectors/httpcheck /app/tak
 ENTRYPOINT ["python", "-m", "taktus_connectors.httpcheck"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
+FROM base AS hubspot
+COPY --chown=connector:connector connectors/taktus_connectors/hubspot /app/taktus_connectors/hubspot
+ENTRYPOINT ["python", "-m", "taktus_connectors.hubspot"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
+FROM base AS jira
+COPY --chown=connector:connector connectors/taktus_connectors/jira /app/taktus_connectors/jira
+ENTRYPOINT ["python", "-m", "taktus_connectors.jira"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
 FROM base AS kubernetes
 COPY --chown=connector:connector connectors/taktus_connectors/kubernetes /app/taktus_connectors/kubernetes
 ENTRYPOINT ["python", "-m", "taktus_connectors.kubernetes"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
+FROM base AS linear
+COPY --chown=connector:connector connectors/taktus_connectors/linear /app/taktus_connectors/linear
+ENTRYPOINT ["python", "-m", "taktus_connectors.linear"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
 FROM base AS mail
@@ -95,14 +145,34 @@ COPY --chown=connector:connector connectors/taktus_connectors/mail /app/taktus_c
 ENTRYPOINT ["python", "-m", "taktus_connectors.mail"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
+FROM base AS mastodon
+COPY --chown=connector:connector connectors/taktus_connectors/mastodon /app/taktus_connectors/mastodon
+ENTRYPOINT ["python", "-m", "taktus_connectors.mastodon"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
 FROM base AS openai
 COPY --chown=connector:connector connectors/taktus_connectors/openai /app/taktus_connectors/openai
 ENTRYPOINT ["python", "-m", "taktus_connectors.openai"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
+FROM base AS paypal
+COPY --chown=connector:connector connectors/taktus_connectors/paypal /app/taktus_connectors/paypal
+ENTRYPOINT ["python", "-m", "taktus_connectors.paypal"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
 FROM base AS prometheus
 COPY --chown=connector:connector connectors/taktus_connectors/prometheus /app/taktus_connectors/prometheus
 ENTRYPOINT ["python", "-m", "taktus_connectors.prometheus"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
+FROM base AS revenuecat
+COPY --chown=connector:connector connectors/taktus_connectors/revenuecat /app/taktus_connectors/revenuecat
+ENTRYPOINT ["python", "-m", "taktus_connectors.revenuecat"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
+FROM base AS scim
+COPY --chown=connector:connector connectors/taktus_connectors/scim /app/taktus_connectors/scim
+ENTRYPOINT ["python", "-m", "taktus_connectors.scim"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
 FROM base AS sentry
@@ -123,4 +193,9 @@ CMD ["--host", "0.0.0.0", "--port", "9100"]
 FROM base AS vendor
 COPY --chown=connector:connector connectors/taktus_connectors/vendor /app/taktus_connectors/vendor
 ENTRYPOINT ["python", "-m", "taktus_connectors.vendor"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
+FROM base AS zendesk
+COPY --chown=connector:connector connectors/taktus_connectors/zendesk /app/taktus_connectors/zendesk
+ENTRYPOINT ["python", "-m", "taktus_connectors.zendesk"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]

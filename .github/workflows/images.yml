@@ -127,6 +127,9 @@ jobs:
           - name: taktus-connector-anthropic
             dockerfile: connectors/Dockerfile
             target: anthropic
+          - name: taktus-connector-appstore
+            dockerfile: connectors/Dockerfile
+            target: appstore
           - name: taktus-connector-aws
             dockerfile: connectors/Dockerfile
             target: aws
@@ -136,30 +139,69 @@ jobs:
           - name: taktus-connector-calendar
             dockerfile: connectors/Dockerfile
             target: calendar
+          - name: taktus-connector-canny
+            dockerfile: connectors/Dockerfile
+            target: canny
+          - name: taktus-connector-discourse
+            dockerfile: connectors/Dockerfile
+            target: discourse
           - name: taktus-connector-einvoice
             dockerfile: connectors/Dockerfile
             target: einvoice
           - name: taktus-connector-expiry
             dockerfile: connectors/Dockerfile
             target: expiry
+          - name: taktus-connector-freshdesk
+            dockerfile: connectors/Dockerfile
+            target: freshdesk
           - name: taktus-connector-github
             dockerfile: connectors/Dockerfile
             target: github
+          - name: taktus-connector-githubaudit
+            dockerfile: connectors/Dockerfile
+            target: githubaudit
+          - name: taktus-connector-googleplay
+            dockerfile: connectors/Dockerfile
+            target: googleplay
+          - name: taktus-connector-googleworkspace
+            dockerfile: connectors/Dockerfile
+            target: googleworkspace
           - name: taktus-connector-httpcheck
             dockerfile: connectors/Dockerfile
             target: httpcheck
+          - name: taktus-connector-hubspot
+            dockerfile: connectors/Dockerfile
+            target: hubspot
+          - name: taktus-connector-jira
+            dockerfile: connectors/Dockerfile
+            target: jira
           - name: taktus-connector-kubernetes
             dockerfile: connectors/Dockerfile
             target: kubernetes
+          - name: taktus-connector-linear
+            dockerfile: connectors/Dockerfile
+            target: linear
           - name: taktus-connector-mail
             dockerfile: connectors/Dockerfile
             target: mail
+          - name: taktus-connector-mastodon
+            dockerfile: connectors/Dockerfile
+            target: mastodon
           - name: taktus-connector-openai
             dockerfile: connectors/Dockerfile
             target: openai
+          - name: taktus-connector-paypal
+            dockerfile: connectors/Dockerfile
+            target: paypal
           - name: taktus-connector-prometheus
             dockerfile: connectors/Dockerfile
             target: prometheus
+          - name: taktus-connector-revenuecat
+            dockerfile: connectors/Dockerfile
+            target: revenuecat
+          - name: taktus-connector-scim
+            dockerfile: connectors/Dockerfile
+            target: scim
           - name: taktus-connector-sentry
             dockerfile: connectors/Dockerfile
             target: sentry
@@ -172,6 +214,9 @@ jobs:
           - name: taktus-connector-vendor
             dockerfile: connectors/Dockerfile
             target: vendor
+          - name: taktus-connector-zendesk
+            dockerfile: connectors/Dockerfile
+            target: zendesk
     env:
       IMAGE: ${{ vars.IMAGE_REGISTRY }}/${{ matrix.name }}
       TAG: ${{ needs.registry.outputs.tag }}
