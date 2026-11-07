@@ -596,3 +596,8 @@ role it would tie the core to a model stack and the removal test would be lost.
   per credential, the platforms it administers (`ports/administration.py`, ADR-0052). The
   composition root reads both once and hands the one value to the process component's
   registration and to the run engine's admission; without a platform the daemon warns at start.
+- **The machine's hardware.** The hardware port (`ports/hardware.py`, ADR-0284) is served by
+  `adapters/driven/platform/hardware.py`, which reads the kernel's device classes and runs no
+  program. `composition/hardware.py` hands it, with every configured model and its
+  `TAKTUS_MODEL_NEEDS`, to governance's `ReportHardwareHandler`; `taktusctl hardware` prints the
+  report through `Wiring.hardware`, with no state and no database.

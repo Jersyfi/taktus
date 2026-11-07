@@ -97,6 +97,7 @@ from taktus.components.decision.domain.model import Request
 from taktus.components.governance.application.service import (
     Drifts,
     ExpectedRuns,
+    ReportHardwareHandler,
     ResultDefects,
     SubjectRequests,
 )
@@ -167,6 +168,7 @@ from taktus.composition.execution import (
 )
 from taktus.composition.findings import RunBlocks, RunContent, sending_of
 from taktus.composition.guides import InstanceGuides, served_directory
+from taktus.composition.hardware import hardware_report
 from taktus.composition.interfaces import broken_interfaces
 from taktus.composition.levels import RepositoryLevelRecords, VersionStatements
 from taktus.composition.loopback import Loopback, Pools
@@ -882,6 +884,14 @@ class LocalWiring:
                 tenants=await registry.served(),
                 job_memory_bytes=memory_demand(configured),
             )
+
+    def hardware(self) -> ReportHardwareHandler:
+        """Looking at the machine needs no state (ADR-0284)."""
+        try:
+            models = load_models(self._configuration)
+        except ConfigurationError as error:
+            raise NotOperable(str(error)) from error
+        return hardware_report(models, clock=SystemClock())
 
     def catalogue_author(self) -> CatalogueAuthor:
         """Signing a catalogue's index needs no state (ADR-0175 §2)."""

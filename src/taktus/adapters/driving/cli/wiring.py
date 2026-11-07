@@ -33,6 +33,7 @@ from taktus.components.governance.application.service import (
     Corrections,
     ExpectedRuns,
     ReportCapacityHandler,
+    ReportHardwareHandler,
     ResultDefects,
     Stages,
     SubjectRequests,
@@ -379,6 +380,12 @@ class Wiring(Protocol):
         """Open the capacity report against the state where it is configured — no worker, no
         connector: looking at the platform starts nothing. Raises `NotOperable` as
         `services` does."""
+        ...
+
+    def hardware(self) -> ReportHardwareHandler:
+        """The hardware report: the machine this process runs on and every configured model
+        with its declared needs (ADR-0284). No state, no database. Raises `NotOperable` when
+        the models' configuration cannot be read."""
         ...
 
     def catalogue_author(self) -> CatalogueAuthor:

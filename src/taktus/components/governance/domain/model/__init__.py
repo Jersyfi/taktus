@@ -22,6 +22,13 @@ from taktus.components.governance.domain.model.corrections import (
     shipped_limits,
 )
 from taktus.components.governance.domain.model.egress import Egress, ResultRef
+from taktus.components.governance.domain.model.hardware import (
+    Fit,
+    HardwareReport,
+    ModelFit,
+    NeedCheck,
+    NeedStatus,
+)
 from taktus.components.governance.domain.model.incident import (
     Happening,
     Incident,
@@ -81,7 +88,9 @@ __all__ = [
     "Exported",
     "Figures",
     "Finding",
+    "Fit",
     "Happening",
+    "HardwareReport",
     "HeldObject",
     "HeldStep",
     "Holding",
@@ -90,6 +99,9 @@ __all__ = [
     "IncidentState",
     "Lowered",
     "MessageRules",
+    "ModelFit",
+    "NeedCheck",
+    "NeedStatus",
     "OrgUnitQuota",
     "Outcome",
     "ProcessEvidence",

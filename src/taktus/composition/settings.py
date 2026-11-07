@@ -27,6 +27,7 @@ from taktus.conformance.contracts import contracts_root
 from taktus.ports.administration import NONE, Administration
 from taktus.ports.configuration import Configuration, ConfigurationError, Secret
 from taktus.ports.execution import variable_refusal
+from taktus.ports.hardware import HardwareNeeds
 from taktus.ports.model import LOCATIONS, MODEL_CLASSES, PriceTable, WeightingTable
 from taktus.ports.worker import Host
 
@@ -474,6 +475,11 @@ class ModelSettings:
     cool_down_seconds: float = 60.0
     """`TAKTUS_MODEL_COOL_DOWN_SECONDS`: how long a model is passed over after a failure, or
     after a rate limit whose answer named no delay (ADR-0116 §5). The instance's alone."""
+    needs: HardwareNeeds = field(default_factory=HardwareNeeds)
+    """`TAKTUS_MODEL_NEEDS`: what the model needs of the machine it runs on, as `key=value`
+    pairs — `processors=N`, `memory=16GiB`, `accelerator=graphics|accelerator|any`,
+    `accelerator_memory=24GiB`. Checked for a model at location `own` against the instance's
+    hardware (`taktusctl hardware`, ADR-0284); nothing declared by default."""
 
     @property
     def identifier(self) -> str:
@@ -499,6 +505,7 @@ class ModelSettings:
             (f"{prefix}_USAGE_KINDS", ",".join(self.usage_kinds)),
             (f"{prefix}_LOCATION", self.location),
             (f"{prefix}_EXACTNESS", ",".join(self.classes)),
+            (f"{prefix}_NEEDS", needs_text(self.needs)),
             (key, credential),
         ]
         if self.member is None:
@@ -680,7 +687,78 @@ def load_model(configuration: Configuration, *, member: str | None = None) -> Mo
         location=reader.choice("model.location", "elsewhere", LOCATIONS),
         classes=_exactness_classes(reader, configuration),
         cool_down_seconds=reader.number("model.cool.down.seconds", 60.0, low=0.0),
+        needs=parse_needs(configuration.name("model.needs"), reader.names("model.needs", ())),
     )
+
+
+SIZE = re.compile(r"^(\d+(?:\.\d+)?)\s*(MiB|GiB|TiB)$")
+SIZE_FACTOR = {"MiB": 1024**2, "GiB": 1024**3, "TiB": 1024**4}
+NEED_KEYS = ("processors", "memory", "accelerator", "accelerator_memory")
+WANTED_ACCELERATORS = ("graphics", "accelerator", "any")
+
+
+def _size(name: str, need: str, text: str) -> int:
+    matched = SIZE.fullmatch(text.strip())
+    if matched is None:
+        raise ConfigurationError(name, f"{need}={text!r} is not a size such as 16GiB or 512MiB")
+    return int(float(matched.group(1)) * SIZE_FACTOR[matched.group(2)])
+
+
+def parse_needs(name: str, pairs: tuple[str, ...]) -> HardwareNeeds:
+    """`TAKTUS_MODEL_NEEDS`: `key=value` pairs separated by commas (ADR-0284 §4)."""
+    given: dict[str, str] = {}
+    for pair in pairs:
+        key, separator, value = pair.partition("=")
+        key, value = key.strip(), value.strip()
+        if not separator or not value:
+            raise ConfigurationError(name, f"{pair!r} is not key=value")
+        if key not in NEED_KEYS:
+            raise ConfigurationError(name, f"{key!r} is not a need; one of {', '.join(NEED_KEYS)}")
+        if key in given:
+            raise ConfigurationError(name, f"{key} is named twice")
+        given[key] = value
+    processors: int | None = None
+    if "processors" in given:
+        try:
+            processors = int(given["processors"])
+        except ValueError:
+            raise ConfigurationError(
+                name, f"processors={given['processors']!r} is not a whole number"
+            ) from None
+        if processors < 1:
+            raise ConfigurationError(name, "processors must be at least 1")
+    accelerator = given.get("accelerator")
+    if accelerator is not None and accelerator not in WANTED_ACCELERATORS:
+        raise ConfigurationError(
+            name,
+            f"accelerator={accelerator!r} is not a kind; one of {', '.join(WANTED_ACCELERATORS)}",
+        )
+    return HardwareNeeds.model_validate(
+        {
+            "processors": processors,
+            "memory_bytes": None
+            if "memory" not in given
+            else _size(name, "memory", given["memory"]),
+            "accelerator": accelerator,
+            "accelerator_memory_bytes": None
+            if "accelerator_memory" not in given
+            else _size(name, "accelerator_memory", given["accelerator_memory"]),
+        }
+    )
+
+
+def needs_text(needs: HardwareNeeds) -> str:
+    """The declaration as it is configured, for `effective()`."""
+    parts: list[str] = []
+    if needs.processors is not None:
+        parts.append(f"processors={needs.processors}")
+    if needs.memory_bytes is not None:
+        parts.append(f"memory={needs.memory_bytes // 1024**2}MiB")
+    if needs.accelerator is not None:
+        parts.append(f"accelerator={needs.accelerator}")
+    if needs.accelerator_memory_bytes is not None:
+        parts.append(f"accelerator_memory={needs.accelerator_memory_bytes // 1024**2}MiB")
+    return ",".join(parts)
 
 
 def _exactness_classes(reader: _Reader, configuration: Configuration) -> tuple[str, ...]:

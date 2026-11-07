@@ -9,11 +9,13 @@ the ledger (ADR-0044); `conformance list` prints every configured adapter with i
 and says which connectors serve a vendor's MCP server and under which manifest (ADR-0117).
 `run` and `submit` drive the control plane: `run` executes a bundle in this process, `submit`
 queues it for the daemon. `capacity` reports what the platform has left
-and the date a person must act by. `catalogue` lists, installs and signs the entries of a
-catalogue of signed adapters and bundles (ADR-0175). `cost` recomputes what a run cost from
-the ledger. `bottlenecks` says what a higher limit would have bought and how to wait less on
-people (ADR-0283). `prices import` turns an open model price list into a new price table version, a
-file, and lists what it could not map (#327). `identity`
+and the date a person must act by; `hardware` what the machine is — processors, memory,
+accelerators — and whether each local model has what it needs there (ADR-0284). `catalogue`
+lists, installs and signs the entries of a catalogue of signed adapters and bundles
+(ADR-0175). `cost` recomputes what a run cost from the ledger. `bottlenecks` says what a higher
+limit would have bought and how to wait less on people (ADR-0283). `prices import` turns an open
+model price list into a new price table version, a file, and lists what it could not map
+(#327). `identity`
 adds identities, sets their roles, and lists and revokes the links of channel accounts
 (ADR-0040). `tenant` creates, renames and lists the instance's tenants; Taktus generates each
 identifier (ADR-0104). `first start` creates a new instance's first tenant and its administrator,
@@ -95,6 +97,7 @@ from taktus.adapters.driving.cli import (
     findings_command,
     first_command,
     guides_command,
+    hardware_command,
     identity_command,
     incident_command,
     interfaces_command,
@@ -149,6 +152,7 @@ app.add_typer(bundle_command.bundle, name="bundle")
 app.add_typer(catalogue_command.catalogue, name="catalogue")
 app.add_typer(bpmn_command.bpmn, name="bpmn")
 app.command("capacity")(capacity_command.capacity)
+app.command("hardware")(hardware_command.hardware)
 app.command("cost")(cost_command.cost)
 app.command("bottlenecks")(bottlenecks_command.bottlenecks)
 app.add_typer(prices_command.prices, name="prices")

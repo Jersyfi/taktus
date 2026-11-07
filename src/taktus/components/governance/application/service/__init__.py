@@ -38,6 +38,10 @@ from taktus.components.governance.application.service.report_capacity import (
     ReportCapacity,
     ReportCapacityHandler,
 )
+from taktus.components.governance.application.service.report_hardware import (
+    ConfiguredModel,
+    ReportHardwareHandler,
+)
 from taktus.components.governance.application.service.residency import (
     ConfigureResidency,
     TenantResidency,
@@ -80,6 +84,7 @@ __all__ = [
     "ConfigureMessages",
     "ConfigureResidency",
     "ConfigureWatch",
+    "ConfiguredModel",
     "Confirmed",
     "Corrections",
     "DatabaseStore",
@@ -100,6 +105,7 @@ __all__ = [
     "ReportCapacity",
     "ReportCapacityHandler",
     "ReportDefect",
+    "ReportHardwareHandler",
     "ResultDefects",
     "SetOrgUnitQuota",
     "SignalIncidents",

@@ -193,7 +193,7 @@ def test_the_effective_configuration_masks_every_secret() -> None:
     assert effective["TAKTUS_ROLES"] == "scheduler"
     assert "hunter2" not in json.dumps(effective)
     assert set(effective) == {name for name, _ in loaded.effective()}
-    assert len(effective) == 87, "every setting is in the startup log"
+    assert len(effective) == 88, "every setting is in the startup log"
 
 
 def test_the_administration_key_is_read_from_a_file_and_masked(tmp_path: Path) -> None:
@@ -713,6 +713,33 @@ def test_a_model_is_never_declared_for_exact_results() -> None:
     (only,) = unnamed.models
     assert (only.identifier, only.location) == ("model.endpoint", "elsewhere")
     assert settings().models == ()
+
+
+def test_what_a_local_model_needs_of_the_machine_is_read_and_shown() -> None:
+    """`TAKTUS_MODEL_NEEDS` (ADR-0284 §4): moving a model from a graphics card to an
+    accelerator is this one setting, and a wrong one fails naming it."""
+    from taktus.composition.settings import load_model
+
+    model = load_model(
+        EnvironmentConfiguration(
+            {
+                "TAKTUS_MODEL_ENDPOINT": "http://127.0.0.1:9/v1",
+                "TAKTUS_MODEL_NAME": "m",
+                "TAKTUS_MODEL_LOCATION": "own",
+                "TAKTUS_MODEL_NEEDS": "processors=4, memory=16GiB, accelerator=any, "
+                "accelerator_memory=512MiB",
+            }
+        )
+    )
+    assert (model.needs.processors, model.needs.memory_bytes) == (4, 16 * 1024**3)
+    assert model.needs.accelerator == "any"
+    assert model.needs.accelerator_memory_bytes == 512 * 1024**2
+    shown = dict(model.effective())["TAKTUS_MODEL_NEEDS"]
+    assert shown == "processors=4,memory=16384MiB,accelerator=any,accelerator_memory=512MiB"
+    assert not load_model(EnvironmentConfiguration({})).needs.declared
+    for wrong in ("gpu=yes", "memory=lots", "accelerator=quantum", "processors=0", "memory"):
+        with pytest.raises(ConfigurationError, match="TAKTUS_MODEL_NEEDS"):
+            load_model(EnvironmentConfiguration({"TAKTUS_MODEL_NEEDS": wrong}))
 
 
 def _revealed(secret: Secret | None) -> str | None:
