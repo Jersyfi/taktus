@@ -2067,6 +2067,72 @@ class RoleProfileMapper:
         return [dict(row.profile) for row in rows]
 
 
+class CatalogueShareMapper:
+    """One row per entry of the catalogue shared with circles (ADR-0246 §1), as a document."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.catalogue_share, tenant, id)
+        return None if row is None else dict(row.share)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.catalogue_share,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "kind": document["kind"],
+                "subject": document["subject"],
+                "state": document.get("state", "active"),
+                "shared_at": _at(document["shared_at"]),
+                "share": document,
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.catalogue_share, tenant, s.catalogue_share.c.id)
+        return [dict(row.share) for row in rows]
+
+
+class CallerCredentialMapper:
+    """One row per identity's own parameter for one credential name (ADR-0247 §1). It holds a
+    parameter's name, never a value."""
+
+    def _document(self, row: Any) -> Document:
+        return {
+            "id": row.id,
+            "tenant": row.tenant,
+            "identity": row.identity,
+            "name": row.name,
+            "suffix": row.suffix,
+            "bound_at": row.bound_at.isoformat(),
+        }
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.caller_credential, tenant, id)
+        return None if row is None else self._document(row)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.caller_credential,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "identity": document["identity"],
+                "name": document["name"],
+                "suffix": document["suffix"],
+                "bound_at": _at(document["bound_at"]),
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.caller_credential, tenant, s.caller_credential.c.id)
+        return [self._document(row) for row in rows]
+
+
 # Keyed by the aggregate's class name in snake case: `Run` → "run", `ProcessVersion` →
 # "process_version". The persistence looks a mapper up by the class the composition root binds.
 MAPPERS: dict[str, Mapper] = {
@@ -2115,4 +2181,6 @@ MAPPERS: dict[str, Mapper] = {
     "skill_policy": SkillPolicyMapper(),
     "agent_core": AgentCoreMapper(),
     "role_profile": RoleProfileMapper(),
+    "catalogue_share": CatalogueShareMapper(),
+    "caller_credential": CallerCredentialMapper(),
 }

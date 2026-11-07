@@ -9,7 +9,7 @@ its reason, so that the route can be read back from the provenance record and co
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -71,12 +71,17 @@ def route(
     needs: Needs,
     cooling: Mapping[str, datetime],
     now: datetime,
+    unshared: Collection[str] = (),
 ) -> Route:
     """The first member of the chain that fits, with every member before it that did not. A
-    member whose cool-down ends at or before `now` is not cooling down."""
+    member whose cool-down ends at or before `now` is not cooling down. A member in `unshared`
+    is shared with no circle the run's identity is inside (ADR-0246 §3)."""
     skipped: list[RouteSkip] = []
     fitting: ResolvedModel | None = None
     for member in chain:
+        if member.adapter in unshared:
+            skipped.append(RouteSkip(adapter=member.adapter, reason="not_shared"))
+            continue
         if not admits(needs.permitted, member.location):
             skipped.append(RouteSkip(adapter=member.adapter, reason="residency"))
             continue
@@ -98,4 +103,6 @@ def _said(reason: str, needs: Needs) -> str:
         return f"processes outside what the residency rule permits for {scope} ({needs.permitted})"
     if reason == "exactness":
         return f"may not produce a {needs.exactness} result"
+    if reason == "not_shared":
+        return "is not shared with a circle the run's identity is inside (ADR-0246)"
     return "cooling down after a rate limit or a failure"

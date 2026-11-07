@@ -238,6 +238,7 @@ from taktus.composition.settings import (
     WorkerSettings,
     load,
 )
+from taktus.composition.shares import shares_of
 from taktus.composition.shipped import load as load_shipped
 from taktus.composition.signals import CommandInterventions, signal_wiring, signals_tick
 from taktus.composition.skills import CatalogGuidance, SkillLifecycle, skills_tick
@@ -621,6 +622,15 @@ async def wire(
                 stoppable=pools.identifiers(),
             )
 
+            # Who may use a shared model or connector, with whose credential (ADR-0246,
+            # ADR-0247).
+            shares = shares_of(
+                lambda kind: PostgresRepository(persistence, kind),
+                persistence,
+                ledger,
+                clock,
+                identities,
+            )
             # Skills and shared agents in the catalogue, handed to a run's steps (ADR-0162,
             # ADR-0163).
             skill_catalog = SkillCatalog(
@@ -694,8 +704,11 @@ async def wire(
                         PostgresRepository(persistence, ProcessVersion),
                         CorrectionRates(ledger, persistence),
                     ),
-                    guidance=CatalogGuidance(skill_catalog, agent_catalog),
+                    guidance=CatalogGuidance(
+                        skill_catalog, agent_catalog, shares=shares.shares, identities=identities
+                    ),
                     org_units=org_units,
+                    shares=shares,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -947,6 +960,7 @@ async def wire(
                 clock=clock,
                 ids=ids,
                 costs=CostOfRunHandler(ledger, objects, persistence),
+                shares=shares.shares,
             )
             # Where a process spends, and a model tried on fixed cases (ADR-0148, ADR-0149).
             spend = SpendHandler(ledger, objects, persistence)

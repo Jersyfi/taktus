@@ -188,6 +188,7 @@ from taktus.composition.settings import (
     load_telemetry,
     load_workers,
 )
+from taktus.composition.shares import CatalogueUse, shares_of
 from taktus.composition.shipped import load as load_shipped
 from taktus.composition.signals import signal_wiring
 from taktus.composition.skills import CatalogGuidance, SkillLifecycle
@@ -356,6 +357,9 @@ class LocalWiring:
                 stoppable=pools.identifiers(),
             )
 
+            # Who may use a shared model or connector, with whose credential (ADR-0246,
+            # ADR-0247).
+            shares = shares_of(stores.of, stores.work, ledger, clock, identities)
             # Skills and shared agents in the catalogue, handed to a run's steps (ADR-0162,
             # ADR-0163).
             skill_catalog = SkillCatalog(
@@ -374,7 +378,9 @@ class LocalWiring:
                 workers: StaticWorkerPool, connectors: StaticConnectorPool, models: StaticModelPool
             ) -> RunEngine:
                 return RunEngine(
-                    guidance=CatalogGuidance(skill_catalog, agent_catalog),
+                    guidance=CatalogGuidance(
+                        skill_catalog, agent_catalog, shares=shares.shares, identities=identities
+                    ),
                     runs=runs,
                     work=stores.work,
                     objects=objects,
@@ -423,6 +429,7 @@ class LocalWiring:
                         stores.work, stores.of(ProcessVersion), CorrectionRates(ledger, stores.work)
                     ),
                     org_units=org_units,
+                    shares=shares,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -590,6 +597,7 @@ class LocalWiring:
                 clock=clock,
                 ids=ids,
                 costs=CostOfRunHandler(ledger, objects, stores.work),
+                shares=shares.shares,
             )
             register_version = RegisterProcessVersionHandler(
                 stores.of(ProcessVersion),
@@ -798,6 +806,8 @@ class LocalWiring:
                 stages=staged.stages,
                 skills=skill_lifecycle,
                 agents=shared_agents,
+                shares=shares.shares,
+                catalogue_use=CatalogueUse(runs, ledger, stores.work),
                 subjects=subjects,
                 evidence=evidence,
                 exports=None

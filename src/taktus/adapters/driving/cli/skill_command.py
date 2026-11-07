@@ -8,7 +8,9 @@ production, after the takeover instructions of every process using it name it. `
 prints the skill part of a process's takeover instructions: each step's skills at their version
 in production, with their instructions (UC-6.3). `policy` shows and sets the tenant's n for
 automatic approval at level 4; a value below the floor is refused (DEC-0028, NTC-0246). `look`
-makes the look the elected scheduler makes once a minute.
+makes the look the elected scheduler makes once a minute. `export` writes skills back as the
+directories they were registered from: one, or every approved one as a bundle `skills/<name>/`,
+readable without Taktus (UC-14.3).
 
 The command line authenticates by holding the instance's state, as `incident` does.
 """
@@ -31,7 +33,8 @@ from taktus.adapters.driving.cli.run_command import (
     DEFAULT_WORKER,
 )
 from taktus.adapters.driving.cli.wiring import NotOperable, SkillActs, Wiring
-from taktus.components.catalog.domain.model import SkillError
+from taktus.components.catalog.domain.model import SkillError, SkillStage
+from taktus.components.catalog.domain.service.skills import exported
 
 skill = typer.Typer(
     help="Skills: drafted, evaluated, approved, in production, retired.", no_args_is_help=True
@@ -212,3 +215,55 @@ def look(
 
     _run(ctx, state_dir, act)
     typer.echo("looked")
+
+
+@skill.command("export")
+def export(
+    ctx: typer.Context,
+    to: Annotated[Path, typer.Option("--to", help="The directory the skills are written to.")],
+    skill_ids: Annotated[
+        list[str] | None,
+        typer.Argument(help="Skill versions, <name>@<version>; none: every approved one."),
+    ] = None,
+    tenant: Tenant = DEFAULT_TENANT,
+    by: By = "operator",
+    state_dir: StateDir = Path(DEFAULT_STATE_DIR),
+) -> None:
+    """Write skills as `<to>/skills/<name>/`, each its `SKILL.md` and its files as registered.
+
+    Exit code 0: every file written. Exit code 1: a skill unknown or private, or a file whose
+    text the catalogue did not keep, each named. Exit code 2: nothing ran.
+    """
+
+    async def act(skills: SkillActs) -> list[Any]:
+        visible = await skills.catalog.of_tenant(tenant, viewer=by)
+        if skill_ids:
+            chosen = [v for v in visible if v.id in skill_ids]
+            unknown = sorted(set(skill_ids) - {v.id for v in chosen})
+            if unknown:
+                raise SkillError("unknown", f"no skill version {', '.join(unknown)} you may see")
+            return chosen
+        return [
+            v
+            for v in visible
+            if v.stage in (SkillStage.APPROVED, SkillStage.PRODUCTION) and not v.private
+        ]
+
+    versions = _run(ctx, state_dir, act)
+    root = Path(os.path.expanduser(to)) / "skills"
+    incomplete = False
+    for version in versions:
+        files, missing = exported(version.file)
+        directory = root / version.name
+        for path, content in files.items():
+            target = directory / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(content)
+        typer.echo(f"exported {version.id} to {directory}")
+        for path in missing:
+            incomplete = True
+            typer.echo(f"  not kept: {path}; take it from where the skill was registered", err=True)
+    if not versions:
+        typer.echo("no skill to export")
+    if incomplete:
+        raise typer.Exit(code=1)

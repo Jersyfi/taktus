@@ -549,6 +549,21 @@ role it would tie the core to a model stack and the removal test would be lost.
   on the command line alike. `taktusctl catalogue` (`adapters/driving/cli/catalogue_command.py`)
   reaches it through `catalogue_index` and `catalogue_author` of the command line's wiring; the
   table `catalogue_installation` is migration 0096.
+- **Shares of the catalogue** (ADR-0246, ADR-0247) are the catalog component's
+  `domain/model/shares.py` (the share, the circle, the caller's credential),
+  `domain/service/shares.py` (who is inside, the withdrawal by the removal verdict, the use per
+  unit, the caller's parameters) and `application/service/shares.py` (`CatalogueShares`, the
+  one writer of both records and of `catalogue.shared`, `catalogue.withdrawn`,
+  `catalogue.share_refused` and `credential.bound`). `composition/shares.py` answers the run's
+  port `Shares` (`run/ports/shares.py`) from it: the engine passes over a model the run's
+  identity may not use (`not_shared`) and replaces a shared connector's credential names with
+  the caller's own, or refuses the call (`frame.refused`). `SharedAgents` refuses a caller
+  outside an agent's share (`agent.refused`), and `CatalogGuidance` hands a run only the skills
+  shared with its identity. `CatalogueUse` reads an entry's use per unit and the viewer's own.
+  `taktusctl catalogue share`, `withdraw`, `shares`, `use` and `bind-credential` reach it
+  through `shares` and `catalogue_use` of the command line's wiring, and `taktusctl skill
+  export` writes skills back as their directories; the tables `catalogue_share` and
+  `caller_credential` are migration 0103.
 - **A halted run raised and resumed** is `taktusctl resume` (`adapters/driving/cli/resume_command.py`, #458): it reads no bundle, so the process's active version stays; it raises a run's money or its quota (DEC-0208).
 - **Memory once started.** Once wired, the daemon collects and freezes what its start left
   alive — the modules, the wiring — so that a full garbage collection, which stops every thread

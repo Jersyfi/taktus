@@ -343,6 +343,31 @@ role_profile = Table(
     PrimaryKeyConstraint("tenant", "id"),
 )
 
+catalogue_share = Table(
+    "catalogue_share",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("subject", Text, nullable=False),
+    Column("state", Text, nullable=False),
+    _at("shared_at"),
+    Column("share", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+
+caller_credential = Table(
+    "caller_credential",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("identity", Text, nullable=False),
+    Column("name", Text, nullable=False),
+    Column("suffix", Text, nullable=False),
+    _at("bound_at"),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+
 corrected_case = Table(
     "corrected_case",
     metadata,

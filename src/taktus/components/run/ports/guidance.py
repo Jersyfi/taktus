@@ -11,8 +11,11 @@ from taktus.ports.persistence import Tenant
 
 
 class Guidance(Protocol):
-    async def production(self, tenant: Tenant, names: Collection[str]) -> Mapping[str, str]:
-        """The version in production of each named skill that has one, `{name: version}`."""
+    async def production(
+        self, tenant: Tenant, names: Collection[str], identity: str | None = None
+    ) -> Mapping[str, str]:
+        """The version in production of each named skill that has one, `{name: version}`. With
+        an identity, only the skills shared with a circle it is inside (ADR-0246 §3)."""
         ...
 
     async def skill(self, tenant: Tenant, name: str, version: str) -> str | None:

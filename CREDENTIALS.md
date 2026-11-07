@@ -32,6 +32,16 @@ under `deploy/docker/secrets/` (`deploy/docker/README.md`, *Connectors*). One
 credential has one variable. A second name for the same credential was a defect, corrected in
 DEC-0018.
 
+**A caller's own credential through a shared connector** (ADR-0247). A connector shared with a
+circle of the structure is called with the credential of the identity that requests the call,
+never with the name the step's work writes. The operator binds each identity's credential to a
+parameter of its own, `<NAME>_<SUFFIX>` (`taktusctl catalogue bind-credential <identity> <NAME>
+<SUFFIX>`), and supplies its value like any other: in the file
+`TAKTUS_CREDENTIAL_<NAME>_<SUFFIX>_FILE` names, given to the connector's deployment. Its
+permissions are that person's own in the source system, and it rotates on that system's
+schedule. The binding records the parameter's name only. A caller with no binding is refused
+before the call is made.
+
 **Where the file's value comes from is the operator's.** It is written by hand, or filled from a
 secret store the operator chooses, so that a rotation in the store reaches the file without a
 person (ADR-0187). On one server `deploy/docker/secret_store.py` reads each file's value with the
