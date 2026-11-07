@@ -6,8 +6,8 @@ epic: E8
 serves: [P2, P7, P12]
 state: building
 version: 0.6.0
-tests: [tests/composition/test_shared_agent_callers.py::test_one_shared_agent_called_by_two_users_acts_with_each_callers_credential, tests/composition/test_shared_agent_callers.py::test_a_person_outside_the_agents_circle_is_refused_before_a_run_starts, tests/composition/test_shared_agent_callers.py::test_a_shared_agent_runs_no_higher_than_the_level_of_its_core, tests/components/catalog/test_shares.py::test_an_agent_is_shared_only_with_an_active_core]
-adrs: {ADR-0003: d0268914fed9, ADR-0026: ccc4bd1f5423, ADR-0163: d7b3dd87f845, ADR-0246: 427e96722fc8, ADR-0247: 3725ee028f0c}
+tests: [tests/composition/test_shared_agent_callers.py::test_one_shared_agent_called_by_two_users_acts_with_each_callers_credential, tests/composition/test_shared_agent_callers.py::test_a_person_outside_the_agents_circle_is_refused_before_a_run_starts, tests/composition/test_shared_agent_callers.py::test_a_shared_agent_runs_no_higher_than_the_level_of_its_core, tests/components/catalog/test_shares.py::test_an_agent_is_shared_only_with_an_active_core, tests/components/catalog/test_agent_hub.py::test_the_description_names_what_it_does_reads_may_use_and_must_not_do, tests/components/catalog/test_agent_hub.py::test_a_changed_agent_changes_its_description_and_its_diagram_with_it, tests/components/catalog/test_agent_hub.py::test_a_tool_or_source_named_by_product_is_refused, tests/composition/test_shipped.py::test_the_products_an_agent_may_not_name_are_the_connectors_not_named_by_function]
+adrs: {ADR-0003: d0268914fed9, ADR-0026: ccc4bd1f5423, ADR-0163: d7b3dd87f845, ADR-0246: 427e96722fc8, ADR-0247: 3725ee028f0c, ADR-0287: 8df17c3c1e0f}
 supersedes: null
 ---
 
@@ -61,7 +61,13 @@ shows each only their records, and the author's credential is used by neither (A
 person outside the agent's circle is refused before a run starts. A call runs at most at the
 core's level. An agent is shared only by a person, with an active core. All by the named tests.
 
-Not built: drafting an agent from a description worked out in dialogue, which rests on UC-1.2,
-itself not built; a plain-language description generated from the version, naming what the
-agent reads, may use and must not do; the check that tools and sources are named by capability.
-The diagram is generated from the version (ADR-0163).
+The diagram (ADR-0163) and a description in plain language are generated from the version:
+what the agent does, what it reads, which tools it may use, and what it must not do — no grant
+beyond those named, no act above its level, no approval above its limit, never its author's
+credential — and what each role leaves out (ADR-0287). A test changes an agent and finds both
+changed, and the earlier version still described as it was. A tool that is no capability, or a
+tool, source or connector named after a shipped product, is refused. All by the named tests.
+
+Not built: drafting an agent from a description worked out in dialogue, with an autonomy level
+and its reason, shared only once a person accepted it. It rests on UC-1.2's plan dialogue, which
+is not on this branch's base.

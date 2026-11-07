@@ -6,8 +6,8 @@ epic: E5
 serves: [P1, P11, P13]
 state: building
 version: 0.6.0
-tests: [tests/adapters/telemetry/test_opentelemetry.py::test_spans_are_nested_run_step_worker_call, tests/adapters/telemetry/test_opentelemetry.py::test_without_an_endpoint_nothing_is_exported_but_the_trace_exists]
-adrs: {ADR-0003: d0268914fed9, ADR-0011: f25413d512b9, ADR-0024: 52ba89e4adec}
+tests: [tests/adapters/telemetry/test_opentelemetry.py::test_spans_are_nested_run_step_worker_call, tests/adapters/telemetry/test_opentelemetry.py::test_without_an_endpoint_nothing_is_exported_but_the_trace_exists, tests/adapters/telemetry/test_masking.py::test_a_personal_field_leaves_masked_and_stays_whole_inside, tests/adapters/telemetry/test_masking.py::test_the_policy_is_configured_and_an_unknown_kind_is_refused]
+adrs: {ADR-0003: d0268914fed9, ADR-0011: f25413d512b9, ADR-0024: 52ba89e4adec, ADR-0286: bb92b26719a2}
 supersedes: null
 ---
 
@@ -71,5 +71,12 @@ names no version; `0.6.0`, beside the catalogue, is the session's proposal.
 ## 5. What is proven so far
 
 A run's steps, worker steps and connector calls are nested spans, and with no
-endpoint configured nothing is exported while the trace still exists, by the named tests. Masking,
-the evaluation backend, prompt mirroring and cost reconciliation are not built.
+endpoint configured nothing is exported while the trace still exists, by the named tests.
+
+A span leaves masked by the organisation's policy: attributes it names are replaced whole, and
+e-mail addresses, bank account numbers and telephone numbers in any text are replaced, while
+the trace inside Taktus keeps them (ADR-0286). A test sends a trace with personal fields to a
+stand-in that receives OTLP over HTTP and finds them masked there.
+
+Not built: the evaluation backend, prompt mirroring and cost reconciliation. Each needs a
+connector over an evaluation platform's documented interface, and none exists yet.

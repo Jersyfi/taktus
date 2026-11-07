@@ -46,7 +46,11 @@ class AgentCatalog:
         work: UnitOfWork,
         ledger: Ledger,
         clock: Clock,
+        products: Collection[str] = (),
     ) -> None:
+        self._products = frozenset(products)
+        """The names of adapters that are not the name of a capability: a tool, a source or a
+        connector of an agent may not be named after one (ADR-0003, UC-8.7)."""
         self._cores = cores
         self._profiles = profiles
         self._work = work
@@ -100,6 +104,27 @@ class AgentCatalog:
             return None
         return found.brief(core)
 
+    async def describe(self, tenant: Tenant, agent: str, version: str | None = None) -> str:
+        """The agent in plain language, generated from the version: the active core, or the
+        named one (UC-8.7 §2)."""
+        if version is None:
+            core = await self.active_core(tenant, agent)
+        else:
+            async with self._work.transaction(tenant):
+                core = await self._cores.get(tenant, f"{agent}@{version}")
+        if core is None:
+            raise AgentError("unknown", f"the agent {agent!r} has no such core")
+        return agents.describe(core, await self.profiles(tenant, agent))
+
+    def _named_by_function(self, identifier: str, grants: Grants) -> None:
+        found = agents.named_by_product(grants, self._products)
+        if found:
+            raise AgentError(
+                "product",
+                f"{identifier} names a tool, source or connector by product",
+                tuple(found),
+            )
+
     async def diagram(self, tenant: Tenant, agent: str) -> str:
         core = await self.active_core(tenant, agent)
         if core is None:
@@ -125,6 +150,7 @@ class AgentCatalog:
         """A new core version, held until every profile's evaluation passed on it; active at
         once while the agent has no profile."""
         core_id = f"{agent}@{version}"
+        self._named_by_function(core_id, grants)
         async with self._work.transaction(tenant):
             if await self._cores.get(tenant, core_id) is not None:
                 raise AgentError("exists", f"{core_id} exists, and a core version never changes")
@@ -212,6 +238,7 @@ class AgentCatalog:
         if core is None:
             raise AgentError("unknown", f"the agent {agent!r} has no active core")
         identifier = profile_id(agent, role, version)
+        self._named_by_function(identifier, grants)
         wider = widening(grants, core.grants)
         if wider:
             async with self._work.transaction(tenant):

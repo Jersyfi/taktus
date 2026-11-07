@@ -12,7 +12,7 @@ from typing import Any, Literal
 from pydantic import Field, model_validator
 
 from taktus.components.process.domain.model.errors import InvalidProcess
-from taktus.components.process.domain.model.evaluation import EvaluationSpec
+from taktus.components.process.domain.model.evaluation import TOLERANCE_CEILING, EvaluationSpec
 from taktus.components.process.domain.model.event import (
     KINDS,
     Condition,
@@ -26,6 +26,7 @@ from taktus.components.process.domain.service.autonomy import actions_used
 from taktus.components.process.domain.service.validation import topological_order, validate_graph
 from taktus.shared.v1 import Autonomy, AutonomyLevel, ExactnessClass, Step, StepId, Value
 from taktus.shared.v1.autonomy import depending_on
+from taktus.shared.v1.method import VARIABLE
 
 # What a step does when it runs — the task for a worker, the rule to evaluate, what to wait for.
 # Its shape belongs to the process bundle format, which arrives at 0.3.0 (ADR-0011,
@@ -540,6 +541,7 @@ class ProcessVersion(Value):
             if scorer.step not in producing
         ]
         scored = self.evaluation.scored_steps
+        found.extend(self._tolerance_findings(scored))
         required = {name for name, given in self.inputs.items() if given.required}
         for case in self.evaluation.cases:
             where = f"`evaluation`: the case {case.id!r}"
@@ -558,6 +560,47 @@ class ProcessVersion(Value):
             if missing:
                 found.append(f"{where} gives no value for the input(s) {', '.join(missing)}")
         return found
+
+    def _tolerance_findings(self, scored: frozenset[str]) -> list[str]:
+        """Every variable step the evaluation scores declares its tolerance, within what its
+        class admits; a tolerance names a scored step (ADR-0250 §1)."""
+        if self.evaluation is None:
+            return []
+        found: list[str] = []
+        declared = self.evaluation.tolerances
+        steps = {step.id: step for step in self.steps}
+        for step_id, share in sorted(declared.items()):
+            step = steps.get(step_id)
+            if step is None or step_id not in scored or step.exactness is None:
+                found.append(f"`evaluation.tolerances` names {step_id!r}, which no scorer scores")
+                continue
+            ceiling = TOLERANCE_CEILING[ExactnessClass(step.exactness)]
+            if share > ceiling + 1e-9:
+                found.append(
+                    f"`evaluation.tolerances`: {step_id!r} is {step.exactness} and admits a "
+                    f"tolerance of at most {ceiling:g}, not {share:g}; room for creativity "
+                    "exists only where the class is `free`"
+                )
+        for step_id in sorted(scored):
+            step = steps.get(step_id)
+            if step is not None and step.method in VARIABLE and step_id not in declared:
+                found.append(
+                    f"`evaluation`: the {step.method} step {step_id!r} varies and declares its "
+                    "tolerance under `evaluation.tolerances`: what counts as an equivalent result"
+                )
+        return found
+
+    def tolerance_bounds(self) -> tuple[dict[str, float], dict[str, float]]:
+        """Per scored step, the tolerance it declared, and the widest its class admits."""
+        if self.evaluation is None:
+            return {}, {}
+        steps = {step.id: step for step in self.steps}
+        ceilings: dict[str, float] = {}
+        for step_id in self.evaluation.scored_steps:
+            exactness = steps[step_id].exactness if step_id in steps else None
+            if exactness is not None:
+                ceilings[step_id] = TOLERANCE_CEILING[ExactnessClass(exactness)]
+        return dict(self.evaluation.tolerances), ceilings
 
     @property
     def expected_schedules(self) -> tuple[str, ...]:

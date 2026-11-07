@@ -48,6 +48,7 @@ from taktus.components.catalog.domain.model import (
     SkillVersion,
 )
 from taktus.components.catalog.domain.service import skills as rules
+from taktus.components.catalog.domain.service.skills import exported
 from taktus.components.governance.application.service import Drifts
 from taktus.components.process.domain.model import Process, ProcessVersion
 from taktus.components.process.domain.model.evaluation import (
@@ -282,6 +283,22 @@ class SkillLifecycle:
             raise SkillError("unknown", f"the process {process_id!r} has no active version")
         by_step = await self.of_version(tenant, version)
         return [{"step": step, "skills": list(skills)} for step, skills in by_step.items()]
+
+    async def files_of_version(
+        self, tenant: Tenant, version: ProcessVersion
+    ) -> dict[str, dict[str, bytes]]:
+        """Per skill the version's steps use, its directory at its version in production, as it
+        was registered; a skill with none in production, or whose text the catalogue did not
+        keep whole, is left out, and the package names it (ADR-0285)."""
+        found: dict[str, dict[str, bytes]] = {}
+        for name in version.skills_used():
+            current = await self._catalog.production(tenant, name)
+            if current is None:
+                continue
+            files, missing = exported(current.file)
+            if not missing:
+                found[name] = files
+        return found
 
     async def of_version(
         self, tenant: Tenant, version: ProcessVersion

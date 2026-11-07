@@ -130,6 +130,7 @@ def every_field() -> dict[str, Any]:
                 "criterion": "Does the answer give the same number?",
             },
         ],
+        "tolerances": {"compute": 0.1},
         "schedule": "weekly",
     }
     return document

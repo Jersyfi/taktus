@@ -116,6 +116,7 @@ from taktus.components.identity.domain.model import (
 from taktus.components.knowledge.application.service import PublishGuidesHandler
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.deactivate import DeactivateProcessHandler
+from taktus.components.process.application.service.packages import ProcessPackages
 from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
@@ -190,6 +191,7 @@ from taktus.composition.settings import (
 )
 from taktus.composition.shares import CatalogueUse, shares_of
 from taktus.composition.shipped import load as load_shipped
+from taktus.composition.shipped import product_names
 from taktus.composition.signals import signal_wiring
 from taktus.composition.skills import CatalogGuidance, SkillLifecycle
 from taktus.composition.stages import stage_wiring
@@ -372,7 +374,12 @@ class LocalWiring:
                 clock,
             )
             agent_catalog = AgentCatalog(
-                stores.of(AgentCore), stores.of(RoleProfile), stores.work, ledger, clock
+                stores.of(AgentCore),
+                stores.of(RoleProfile),
+                stores.work,
+                ledger,
+                clock,
+                products=product_names(load_shipped()),
             )
 
             def engine_for(
@@ -838,6 +845,13 @@ class LocalWiring:
                     clock=clock,
                     identifiers=ids,
                     skills=skill_lifecycle.of_version,
+                ),
+                packages=ProcessPackages(
+                    stores.of(Process),
+                    stores.of(ProcessVersion),
+                    ledger=ledger,
+                    work=stores.work,
+                    skills=skill_lifecycle.files_of_version,
                 ),
             )
             telemetry.shutdown()

@@ -47,6 +47,7 @@ from taktus.components.accounting.application.service import (
     TrialError,
     TrialRead,
     TrialReports,
+    Validation,
 )
 from taktus.components.command.application.service import CommissionPlan, CommissionPlanHandler
 from taktus.components.process.domain.model import Process, ProcessVersion
@@ -89,6 +90,12 @@ class Models(Protocol):
     def members(self) -> list[tuple[str, tuple[str, ...], str | None]]: ...
 
 
+class Validated(Protocol):
+    """Whether the quality held with each model of a trial, per process (ADR-0249 §1)."""
+
+    async def of_trial(self, tenant: Tenant, trial: Trial) -> list[Validation]: ...
+
+
 class Trials:
     def __init__(
         self,
@@ -107,7 +114,9 @@ class Trials:
         work: UnitOfWork,
         clock: Clock,
         ids: Identifiers,
+        validations: Validated | None = None,
     ) -> None:
+        self._validations = validations
         self._processes = processes
         self._versions = versions
         self._runs = runs
@@ -355,7 +364,17 @@ class Trials:
                 for cases in found.runs.values()
                 for run_id in cases.values()
             ]
-        return TrialRead(trial=found, report=report, settled=all(settled(r) for r in runs))
+        validations = (
+            ()
+            if self._validations is None
+            else tuple(await self._validations.of_trial(tenant, found))
+        )
+        return TrialRead(
+            trial=found,
+            report=report,
+            settled=all(settled(r) for r in runs),
+            validations=validations,
+        )
 
     async def _document(self, entry: LedgerEntry) -> Trial | None:
         if entry.content_digest is None:
@@ -416,7 +435,7 @@ class Trials:
             if refs.process_version not in purposes:
                 async with self._work.transaction(tenant):
                     version = await self._versions.get(tenant, refs.process_version)
-                purposes[refs.process_version] = {} if version is None else _step_purposes(version)
+                purposes[refs.process_version] = {} if version is None else step_purposes(version)
             purpose = purposes[refs.process_version].get(refs.step_id)
             if purpose is not None:
                 key = (purpose, entry.adapter)
@@ -528,14 +547,17 @@ class Trials:
             first = chain[0].adapter
             candidates = (first, *(m for m in members if m != first))
             seen = answered.get(first, [])
-            if not seen and not _tried(trials, purpose, first, None):
+            # A model no trial included has not been validated on any process's cases: a step
+            # its process evaluates does not reach it in a real run (ADR-0249 §3).
+            if not _tried(trials, purpose, first, None):
+                said = "has answered no step yet" if not seen else "no trial has validated it"
                 offers.append(
                     Offer(
                         purpose=purpose,
                         occasion="introduced",
                         model=first,
                         candidates=candidates,
-                        reason=f"{first} serves {purpose} and has answered no step yet",
+                        reason=f"{first} serves {purpose} and {said}",
                     )
                 )
             changed = _changed(seen)
@@ -590,7 +612,7 @@ def _purposes(version: ProcessVersion) -> set[str]:
     return found
 
 
-def _step_purposes(version: ProcessVersion) -> dict[str, str]:
+def step_purposes(version: ProcessVersion) -> dict[str, str]:
     """The purpose each step on a language model of the version asks for, by step."""
     examples = {name: given.example for name, given in version.inputs.items()}
     found: dict[str, str] = {}

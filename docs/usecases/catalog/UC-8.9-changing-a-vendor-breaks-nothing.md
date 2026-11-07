@@ -6,8 +6,8 @@ epic: E8
 serves: [P3, P4, P13]
 state: building
 version: 0.5.0
-tests: [tests/components/catalog/test_removal.py::test_a_step_changes_with_an_alternative_or_a_person_and_breaks_otherwise, tests/components/catalog/test_removal.py::test_a_process_breaks_if_any_step_does, tests/components/catalog/test_removal.py::test_the_integration_breaks_if_any_process_does_and_changes_when_nothing_uses_it, tests/components/catalog/test_removal.py::test_the_database_is_the_known_exception, tests/components/catalog/test_removal.py::test_verified_needs_both_halves_and_the_record_names_what_is_missing, tests/integration/test_removal_test.py::test_withholding_the_only_worker_changes_the_example_and_is_recorded, tests/integration/test_dev_orchestration.py::test_removing_each_integration_of_the_three_processes_changes_them, tests/integration/test_two_coding_workers.py::test_withholding_either_coding_worker_changes_the_step_to_the_other, tests/integration/test_two_coding_workers.py::test_an_instance_configured_with_both_says_changed_for_each]
-adrs: {ADR-0003: d0268914fed9, ADR-0011: f25413d512b9, ADR-0027: 8f3f450eeecb, ADR-0078: 5988b2bd75b6}
+tests: [tests/components/catalog/test_removal.py::test_a_step_changes_with_an_alternative_or_a_person_and_breaks_otherwise, tests/components/catalog/test_removal.py::test_a_process_breaks_if_any_step_does, tests/components/catalog/test_removal.py::test_the_integration_breaks_if_any_process_does_and_changes_when_nothing_uses_it, tests/components/catalog/test_removal.py::test_the_database_is_the_known_exception, tests/components/catalog/test_removal.py::test_verified_needs_both_halves_and_the_record_names_what_is_missing, tests/integration/test_removal_test.py::test_withholding_the_only_worker_changes_the_example_and_is_recorded, tests/integration/test_dev_orchestration.py::test_removing_each_integration_of_the_three_processes_changes_them, tests/integration/test_two_coding_workers.py::test_withholding_either_coding_worker_changes_the_step_to_the_other, tests/integration/test_two_coding_workers.py::test_an_instance_configured_with_both_says_changed_for_each, tests/composition/test_model_validation.py::test_a_replacement_reaches_real_runs_only_after_its_validation_run_held, tests/composition/test_process_package.py::test_everything_that_defines_a_process_leaves_as_one_package_read_without_taktus, tests/composition/test_process_package.py::test_a_skill_a_step_uses_travels_in_its_open_format_and_a_missing_one_is_named]
+adrs: {ADR-0003: d0268914fed9, ADR-0011: f25413d512b9, ADR-0027: 8f3f450eeecb, ADR-0078: 5988b2bd75b6, ADR-0249: 96644d826d42, ADR-0285: 0ef93d2b972f}
 supersedes: null
 ---
 
@@ -60,8 +60,16 @@ replacement belongs with repeatability (definition `UC-8.4`). Definition `UC-8.9
 
 The verdict rules, the exception, and a removal recorded in the ledger, by the
 named tests; the weekly run is started by a workflow of the repository host, not yet by Taktus's
-own scheduler. The validation run after a replacement and the export of a registered version do
-not exist.
+own scheduler.
+
+Replacing the model behind a purpose is followed by its validation run: a trial of the purpose
+runs every process that asks it on its cases, and reports per process whether the quality held.
+Until it held, the replacement serves no real run of a step its process evaluates; a trial is
+offered for it at once, and a person starts it (ADR-0249). A step its process evaluates on no
+case is not held to it. Every registered version is exported with `taktusctl process export` as
+one ZIP package of plain files — the version as JSON and as BPMN, its prompts, its takeover
+instructions, what an instance provides, its skills in their open format, and a manifest of
+digests — read without Taktus (ADR-0285). All by the named tests.
 
 For Taktus's own development processes, P-01 to P-03, the verdict is *changed* for each of the
 three integrations they use — the repository connector, the coding worker and the model — with

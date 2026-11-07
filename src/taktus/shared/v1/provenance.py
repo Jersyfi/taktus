@@ -76,7 +76,7 @@ class RouteSkip(Value):
     """A member of the chain the route passed over, and why (ADR-0116 §4)."""
 
     adapter: str = Field(min_length=1)
-    reason: Literal["residency", "exactness", "cooling_down", "not_shared"]
+    reason: Literal["residency", "exactness", "cooling_down", "not_shared", "not_evaluated"]
 
 
 class ProvenanceRoute(Value):

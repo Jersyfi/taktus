@@ -245,6 +245,7 @@ from taktus.composition.settings import (
 )
 from taktus.composition.shares import shares_of
 from taktus.composition.shipped import load as load_shipped
+from taktus.composition.shipped import product_names
 from taktus.composition.signals import CommandInterventions, signal_wiring, signals_tick
 from taktus.composition.skills import CatalogGuidance, SkillLifecycle, skills_tick
 from taktus.composition.spend_in_channel import SpendInChannel
@@ -259,6 +260,7 @@ from taktus.composition.tenant_export import TenantExports
 from taktus.composition.traces import traces_tick
 from taktus.composition.trials import Trials, trials_tick
 from taktus.composition.triggers import Triggers
+from taktus.composition.validation import Validations
 from taktus.ports.clock import Clock
 from taktus.ports.configuration import Configuration, ConfigurationError, Secret
 from taktus.ports.leadership import Leadership
@@ -674,6 +676,17 @@ async def wire(
                 persistence,
                 ledger,
                 clock,
+                products=product_names(load_shipped()),
+            )
+
+            # A real run reaches a model only after a trial found the quality held with it on
+            # the cases of the step's process (ADR-0249).
+            validations = Validations(
+                versions=PostgresRepository(persistence, ProcessVersion),
+                runs=runs,
+                ledger=ledger,
+                objects=objects,
+                work=persistence,
             )
 
             def engine_for(
@@ -738,6 +751,7 @@ async def wire(
                     org_units=org_units,
                     steering=steering_store,
                     shares=shares,
+                    evaluated=validations,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -960,6 +974,7 @@ async def wire(
                 ids=ids,
                 outward=outward_by(pools),
             )
+            validations.attach(evaluations)
             skill_lifecycle = SkillLifecycle(
                 catalog=skill_catalog,
                 processes=PostgresRepository(persistence, Process),
@@ -1010,6 +1025,7 @@ async def wire(
                 work=persistence,
                 clock=clock,
                 ids=ids,
+                validations=validations,
             )
             proposal_acts = ProposalActs(
                 proposals=proposals,

@@ -192,7 +192,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         description="Per candidate the cases passed, money at each run's own price table, "
         "tokens in and out, wall time, and each case's result digests beside the other "
         "candidates'; the cases whose results differ are named. `settled` says whether every "
-        "run has gone as far as it can. The report decides nothing (ADR-0149 §2, §4).",
+        "run has gone as far as it can. `validations` says, per process and model, whether the "
+        "quality held on the process's cases; a step a process evaluates reaches in a real run "
+        "only a model whose newest settled validation held (ADR-0149 §2, ADR-0249).",
         responses={
             200: {"description": "The trial and its report."},
             404: {"description": "No such trial of your tenant.", **PROBLEM},

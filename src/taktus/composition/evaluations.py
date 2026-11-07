@@ -283,6 +283,8 @@ class Evaluations:
             acting_for=by,
             cases=cases,
             scorers=base.evaluation.scorers,
+            declared=base.tolerance_bounds()[0],
+            ceilings=base.tolerance_bounds()[1],
             started_at=self._clock.now(),
         )
         runs = [
@@ -335,6 +337,8 @@ class Evaluations:
             acting_for=process.activated_by,
             cases=cases,
             scorers=version.evaluation.scorers,
+            declared=version.tolerance_bounds()[0],
+            ceilings=version.tolerance_bounds()[1],
             started_at=self._clock.now(),
         )
         runs = await self._run_side(tenant, evaluation, Side.ACTIVE, version, version.ref, left_out)
@@ -386,6 +390,8 @@ class Evaluations:
             acting_for=process.activated_by,
             cases=cases,
             scorers=version.evaluation.scorers,
+            declared=version.tolerance_bounds()[0],
+            ceilings=version.tolerance_bounds()[1],
             started_at=self._clock.now(),
         )
         runs = [
@@ -807,13 +813,27 @@ class Evaluations:
             )
             sides = (active, proposed)
             verdict = scoring.change(active, proposed, tolerance)
+            with_results = evaluation.model_copy(update={"results": results})
+            steps_before = scoring.step_scores(with_results, Side.ACTIVE)
+            steps_after = scoring.step_scores(with_results, Side.PROPOSED)
         else:
             previous = await self._previous(tenant, evaluation)
             sides = (active,)
             before = None if previous is None else _score_of(previous)
             verdict = scoring.drift(active, before, tolerance)
+            steps_before = {} if previous is None else scoring.step_scores(previous)
+            steps_after = scoring.step_scores(evaluation.model_copy(update={"results": results}))
+        # Each step is held to its own tolerance as well (ADR-0250 §2).
+        tolerances = scoring.step_tolerances(evaluation.declared, evaluation.ceilings, tolerance)
+        fell = scoring.regressed(steps_before, steps_after, tolerances)
+        if fell and verdict is Verdict.PASSED:
+            verdict = Verdict.REGRESSED
+        elif fell and verdict is Verdict.STEADY:
+            verdict = Verdict.DRIFT
         scored = evaluation.model_copy(
             update={
+                "step_tolerances": tolerances,
+                "regressed_steps": fell,
                 "state": EvaluationState.SCORED,
                 "results": results,
                 "sides": sides,
@@ -944,6 +964,46 @@ class Evaluations:
                 ),
             )
         return overridden
+
+    # --- a case scored outside an evaluation (ADR-0249 §3) ----------------------------------
+
+    async def rule_scored(
+        self, version: ProcessVersion, case: EvaluationCase, run: Run | None
+    ) -> dict[str, float | None]:
+        """Each scored step's score on one run of one case, by the version's rules: a rule
+        scorer's own rule, a judge's fallback rule; a judge with none scores nothing here. A
+        step that produced no result scores 0. Runs no judge: a trial compares models on what
+        a rule can count."""
+        spec = version.evaluation
+        found: dict[str, list[float]] = {}
+        if spec is None:
+            return {}
+        for scorer in spec.scorers:
+            if scorer.step not in case.targets or scorer.rule is None:
+                continue
+            produced = None if run is None else await self._result(run, scorer.step)
+            value = (
+                0.0
+                if produced is None
+                else scoring.score(scorer.rule, produced[0], case.targets[scorer.step])
+            )
+            found.setdefault(scorer.step, []).append(value)
+        return {step: scoring.mean(values) for step, values in sorted(found.items())}
+
+    async def latest_scored(self, tenant: Tenant, process_id: str) -> Evaluation | None:
+        """The process's newest scored evaluation: the quality its active version had."""
+        async with self._work.transaction(tenant):
+            found = [
+                e
+                for e in await self._evaluations.list(tenant)
+                if e.process_id == process_id
+                and e.state is EvaluationState.SCORED
+                and e.scored_at is not None
+            ]
+        return max(found, key=lambda e: (e.scored_at, e.id)) if found else None
+
+    async def tenant_tolerance(self, tenant: Tenant) -> float:
+        return (await self._drifts.configuration(tenant)).evaluation_tolerance
 
     # --- reading ---------------------------------------------------------------------------
 
@@ -1178,9 +1238,14 @@ def _refusal(evaluation: Evaluation) -> str:
             f"fell back to a person ({scores}); a person may commission it against the verdict, "
             "with a reason"
         )
+    steps = "".join(
+        f"; the step {step!r} fell beyond its own tolerance of "
+        f"{evaluation.step_tolerances.get(step, 0):.2f}"
+        for step in evaluation.regressed_steps
+    )
     return (
-        f"the evaluation {evaluation.id} found a regression: {scores}; a person may commission "
-        "it against the verdict, with a reason"
+        f"the evaluation {evaluation.id} found a regression: {scores}{steps}; a person may "
+        "commission it against the verdict, with a reason"
     )
 
 
