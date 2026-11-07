@@ -35,9 +35,9 @@ Checks:
    record of a documentation defect alone does not count (the owner's answer to DEC-0021).
    A change to a file under docs/status/ counts as a change to the status;
 6. section 1 keeps no milestone's account: each milestone's is `docs/status/<x.y.z>.md`, which
-   starts with `# Status of \`x.y.z\`` naming a milestone of docs/roadmap.md and is named in
-   section 1; `docs/status/project.md` is how the project is run. Two pull requests on
-   different milestones then never edit the same paragraph (#392);
+   starts with `# Status of ` and the milestone `x.y.z` in backticks, naming a milestone of
+   docs/roadmap.md, and is named in section 1; `docs/status/project.md` is how the project is
+   run. Two pull requests on different milestones then never edit the same paragraph (#392);
 7. every file under docs/status/ keeps its paragraphs in the order of their subject: a paragraph
    that opens with a bold lead starts an entry, the paragraphs up to the next such lead belong to
    it, and the entries follow the alphabetical order of their leads, without markup and case.
