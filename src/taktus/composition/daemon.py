@@ -732,6 +732,8 @@ async def wire(
                     PostgresRepository(persistence, TakeoverTrial),
                     tenants=PostgresTenantStore(persistence),
                     rates=CorrectionRates(ledger, persistence),
+                    ledger=ledger,
+                    objects=objects,
                 )
             )
             owner = owner_channel_wiring(

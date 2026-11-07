@@ -36,6 +36,7 @@ from pydantic import Field
 from taktus.components.reporting.domain.model.levels import (
     DecisionFacts,
     Figure,
+    HealFacts,
     OriginFacts,
     OverviewFacts,
     ProcessFacts,
@@ -132,6 +133,8 @@ class StepElement(Value):
     decisions: tuple[DecisionElement, ...] = ()
     takeover: TakeoverFacts | None = None
     """The latest take-over the step was served for (ADR-0128)."""
+    heals: tuple[HealFacts, ...] = ()
+    """Every self-healing action on the step, each said in the text too (UC-4.6)."""
     drawn: Drawn
     text: str = Field(min_length=1)
     """The text equivalent: method, family, class and state, what it waits on, what it used."""
@@ -210,6 +213,19 @@ TAKEOVER_TEXT = {
 """What a step's latest take-over says in words, by where it stands (ADR-0128)."""
 
 
+def heal_text(heal: HealFacts) -> str:
+    """One self-healing action in words: the failure it answered, what was done, the outcome."""
+    done = "retried" if heal.action == "retry" else heal.action
+    ended = (
+        "the next attempt has not ended yet"
+        if heal.outcome is None
+        else f"the next attempt ended {heal.outcome}"
+    )
+    return (
+        f"Healed by Taktus after attempt {heal.attempt} failed ({heal.failure}): {done}; {ended}."
+    )
+
+
 def _takeover_text(takeover: TakeoverFacts) -> str:
     until = "" if takeover.until is None else takeover.until.isoformat()
     return TAKEOVER_TEXT[takeover.standing].format(id=takeover.id, until=until)
@@ -231,6 +247,7 @@ def _step(facts: StepFacts) -> StepElement:
     text.extend(d.text[0].upper() + d.text[1:] for d in decisions)
     if facts.takeover is not None:
         text.append(_takeover_text(facts.takeover))
+    text.extend(heal_text(heal) for heal in facts.heals)
     if used:
         text.append(f"Used {_figures_text(used)}.")
     return StepElement(
@@ -246,6 +263,7 @@ def _step(facts: StepFacts) -> StepElement:
         finished_at=facts.finished_at,
         decisions=decisions,
         takeover=facts.takeover,
+        heals=facts.heals,
         drawn=drawn,
         text=" ".join(text),
     )

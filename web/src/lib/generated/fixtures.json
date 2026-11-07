@@ -872,6 +872,7 @@
         "attempt": 1,
         "consumption": [],
         "decisions": [],
+        "heals": [],
         "drawn": {
           "moving": {
             "subject": "step",
@@ -909,6 +910,7 @@
         "attempt": 1,
         "consumption": [],
         "decisions": [],
+        "heals": [],
         "drawn": {
           "moving": {
             "subject": "step",
@@ -946,6 +948,7 @@
         "attempt": 1,
         "consumption": [],
         "decisions": [],
+        "heals": [],
         "drawn": {
           "moving": {
             "subject": "step",
@@ -983,6 +986,7 @@
         "attempt": 1,
         "consumption": [],
         "decisions": [],
+        "heals": [],
         "drawn": {
           "moving": {
             "subject": "step",
@@ -1029,6 +1033,7 @@
           }
         ],
         "decisions": [],
+        "heals": [],
         "drawn": {
           "moving": {
             "subject": "step",
@@ -1066,6 +1071,7 @@
         "attempt": 1,
         "consumption": [],
         "decisions": [],
+        "heals": [],
         "drawn": {
           "moving": {
             "subject": "step",
@@ -1102,6 +1108,7 @@
         "attempt": 1,
         "consumption": [],
         "decisions": [],
+        "heals": [],
         "drawn": {
           "moving": {
             "subject": "step",
@@ -1177,6 +1184,7 @@
             "text": "decision request dr_example: open, waiting for its decider."
           }
         ],
+        "heals": [],
         "drawn": {
           "moving": {
             "subject": "step",
@@ -1214,6 +1222,7 @@
         "attempt": 1,
         "consumption": [],
         "decisions": [],
+        "heals": [],
         "drawn": {
           "moving": {
             "subject": "step",
@@ -1251,6 +1260,7 @@
         "attempt": 1,
         "consumption": [],
         "decisions": [],
+        "heals": [],
         "drawn": {
           "moving": {
             "subject": "step",
@@ -2002,6 +2012,7 @@
           "attempt": 1,
           "consumption": [],
           "decisions": [],
+          "heals": [],
           "drawn": {
             "moving": {
               "subject": "step",
@@ -2039,6 +2050,7 @@
           "attempt": 1,
           "consumption": [],
           "decisions": [],
+          "heals": [],
           "drawn": {
             "moving": {
               "subject": "step",
@@ -2087,6 +2099,7 @@
             "standing": "held",
             "until": "2026-10-10T17:00:00Z"
           },
+          "heals": [],
           "drawn": {
             "moving": {
               "subject": "step",
@@ -2128,6 +2141,7 @@
             "id": "tko_lapsed",
             "standing": "lapsed"
           },
+          "heals": [],
           "drawn": {
             "moving": {
               "subject": "step",

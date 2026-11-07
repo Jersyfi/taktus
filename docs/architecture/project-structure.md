@@ -452,6 +452,15 @@ role it would tie the core to a model stack and the removal test would be lost.
   into `OwnerAnswers` beside the change in dialogue). Where a served take-over stands is read
   from the step run alone (`StepRun.takeovers`) and handed to the run level by
   `composition/levels.py`.
+- **A heal in the run's report** (UC-4.6): `composition/levels.py`'s `RepositoryLevelRecords`,
+  given the ledger and the object store, reads each `step.healed` of the run with the failure
+  it answered and the outcome of the step's next `step.finished`, and hands it to the run level
+  as the step's `heals`; the daemon's `Wired` gives both.
+- **The processes Taktus proposes** (ADR-0270) are found by the process component's rule
+  `domain/service/proposing.py` over facts `composition/process_proposals.py`'s
+  `ProcessProposals` reads from the ledger and the runs. Accepting one hands its words to
+  `ProposalActs.ask` (`composition/proposals.py`); a decision is a ledger entry, and nothing is
+  stored to make the list.
 - **The load measurement** (S-04, ADR-0223) is `adapters/driving/cli/load_command.py`: it
   submits the probe `blueprints/self-operation/processes/S-04-load-probe.yaml`, which the control
   plane's image carries, through the same services as `taktusctl submit`, and reads each run's
