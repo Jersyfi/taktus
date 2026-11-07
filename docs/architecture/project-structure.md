@@ -294,7 +294,9 @@ role it would tie the core to a model stack and the removal test would be lost.
   risk classes set on a level, the same way, and `taktusctl anchors set` stores both in one
   document, the column `anchor_configuration.levels` holding the ceilings (ADR-0170). It reaches the tenant's residency rule,
   `TenantResidency`, the same way, and `taktusctl residency` shows and sets it, narrowed per
-  data class and per process; the run asks it with the run's process (ADR-0258). The run and
+  data class and per process; the run asks it with the run's process (ADR-0258). Registration
+  reaches it through `ResidencyBindings`, which `composition/residency.py` answers from the
+  pools and the declared host locations (ADR-0281). The run and
   registration reach the tenant's declaration of its sources, `TenantSources`, the same way,
   and `taktusctl sources` shows and changes it (ADR-0130). Registration reaches the roles the tenant's
   identities hold, `RoleStructure`, from the identity component's `IdentityDirectory`

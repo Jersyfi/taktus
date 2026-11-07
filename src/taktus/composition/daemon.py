@@ -232,6 +232,7 @@ from taktus.composition.profiles import RoleProfiles
 from taktus.composition.proposals import InstanceChanges, ProposalActs
 from taktus.composition.reactions import Reactions, capacity_condition
 from taktus.composition.replies import ConnectorReplies
+from taktus.composition.residency import PoolBindings
 from taktus.composition.settings import (
     CONNECT_KEY,
     ExecutionKind,
@@ -901,6 +902,7 @@ async def wire(
                 structure=identities,
                 rights=identities,
                 domains=decisions.domains,
+                residency=PoolBindings(pools, decisions.residency, settings.host_locations),
             )
             moves = MethodMoves(
                 versions=PostgresRepository(persistence, ProcessVersion),

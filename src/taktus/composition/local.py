@@ -182,6 +182,7 @@ from taktus.composition.objects import object_store_of
 from taktus.composition.org_units import OrgUnitsOfTheRun
 from taktus.composition.owner_channel import known_secrets, owner_channel_wiring
 from taktus.composition.proposals import InstanceChanges
+from taktus.composition.residency import PoolBindings
 from taktus.composition.settings import (
     ExecutionKind,
     load_administration,
@@ -635,6 +636,7 @@ class LocalWiring:
                 structure=identities,
                 rights=identities,
                 domains=decisions.domains,
+                residency=PoolBindings(pools, decisions.residency, host_locations),
             )
             findings = ProductFindings(
                 RunBlocks(BlockedTime(ledger, objects, stores.work, runs)),
