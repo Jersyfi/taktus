@@ -30,6 +30,12 @@ the cached tokens exceed `prompt_tokens`, the total cannot include them: it is t
 input alone, and the input is the sum. Which kinds the endpoint reports the operator declares
 (`TAKTUS_MODEL_USAGE_KINDS`); conformance check M-04 holds the endpoint to it.
 
+**A server that serves one model.** A model server on the organisation's own hardware usually
+serves the one model it was started with. Configured without a model name, the adapter asks
+`GET {endpoint}/models` once, before its first completion, and asks for the one model listed
+there; a server that lists none or several is a `ModelError` naming them, and the operator then
+names one (ADR-0248). The list is the dialect's `{"data": [{"id": ...}]}`.
+
 **At the provider's limit.** A `429` is `ModelAtLimit`. A `Retry-After` header on it, in
 seconds or as an HTTP date, is passed on as the delay the provider asked for (ADR-0043).
 """
@@ -57,7 +63,15 @@ from taktus.ports.model import (
 )
 from taktus.shared.v1 import PriceKinds
 
-FINISH = {"stop": "stop", "end_turn": "stop", "length": "length", "max_tokens": "length"}
+FINISH = {
+    "stop": "stop",
+    "end_turn": "stop",
+    "length": "length",
+    "max_tokens": "length",
+    "model_length": "length",
+}
+"""How an endpoint names why it stopped. `model_length` is a provider's word for an answer cut
+at the model's context length (README.md)."""
 
 MESSAGE_OVERHEAD = 16
 """Tokens a chat template adds around one message — role markers, separators — at most. Every
@@ -115,7 +129,37 @@ class OpenAiCompatibleModel(Model):
     def model_name(self) -> str:
         return self._model
 
+    async def _discovered(self) -> str:
+        """The one model the endpoint lists, asked once (ADR-0248)."""
+        headers: dict[str, str] = {}
+        if self._credential is not None:
+            headers["Authorization"] = f"Bearer {self._credential.reveal()}"
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                response = await client.get(f"{self._endpoint}/models", headers=headers)
+        except httpx.HTTPError as error:
+            raise ModelError(
+                f"the model endpoint {self._endpoint} did not list its models: "
+                f"{type(error).__name__}"
+            ) from error
+        try:
+            listed = [str(m["id"]) for m in response.json()["data"]]
+        except (ValueError, KeyError, TypeError) as error:
+            raise ModelError(
+                f"the model endpoint {self._endpoint} answered {response.status_code} outside "
+                "the shape of a list of models; name the model (TAKTUS_MODEL_NAME)"
+            ) from error
+        if len(listed) != 1:
+            raise ModelError(
+                f"the model endpoint {self._endpoint} lists {len(listed)} models "
+                f"({', '.join(listed) or 'none'}); name the one to ask (TAKTUS_MODEL_NAME)"
+            )
+        self._model = listed[0]
+        return self._model
+
     async def complete(self, prompt: Prompt) -> Completion:
+        if not self._model:
+            await self._discovered()
         messages: list[dict[str, str]] = []
         if prompt.system:
             messages.append({"role": "system", "content": prompt.system})

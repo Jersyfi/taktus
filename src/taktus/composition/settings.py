@@ -474,6 +474,13 @@ class ModelSettings:
     cool_down_seconds: float = 60.0
     """`TAKTUS_MODEL_COOL_DOWN_SECONDS`: how long a model is passed over after a failure, or
     after a rate limit whose answer named no delay (ADR-0116 §5). The instance's alone."""
+    dialect: str = "chat_completions"
+    """`TAKTUS_MODEL_DIALECT`: how the endpoint is spoken to — `chat_completions` (the default:
+    a vendor's API, a local server, most gateways) or `generate_content` (a cloud's regional
+    endpoint of that interface, `adapters/driven/models/README.md`)."""
+    location_declared: bool = True
+    """Whether `TAKTUS_MODEL_LOCATION` was set. A `generate_content` endpoint that does not
+    declare it processes in the region its address names (ADR-0248)."""
 
     @property
     def identifier(self) -> str:
@@ -499,6 +506,7 @@ class ModelSettings:
             (f"{prefix}_USAGE_KINDS", ",".join(self.usage_kinds)),
             (f"{prefix}_LOCATION", self.location),
             (f"{prefix}_EXACTNESS", ",".join(self.classes)),
+            (f"{prefix}_DIALECT", self.dialect),
             (key, credential),
         ]
         if self.member is None:
@@ -644,6 +652,12 @@ def load_budget(configuration: Configuration) -> BudgetSettings:
     )
 
 
+LOCAL_ENDPOINT = "http://host.docker.internal:11434/v1"
+"""Where the one-machine installation asks its model server by default: the host's port of the
+most widely used local server's chat-completions interface (ADR-0248).
+`TAKTUS_MODEL_LOCAL_ENDPOINT` names any other server that speaks the dialect."""
+
+
 def load_model(configuration: Configuration, *, member: str | None = None) -> ModelSettings:
     """The model settings alone: `taktusctl` reads them too. `member` names a member of
     `TAKTUS_MODELS`, read through its `ModelConfiguration`."""
@@ -656,12 +670,40 @@ def load_model(configuration: Configuration, *, member: str | None = None) -> Mo
             configuration.name("model.endpoint"), f"{endpoint!r} is not an http(s) URL"
         )
     name = reader.text("model.name", "")
+    location = reader.choice("model.location", "elsewhere", LOCATIONS)
+    billing_default = "per_token"
+    if member is None and reader.choice("model.local.first", "false", ("true", "false")) == "true":
+        # The one-machine installation (ADR-0248): every purpose is bound to the model server
+        # on the organisation's own hardware unless a model is named, and a named one declares
+        # where it processes.
+        if endpoint is None:
+            endpoint = reader.text("model.local.endpoint", LOCAL_ENDPOINT)
+            location, billing_default = "own", "per_hardware_time"
+        elif configuration.get("model.location") is None:
+            raise ConfigurationError(
+                configuration.name("model.location"),
+                f"is not set; {configuration.name('model.endpoint')} names a model of its own "
+                "in place of the local one, and its location is declared: own, eu or elsewhere",
+            )
+        return _model_settings(reader, configuration, endpoint, name, location, billing_default)
     if endpoint is not None and not name:
         raise ConfigurationError(
             configuration.name("model.name"),
             f"is not set; {configuration.name('model.endpoint')} names an endpoint and needs "
             "the model to ask it for",
         )
+    return _model_settings(reader, configuration, endpoint, name, location, "per_token", member)
+
+
+def _model_settings(
+    reader: _Reader,
+    configuration: Configuration,
+    endpoint: str | None,
+    name: str,
+    location: str,
+    billing: str,
+    member: str | None = None,
+) -> ModelSettings:
     return ModelSettings(
         endpoint=endpoint,
         name=name,
@@ -669,7 +711,7 @@ def load_model(configuration: Configuration, *, member: str | None = None) -> Mo
         credential=configuration.secret(MODEL_CREDENTIAL),
         credential_source=configuration.source(MODEL_CREDENTIAL),
         billing=reader.choice(
-            "model.billing", "per_token", ("per_token", "per_window", "per_hardware_time")
+            "model.billing", billing, ("per_token", "per_window", "per_hardware_time")
         ),
         output_cap=reader.choice("model.output.cap", "soft", ("hard", "soft", "none")),
         provider_limit=reader.choice(
@@ -677,9 +719,13 @@ def load_model(configuration: Configuration, *, member: str | None = None) -> Mo
         ),
         usage_kinds=_usage_kinds(reader, configuration),
         member=member,
-        location=reader.choice("model.location", "elsewhere", LOCATIONS),
+        location=location,
         classes=_exactness_classes(reader, configuration),
         cool_down_seconds=reader.number("model.cool.down.seconds", 60.0, low=0.0),
+        dialect=reader.choice(
+            "model.dialect", "chat_completions", ("chat_completions", "generate_content")
+        ),
+        location_declared=configuration.get("model.location") is not None,
     )
 
 

@@ -549,6 +549,12 @@ role it would tie the core to a model stack and the removal test would be lost.
   on the command line alike. `taktusctl catalogue` (`adapters/driving/cli/catalogue_command.py`)
   reaches it through `catalogue_index` and `catalogue_author` of the command line's wiring; the
   table `catalogue_installation` is migration 0096.
+- **Models by dialect, and local first** (ADR-0248). `model_pool` of `composition/execution.py`
+  builds each configured model by `TAKTUS_MODEL_DIALECT`: `adapters/driven/models/openai_compatible/`
+  for chat completions, `adapters/driven/models/vertex/` for a regional `generateContent`
+  endpoint, whose region names its location when none is declared. `load_model` of
+  `composition/settings.py` binds every purpose to `TAKTUS_MODEL_LOCAL_ENDPOINT` under
+  `TAKTUS_MODEL_LOCAL_FIRST` and refuses a named model there without its location.
 - **Shares of the catalogue** (ADR-0246, ADR-0247) are the catalog component's
   `domain/model/shares.py` (the share, the circle, the caller's credential),
   `domain/service/shares.py` (who is inside, the withdrawal by the removal verdict, the use per

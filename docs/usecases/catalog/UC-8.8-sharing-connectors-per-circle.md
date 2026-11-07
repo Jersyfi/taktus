@@ -4,10 +4,10 @@ title: Sharing connectors per circle
 component: catalog
 epic: E8
 serves: [P4, P12]
-state: specified
+state: built
 version: 0.6.0
-tests: []
-adrs: {ADR-0024: 52ba89e4adec}
+tests: [tests/components/run/test_shared_entries.py::test_one_shared_connector_called_as_two_identities_shows_each_only_its_own, tests/components/run/test_shared_entries.py::test_a_caller_without_a_credential_of_their_own_is_refused_before_any_call, tests/components/run/test_shared_entries.py::test_a_connector_shared_with_one_team_is_refused_outside_it, tests/composition/test_shared_agent_callers.py::test_a_shared_entrys_use_is_read_per_unit_and_a_person_sees_only_their_own]
+adrs: {ADR-0024: 52ba89e4adec, ADR-0246: 427e96722fc8, ADR-0247: 3725ee028f0c}
 supersedes: null
 ---
 
@@ -43,3 +43,12 @@ permissions in the source system**, which Taktus passes through and never widens
 The connector contract and the requesting identity's credential (ADR-0024); maturity
 (`docs/architecture/contracts.md` §3); the structure (UC-1.4). Definition `UC-8.8`. The version is
 `0.6.0`, the catalogue.
+
+## 5. What is proven so far
+
+A connector shared once is usable by every identity in its circle and refused
+outside it (`frame.refused`, `outside_circle`). Each call names the caller's own credential
+parameter, and the source system shows each identity only its own records; a caller with none
+is refused before the call. A step at level 3 or above runs only on a connector at *verified*
+or above, as for every adapter (NTC-0051). Use is read per unit, a person's own apart. All by
+the named tests (ADR-0246, ADR-0247).
