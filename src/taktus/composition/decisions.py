@@ -46,6 +46,7 @@ from taktus.components.governance.application.service import (
     AnchorsInForce,
     BreachSeen,
     ConfigureAnchorsHandler,
+    ConnectionGrants,
     Corrections,
     DecisionMade,
     Repetitions,
@@ -63,6 +64,7 @@ from taktus.components.governance.application.service.tenant_budget import (
 from taktus.components.governance.domain.model import (
     AnchorConfiguration,
     CaseAnswer,
+    ConnectionGrant,
     CorrectionLimits,
     Incident,
     MessageRules,
@@ -412,6 +414,9 @@ class DecisionWiring:
     sources: TenantSources
     """A tenant's declaration of its sources, and the run's and registration's port over it
     (ADR-0130)."""
+    connections: ConnectionGrants
+    """A tenant's grants of writing on a connection that reads until granted, and the run's
+    port `WriteGrants` over them (ADR-0262)."""
     open_work: CapsOfTheVersion
     """The run's port for a version's caps on open work (ADR-0132)."""
     repetition: RepetitionOfTheRun
@@ -463,6 +468,7 @@ def decision_wiring(
         lowered=LoweredOfTheVersion(corrections),
         residency=TenantResidency(of(ResidencyRule), ledger, work, clock),
         sources=TenantSources(of(SourceDeclaration), ledger, work, clock),
+        connections=ConnectionGrants(of(ConnectionGrant), ledger, work, clock, directory),
         open_work=CapsOfTheVersion(of(ProcessVersion), work),
         repetition=RepetitionOfTheRun(
             Repetitions(of(Incident), of(WatchConfiguration), ledger, work, clock)

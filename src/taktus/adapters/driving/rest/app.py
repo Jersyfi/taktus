@@ -58,6 +58,7 @@ from taktus.adapters.driving.rest import (
     agent_surface,
     autonomy,
     catalogue,
+    connections,
     deprecation,
     evaluations,
     figures,
@@ -88,6 +89,7 @@ from taktus.adapters.driving.rest.wiring import RestServices, StreamsFull
 from taktus.components.command.application.service import (
     AlreadyCompleted,
     CompleteIntake,
+    NotACommand,
     ReceiveIntake,
     UnknownChannel,
     UnknownIntakeEvent,
@@ -207,6 +209,7 @@ def build_app(
         app.include_router(spend.router(services, _authenticated), prefix=base)
         app.include_router(trials.router(services, _authenticated), prefix=base)
         app.include_router(subjects.router(services, _authenticated), prefix=base)
+        app.include_router(connections.router(services, _authenticated), prefix=base)
         # A person's own agent, over MCP, with a key of its own (ADR-0131).
         app.router.routes.append(
             Route(
@@ -280,8 +283,10 @@ def _intake(services: RestServices) -> APIRouter:
             202: {
                 "description": "Decided: `accepted` with the intake event, `refused`, "
                 "`unknown_sender` with whether the sender was answered in the channel and "
-                "whether the message linked their account, or `answer` for a message in the "
-                "thread of a report to the owner, with what became of it."
+                "whether the message linked their account, `answer` for a message in the "
+                "thread of a report to the owner, with what became of it, `assistant` with the "
+                "intake event kept for the assistant of a rollout channel, or `passed` with why "
+                "a message in a rollout channel was passed over."
             },
             400: {"description": "The body cannot be read.", **PROBLEM},
             401: {"description": "Unsigned, or the signature does not verify.", **PROBLEM},
@@ -333,6 +338,11 @@ def _intake(services: RestServices) -> APIRouter:
             return JSONResponse(
                 {"answer": outcome.answer, "replied": outcome.replied}, status_code=202
             )
+        if outcome.assistant is not None:
+            # Kept for the rollout channel's assistant: never a command (ADR-0261).
+            return JSONResponse({"assistant": outcome.assistant.document()}, status_code=202)
+        if outcome.passed is not None:
+            return JSONResponse({"passed": outcome.passed}, status_code=202)
         if outcome.unknown_sender is not None:
             return JSONResponse(
                 {
@@ -362,7 +372,11 @@ def _intake(services: RestServices) -> APIRouter:
             401: {"description": "No account key, or one that proves no identity.", **PROBLEM},
             404: {"description": "No such intake event in your tenant.", **PROBLEM},
             409: {"description": "The event was completed before.", **PROBLEM},
-            422: {"description": "The sender cannot be placed.", **PROBLEM},
+            422: {
+                "description": "The sender cannot be placed, or the event was written in a "
+                "rollout channel and is no command.",
+                **PROBLEM,
+            },
         },
     )
     async def complete(
@@ -378,7 +392,7 @@ def _intake(services: RestServices) -> APIRouter:
             return problem(404, str(error))
         except AlreadyCompleted as error:
             return problem(409, str(error))
-        except UnknownSender as error:
+        except (UnknownSender, NotACommand) as error:
             return problem(422, str(error))
         return JSONResponse(command.document(), status_code=200)
 

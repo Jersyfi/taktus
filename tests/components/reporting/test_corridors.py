@@ -129,7 +129,8 @@ def test_a_corridor_below_is_breached_downwards() -> None:
         (attempt(3, 120, method=Method.ML), "not_admissible"),
         (attempt(3, 120, exactness=ExactnessClass.TOLERANT), "not_admissible"),
         (attempt(3, 120, provenance=False), "not_admissible"),
-        (attempt(3, "120"), "not_a_number"),
+        (attempt(3, "120 EUR"), "not_a_number"),
+        (attempt(3, "1e3"), "not_a_number"),
         (attempt(3, True), "not_a_number"),
         (attempt(3, None), "not_a_number"),
     ],
@@ -141,6 +142,14 @@ def test_a_value_that_is_no_measurement_is_named_never_normal(
     judged = rule.judge(corridor(), [attempt(1, 50), attempt(2, 50), newest], now=newest.at)
     assert judged.level is Level.UNMEASURED and judged.reason == reason
     assert judged.run_id == "run_3", "the line still names the attempt"
+
+
+def test_a_decimal_number_as_text_is_that_number_as_a_warehouse_answers_it() -> None:
+    """A warehouse answers every value of its rows as text (ADR-0262 §5)."""
+    c = corridor()
+    judged = rule.judge(c, [attempt(1, "50"), attempt(2, "50.0"), attempt(3, " 120 ")],
+                        now=AT + timedelta(days=3))  # fmt: skip
+    assert judged.level is not Level.UNMEASURED and judged.value == 120.0
 
 
 def test_a_signal_with_no_recent_attempt_is_not_measured() -> None:

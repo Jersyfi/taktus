@@ -71,16 +71,20 @@
       "image": "taktus-connector-bigquery",
       "name": "bigquery",
       "operations": [
+        "warehouse.queries.change",
         "warehouse.queries.run"
       ]
     },
     {
       "capabilities": [
+        "knowledge.documents",
         "knowledge.pages"
       ],
       "image": "taktus-connector-bookstack",
       "name": "bookstack",
       "operations": [
+        "knowledge.documents.search",
+        "knowledge.documents.versions",
         "knowledge.pages.list",
         "knowledge.pages.read",
         "knowledge.pages.write"

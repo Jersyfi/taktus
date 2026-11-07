@@ -8,10 +8,12 @@ from taktus.components.run.ports.anchors import (
     NotRaised,
     Verdict,
 )
+from taktus.components.run.ports.citations import Citations
 from taktus.components.run.ports.connectors import ConnectorPool
 from taktus.components.run.ports.control import ExternalControl
 from taktus.components.run.ports.deadlines import DeclaredDeadlines
 from taktus.components.run.ports.evaluated import Evaluated
+from taktus.components.run.ports.grants import WriteGrants
 from taktus.components.run.ports.guidance import Guidance
 from taktus.components.run.ports.levels import Breach, Levels, LoweredLevels, ProposalDecided
 from taktus.components.run.ports.maturity import Maturities, Standing
@@ -19,6 +21,7 @@ from taktus.components.run.ports.messages import MessageRules, Messages, QuietHo
 from taktus.components.run.ports.models import ModelPool
 from taktus.components.run.ports.open_work import Cap, CountReading, OpenWork
 from taktus.components.run.ports.org_units import OrgUnitBudget, OrgUnits
+from taktus.components.run.ports.personal import PersonalCredentials
 from taktus.components.run.ports.repetition import (
     Repeated,
     Repetition,
@@ -37,6 +40,7 @@ __all__ = [
     "Breach",
     "CallerCall",
     "Cap",
+    "Citations",
     "ConnectorPool",
     "CountReading",
     "Decisions",
@@ -57,6 +61,7 @@ __all__ = [
     "OpenWork",
     "OrgUnitBudget",
     "OrgUnits",
+    "PersonalCredentials",
     "ProposalDecided",
     "QuietHours",
     "Repeated",
@@ -70,4 +75,5 @@ __all__ = [
     "Statements",
     "Verdict",
     "WorkerPool",
+    "WriteGrants",
 ]

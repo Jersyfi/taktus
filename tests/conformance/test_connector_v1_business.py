@@ -30,6 +30,7 @@ WRITERS = frozenset(
     {
         "accounting",
         "appstores",
+        "bigquery",
         "canny",
         "cloudfunctions",
         "cloudrun",

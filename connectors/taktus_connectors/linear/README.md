@@ -32,6 +32,10 @@ of `TAKTUS_CONNECTORS`: `tasks.items=http://tasks-connector:9154/mcp`.
   a team's issues through `team(id:) { issues }`.
 - [Rate limiting](https://linear.app/developers/rate-limiting): HTTP 429 with the code
   `RATELIMITED`.
+- [The published schema](https://github.com/linear/linear/blob/master/packages/sdk/src/schema.graphql):
+  the mutation `issueRelationCreate(input: { issueId, relatedIssueId, type })` with the types
+  `blocks`, `duplicate`, `related` and `similar`, answering `success`; an issue's
+  `relations { nodes { relatedIssue { id identifier } } }`.
 
 The documentation names no HTTP status for a refused key. The connector treats HTTP 401 and an
 error whose `extensions.code` or `extensions.type` names authentication alike, as
@@ -44,7 +48,7 @@ error whose `extensions.code` or `extensions.type` names authentication alike, a
 | `tasks.items.list` | `read` | `overdue_by_days` (optional, 0 to 3650), `limit` (1 to 5000, default 500) | `items`, `complete` |
 | `tasks.items.read` | `read` | `id`, an identifier or a key such as `ENG-123` | one item, with `open` |
 | `tasks.items.remind` | `write`, `marked` | `id`, `text` (1 to 4000 characters) | `task`, `comment` |
-| `tasks.items.create` | `write`, `marked` | `title` (one line, 1 to 255 characters), `description` (optional, at most 30000) | `id`, `key`, `url` |
+| `tasks.items.create` | `write`, `marked` | `title` (one line, 1 to 255 characters), `description` (optional, at most 30000), `related` (optional, up to 20 ids or keys of the tasks it belongs with) | `id`, `key`, `url`, `related`, `linked` |
 
 Only open tasks are listed: those whose state's type is neither `completed` nor `canceled`.
 `overdue_by_days` keeps those due at least that many days before today, in UTC.
@@ -66,6 +70,13 @@ creating, the connector asks the team's issues for a description that contains t
 API answers from its own records, so a task created a moment ago is found, and the repeat
 reports `replayed` without creating. The `id` it answers is what `tasks.items.remind` takes, so
 that a later change reaches the same task (ADR-0227 §4).
+
+A task that belongs with others is related to each as `related` (UC-5.3). Every one of them is
+read before anything is created, and one the tracker does not know refuses the call as
+`invalid`, with no task made. After creating, the connector reads the task's relations and
+makes each one missing, so a repeat that finds the task by its mark relates what a first call
+left out and nothing twice. A relation not confirmed after the task exists is `unavailable`
+and retryable, so that the run keeps the key and its repeat finds the task.
 
 ## Credentials
 

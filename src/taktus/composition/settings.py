@@ -1035,6 +1035,12 @@ def load_knowledge_directory(configuration: Configuration) -> Path | None:
     return Path(value).expanduser() if value else None
 
 
+def load_personal_credentials(configuration: Configuration) -> Mapping[tuple[str, str], str]:
+    """`TAKTUS_PERSONAL_CREDENTIALS`: per identity, the parameter of its own credential for a
+    parameter a step on its behalf names (ADR-0264). Empty: no identity has one."""
+    return _Reader(configuration).personal_credentials()
+
+
 def load_gallery_directory(configuration: Configuration) -> Path | None:
     """`TAKTUS_GALLERY_DIRECTORY`: the directory of the gallery a person chooses a first process
     from, one directory per gallery blueprint (UC-10.4, ADR-0136 §1). None: the gallery is
@@ -1235,6 +1241,14 @@ class Settings:
     triage: Mapping[str, str]
     """Public channel → the process that triages an unknown sender's contribution there
     (`TAKTUS_TRIAGE`, UC-1.9, ADR-0088). A channel it does not name has no triage."""
+    rollout: Mapping[str, str]
+    """Rollout channel — a channel capability, or `<capability>/<conversation>` — → the agent
+    it serves (`TAKTUS_ROLLOUT`, UC-12.1, ADR-0261). A channel it does not name is a command
+    channel."""
+    personal_credentials: Mapping[tuple[str, str], str]
+    """(identity, parameter) → the parameter of that identity's own credential standing for it
+    (`TAKTUS_PERSONAL_CREDENTIALS`, ADR-0264): what a step on behalf of the identity reads
+    with. An identity it does not name gets nothing from a source read on its behalf."""
     administration: Administration
     """The platform this instance runs on and what each credential administers (ADR-0052)."""
     knowledge_directory: Path | None
@@ -1325,6 +1339,11 @@ class Settings:
             *self.capacity.effective(),
             ("TAKTUS_CONNECTORS", ",".join(f"{c}={u}" for c, u in self.connectors.items())),
             ("TAKTUS_TRIAGE", ",".join(f"{c}={p}" for c, p in self.triage.items())),
+            ("TAKTUS_ROLLOUT", ",".join(f"{c}={a}" for c, a in self.rollout.items())),
+            (
+                "TAKTUS_PERSONAL_CREDENTIALS",
+                ",".join(f"{i}/{p}={o}" for (i, p), o in self.personal_credentials.items()),
+            ),
             ("TAKTUS_KNOWLEDGE_DIRECTORY", str(self.knowledge_directory or "")),
             ("TAKTUS_GALLERY_DIRECTORY", str(self.gallery_directory or "")),
             ("TAKTUS_FINDINGS_CONNECTOR", self.findings_connector or ""),
@@ -1396,6 +1415,8 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         capacity=load_capacity(configuration),
         connectors=reader.connectors(),
         triage=reader.triage(),
+        rollout=reader.rollout(),
+        personal_credentials=reader.personal_credentials(),
         administration=load_administration(configuration),
         knowledge_directory=load_knowledge_directory(configuration),
         gallery_directory=load_gallery_directory(configuration),
@@ -1610,6 +1631,59 @@ class _Reader:
             if capability in mapping:
                 raise ConfigurationError(name, f"{capability!r} is mapped twice")
             mapping[capability] = process
+        return mapping
+
+    def rollout(self) -> Mapping[str, str]:
+        """`channel.chat/C0HELP=helpdesk`: a channel capability, optionally a slash and one
+        conversation of it, an equals sign, the agent the rollout channel serves (ADR-0261)."""
+        name, value = self._raw("rollout")
+        if value is None:
+            return {}
+        mapping: dict[str, str] = {}
+        for entry in (e.strip() for e in value.split(",") if e.strip()):
+            channel, separator, agent = (part.strip() for part in entry.partition("="))
+            capability, _, conversation = channel.partition("/")
+            if not separator or not capability or not agent:
+                raise ConfigurationError(
+                    name,
+                    f"{entry!r} is not channel=agent (for example channel.chat/C0HELP=helpdesk)",
+                )
+            if "." not in capability or capability != capability.lower():
+                raise ConfigurationError(
+                    name, f"{capability!r} is not a capability (lowercase, dotted)"
+                )
+            if "/" in channel and re.fullmatch(r"[^\s/=,]+", conversation) is None:
+                raise ConfigurationError(name, f"{conversation!r} is not a conversation")
+            if re.fullmatch(r"[a-z][a-z0-9-]*", agent) is None:
+                raise ConfigurationError(name, f"{agent!r} is not an agent's name")
+            if channel in mapping:
+                raise ConfigurationError(name, f"{channel!r} is mapped twice")
+            mapping[channel] = agent
+        return mapping
+
+    def personal_credentials(self) -> Mapping[tuple[str, str], str]:
+        """`person:ada/KNOWLEDGE_TOKEN=KNOWLEDGE_TOKEN_ADA,…`: an identity, a slash, the
+        parameter a step names, an equals sign, the parameter of that identity's own
+        credential (ADR-0264). Parameters only, never a value."""
+        name, value = self._raw("personal.credentials")
+        if value is None:
+            return {}
+        mapping: dict[tuple[str, str], str] = {}
+        for entry in (e.strip() for e in value.split(",") if e.strip()):
+            left, separator, own = (part.strip() for part in entry.partition("="))
+            identity, slash, parameter = (part.strip() for part in left.rpartition("/"))
+            if not separator or not slash or not identity:
+                raise ConfigurationError(
+                    name,
+                    f"{entry!r} is not identity/PARAMETER=OWN_PARAMETER "
+                    "(for example person:ada/KNOWLEDGE_TOKEN=KNOWLEDGE_TOKEN_ADA)",
+                )
+            for part in (parameter, own):
+                if re.fullmatch(r"[A-Z][A-Z0-9_]*", part) is None:
+                    raise ConfigurationError(name, f"{part!r} is not a credential parameter")
+            if (identity, parameter) in mapping:
+                raise ConfigurationError(name, f"{identity}/{parameter} is mapped twice")
+            mapping[(identity, parameter)] = own
         return mapping
 
     def connectors(self) -> Mapping[str, str]:

@@ -10,13 +10,20 @@ metadata:
   name: Product development
   domain: engineering
   maturity: draft            # draft | experimental | verified | reference
+  version: "1"               # a later version is offered to an instance, never applied (ADR-0263)
 
-# Capabilities, never product names. Mapping to an adapter is configuration.
+# Capabilities, never product names. Mapping to an adapter is configuration. Every capability
+# an operation of a bundle below calls is named here, or the blueprint is not admitted.
 requires:
   connectors:
     - capability: repository.issues
     - capability: repository.pullrequests
     - capability: repository.pipelines
+    - capability: repository.comments
+    - capability: repository.files
+    - capability: repository.branches
+    - capability: repository.labels
+    - capability: repository.refs
     - capability: chat.threads
   workers:
     - capability: code.edit
@@ -42,6 +49,7 @@ anchors:
 processes:
   - id: P-01
     name: Roadmap control
+    bundle: processes/P-01-roadmap-control.yaml
     autonomy:
       level: 3
       reason: the one outward effect is a report a person reads; every verdict in it is a rule's, and a person applies what it proposes
@@ -62,6 +70,7 @@ processes:
 
   - id: P-02
     name: Refinement
+    bundle: processes/P-02-refinement.yaml
     autonomy:
       level: 3
       reason: the one outward effect is a comment a person reads before anything builds on it; the answer leaves only through a check
@@ -74,6 +83,7 @@ processes:
 
   - id: P-03
     name: Implementation
+    bundle: processes/P-03-implementation.yaml
     autonomy:
       level: 4
       reason: nothing writes to a protected branch, the pipeline's verdict is the gate and a person merges; the worker runs in isolation
@@ -105,6 +115,7 @@ processes:
   # processes/P-05-triage.yaml (UC-1.9, ADR-0088): started by the intake, not by these triggers.
   - id: P-05
     name: Intake and triage
+    bundle: processes/P-05-triage.yaml   # the part for contributions from people Taktus does not know
     autonomy:
       level: 3
       reason: classification is a judgement with a measured error; a feature or a scope change escalates to a person by rule

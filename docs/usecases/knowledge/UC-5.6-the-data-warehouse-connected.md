@@ -4,9 +4,9 @@ title: The data warehouse connected
 component: knowledge
 epic: E5
 serves: [P1, P7, P12]
-state: specified
+state: building
 version: 0.7.0
-tests: []
+tests: [tests/components/governance/test_connection_grants.py::test_a_new_connection_reads_only, tests/components/governance/test_connection_grants.py::test_the_owner_grants_writing_and_withdraws_it_and_each_act_is_recorded, tests/components/governance/test_connection_grants.py::test_anyone_but_a_person_with_the_right_is_refused_and_the_refusal_recorded, tests/components/run/test_warehouse.py::test_a_write_without_a_grant_is_refused_before_it_reaches_the_warehouse, tests/components/run/test_warehouse.py::test_a_write_on_a_granted_connection_reaches_the_warehouse_once, tests/components/run/test_warehouse.py::test_every_query_is_recorded_with_its_step_by_reference_and_its_text_kept_whole, tests/adapters/rest/test_connections.py::test_a_steps_queries_are_read_with_their_text_where_the_run_is_seen, tests/components/run/test_warehouse.py::test_two_identities_ask_the_same_question_and_each_is_answered_as_the_warehouse_limits_it, tests/adapters/connectors/test_warehouse_connector.py::test_two_identities_ask_the_same_question_and_each_reads_what_the_warehouse_shows_it, tests/components/process/test_queries.py::test_a_query_fixed_in_the_version_may_feed_an_exact_step, tests/components/process/test_queries.py::test_a_query_a_model_wrote_feeds_no_exact_or_sourced_step, tests/components/process/test_queries.py::test_a_query_given_as_an_input_may_feed_sourced_but_not_exact, tests/components/process/test_queries.py::test_registration_refuses_a_version_whose_model_written_query_feeds_a_sourced_step, tests/composition/test_warehouse_signals.py::test_a_warehouse_figure_below_its_threshold_escalates_with_the_reading_on_record]
 adrs: {ADR-0006: a5960785aee4, ADR-0014: 6611f7833deb, ADR-0021: dc801ddd1c47, ADR-0024: 52ba89e4adec}
 supersedes: null
 ---

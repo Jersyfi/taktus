@@ -21,7 +21,7 @@ boundaries, `import-linter` contracts and `tests/architecture` are not optional 
 | `decision` | decision requests, the decision register, rules derived from it: requests raised, answered, their reading confirmed, the register, the decider's list and response times (ADR-0042); rules from precedent proposed, adopted and answering their kind (`decision_rule`, ADR-0161), wired with the requests in `composition/decisions.py` |
 | `catalog` | models, agents, skills, connectors, blueprints, maturity |
 | `accounting` | consumption capture, Takt, forecasts, marginal value |
-| `knowledge` | knowledge sources, embeddings, citations. Its package's first content is the guides beyond the repository (UC-13.6, ADR-0065): the manifest, the rendering by rule, the seven states a page in a knowledge system can be in, and the publishing through `knowledge.pages` |
+| `knowledge` | knowledge sources, embeddings, citations. Its package's first content is the guides beyond the repository (UC-13.6, ADR-0065): the manifest, the rendering by rule, the seven states a page in a knowledge system can be in, and the publishing through `knowledge.pages`. Then the knowledge layer (UC-5.5, ADR-0265): the rule `citation`, which lets an answer drawn from knowledge leave its step only with its sources, and the index `KnowledgeEntry` of references and digests of what was read, never the text |
 | `value` | value ledger, cost and benefit entries, revert analysis |
 | `ledger` | hash chain, verification, export |
 | `reporting` | views and who may see them, reports and their delivery, the explanation of an action on request; owns no figure — every number is read from the component that produces it (ADR-0029). Its package arrived with the product finding (UC-6.12, ADR-0046), which leaves an instance by pseudonym, only where its operator enabled it, and only past the one rule for what may leave, which a report written by hand passes too (ADR-0112); the owner-facing channel — a tenant's configuration and phrasebook, a report to the owner in three renderings, the answer in the channel or on the report's page in the web app read, reflected and confirmed — is in it too (ADR-0045, ADR-0120), and so is the broken interface noticed from the run's failed calls (ADR-0047), and what needs a person's action — a capacity crossing to *act*, a lost claim, a failed or missing backup — noticed from recorded facts (ADR-0106), and the signals judged against their corridors, with the daily report of what deviates (ADR-0109) |
@@ -387,7 +387,9 @@ role it would tie the core to a model stack and the removal test would be lost.
   A trigger whose condition does not hold leaves its entry for a later pass.
   The same pass reads `intake.contribution`: an unknown sender's contribution on a channel
   `TAKTUS_TRIAGE` names starts that channel's triage process once, acting for whoever registered
-  its active version, with no trigger matched (UC-1.9, ADR-0088).
+  its active version, with no trigger matched (UC-1.9, ADR-0088). It reads `intake.assistant`
+  too: a placed person's message in a rollout channel `TAKTUS_ROLLOUT` names runs the agent's
+  own process as that person (`composition/assistants.py`, UC-12.1, ADR-0261).
 - **The stream of changes** is the `api` role's (`composition/live.py`, ADR-0055). Each process
   holds at most `TAKTUS_LIVE_STREAMS` streams and one listening connection. A notification for a
   tenant with open streams wakes one read of its ledger, after the oldest position its streams
@@ -605,6 +607,17 @@ role it would tie the core to a model stack and the removal test would be lost.
   through `shares` and `catalogue_use` of the command line's wiring, and `taktusctl skill
   export` writes skills back as their directories; the tables `catalogue_share` and
   `caller_credential` are migration 0103.
+- **Domain blueprints** (ADR-0263, UC-15.1) are the catalog component's
+  `domain/model/blueprint.py` (the blueprint, what a bundle came to, the instance and its
+  answers, the offer, the figures per domain), `domain/service/blueprints.py` (the admission
+  with every finding, the open questions, the starting level, the runs counted per domain) and
+  `application/service/domains.py` (`DomainInstances`, the one writer of the instance), over the
+  ports of `ports/domains.py`: `ProcessProposals`, `People` and `Adapters`.
+  `composition/domain_blueprints.py` reads a blueprint's directory, holds each bundle to
+  `parse_bundle`, answers the three ports from `Proposals`, the identity directory and the
+  release's list of connectors, and exports a blueprint as its files. `taktusctl domain`
+  (`adapters/driving/cli/domain_command.py`) reaches it through `domains` of the command line's
+  wiring; the table `domain_instance` is migration 0106.
 - **A halted run raised and resumed** is `taktusctl resume` (`adapters/driving/cli/resume_command.py`, #458): it reads no bundle, so the process's active version stays; it raises a run's money or its quota (DEC-0208).
 - **Memory once started.** Once wired, the daemon collects and freezes what its start left
   alive — the modules, the wiring — so that a full garbage collection, which stops every thread

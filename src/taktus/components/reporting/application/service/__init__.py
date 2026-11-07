@@ -61,6 +61,11 @@ from taktus.components.reporting.application.service.product_findings import (
     Withheld,
     payload_of,
 )
+from taktus.components.reporting.application.service.queries import (
+    SentQuery,
+    StepQueries,
+    StepQueriesView,
+)
 from taktus.components.reporting.application.service.raise_report import (
     DONE,
     DeliverReport,
@@ -145,10 +150,13 @@ __all__ = [
     "ReportingError",
     "Sending",
     "Sent",
+    "SentQuery",
     "ShowInChannel",
     "ShowInChannelHandler",
     "Shown",
     "SignalWatch",
+    "StepQueries",
+    "StepQueriesView",
     "StepTraces",
     "Taking",
     "UnknownReport",

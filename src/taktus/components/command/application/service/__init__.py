@@ -6,6 +6,7 @@ from taktus.components.command.application.service.complete_intake import (
     AlreadyCompleted,
     CompleteIntake,
     CompleteIntakeHandler,
+    NotACommand,
     UnknownIntakeEvent,
     UnknownSender,
 )
@@ -38,6 +39,7 @@ __all__ = [
     "CompleteIntake",
     "CompleteIntakeHandler",
     "IntakeOutcome",
+    "NotACommand",
     "OpenDraft",
     "PlanDialogue",
     "PlanIncomplete",

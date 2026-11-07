@@ -86,6 +86,8 @@ class State:
     def __init__(self, tokens: set[str]) -> None:
         self.tokens = tokens
         self.issues = default_issues()
+        self.relations: list[dict[str, str]] = []
+        """Every relation made, `{issue, related, type}` by the tasks' ids."""
         self.requests = 0
         self.throttled = False
         self.lock = threading.Lock()
@@ -141,7 +143,12 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
                 ]
                 self.answer(
                     200,
-                    {"requests": state.requests, "comments": comments, "created": created},
+                    {
+                        "requests": state.requests,
+                        "comments": comments,
+                        "created": created,
+                        "relations": list(state.relations),
+                    },
                 )
 
         def do_POST(self) -> None:
@@ -181,6 +188,8 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
                 self.answer(200, self._resolve(query, variables))
 
         def _resolve(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
+            if re.search(r"\bissueRelationCreate\s*\(", query):
+                return self._relate(variables.get("input") or {})
             if re.search(r"\bcommentCreate\s*\(", query):
                 return self._comment(variables.get("input") or {})
             if re.search(r"\bissueCreate\s*\(", query):
@@ -201,6 +210,19 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
                     page = {"hasNextPage": more, "endCursor": end}
                     comments = {"nodes": nodes, "pageInfo": page}
                     return {"data": {"issue": {"id": found[0]["id"], "comments": comments}}}
+                if re.search(r"\brelations\s*\(", query):
+                    mine = [r["related"] for r in state.relations if r["issue"] == found[0]["id"]]
+                    nodes = [
+                        {"relatedIssue": {"id": i["id"], "identifier": i["identifier"]}}
+                        for i in state.issues
+                        if i["id"] in mine
+                    ]
+                    issue = {
+                        "id": found[0]["id"],
+                        "identifier": found[0]["identifier"],
+                        "relations": {"nodes": nodes},
+                    }
+                    return {"data": {"issue": issue}}
                 return {"data": {"issue": self._node(found[0], query)}}
             return {"data": None, "errors": [_error("invalid input", "unknown field")]}
 
@@ -270,6 +292,20 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
             state.issues.append(issue)
             node = self._node(issue, "")
             return {"data": {"issueCreate": {"success": True, "issue": node}}}
+
+        def _relate(self, given: dict[str, Any]) -> dict[str, Any]:
+            def find(value: Any) -> dict[str, Any] | None:
+                return next((i for i in state.issues if value in (i["id"], i["identifier"])), None)
+
+            issue, other = find(given.get("issueId")), find(given.get("relatedIssueId"))
+            if issue is None or other is None:
+                return {"data": None, "errors": [_error("invalid input", "Entity not found")]}
+            if given.get("type") not in ("blocks", "duplicate", "related", "similar"):
+                return {"data": None, "errors": [_error("invalid input", "invalid relation type")]}
+            state.relations.append(
+                {"issue": issue["id"], "related": other["id"], "type": given["type"]}
+            )
+            return {"data": {"issueRelationCreate": {"success": True}}}
 
         def _comment(self, given: dict[str, Any]) -> dict[str, Any]:
             found = [i for i in state.issues if given.get("issueId") in (i["id"], i["identifier"])]

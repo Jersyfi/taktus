@@ -78,6 +78,7 @@ from taktus.components.accounting.application.service import (
 from taktus.components.catalog.application.service import (
     AgentCatalog,
     CatalogueInstalls,
+    DomainInstances,
     RecordRemovalResultHandler,
     RunConformanceHandler,
     SkillCatalog,
@@ -86,6 +87,7 @@ from taktus.components.catalog.domain.model import (
     AdapterMaturity,
     AgentCore,
     CatalogueInstallation,
+    DomainInstance,
     RoleProfile,
     SkillOwnership,
     SkillPolicy,
@@ -114,6 +116,7 @@ from taktus.components.identity.domain.model import (
     RoleRights,
 )
 from taktus.components.knowledge.application.service import PublishGuidesHandler
+from taktus.components.knowledge.domain.model import KnowledgeEntry
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.deactivate import DeactivateProcessHandler
 from taktus.components.process.application.service.packages import ProcessPackages
@@ -149,6 +152,12 @@ from taktus.composition.catalogue import CatalogueAuthor, InstanceCatalogueIndex
 from taktus.composition.conformance import InstanceSuites, worker_suites
 from taktus.composition.decisions import decision_wiring
 from taktus.composition.defects import CorrectionRequests
+from taktus.composition.domain_blueprints import (
+    DeclaredAdapters,
+    DomainBlueprints,
+    KnownPeople,
+    ProposalsOfProcesses,
+)
 from taktus.composition.evaluations import Evaluations
 from taktus.composition.execution import (
     connector_pool,
@@ -162,6 +171,7 @@ from taktus.composition.execution import (
 from taktus.composition.findings import RunBlocks, RunContent, sending_of
 from taktus.composition.guides import InstanceGuides, served_directory
 from taktus.composition.interfaces import broken_interfaces
+from taktus.composition.knowledge import IndexedCitations
 from taktus.composition.levels import RepositoryLevelRecords, VersionStatements
 from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.maturation import InstanceMaturation, RepositoryScores, maturation_wiring
@@ -170,6 +180,7 @@ from taktus.composition.moves import MethodMoves
 from taktus.composition.objects import object_store_of
 from taktus.composition.org_units import OrgUnitsOfTheRun
 from taktus.composition.owner_channel import known_secrets, owner_channel_wiring
+from taktus.composition.personal import ConfiguredPersonalCredentials
 from taktus.composition.proposals import InstanceChanges
 from taktus.composition.settings import (
     ExecutionKind,
@@ -186,6 +197,7 @@ from taktus.composition.settings import (
     load_model,
     load_models,
     load_object_store,
+    load_personal_credentials,
     load_telemetry,
     load_workers,
 )
@@ -444,6 +456,11 @@ class LocalWiring:
                     org_units=org_units,
                     steering=stores.of(RunSteering),
                     shares=shares,
+                    personal=ConfiguredPersonalCredentials(
+                        load_personal_credentials(self._configuration)
+                    ),
+                    citations=IndexedCitations(stores.of(KnowledgeEntry), stores.work),
+                    grants=decisions.connections,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -718,6 +735,31 @@ class LocalWiring:
                     ),
                     versions=stores.of(ProcessVersion),
                     work=stores.work,
+                ),
+                domains=DomainBlueprints(
+                    DomainInstances(
+                        stores.of(DomainInstance),
+                        stores.work,
+                        ProposalsOfProcesses(
+                            Proposals(
+                                stores.of(ProcessVersion),
+                                stores.of(Process),
+                                stores.of(Proposal),
+                                stores.work,
+                                clock,
+                                ids,
+                                administration,
+                            ),
+                            stores.of(ProcessVersion),
+                            stores.work,
+                        ),
+                        KnownPeople(identities),
+                        DeclaredAdapters.shipped(),
+                        clock,
+                        ids,
+                    ),
+                    runs,
+                    stores.work,
                 ),
                 deactivate=DeactivateProcessHandler(stores.of(Process), stores.work, ledger),
                 register_version=register_version,

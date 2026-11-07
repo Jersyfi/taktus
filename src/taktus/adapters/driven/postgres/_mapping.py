@@ -2050,6 +2050,37 @@ class SubjectRequestMapper:
         return [dict(row.request) for row in rows]
 
 
+class CreatedDocumentMapper:
+    """One row per record, the record as a document beside its id and the moment it was
+    written: the shape of the tables of migration 0106."""
+
+    def __init__(self, table: Table) -> None:
+        self._table = table
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, self._table, tenant, id)
+        return None if row is None else dict(row.document)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            self._table,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "created_at": _at(document["created_at"]),
+                "document": document,
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(
+            connection, self._table, tenant, self._table.c.created_at, self._table.c.id
+        )
+        return [dict(row.document) for row in rows]
+
+
 class TakeoverTrialMapper:
     """One row per trial of a version's takeover instructions (ADR-0180 §3), the trial as a
     document; never changed once written."""
@@ -2476,4 +2507,7 @@ MAPPERS: dict[str, Mapper] = {
     "own_view": DocumentMapper(s.own_view, "set_at"),
     "value_basis": DocumentMapper(s.value_basis, "set_at", once=True),
     "discovered_process": DocumentMapper(s.discovered_process, "at"),
+    "connection_grant": CreatedDocumentMapper(s.connection_grant),
+    "knowledge_entry": CreatedDocumentMapper(s.knowledge_entry),
+    "domain_instance": CreatedDocumentMapper(s.domain_instance),
 }

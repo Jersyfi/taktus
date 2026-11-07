@@ -79,6 +79,12 @@ provisional operator identity of DEC-0013 in `0.2.0`:
   of the channel's triage process, without the sender's account or text, and starts that
   process once, acting for whoever registered its active version. The sender is offered the
   link all the same, and never acts.
+- **A rollout channel serves an assistant, never a command** (UC-12.1, ADR-0261). Every channel
+  is a command channel unless `TAKTUS_ROLLOUT` names it, or one conversation of it, as a rollout
+  channel of an agent. There a placed person's message is kept for the agent's assistant and
+  starts only the agent's own process, as the person, within what the agent's profile for their
+  role grants. It is never completed into a command, never matched against a trigger and never
+  taken as an answer to what Taktus asked.
 - **Every link and every revocation is a ledger entry** (`identity.linked`,
   `identity.unlinked`). An administrator sees every link of a tenant and revokes one with
   `taktusctl identity links` and `revoke`; the next event from that account is from an

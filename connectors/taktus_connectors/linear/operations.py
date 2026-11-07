@@ -89,6 +89,15 @@ CREATE = (
 )
 MAX_TITLE = 255
 MAX_DESCRIPTION = 30000
+MAX_RELATED = 20
+RELATIONS = (
+    "query Relations($id: String!) { issue(id: $id) { id identifier"
+    " relations(first: 50) { nodes { relatedIssue { id identifier } } } } }"
+)
+RELATE = (
+    "mutation Relate($input: IssueRelationCreateInput!) {"
+    " issueRelationCreate(input: $input) { success } }"
+)
 REMIND = (
     "mutation Remind($input: CommentCreateInput!) {"
     " commentCreate(input: $input) { success comment { id } } }"
@@ -335,10 +344,80 @@ def item(input: Json) -> tuple[str, str]:
     return title.strip(), description
 
 
+def related(input: Json) -> list[str]:
+    """The tasks a new one belongs with, by id or key, as the caller gave them."""
+    value = input.get("related", [])
+    if not isinstance(value, list) or len(value) > MAX_RELATED:
+        raise invalid(f"related must be a list of at most {MAX_RELATED} task ids or keys")
+    ids: list[str] = []
+    for entry in value:
+        if not isinstance(entry, str) or IDENTIFIER.match(entry) is None:
+            raise invalid(f"{entry!r} in related is not a task id or key")
+        if entry not in ids:
+            ids.append(entry)
+    return ids
+
+
+async def _relations(config: Config, call: Call, identifier: str) -> Json:
+    """The task's id and key, and every id and key of the tasks it is related to."""
+    data = await _graphql(config, call, RELATIONS, {"id": identifier})
+    issue = data.get("issue")
+    if not isinstance(issue, dict):
+        raise invalid(f"the tracker knows no task {identifier}")
+    nodes = _obj(issue.get("relations")).get("nodes")
+    known: set[str] = set()
+    for node in nodes if isinstance(nodes, list) else []:
+        other = _obj(_obj(node).get("relatedIssue"))
+        known.update(str(v) for v in (other.get("id"), other.get("identifier")) if v)
+    return {"id": issue.get("id"), "key": issue.get("identifier"), "related": known}
+
+
+async def _relate(config: Config, call: Call, task_id: str, others: list[str]) -> None:
+    """Every task of `others` related to the task, each relation made once: one that exists
+    is left as it is. A relation not confirmed is retryable, keeping the key: a repeat finds
+    the task by its mark and relates what is missing."""
+    known = (await _relations(config, call, task_id))["related"]
+    for other in others:
+        if other in known:
+            continue
+        try:
+            data = await _graphql(
+                config,
+                call,
+                RELATE,
+                {"input": {"issueId": task_id, "relatedIssueId": other, "type": "related"}},
+                writing=True,
+            )
+        except TargetError as error:
+            raise TargetError(
+                "unavailable",
+                "unknown",
+                True,
+                f"the task exists, its relation did not: {error.detail}",
+            ) from error
+        if not _obj(data.get("issueRelationCreate")).get("success"):
+            raise TargetError(
+                "unavailable",
+                "unknown",
+                True,
+                "the task exists; the tracker did not confirm its relation",
+            )
+
+
 async def create(config: Config, call: Call, input: Json) -> Outcome:
     title, description = item(input)
+    others = related(input)
     if not config.team:
         raise invalid("the connector is configured with no team to create a task in")
+    # Every task it belongs with must exist before anything is created: a refusal leaves no
+    # task half made.
+    for other in others:
+        try:
+            await _relations(config, call, other)
+        except TargetError as error:
+            if error.cause == "invalid":
+                raise invalid(f"the tracker knows no task {other}") from error
+            raise
     mark = f"{MARK}{call.key}"
     data = await _graphql(
         config,
@@ -353,7 +432,8 @@ async def create(config: Config, call: Call, input: Json) -> Outcome:
     if not isinstance(nodes, list):
         raise _unexpected("the answer is not a connection of tasks")
     if nodes:
-        return _created(nodes[0], replayed=True)
+        await _relate(config, call, str(_obj(nodes[0]).get("id")), others)
+        return _created(nodes[0], others, replayed=True)
     body = f"{description.rstrip()}\n\n{mark}" if description.strip() else mark
     data = await _graphql(
         config,
@@ -366,14 +446,21 @@ async def create(config: Config, call: Call, input: Json) -> Outcome:
     issue = made.get("issue") if isinstance(made, dict) else None
     if not isinstance(made, dict) or not made.get("success") or not isinstance(issue, dict):
         raise TargetError("unknown", "unknown", False, "the tracker did not confirm the task")
-    return _created(issue, replayed=False)
+    await _relate(config, call, str(issue.get("id")), others)
+    return _created(issue, others, replayed=False)
 
 
-def _created(issue: Any, *, replayed: bool) -> Outcome:
+def _created(issue: Any, others: list[str], *, replayed: bool) -> Outcome:
     if not isinstance(issue, dict) or not isinstance(issue.get("id"), str):
         raise TargetError("unknown", "unknown", False, "the tracker did not name the task")
     return Outcome(
-        output={"id": issue["id"], "key": issue.get("identifier"), "url": issue.get("url")},
+        output={
+            "id": issue["id"],
+            "key": issue.get("identifier"),
+            "url": issue.get("url"),
+            "related": others,
+            "linked": True,
+        },
         effect={
             "kind": "write",
             "replayed": replayed,

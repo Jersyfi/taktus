@@ -83,11 +83,13 @@ async def read(wiki: Wiki, place: list[str] = PLACE) -> tuple[bool, Json]:
     return await call(wiki, declaration.READ, context("read"), {"place": place})
 
 
-def test_it_declares_the_three_operations_and_a_marked_write() -> None:
+def test_it_declares_the_pages_the_documents_and_a_marked_write() -> None:
     declared = declaration.capabilities()
-    assert declared["capabilities"] == ["knowledge.pages"]
+    assert declared["capabilities"] == ["knowledge.documents", "knowledge.pages"]
     operations = {op["name"]: op for op in declared["operations"]}
     assert set(operations) == {
+        "knowledge.documents.search",
+        "knowledge.documents.versions",
         "knowledge.pages.list",
         "knowledge.pages.read",
         "knowledge.pages.write",

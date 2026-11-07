@@ -98,6 +98,7 @@ from taktus.components.decision.application.service import (
 )
 from taktus.components.decision.domain.model import Request
 from taktus.components.governance.application.service import (
+    ConnectionGrants,
     Corrections,
     Drifts,
     ExpectedRuns,
@@ -123,6 +124,7 @@ from taktus.components.identity.domain.model import (
     LinkCode,
     RoleRights,
 )
+from taktus.components.knowledge.domain.model import KnowledgeEntry
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.expectations import ExpectationsHandler
 from taktus.components.process.application.service.proposals import Proposals
@@ -153,6 +155,7 @@ from taktus.components.reporting.application.service import (
     LiveChanges,
     ProductFindings,
     SignalWatch,
+    StepQueries,
     StepTraces,
 )
 from taktus.components.reporting.domain.model import OwnerChannel, PendingAct
@@ -178,6 +181,7 @@ from taktus.composition.agent_surface import AgentSurface
 from taktus.composition.agents import SharedAgents
 from taktus.composition.alerts import alerts, alerts_tick, say_who_hears
 from taktus.composition.anchors import anchors_tick
+from taktus.composition.assistants import Assistants
 from taktus.composition.capacity import capacity_report, capacity_tick, rules_of
 from taktus.composition.case_spend import InstanceSpend
 from taktus.composition.catalogue_in_channel import CatalogueInChannel
@@ -217,6 +221,7 @@ from taktus.composition.findings import (
 from taktus.composition.gallery import Gallery
 from taktus.composition.guides import InstanceGuides, served_directory
 from taktus.composition.interfaces import broken_interfaces, interfaces_tick
+from taktus.composition.knowledge import IndexedCitations
 from taktus.composition.ledger_signal import LedgerSignal, ledger_signal_tick
 from taktus.composition.levels import RepositoryLevelRecords, VersionStatements
 from taktus.composition.live import LiveHub, LiveOptions, Records, run_listener, state_of
@@ -235,6 +240,7 @@ from taktus.composition.owner_channel import (
     owner_channel_wiring,
 )
 from taktus.composition.participants import ParticipantAnswers
+from taktus.composition.personal import ConfiguredPersonalCredentials
 from taktus.composition.planning import PlanActs
 from taktus.composition.profiles import RoleProfiles
 from taktus.composition.proposals import InstanceChanges, ProposalActs
@@ -406,6 +412,8 @@ class Wired:
     traces: StepTraces
     """The trace inside a worker's step, read and shared by role, and erased by the scheduler
     when its retention ends (ADR-0135)."""
+    queries: StepQueries
+    """The queries a step sent, read by a person entitled to the step (ADR-0262 §3)."""
     """What the MCP surface needs beyond the HTTP surface's services (ADR-0131)."""
     workspace: Workspace
     """The plan dialogue, the coach, the structure with its projects, and the sessions in them
@@ -498,6 +506,11 @@ class Wired:
         if self.subjects is None:
             raise RuntimeError("the daemon wires the data-protection requests")
         return self.subjects
+
+    @property
+    def connection_grants(self) -> ConnectionGrants:
+        """Writing on a connection, granted and withdrawn by a person (ADR-0262 §2)."""
+        return self.decisions.connections
 
     @property
     def processing_evidence(self) -> ProcessingEvidence:
@@ -798,6 +811,11 @@ async def wire(
                         connectors=connectors,
                         work=persistence,
                     ),
+                    personal=ConfiguredPersonalCredentials(settings.personal_credentials),
+                    citations=IndexedCitations(
+                        PostgresRepository(persistence, KnowledgeEntry), persistence
+                    ),
+                    grants=decisions.connections,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -1241,6 +1259,8 @@ async def wire(
                     offer_window=timedelta(seconds=settings.offer_window_seconds),
                     # A public channel's triage of contributions (ADR-0088): TAKTUS_TRIAGE.
                     triage=settings.triage,
+                    # The rollout channels and the agents they serve (ADR-0261): TAKTUS_ROLLOUT.
+                    rollout=settings.rollout,
                 ),
                 identities=identities,
                 tenants=tenants,
@@ -1273,6 +1293,9 @@ async def wire(
                     work=persistence,
                     ledger=ledger,
                     clock=clock,
+                ),
+                queries=StepQueries(
+                    records=levels.records, ledger=ledger, objects=objects, work=persistence
                 ),
                 proposals=proposals,
                 proposal_acts=proposal_acts,
@@ -1383,6 +1406,15 @@ async def wire(
                     ),
                     identities=identities,
                     ids=ids,
+                    # A message in a rollout channel runs its assistant's process (ADR-0261).
+                    assistants=Assistants(
+                        agents=shared_agents,
+                        identities=identities,
+                        runs=runs,
+                        ledger=ledger,
+                        work=persistence,
+                        replies=ConnectorReplies(pools.connectors),
+                    ),
                 ),
                 leadership=PostgresLeadership(persistence.engine),
                 clock=clock,

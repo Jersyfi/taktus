@@ -10,6 +10,10 @@ from taktus.components.governance.domain.model.capacity import (
     Status,
     StorageStore,
 )
+from taktus.components.governance.domain.model.connections import (
+    GRANTING_ROLE,
+    ConnectionGrant,
+)
 from taktus.components.governance.domain.model.corrections import (
     CorrectionLimits,
     Decided,
@@ -67,6 +71,7 @@ from taktus.components.governance.domain.model.subjects import (
 )
 
 __all__ = [
+    "GRANTING_ROLE",
     "AnchorConfiguration",
     "BlueprintStages",
     "CapacityReport",
@@ -74,6 +79,7 @@ __all__ = [
     "CaseAnswer",
     "Ceiling",
     "Condition",
+    "ConnectionGrant",
     "CorrectionLimits",
     "Decided",
     "Egress",

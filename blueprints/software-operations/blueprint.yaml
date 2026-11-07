@@ -1,0 +1,167 @@
+# Blueprint: software operations
+# The operation of a small software business, introduced in stages (UC-03,
+# docs/usecases/AF-03-software-operations.md). A template, not a corset: an instance keeps the
+# processes it needs, answers which of its tools serves each capability, names its owner, and
+# starts every process at level 1 or 2 (ADR-0263). The stages are stages.yaml; the anchors a
+# tenant configures are anchors.json.
+
+apiVersion: taktus.eu/process-bundle/v1
+kind: Blueprint
+metadata:
+  id: software-operations
+  name: Software operations
+  domain: operations
+  maturity: experimental       # draft | experimental | verified | reference
+  version: "1"                 # a later version is offered to an instance, never applied (ADR-0263)
+
+# Capabilities, never product names. Mapping to an adapter is configuration. Every capability
+# an operation of a bundle below calls is named here, or the blueprint is not admitted.
+requires:
+  connectors:
+    - capability: accounts.customers
+    - capability: accounts.requests
+    - capability: analytics.reports
+    - capability: audit.events
+    - capability: billing.costs
+    - capability: calendar.events
+    - capability: chat.threads
+    - capability: check.http
+    - capability: crm.contacts
+    - capability: deployment.sites
+    - capability: deployment.workloads
+    - capability: directory.accounts
+    - capability: entitlements.customers
+    - capability: entitlements.grants
+    - capability: errors.issues
+    - capability: expiry.certificates
+    - capability: expiry.credentials
+    - capability: expiry.domains
+    - capability: feedback.posts
+    - capability: helpcentre.articles
+    - capability: helpdesk.tickets
+    - capability: logs.query
+    - capability: mail.messages
+    - capability: mentions.search
+    - capability: metrics.series
+    - capability: models.catalogue
+    - capability: models.costs
+    - capability: newsletter.broadcasts
+    - capability: orchestrator.spend
+    - capability: packages.licences
+    - capability: payments.customers
+    - capability: payments.events
+    - capability: payments.failures
+    - capability: payments.invoices
+    - capability: payments.subscriptions
+    - capability: repository.advisories
+    - capability: repository.branches
+    - capability: repository.comments
+    - capability: repository.files
+    - capability: repository.issues
+    - capability: repository.labels
+    - capability: repository.pipelines
+    - capability: repository.pullrequests
+    - capability: repository.ratelimit
+    - capability: repository.runners
+    - capability: secrets.metadata
+    - capability: stores.beta
+    - capability: stores.releases
+    - capability: stores.reviews
+    - capability: tasks.items
+    - capability: warehouse.queries
+    - capability: website.posts
+  workers:
+    - capability: code.edit
+    - capability: browser.check
+  models:
+    - purpose: analysis
+    - purpose: check
+    - purpose: release
+    - purpose: review
+    - purpose: support
+    - purpose: triage
+
+# What stays with a person at every stage (UC-03 §6). Not legally reviewed for any
+# jurisdiction (DEC-0029).
+anchors:
+  strategic:
+    - staff_and_partnerships
+    - limits_and_levels
+    - promises
+    - mass_sending
+  legal:
+    - moving_money
+    - legally_binding_act
+
+# What the domain's value balance keeps (UC-9.3). No figure assesses a person (principle 14).
+value_criteria:
+  cost: [ ai_consumption, compute, infrastructure, rework ]
+  benefit: [ working_time_saved, incidents_prevented, revenue_kept, response_time ]
+
+# Each process names its bundle, which states its usual level and the reason for it. Two
+# bundles of one process are alternatives: an instance keeps one (B-8.04, B-8.05).
+processes:
+  - { id: B-1.01, name: B-1.01 Daily cost, bundle: processes/B-1.01-daily-cost.yaml }
+  - { id: B-1.02, name: B-1.02 Run times, bundle: processes/B-1.02-run-times.yaml }
+  - { id: B-1.03, name: B-1.03 Runaway guard, bundle: processes/B-1.03-runaway.yaml }
+  - { id: B-1.04, name: B-1.04 Error rate, bundle: processes/B-1.04-error-rate.yaml }
+  - { id: B-1.05, name: B-1.05 New errors, bundle: processes/B-1.05-new-errors.yaml }
+  - { id: B-1.06, name: B-1.06 Uptime, bundle: processes/B-1.06-uptime.yaml }
+  - { id: B-1.07, name: B-1.07 Database rules, bundle: processes/B-1.07-database-rules.yaml }
+  - { id: B-1.08, name: B-1.08 Backups, bundle: processes/B-1.08-backups.yaml }
+  - { id: B-1.09, name: B-1.09 Things that expire, bundle: processes/B-1.09-expiry.yaml }
+  - { id: B-1.10, name: B-1.10 Rotating a secret, bundle: processes/B-1.10-rotation-watch.yaml }
+  - { id: B-1.11, name: B-1.11 Dependencies and advisories, bundle: processes/B-1.11-advisories.yaml }
+  - { id: B-1.12, name: B-1.12 Pipeline infrastructure, bundle: processes/B-1.12-pipeline-runs.yaml }
+  - { id: B-1.13, name: B-1.13 Superseded code, bundle: processes/B-1.13-superseded-code.yaml }
+  - { id: B-2.01, name: B-2.01 Model cost, bundle: processes/B-2.01-model-cost.yaml }
+  - { id: B-2.02, name: B-2.02 Cost per case, bundle: processes/B-2.02-cost-per-case.yaml }
+  - { id: B-2.03, name: B-2.03 Quotas, bundle: processes/B-2.03-quotas.yaml }
+  - { id: B-2.04, name: B-2.04 Retired models, bundle: processes/B-2.04-retired-models.yaml }
+  - { id: B-3.01, name: B-3.01 Sorting the inbox, bundle: processes/B-3.01-inbox-sorting.yaml }
+  - { id: B-3.02, name: B-3.02 Drafting a reply, bundle: processes/B-3.02-draft-reply.yaml }
+  - { id: B-3.04, name: B-3.04 Paid but not unlocked, bundle: processes/B-3.04-paid-not-unlocked.yaml }
+  - { id: B-3.05, name: B-3.05 Cancellation and subscription questions, bundle: processes/B-3.05-subscription-questions.yaml }
+  - { id: B-3.06, name: B-3.06 A bug from support, bundle: processes/B-3.06-bug-from-support.yaml }
+  - { id: B-3.07, name: B-3.07 A feature wish, bundle: processes/B-3.07-feature-wish.yaml }
+  - { id: B-3.08, name: B-3.08 Data protection requests, bundle: processes/B-3.08-data-protection-requests.yaml }
+  - { id: B-3.09, name: B-3.09 Store reviews, bundle: processes/B-3.09-store-reviews.yaml }
+  - { id: B-3.10, name: B-3.10 Mentions, bundle: processes/B-3.10-mentions.yaml }
+  - { id: B-3.11, name: B-3.11 Gaps in the help centre, bundle: processes/B-3.11-help-centre-gaps.yaml }
+  - { id: B-5.01, name: B-5.01 Overdue tasks, bundle: processes/B-5.01-overdue-tasks.yaml }
+  - { id: B-5.02, name: B-5.02 Back-office health, bundle: processes/B-5.02-back-office-health.yaml }
+  - { id: B-5.03, name: B-5.03 Access review, bundle: processes/B-5.03-access-review.yaml }
+  - { id: B-5.04, name: B-5.04 Auditing privileged actions, bundle: processes/B-5.04-privileged-actions.yaml }
+  - { id: B-5.05, name: B-5.05 Customer system upkeep, bundle: processes/B-5.05-customer-system.yaml }
+  - { id: B-5.06, name: "B-5.06 Business customers' seats", bundle: processes/B-5.06-business-seats.yaml }
+  - { id: B-6.01, name: B-6.01 Payment against entitlement, bundle: processes/B-6.01-payment-against-entitlement.yaml }
+  - { id: B-6.02, name: B-6.02 Lost webhooks, bundle: processes/B-6.02-lost-webhooks.yaml }
+  - { id: B-6.03, name: B-6.03 Recurring revenue and churn, bundle: processes/B-6.03-recurring-revenue.yaml }
+  - { id: B-6.04, name: B-6.04 Failed payments, bundle: processes/B-6.04-failed-payments.yaml }
+  - { id: B-6.06, name: B-6.06 Outgoing invoices, bundle: processes/B-6.06-outgoing-invoices.yaml }
+  - { id: B-7.01, name: B-7.01 Triage, bundle: processes/B-7.01-triage.yaml }
+  - { id: B-7.04, name: B-7.04 Keeping pull requests mergeable, bundle: processes/B-7.04-mergeable.yaml }
+  - { id: B-7.05, name: B-7.05 Review, bundle: processes/B-7.05-review.yaml }
+  - { id: B-7.06, name: B-7.06 Technical debt, bundle: processes/B-7.06-technical-debt.yaml }
+  - { id: B-7.07, name: B-7.07 Friction in the product, bundle: processes/B-7.07-friction.yaml }
+  - { id: B-7.08, name: B-7.08 Daily acceptance, bundle: processes/B-7.08-daily-acceptance.yaml }
+  - { id: B-7.09, name: B-7.09 Security check, bundle: processes/B-7.09-security-check.yaml }
+  - { id: B-7.10, name: B-7.10 Abandoned work, bundle: processes/B-7.10-abandoned-work.yaml }
+  - { id: B-7.11, name: B-7.11 Documentation kept current, bundle: processes/B-7.11-documentation.yaml }
+  - { id: B-7.12, name: B-7.12 A merge by a reviewing step, bundle: processes/B-7.12-merge-by-policy.yaml }
+  - { id: B-8.01, name: B-8.01 Preparing a release, bundle: processes/B-8.01-release-texts.yaml }
+  - { id: B-8.02, name: B-8.02 Distributing a beta, bundle: processes/B-8.02-beta.yaml }
+  - { id: B-8.03, name: B-8.03 Store submission, bundle: processes/B-8.03-store-submission.yaml }
+  - { id: B-8.04, name: B-8.04 Staged rollout, bundle: processes/B-8.04-staged-rollout.yaml }
+  - { id: B-8.04-store, name: "B-8.04 Staged rollout, at an app store", bundle: processes/B-8.04-store-rollout.yaml }
+  - { id: B-8.05, name: B-8.05 Web deployment, bundle: processes/B-8.05-web-deployment.yaml }
+  - { id: B-8.05-site, name: "B-8.05 Web deployment, on a hosted site", bundle: processes/B-8.05-site-deployment.yaml }
+  - { id: B-8.06, name: B-8.06 Backend deployment, bundle: processes/B-8.06-backend-deployment.yaml }
+  - { id: B-8.07, name: B-8.07 Release hygiene, bundle: processes/B-8.07-release-hygiene.yaml }
+  - { id: B-8.08, name: B-8.08 Changelog and website, bundle: processes/B-8.08-changelog-and-website.yaml }
+  - { id: B-9.02, name: B-9.02 Questions about figures, bundle: processes/B-9.02-figures.yaml }
+  - { id: B-9.03, name: B-9.03 Weekly trends, bundle: processes/B-9.03-weekly-trends.yaml }
+  - { id: B-9.06, name: B-9.06 Onboarding drop-offs, bundle: processes/B-9.06-onboarding.yaml }
+  - { id: B-9.07, name: B-9.07 Newsletter, bundle: processes/B-9.07-newsletter.yaml }
+  - { id: B-10.01, name: B-10.01 Deadline calendar, bundle: processes/B-10.01-deadlines.yaml }
+  - { id: B-10.04, name: B-10.04 Licences of dependencies, bundle: processes/B-10.04-dependency-licences.yaml }

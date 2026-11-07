@@ -31,6 +31,7 @@ from taktus.components.decision.application.service import (
 )
 from taktus.components.governance.application.service import (
     Confirmed,
+    ConnectionGrants,
     Corrections,
     PrepareRequest,
     Stages,
@@ -57,6 +58,7 @@ from taktus.components.reporting.application.service import (
     BackupWatched,
     FindingsIntake,
     ProductFindings,
+    StepQueries,
     StepTraces,
 )
 from taktus.components.reporting.domain.model import (
@@ -753,6 +755,16 @@ class RestServices(Protocol):
     @property
     def traces(self) -> StepTraces:
         """The trace inside a worker's step, read and shared by role (ADR-0135)."""
+        ...
+
+    @property
+    def queries(self) -> StepQueries:
+        """The queries a step sent, read by a person entitled to the step (ADR-0262 §3)."""
+        ...
+
+    @property
+    def connection_grants(self) -> ConnectionGrants:
+        """Writing on a connection, granted and withdrawn by a person (ADR-0262 §2)."""
         ...
 
     @property

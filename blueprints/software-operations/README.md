@@ -16,6 +16,11 @@ Development at the tenant runs on [`dev-orchestration`](../dev-orchestration/REA
 The product provides each stage's processes; the business introduces them on its own instance
 and opens each stage itself (DEC-0201). Nothing here says that a stage ran at the tenant.
 
+[`blueprint.yaml`](blueprint.yaml) names every process with its bundle, every capability the
+bundles call, the acts of UC-03 §6 that stay with a person, and the value criteria: the
+blueprint an organisation instantiates with `taktusctl domain start` (ADR-0263). B-8.04 and
+B-8.05 each have two bundles of one process; an instance keeps one of each.
+
 Every process is a bundle under [`processes/`](processes/), named `b-<area>-<number>`, the
 identifier [`stages.yaml`](stages.yaml) names it by (ADR-0191 §4). A process that only reads and
 judges starts at level 1, one that acts at level 2 (UC-03 §4). Each is registered as shipped and

@@ -56,9 +56,11 @@ OPERATIONS: list[Json] = [
         "effect": "write",
         "idempotency": "marked",
         "summary": "Create a task with `title` (one line, at most 255 characters) and "
-        "`description` in the team the connector is configured with; answers its `id`, `key` "
-        "and `url`. The description's last line carries the idempotency key, and a repeat that "
-        "finds it among the team's tasks creates nothing and reports replayed.",
+        "`description` in the team the connector is configured with, related to the tasks "
+        "`related` names; answers its `id`, `key`, `url`, `related` and `linked`. A related "
+        "task the tracker does not know is invalid, and nothing is created. The description's "
+        "last line carries the idempotency key, and a repeat that finds it among the team's "
+        "tasks creates nothing, relates what is missing and reports replayed.",
     },
 ]
 

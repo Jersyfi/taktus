@@ -4,6 +4,12 @@ from taktus.components.governance.application.service.configure_anchors import (
     ConfigureAnchors,
     ConfigureAnchorsHandler,
 )
+from taktus.components.governance.application.service.connections import (
+    ConnectionGrants,
+    Granter,
+    GrantRefused,
+    NotGrantable,
+)
 from taktus.components.governance.application.service.corrections import (
     BreachSeen,
     ConfigureCorrections,
@@ -81,6 +87,7 @@ __all__ = [
     "ConfigureResidency",
     "ConfigureWatch",
     "Confirmed",
+    "ConnectionGrants",
     "Corrections",
     "DatabaseStore",
     "DecisionMade",
@@ -88,9 +95,12 @@ __all__ = [
     "DriftSeen",
     "Drifts",
     "ExpectedRuns",
+    "GrantRefused",
+    "Granter",
     "IncidentHeld",
     "Looked",
     "NotAResultDefect",
+    "NotGrantable",
     "OrgUnitQuotaRefused",
     "PrepareRequest",
     "RaiseRed",

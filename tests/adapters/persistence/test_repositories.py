@@ -27,6 +27,7 @@ from taktus.components.decision.domain.model import DecisionRule, RegisterEntry,
 from taktus.components.governance.domain.model import (
     AnchorConfiguration,
     CaseAnswer,
+    ConnectionGrant,
     CorrectionLimits,
     Incident,
     MessageRules,
@@ -50,6 +51,7 @@ from taktus.components.identity.domain.model.structure import (
     Placement,
     StructureUnit,
 )
+from taktus.components.knowledge.domain.model import KnowledgeEntry
 from taktus.components.process.domain.model import (
     CorrectedCase,
     Evaluation,
@@ -106,6 +108,7 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (CorrectionLimits, samples.correction_limits),
     (ResidencyRule, samples.residency_rule),
     (SourceDeclaration, samples.source_declaration),
+    (ConnectionGrant, samples.connection_grant),
     (MessageRules, samples.message_rules),
     (OrgUnitQuota, samples.org_unit_quota),
     (CatalogueInstallation, samples.catalogue_installation),
@@ -113,6 +116,7 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (Deadline, samples.deadline),
     (StagePlan, samples.stage_plan),
     (TakeoverTrial, samples.takeover_trial),
+    (KnowledgeEntry, samples.knowledge_entry),
     (ValueStream, samples.value_stream),
     (WorkingTime, samples.working_time),
     (AdapterStop, samples.adapter_stop),

@@ -57,10 +57,12 @@ OPERATIONS: list[Json] = [
         "effect": "write",
         "idempotency": "marked",
         "summary": "Create an issue with `title` (one line, at most 255 characters) and "
-        "`description` in the project the connector reads; answers its `id` and `key` (both "
-        "the issue's key) and `url`. The description's last paragraph carries the idempotency "
-        "key, and a repeat that finds it among the project's newest issues creates nothing and "
-        "reports replayed.",
+        "`description` in the project the connector reads, with the further `fields` its type "
+        "requires, linked as related to the issues `related` names; answers its `id` and `key` "
+        "(both the issue's key), `url`, `related` and `linked`. An issue refused for a field is "
+        "invalid, naming the fields, and nothing is created. The description's last paragraph "
+        "carries the idempotency key, and a repeat that finds it among the project's newest "
+        "issues creates nothing, links what is missing and reports replayed.",
     },
 ]
 

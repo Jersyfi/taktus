@@ -22,10 +22,19 @@ from taktus.components.accounting.application.service import (
 from taktus.components.catalog.application.service import (
     AgentCatalog,
     CatalogueShares,
+    DomainInstances,
     RunConformanceHandler,
     SkillCatalog,
 )
-from taktus.components.catalog.domain.model import InvalidSkill, Round, ShareKind, SkillVersion
+from taktus.components.catalog.domain.model import (
+    Admitted,
+    DomainInstance,
+    InvalidSkill,
+    Round,
+    ShareKind,
+    SkillVersion,
+)
+from taktus.components.catalog.domain.model.blueprint import DomainFigures
 from taktus.components.catalog.domain.service.shares import Use
 from taktus.components.command.application.service import CommissionPlanHandler
 from taktus.components.governance.application.service import (
@@ -146,6 +155,22 @@ class CatalogueIndexActs(Protocol):
     ) -> Any: ...
 
 
+class DomainActs(Protocol):
+    """What `taktusctl domain` asks of the domain blueprints the composition root wires
+    (ADR-0263): a blueprint's directory read and admitted, exported, and its instances."""
+
+    @property
+    def instances(self) -> DomainInstances: ...
+
+    def read(self, directory: Path) -> Any: ...
+
+    def admitted(self, directory: Path) -> Admitted: ...
+
+    def export(self, directory: Path, target: Path) -> list[Path]: ...
+
+    async def figures(self, tenant: Tenant, instance: DomainInstance) -> DomainFigures: ...
+
+
 class CatalogueAuthor(Protocol):
     """What an author signs an index with (`taktusctl catalogue sign`, `key`). The seed is
     read from a file by the command and never printed."""
@@ -210,6 +235,9 @@ class Services:
     """Every configured adapter with its maturity (`taktusctl conformance list`, ADR-0117)."""
     catalogue_index: CatalogueIndexActs | None = None
     """The catalogue's entries, verified and installed (`taktusctl catalogue`, ADR-0175)."""
+    domains: DomainActs | None = None
+    """Domain blueprints admitted, instantiated in dialogue and exported (`taktusctl domain`,
+    ADR-0263)."""
     deactivate: DeactivateProcessHandler | None = None
     """A process is switched off: its triggers no longer start runs (`taktusctl deactivate`)."""
     measures: StepMeasures | None = None

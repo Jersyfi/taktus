@@ -5,6 +5,7 @@ from taktus.components.catalog.application.service.catalogue import (
     InstallEntry,
     NotAdmitted,
 )
+from taktus.components.catalog.application.service.domains import DomainInstances, DomainRefused
 from taktus.components.catalog.application.service.record_removal import (
     REMOVAL_TESTED,
     RecordRemovalResult,
@@ -37,6 +38,8 @@ __all__ = [
     "AgentCatalog",
     "CatalogueInstalls",
     "CatalogueShares",
+    "DomainInstances",
+    "DomainRefused",
     "InstallEntry",
     "NotAdmitted",
     "RecordRemovalResult",

@@ -4,7 +4,8 @@ in memory.
 
 The work tracker connector under `connectors/taktus_connectors/jira/` asks
 `GET /rest/api/3/search/jql`, `GET /rest/api/3/issue/<key>` and
-`GET`/`POST /rest/api/3/issue/<key>/comment` and `POST /rest/api/3/issue`. This fake
+`GET`/`POST /rest/api/3/issue/<key>/comment`, `POST /rest/api/3/issue` and
+`POST /rest/api/3/issueLink`. This fake
 answers them in the shapes of the API's published OpenAPI document
 (https://developer.atlassian.com/cloud/jira/platform/rest/v3/, `SearchAndReconcileResults`,
 `IssueBean`, `PageOfComments`, `Comment`, `CreatedIssue`, `ErrorCollection`):
@@ -98,6 +99,11 @@ class State:
         self.requests = 0
         self.lagging = False
         self.unindexed: set[str] = set()
+        self.required: list[str] = []
+        """Fields the project's issue type requires beyond the four every issue carries,
+        set through `POST /_fake/required`: as a site's administrator configures them."""
+        self.links: list[dict[str, str]] = []
+        """Every issue link made, `{type, inward, outward}` by key; a duplicate is not added."""
         self.lock = threading.Lock()
 
 
@@ -149,7 +155,12 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
                     created = [i for i in state.issues if int(i["id"]) > 10005]
                     self.answer(
                         200,
-                        {"requests": state.requests, "comments": written, "created": created},
+                        {
+                            "requests": state.requests,
+                            "comments": written,
+                            "created": created,
+                            "links": list(state.links),
+                        },
                     )
                 return
             if not self.admitted():
@@ -235,10 +246,18 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
                 state.lagging = True
                 self.answer(200, {"ok": True})
                 return
+            if url.path == "/_fake/required":
+                with state.lock:
+                    state.required = list(json.loads(raw))
+                self.answer(200, {"ok": True})
+                return
             if not self.admitted():
                 return
             if url.path == "/rest/api/3/issue":
                 self._create(raw)
+                return
+            if url.path == "/rest/api/3/issueLink":
+                self._link(raw)
                 return
             match = re.fullmatch(r"/rest/api/3/issue/([^/]+)/comment", url.path)
             found = self._issue(match.group(1)) if match else None
@@ -283,6 +302,12 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
             ):
                 self.refuse(400, "the issue's fields are refused")
                 return
+            missing = [f for f in state.required if f not in fields]
+            if missing:
+                # The shape of the site's ErrorCollection for a required field left out.
+                errors = {f: f"Field '{f}' is required" for f in missing}
+                self.answer(400, {"errorMessages": [], "errors": errors})
+                return
             with state.lock:
                 number = max(int(i["key"].rsplit("-", 1)[1]) for i in state.issues) + 1
                 made = issue(number, None)
@@ -293,6 +318,26 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
                 if state.lagging:
                     state.unindexed.add(made["key"])
             self.answer(201, {"id": made["id"], "key": made["key"], "self": made["self"]})
+
+        def _link(self, raw: bytes) -> None:
+            try:
+                given = json.loads(raw)
+                kind = given["type"]["name"]
+                inward, outward = given["inwardIssue"]["key"], given["outwardIssue"]["key"]
+            except (ValueError, KeyError, TypeError):
+                self.refuse(400, "the link's type and issues are required")
+                return
+            if self._issue(inward) is None or self._issue(outward) is None:
+                self.refuse(404, "issue does not exist")
+                return
+            link = {"type": kind, "inward": inward, "outward": outward}
+            with state.lock:
+                if link not in state.links:
+                    state.links.append(link)
+            # The site answers 201 with no body, for a link that existed already as well.
+            self.send_response(201)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
 
     return Handler
 

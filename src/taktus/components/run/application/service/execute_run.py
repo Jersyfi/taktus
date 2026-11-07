@@ -197,6 +197,7 @@ from taktus.components.run.domain.model import (
     Checkpoint,
     CheckRead,
     CheckRule,
+    CitationRule,
     ClaimLost,
     ClassificationRule,
     CommitTitleRule,
@@ -295,6 +296,7 @@ from taktus.components.run.ports import (
     Anchors,
     Breach,
     Cap,
+    Citations,
     ConnectorPool,
     Decisions,
     Draft,
@@ -309,6 +311,7 @@ from taktus.components.run.ports import (
     NotRaised,
     OpenWork,
     OrgUnits,
+    PersonalCredentials,
     ProposalDecided,
     Repeated,
     Repetition,
@@ -319,11 +322,14 @@ from taktus.components.run.ports import (
     Statements,
     Verdict,
     WorkerPool,
+    WriteGrants,
 )
 from taktus.components.run.ports.tenant_budget import MonthBudget, TenantBudget
 from taktus.ports.administration import Administration
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.connector import (
+    QUERYING,
+    READ_UNLESS_GRANTED,
     CallContext,
     CallFailed,
     CaseScope,
@@ -459,6 +465,9 @@ NO_RESULT = b"null"
 SOURCE_REF_LENGTH = 200
 """How much of an operation and its input a provenance source reference keeps (ADR-0021 §4
 bounds an input to 384 bytes)."""
+
+QUERY_SENT = "query.sent"
+"""A query a step sent through a querying capability, its request by digest (ADR-0262 §3)."""
 
 
 @dataclass(frozen=True)
@@ -841,6 +850,9 @@ class RunEngine:
         shares: Shares | None = None,
         evaluated: Evaluated | None = None,
         control: ExternalControl | None = None,
+        personal: PersonalCredentials | None = None,
+        citations: Citations | None = None,
+        grants: WriteGrants | None = None,
     ) -> None:
         self._steering = steering
         """Where a person's pause or cancellation of a run waits for its next boundary
@@ -854,6 +866,15 @@ class RunEngine:
         self._control = control
         """Where the control of a run's process sits (UC-5.2, ADR-0272). None: every run is
         controlled by Taktus, and nothing outside it withdraws one."""
+        self._citations = citations
+        """Where an answer drawn from knowledge is cited and its readings indexed (ADR-0265).
+        None: a step of the rule `citation` fails, and its answer leaves it for nothing."""
+        self._grants = grants
+        """Whether a person granted writing on a connection that reads until granted
+        (ADR-0262 §2). None: no grant is in force, and every such write is refused."""
+        self._own = personal
+        """Where a step on behalf of a person finds that person's own credential (ADR-0264).
+        None: no identity has one, and every such step gets nothing from its source."""
         self._org_units = org_units
         """The tenant's quotas per organisational unit and what each unit's runs committed
         (ADR-0166). None: no run commits to a unit's budget quota."""
@@ -5344,6 +5365,8 @@ class RunEngine:
             )
             counted = recurring.recurring(work, subscriptions, failures, as_of)
             return counted, Trace(inputs=read), None, None
+        if isinstance(work, CitationRule):
+            return await self._cited(run, work)
         if isinstance(work, DeviationStatistic):
             (days,), read = await self._resolved(run, [work.days])
             return statistics.deviation(work, days), Trace(inputs=read), None, None
@@ -5352,6 +5375,43 @@ class RunEngine:
         if isinstance(work, LlmWork):
             return await self._llm_step(run, step_run, work, span)
         raise UnsupportedWork(step_run.step_id, f"no evaluator for {type(work).__name__}")
+
+    async def _cited(self, run: Run, work: CitationRule) -> tuple[Any, Trace, None, None]:
+        """An answer drawn from knowledge, cited by the knowledge component (ADR-0265 §3). The
+        moment of each reading is when the step that read it finished: what the source held
+        then, not when the citation looked at it."""
+        (answer, documents, confirmed), read = await self._resolved(
+            run, [work.answer, work.documents, work.confirmed]
+        )
+        if self._citations is None:
+            raise RuleFailed(
+                "no knowledge index is wired: an answer drawn from knowledge cannot be cited, "
+                "and does not leave the step uncited"
+            )
+        read_at = self._finished(run, work.documents)
+        confirmed_at = None if work.confirmed is None else self._finished(run, work.confirmed)
+        try:
+            cited = await self._citations.cite(
+                run.tenant,
+                capability=work.capability,
+                answer=answer,
+                documents=documents,
+                confirmed=confirmed,
+                read_at=read_at,
+                confirmed_at=confirmed_at,
+            )
+        except ValueError as refused:
+            raise RuleFailed(str(refused)) from refused
+        return cited, Trace(inputs=read), None, None
+
+    def _finished(self, run: Run, value: Any) -> datetime:
+        """When the latest step a value refers to finished; now where none did."""
+        moments = [
+            finished
+            for step_id in references(value)
+            if (finished := run.step_run(step_id).finished_at) is not None
+        ]
+        return max(moments) if moments else self._clock.now()
 
     # --- estimate and admission -----------------------------------------------------------------
 
@@ -5944,15 +6004,21 @@ class RunEngine:
         span.set_attribute("adapter", resolved.adapter)
         # Before the call is booked: a stopped connector is neither called nor counted.
         await self._not_stopped(run, resolved.adapter)
+        await self._write_granted(run, resolved, operation)
         scope = await self._frame(run, step_run.step_id, resolved, operation)
         if run.rehearsal and operation.outward and not self._replaying(run):
             return await self._rehearsed(run, resolved, operation, read, input)
+        if operation.capability in QUERYING:
+            await self._book_query(run, step_run, operation.name, input)
         sent: Digest | None = None
         if operation.outward and not run.rehearsal:
             input, sent = await self._labelled(run, step_run.step_id, work, operation, input)
             await self._book_call(run, step_run, operation.name, input)
+        credentials = work.credentials
+        if work.on_behalf:
+            credentials = await self._own_credentials(run, step_run, resolved, work)
         result = await self._call(
-            run, step_run, resolved, operation, input, work.credentials, span, scope=scope
+            run, step_run, resolved, operation, input, credentials, span, scope=scope
         )
         document = result.document()
         unmet = [why for e in work.expect if (why := rules.unmet(e, document["output"]))]
@@ -6099,6 +6165,68 @@ class RunEngine:
         if answer.names is None:
             return credentials
         return tuple(CredentialReference(name=n, injected_as="env") for n in answer.names)
+
+    async def _write_granted(
+        self, run: Run, resolved: ResolvedConnector, operation: Operation
+    ) -> None:
+        """An outward operation on a connection that reads until a person grants writing is
+        refused before anything of the call, unless the tenant's grant is in force
+        (ADR-0262 §2). The connector is never called; the step fails, and is not retried."""
+        if not operation.outward or operation.capability not in READ_UNLESS_GRANTED:
+            return
+        if self._grants is not None and await self._grants.granted(
+            run.tenant, operation.capability
+        ):
+            return
+        raise _StepFailed(
+            reason=f"{operation.name} was not called: the connection of {operation.capability} "
+            "reads until a person with the right grants writing on it, and no grant is in force "
+            "(ADR-0262)",
+            retryable=False,
+            consumption=None,
+            adapter=resolved.adapter,
+            outcome="write not granted",
+        )
+
+    async def _book_query(
+        self, run: Run, step_run: StepRun, operation: str, input: Mapping[str, Any]
+    ) -> None:
+        """A query is sent now: the request — the operation and its input, the query's text
+        among it — goes into the object store, and `query.sent` names it by digest with the run
+        and the step, before the call, so that a query the source refuses is recorded too. The
+        ledger holds no query text (ADR-0006, ADR-0262 §3)."""
+        digest = await self._objects.put(_canonical({"operation": operation, "input": dict(input)}))
+        await self._record_fenced(run, QUERY_SENT, step_run, "sent", digest)
+
+    async def _own_credentials(
+        self, run: Run, step_run: StepRun, resolved: ResolvedConnector, work: ConnectorRule
+    ) -> tuple[CredentialReference, ...]:
+        """The credentials of a call on behalf of the run's identity: for each one the step
+        names, that identity's own (ADR-0264). Where it has none, the step fails before the
+        call: Taktus never reads with wider rights of its own than the person it acts for."""
+        own: list[CredentialReference] = []
+        for reference in work.credentials:
+            parameter = (
+                None
+                if self._own is None
+                else await self._own.own(run.tenant, run.identity, reference.name)
+            )
+            if parameter is None:
+                raise _StepFailed(
+                    reason=f"{run.identity} has no credential of its own for "
+                    f"{work.capability} ({reference.name}); the step acts on behalf of it and "
+                    "gets nothing from the source with wider rights",
+                    retryable=False,
+                    consumption=None,
+                    adapter=resolved.adapter,
+                    outcome="unauthenticated",
+                )
+            own.append(reference.model_copy(update={"name": parameter}))
+        if not own:
+            raise UnsupportedWork(
+                step_run.step_id, "a call on behalf of a person names the credential it stands for"
+            )
+        return tuple(own)
 
     async def _call(
         self,
@@ -6298,6 +6426,8 @@ class RunEngine:
         waited = self._waited_so_far(step_run, resumed)
         limit = self._options.park_waits_after_seconds
         while True:
+            if operation.capability in QUERYING:
+                await self._book_query(run, step_run, operation.name, input)
             try:
                 result = await self._call(
                     run, step_run, resolved, operation, input, until.credentials, span, scope=scope

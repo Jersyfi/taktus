@@ -35,6 +35,7 @@ from fakes import (
     website_service,
 )
 from fakes.maturity import VERIFIED
+from fakes.owner_channel import OWNER
 from fakes.ports import free_port
 from taktus_connectors.appstores.operations import Config as StoresConfig
 from taktus_connectors.appstores.server import build_server as stores_server
@@ -69,6 +70,7 @@ from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.components.run.application.service import EngineOptions, RunEngine
 from taktus.components.run.domain.model import Run, RunState, StepState
+from taktus.composition.personal import ConfiguredPersonalCredentials
 from taktus.ports.connector import CallContext, idempotency_key
 from taktus.ports.worker import CredentialReference
 
@@ -138,6 +140,10 @@ def systems(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Systems
         "SERVERLESS_KEY": google_oauth.service_account_key(f"{base['serverless']}/token"),
         "ANALYTICS_KEY": google_oauth.service_account_key(f"{base['analytics']}/token"),
         "WAREHOUSE_KEY": google_oauth.service_account_key(f"{base['warehouse']}/token"),
+        # The own key of the person who asks B-9.02 its question (ADR-0264).
+        "WAREHOUSE_KEY_OWNER": google_oauth.service_account_key(
+            f"{base['warehouse']}/token", "owner@example.iam.gserviceaccount.com"
+        ),
         "SITES_TOKEN": TOKEN,
         "NEWSLETTER_TOKEN": TOKEN,
         "WEBSITE_TOKEN": WEBSITE,
@@ -153,7 +159,11 @@ def systems(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Systems
             "127.0.0.1", ports["serverless"], {values["SERVERLESS_KEY"]}
         ),
         analytics_service.make_server("127.0.0.1", ports["analytics"], {values["ANALYTICS_KEY"]}),
-        warehouse_service.make_server("127.0.0.1", ports["warehouse"], {values["WAREHOUSE_KEY"]}),
+        warehouse_service.make_server(
+            "127.0.0.1",
+            ports["warehouse"],
+            {values["WAREHOUSE_KEY"], values["WAREHOUSE_KEY_OWNER"]},
+        ),
         site_deploys_service.make_server("127.0.0.1", 0, {TOKEN}),
         newsletter_service.make_server("127.0.0.1", 0, {TOKEN}),
         website_service.make_server("127.0.0.1", 0, {WEBSITE}),
@@ -274,6 +284,9 @@ class ReleaseWorld(RepositoryWorld):
             decisions=self.decisions.requests,
             levels=self.decisions.levels,
             messages=self.told,
+            personal=ConfiguredPersonalCredentials(
+                {(OWNER, "WAREHOUSE_KEY"): "WAREHOUSE_KEY_OWNER"}
+            ),
         )
 
 

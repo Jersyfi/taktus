@@ -12,6 +12,7 @@ metadata:
   name: Self-operation
   domain: operations
   maturity: experimental       # draft | experimental | verified | reference
+  version: "1"                 # a later version is offered to an instance, never applied (ADR-0263)
 
 # Capabilities, never product names. The orchestrator.* capabilities are served by the
 # loopback connector, through which an instance reaches itself.
@@ -26,13 +27,25 @@ requires:
     - capability: repository.files
     - capability: knowledge.pages
 
+# What stays with a person regardless of the autonomy level. Taktus does not put a version of
+# itself into production (CLAUDE.md §2 D); a maturation proposal and a proposed change are
+# applied by a person, never by the process that proposed them (S-06, S-07).
 anchors:
-  strategic: []
+  strategic:
+    - release.any
+    - maturation.apply
+    - process.commission
   legal: []
+
+# What the domain's value balance keeps (UC-9.3). No figure assesses a person (principle 14).
+value_criteria:
+  cost: [ ai_consumption, compute ]
+  benefit: [ defects_prevented, claims_checked, documentation_current ]
 
 processes:
   - id: S-01
     name: Removal test
+    bundle: processes/S-01-removal-test.yaml
     autonomy:
       level: 3
       reason: every step reads the instance's own state or checks it by rule; nothing leaves the system; a person watches the weekly report
@@ -52,6 +65,7 @@ processes:
     slo: { freshness: 7d }
   - id: S-04
     name: Load probe
+    bundle: processes/S-04-load-probe.yaml
     autonomy:
       level: 3
       reason: three rules over constants; nothing is read from outside the instance and nothing leaves it
@@ -62,6 +76,7 @@ processes:
       - { id: end,    method: rule, exactness: exact }
   - id: S-05
     name: Guides
+    bundle: processes/S-05-guides.yaml
     autonomy:
       level: 3
       reason: every value is the repository's text rendered and measured by rule; a page is written only where it holds what Taktus last wrote; a person's edit is kept and reported
@@ -81,6 +96,7 @@ processes:
     slo: { freshness: 1d }
   - id: S-06
     name: Maturation
+    bundle: processes/S-06-maturation.yaml
     autonomy:
       level: 3
       reason: every step reads the instance's own records or applies the rules of ADR-0084; a proposal is a decision request a person answers; nothing is applied
@@ -95,6 +111,7 @@ processes:
     slo: { freshness: 7d }
   - id: S-07
     name: Change in dialogue
+    bundle: processes/S-07-change-in-dialogue.yaml
     autonomy:
       level: 3
       reason: the model's proposed bundle leaves its step only through registration's validation; a proposal is a record the person reads; nothing is registered, and commissioning is the person's act

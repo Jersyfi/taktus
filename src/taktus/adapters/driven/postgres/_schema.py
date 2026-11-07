@@ -729,6 +729,29 @@ configuration_change = Table(
 )
 """One change a commissioned plan makes in a target system (ADR-0278)."""
 
+
+def _created_document_table(name: str) -> Table:
+    return Table(
+        name,
+        metadata,
+        _tenant(),
+        Column("id", Text, nullable=False),
+        _at("created_at"),
+        Column("document", JSONB, nullable=False),
+        PrimaryKeyConstraint("tenant", "id"),
+    )
+
+
+connection_grant = _created_document_table("connection_grant")
+"""One row per grant made on a connection (UC-5.6); withdrawn by a later row, never deleted."""
+
+knowledge_entry = _created_document_table("knowledge_entry")
+"""One row per place of a connected source that was read (UC-5.5): its reference, link and
+digest, never its content."""
+
+domain_instance = _created_document_table("domain_instance")
+"""One row per domain instantiated from a blueprint (UC-15.1)."""
+
 subject_request = Table(
     "subject_request",
     metadata,
