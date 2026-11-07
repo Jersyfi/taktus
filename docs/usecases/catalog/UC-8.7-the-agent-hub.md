@@ -4,10 +4,10 @@ title: The agent hub — building, understanding and sharing agents
 component: catalog
 epic: E8
 serves: [P2, P7, P12]
-state: specified
+state: building
 version: 0.6.0
-tests: []
-adrs: {ADR-0003: d0268914fed9, ADR-0026: ccc4bd1f5423}
+tests: [tests/composition/test_shared_agent_callers.py::test_one_shared_agent_called_by_two_users_acts_with_each_callers_credential, tests/composition/test_shared_agent_callers.py::test_a_person_outside_the_agents_circle_is_refused_before_a_run_starts, tests/composition/test_shared_agent_callers.py::test_a_shared_agent_runs_no_higher_than_the_level_of_its_core, tests/components/catalog/test_shares.py::test_an_agent_is_shared_only_with_an_active_core]
+adrs: {ADR-0003: d0268914fed9, ADR-0026: ccc4bd1f5423, ADR-0163: d7b3dd87f845, ADR-0246: 427e96722fc8, ADR-0247: 3725ee028f0c}
 supersedes: null
 ---
 
@@ -52,3 +52,16 @@ Least privilege for shared agents (`docs/architecture/governance.md` §5, UC-7.3
 statement (ADR-0026); the adapter obligation (ADR-0003); the diagram generated from the version, as
 for a process (UC-4.2); planning in dialogue (UC-1.2); credentials kept in the secret store
 (definition `UC-11.4`). Definition `UC-8.7`. The version is `0.6.0`, the catalogue.
+
+## 5. What is proven so far
+
+One shared agent called by two users runs as each: each run carries its caller's
+identity and unit, each connector call names its caller's own credential, the source system
+shows each only their records, and the author's credential is used by neither (ADR-0247). A
+person outside the agent's circle is refused before a run starts. A call runs at most at the
+core's level. An agent is shared only by a person, with an active core. All by the named tests.
+
+Not built: drafting an agent from a description worked out in dialogue, which rests on UC-1.2,
+itself not built; a plain-language description generated from the version, naming what the
+agent reads, may use and must not do; the check that tools and sources are named by capability.
+The diagram is generated from the version (ADR-0163).

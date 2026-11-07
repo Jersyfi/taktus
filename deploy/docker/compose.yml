@@ -70,6 +70,14 @@ services:
       TAKTUS_STATE_DIR: /var/lib/taktus
       TAKTUS_SHUTDOWN_CEILING_SECONDS: ${TAKTUS_SHUTDOWN_CEILING_SECONDS:-300}
       TAKTUS_LOG_LEVEL: ${TAKTUS_LOG_LEVEL:-info}
+      # Local first (ADR-0248, UC-8.3): with no model named, every purpose is bound to the model
+      # server on this machine — any server of the chat-completions dialect, at the address
+      # below — and a model named in its place declares its TAKTUS_MODEL_LOCATION.
+      TAKTUS_MODEL_LOCAL_FIRST: ${TAKTUS_MODEL_LOCAL_FIRST:-true}
+      TAKTUS_MODEL_LOCAL_ENDPOINT: ${TAKTUS_MODEL_LOCAL_ENDPOINT:-http://host.docker.internal:11434/v1}
+    extra_hosts:
+      # The host as the container reaches it, on Linux as on the desktop engines.
+      - "host.docker.internal:host-gateway"
     secrets:
       - database_url
     volumes:

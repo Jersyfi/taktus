@@ -25,6 +25,7 @@ from taktus.components.run.ports.repetition import (
 from taktus.components.run.ports.replay import Replay
 from taktus.components.run.ports.residency import Residency
 from taktus.components.run.ports.scores import EvaluationScores
+from taktus.components.run.ports.shares import CallerCall, Shares
 from taktus.components.run.ports.sources import Sources
 from taktus.components.run.ports.statements import Statements
 from taktus.components.run.ports.workers import WorkerPool
@@ -32,6 +33,7 @@ from taktus.components.run.ports.workers import WorkerPool
 __all__ = [
     "Anchors",
     "Breach",
+    "CallerCall",
     "Cap",
     "ConnectorPool",
     "CountReading",
@@ -58,6 +60,7 @@ __all__ = [
     "RepetitionLimits",
     "Replay",
     "Residency",
+    "Shares",
     "Sources",
     "Standing",
     "Statements",

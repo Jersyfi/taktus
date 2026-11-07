@@ -21,10 +21,12 @@ from taktus.components.accounting.application.service import (
 )
 from taktus.components.catalog.application.service import (
     AgentCatalog,
+    CatalogueShares,
     RunConformanceHandler,
     SkillCatalog,
 )
-from taktus.components.catalog.domain.model import InvalidSkill, Round, SkillVersion
+from taktus.components.catalog.domain.model import InvalidSkill, Round, ShareKind, SkillVersion
+from taktus.components.catalog.domain.service.shares import Use
 from taktus.components.command.application.service import CommissionPlanHandler
 from taktus.components.governance.application.service import (
     AnchorsInForce,
@@ -277,6 +279,18 @@ class Services:
     exports: TenantExportActs | None = None
     """A tenant exported, and an export imported and checked (`taktusctl tenant export` and
     `import`, ADR-0221); None where the state is files."""
+    shares: CatalogueShares | None = None
+    """Entries of the catalogue shared with circles, withdrawn, and the callers' own
+    credentials bound (`taktusctl catalogue share`, ADR-0246, ADR-0247)."""
+    catalogue_use: CatalogueUseActs | None = None
+    """An entry's use per organisational unit and the viewer's own (`taktusctl catalogue use`,
+    ADR-0246 §6)."""
+
+
+class CatalogueUseActs(Protocol):
+    async def of(self, tenant: Tenant, kind: ShareKind, subject: str, viewer: str) -> Use:
+        """An entry's calls per organisational unit, and the viewer's own (ADR-0246 §6)."""
+        ...
 
 
 class TenantExportActs(Protocol):

@@ -22,9 +22,9 @@ from collections.abc import Mapping
 from typing import Any
 
 from taktus.components.accounting.application.service import CostOfRun, CostOfRunHandler
-from taktus.components.catalog.application.service import AgentCatalog
+from taktus.components.catalog.application.service import AgentCatalog, CatalogueShares
 from taktus.components.catalog.application.service.agents import CALLED
-from taktus.components.catalog.domain.model import AgentError, CoreState
+from taktus.components.catalog.domain.model import AgentError, CoreState, ShareKind
 from taktus.components.command.application.service import CommissionPlan, CommissionPlanHandler
 from taktus.components.process.application.service.proposals import ProposalError
 from taktus.components.process.domain.model import Process, ProcessVersion
@@ -38,12 +38,13 @@ from taktus.components.run.domain.model import Run
 from taktus.composition.evaluations import Evaluations, Guide
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.identity import IdentityResolver
-from taktus.ports.ledger import Ledger
+from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 from taktus.ports.worker import Limits
-from taktus.shared.v1 import Command, Intent, ReplyTo
+from taktus.shared.v1 import Command, Intent, LedgerRefs, ReplyTo
 
 CHANNEL = "channel.agent"
+REFUSED = "agent.refused"
 
 
 def _token(text: str) -> str:
@@ -66,7 +67,10 @@ class SharedAgents:
         clock: Clock,
         ids: Identifiers,
         costs: CostOfRunHandler | None = None,
+        shares: CatalogueShares | None = None,
     ) -> None:
+        self._shares = shares
+        """Who the agent is shared with (ADR-0246). None: every identity of the tenant."""
         self._catalog = catalog
         self._processes = processes
         self._versions = versions
@@ -111,6 +115,22 @@ class SharedAgents:
         placed = await self._identities.identity(tenant, identity)
         if placed is None:
             raise AgentError("unknown", f"the identity {identity!r} is not known to {tenant!r}")
+        if self._shares is not None and not await self._shares.admits(
+            tenant, ShareKind.AGENT, agent, placed.identity, placed.org_path
+        ):
+            async with self._work.transaction(tenant):
+                await self._ledger.record(
+                    tenant,
+                    Fact(
+                        kind=REFUSED,
+                        refs=LedgerRefs(tenant=tenant, agent_id=agent, actor=placed.identity),
+                        outcome="outside_circle",
+                    ),
+                )
+            raise AgentError(
+                "outside_circle",
+                f"the agent {agent!r} is not shared with a circle {placed.identity} is inside",
+            )
         core, profile, found = await self._catalog.resolve(tenant, agent, placed.roles, role)
         version = await self._flow(tenant, core.flow)
         granted = set(profile.grants.tools)

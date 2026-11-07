@@ -12,7 +12,9 @@ the answer is cut to it and the finish reason is `length` — unless `ignore_lim
 is the fault the model contract's M-03 must catch; `cached`, when set, is reported as input read
 from a cache, and `written` as input written to one, in the `shape` set: `nested` in
 `prompt_tokens_details`, or at the `top` of the usage. `retry_after`, when set, is the
-`Retry-After` header of a scripted failure. Standard library only; runnable as
+`Retry-After` header of a scripted failure. `GET /models` lists `models`, in the shape of
+`GET /v1/models` that local model servers document (docs.ollama.com, *OpenAI
+compatibility*). Standard library only; runnable as
 `python3 tests/fakes/model_service.py --port 9300`.
 """
 
@@ -43,6 +45,8 @@ class Script:
     written: int | None = None
     shape: str = "nested"
     retry_after: str | None = None
+    models: tuple[str, ...] = ("fake-model",)
+    """What `GET /models` lists, as a local server lists the models it serves (ADR-0248)."""
     requests: list[Json] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -69,6 +73,13 @@ class Handler(BaseHTTPRequestHandler):
         raw = self.rfile.read(length) if length else b""
         parsed = json.loads(raw) if raw else {}
         return parsed if isinstance(parsed, dict) else {}
+
+    def do_GET(self) -> None:
+        if self.path != "/models":
+            self._send(404, {"error": {"message": "Not Found"}})
+            return
+        listed = [{"id": m, "object": "model", "owned_by": "library"} for m in self.script.models]
+        self._send(200, {"object": "list", "data": listed})
 
     def do_POST(self) -> None:
         body = self._body()

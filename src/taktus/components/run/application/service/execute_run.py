@@ -312,6 +312,7 @@ from taktus.components.run.ports import (
     Repetition,
     Replay,
     Residency,
+    Shares,
     Sources,
     Statements,
     Verdict,
@@ -368,6 +369,7 @@ from taktus.ports.worker import (
     Callback,
     ConsumptionReported,
     Context,
+    CredentialReference,
     Event,
     Frame,
     HandoverRequest,
@@ -833,10 +835,14 @@ class RunEngine:
         guidance: Guidance | None = None,
         org_units: OrgUnits | None = None,
         steering: Repository[RunSteering] | None = None,
+        shares: Shares | None = None,
     ) -> None:
         self._steering = steering
         """Where a person's pause or cancellation of a run waits for its next boundary
         (ADR-0236). None: no run is paused or cancelled at a boundary."""
+        self._shares = shares
+        """Who may use a shared model or connector, and with whose credential (ADR-0246,
+        ADR-0247). None: nothing is shared, and a call names what its work names."""
         self._org_units = org_units
         """The tenant's quotas per organisational unit and what each unit's runs committed
         (ADR-0166). None: no run commits to a unit's budget quota."""
@@ -1136,7 +1142,7 @@ class RunEngine:
         found: Mapping[str, str] = {}
         rest = [name for name in named if name not in bound]
         if rest and self._guidance is not None:
-            found = await self._guidance.production(command.tenant, rest)
+            found = await self._guidance.production(command.tenant, rest, command.actor)
         pinned = {name: version for name, version in bound.items() if version is not None}
         pinned.update({name: found[name] for name in rest if name in found})
         return pinned
@@ -5748,7 +5754,12 @@ class RunEngine:
             permitted=permitted,
             data_class=work.data_class,
         )
-        return routing.route(chain, needs, self._cooling, self._clock.now())
+        unshared: frozenset[str] = frozenset()
+        if self._shares is not None and chain:
+            unshared = await self._shares.unshared_models(
+                run.tenant, run.identity, [m.adapter for m in chain]
+            )
+        return routing.route(chain, needs, self._cooling, self._clock.now(), unshared)
 
     async def _cool(
         self, run: Run, step_run: StepRun, work: LlmWork, adapter: str, delay: float | None
@@ -5940,6 +5951,29 @@ class RunEngine:
 
     # --- end of rehearsal ----------------------------------------------------------------------
 
+    async def _callers(
+        self, run: Run, adapter: str, credentials: tuple[Any, ...]
+    ) -> tuple[Any, ...]:
+        """The credentials a call names: for a shared connector the caller's own parameters,
+        or the call is refused before it is made (ADR-0247 §2); otherwise as the work names
+        them."""
+        if self._shares is None:
+            return credentials
+        names = [c.name for c in credentials]
+        answer = await self._shares.connector_call(run.tenant, run.identity, adapter, names)
+        if answer.refusal is not None:
+            raise _StepFailed(
+                reason=f"{adapter} was not called: {answer.why or answer.refusal} (ADR-0247)",
+                retryable=False,
+                consumption=None,
+                adapter=adapter,
+                outcome="refused by the frame",
+                frame=answer.refusal,
+            )
+        if answer.names is None:
+            return credentials
+        return tuple(CredentialReference(name=n, injected_as="env") for n in answer.names)
+
     async def _call(
         self,
         run: Run,
@@ -5953,6 +5987,7 @@ class RunEngine:
         scope: CaseScope | None = None,
     ) -> Result:
         await self._not_stopped(run, resolved.adapter)
+        credentials = await self._callers(run, resolved.adapter, credentials)
         context = CallContext(
             tenant=run.tenant,
             identity=run.identity,

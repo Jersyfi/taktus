@@ -30,13 +30,18 @@ from typing import Any
 import structlog
 
 from taktus.adapters.driving.cli.bundle_command import skills_below
-from taktus.components.catalog.application.service import AgentCatalog, SkillCatalog
+from taktus.components.catalog.application.service import (
+    AgentCatalog,
+    CatalogueShares,
+    SkillCatalog,
+)
 from taktus.components.catalog.domain.model import (
     InvalidSkill,
     Measurement,
     OriginKind,
     Round,
     RoundState,
+    ShareKind,
     SkillError,
     SkillOrigin,
     SkillStage,
@@ -56,7 +61,7 @@ from taktus.components.run.domain.model import Run, RunState
 from taktus.composition.evaluations import INTERVAL_SECONDS, Evaluations, Guide
 from taktus.composition.tenancy import this_round
 from taktus.ports.clock import Clock
-from taktus.ports.identity import ServedTenants
+from taktus.ports.identity import IdentityResolver, ServedTenants
 from taktus.ports.ledger import Ledger
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 
@@ -73,11 +78,32 @@ ROUND_EVERY_SECONDS = 86400
 class CatalogGuidance:
     """The run's `Guidance`, answered from the catalogue."""
 
-    def __init__(self, skills: SkillCatalog, agents: AgentCatalog | None = None) -> None:
+    def __init__(
+        self,
+        skills: SkillCatalog,
+        agents: AgentCatalog | None = None,
+        *,
+        shares: CatalogueShares | None = None,
+        identities: IdentityResolver | None = None,
+    ) -> None:
         self._skills = skills
         self._agents = agents
+        self._shares = shares
+        self._identities = identities
 
-    async def production(self, tenant: Tenant, names: Collection[str]) -> Mapping[str, str]:
+    async def production(
+        self, tenant: Tenant, names: Collection[str], identity: str | None = None
+    ) -> Mapping[str, str]:
+        """A skill shared with no circle the run's identity is inside is not handed to its
+        steps (ADR-0246 §3)."""
+        if self._shares is not None and self._identities is not None and identity is not None:
+            placed = await self._identities.identity(tenant, identity)
+            path = () if placed is None else placed.org_path
+            names = [
+                name
+                for name in names
+                if await self._shares.admits(tenant, ShareKind.SKILL, name, identity, path)
+            ]
         found: dict[str, str] = {}
         for name in names:
             version = await self._skills.production(tenant, name)

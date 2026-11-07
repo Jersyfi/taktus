@@ -14,12 +14,15 @@ import yaml
 from taktus.components.catalog.domain.model import (
     AdapterMaturity,
     AgentCore,
+    CallerCredential,
     CatalogueInstallation,
+    CatalogueShare,
     Configuration,
     ConformanceResult,
     CoreState,
     Grants,
     Measurement,
+    Origin,
     OriginKind,
     ProcessFinding,
     RemovalResult,
@@ -27,6 +30,7 @@ from taktus.components.catalog.domain.model import (
     Round,
     RoundState,
     RunSummary,
+    ShareKind,
     SkillFile,
     SkillOrigin,
     SkillOwnership,
@@ -1136,6 +1140,36 @@ def role_profile(tenant: str = "t") -> RoleProfile:
         vocabulary=("lead", "quote"),
         tone="brief",
         set_at=AT,
+    )
+
+
+def catalogue_share(tenant: str = "t") -> CatalogueShare:
+    return CatalogueShare(
+        id="model:model.local",
+        tenant=tenant,
+        kind=ShareKind.MODEL,
+        subject="model.local",
+        owner="idn_owner",
+        purpose="Drafts replies for the support team",
+        circles=(f"{tenant}/support", "identity:idn_owner"),
+        location="own",
+        cost_model="per_hardware_time",
+        origin=Origin.TRAINED,
+        version="sha256:" + "a" * 64,
+        evaluations=("evl_first",),
+        shared_at=AT,
+        shared_by="idn_owner",
+    )
+
+
+def caller_credential(tenant: str = "t") -> CallerCredential:
+    return CallerCredential(
+        id="idn_a:TICKETS_TOKEN",
+        tenant=tenant,
+        identity="idn_a",
+        name="TICKETS_TOKEN",
+        suffix="IDN_A",
+        bound_at=AT,
     )
 
 

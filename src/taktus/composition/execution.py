@@ -25,6 +25,7 @@ from taktus.adapters.driven.execution import (
     ProcessExecution,
 )
 from taktus.adapters.driven.models import Declared, OpenAiCompatibleModel, StaticModelPool
+from taktus.adapters.driven.models.vertex import VertexModel, location_of
 from taktus.adapters.driven.telemetry import (
     OpenTelemetryTelemetry,
     exporter_for,
@@ -43,6 +44,7 @@ from taktus.composition.settings import (
 from taktus.ports.configuration import Configuration, ConfigurationError
 from taktus.ports.connector import ActionConnector
 from taktus.ports.execution import Execution, ExecutionUnit, ResourceLimits
+from taktus.ports.model import Model
 from taktus.ports.relay import Relay
 from taktus.ports.worker import Worker
 
@@ -66,19 +68,34 @@ def model_pool(
     for settings in configured:
         if settings.endpoint is None:
             continue
-        model = OpenAiCompatibleModel(
-            settings.endpoint,
-            settings.name,
-            credential=settings.credential,
-            timeout=timeout,
-            billing=settings.billing,  # type: ignore[arg-type]  # validated by load_model
-            output_cap=settings.output_cap,  # type: ignore[arg-type]
-            provider_limit=settings.provider_limit,  # type: ignore[arg-type]
-            usage_kinds=settings.usage_kinds,  # type: ignore[arg-type]
-        )
-        members.append((settings.identifier, settings.purposes, model, settings.name))
+        model: Model
+        location = settings.location
+        if settings.dialect == "generate_content":
+            model = VertexModel(
+                settings.endpoint,
+                settings.name,
+                credential=settings.credential,
+                timeout=timeout,
+                billing=settings.billing,  # type: ignore[arg-type]  # validated by load_model
+                output_cap=settings.output_cap,  # type: ignore[arg-type]
+                provider_limit=settings.provider_limit,  # type: ignore[arg-type]
+            )
+            if not settings.location_declared:
+                location = location_of(settings.endpoint)
+        else:
+            model = OpenAiCompatibleModel(
+                settings.endpoint,
+                settings.name,
+                credential=settings.credential,
+                timeout=timeout,
+                billing=settings.billing,  # type: ignore[arg-type]  # validated by load_model
+                output_cap=settings.output_cap,  # type: ignore[arg-type]
+                provider_limit=settings.provider_limit,  # type: ignore[arg-type]
+                usage_kinds=settings.usage_kinds,  # type: ignore[arg-type]
+            )
+        members.append((settings.identifier, settings.purposes, model, settings.name or None))
         declared[settings.identifier] = Declared(
-            location=settings.location,  # type: ignore[arg-type]  # validated by load_model
+            location=location,  # type: ignore[arg-type]  # validated by load_model
             classes=settings.classes,
         )
     return StaticModelPool(members, declared)

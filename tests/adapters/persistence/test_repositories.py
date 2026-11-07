@@ -11,7 +11,9 @@ from adapters.persistence.conftest import Backend
 from taktus.components.catalog.domain.model import (
     AdapterMaturity,
     AgentCore,
+    CallerCredential,
     CatalogueInstallation,
+    CatalogueShare,
     RoleProfile,
     SkillOwnership,
     SkillPolicy,
@@ -111,6 +113,8 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (CoachSettings, samples.coach_settings),
     (CoachHint, samples.coach_hint),
     (CoachPolicy, samples.coach_policy),
+    (CatalogueShare, samples.catalogue_share),
+    (CallerCredential, samples.caller_credential),
 ]
 
 

@@ -189,6 +189,15 @@ A step on a model names a purpose, and Taktus routes it through that purpose's c
 permits. A model that answers `429` or fails is passed over for a while, and the step moves to
 the next model at its boundary. The provenance of every answer names the model that gave it.
 
+**Local first** (ADR-0248). This installation sets `TAKTUS_MODEL_LOCAL_FIRST=true`. While no
+model is named, every purpose is bound to the model server on this machine at
+`TAKTUS_MODEL_LOCAL_ENDPOINT` (by default `http://host.docker.internal:11434/v1`), declared
+`own`. Any server of the chat-completions dialect will do; one that serves a single model needs
+no `TAKTUS_MODEL_NAME`. Nothing is installed for it: start the server you choose. A model named
+in `TAKTUS_MODEL_ENDPOINT` in its place must declare `TAKTUS_MODEL_LOCATION`, or the instance
+does not start. `taktusctl residency set --location own` keeps every step off any other model.
+Providers and their settings: `src/taktus/adapters/driven/models/README.md`.
+
 **A gateway is supported as a pass-through, and only so.** A gateway is a proxy that answers
 for several providers in one dialect. Taktus does its own routing, because a gateway's fallback
 hides from the ledger which model answered, where it processed, what it cost and how long the
