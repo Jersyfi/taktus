@@ -66,6 +66,7 @@ guides:
           - file: blueprints/self-operation/README.md
             section: Running it
             heading: The removal test
+          - file: docs/guides/administration/moving.md
       - id: restoring
         title: Restoring
         parts:

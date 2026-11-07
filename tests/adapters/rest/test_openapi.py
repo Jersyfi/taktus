@@ -55,6 +55,8 @@ def test_the_document_is_openapi_3_1_with_the_prefix_as_a_server_variable() -> N
         "/dependencies/wrong-result/{run_id}/{step_id}",
         "/dependencies/residency",
         "/evidence",
+        "/administration/tenants/{tenant}/export",
+        "/administration/tenants/import",
         "/subjects/requests",
         "/subjects/requests/{request_id}",
         "/subjects/requests/{request_id}/confirm",

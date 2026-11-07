@@ -77,7 +77,7 @@ from taktus.ports.clock import Clock
 from taktus.ports.configuration import Secret
 from taktus.ports.identity import Resolution
 from taktus.ports.ledger import Ledger
-from taktus.ports.persistence import Queried, Tenant, UnitOfWork
+from taktus.ports.persistence import Queried, Tenant, TenantImported, UnitOfWork
 
 
 class StreamsFull(Exception):
@@ -395,6 +395,14 @@ class EvidenceReads(Protocol):
     async def evidence(self, tenant: Tenant) -> dict[str, Any]: ...
 
 
+class TenantExportActs(Protocol):
+    """A tenant exported, and an export imported and checked (ADR-0221)."""
+
+    async def export(self, tenant: Tenant, *, by: str) -> bytes: ...
+
+    async def import_(self, content: bytes, *, by: str) -> TenantImported: ...
+
+
 class RestServices(Protocol):
     @property
     def roles(self) -> Sequence[str]:
@@ -534,6 +542,12 @@ class RestServices(Protocol):
     @property
     def takeover_instructions(self) -> InstructionActs:
         """A process's takeover instructions and the trials of them (ADR-0180)."""
+        ...
+
+    @property
+    def tenant_exports(self) -> TenantExportActs | None:
+        """A tenant's export and import, for the administration key; None where the state is
+        not a database (ADR-0221)."""
         ...
 
     @property

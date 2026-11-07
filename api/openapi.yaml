@@ -2427,6 +2427,96 @@ paths:
           description: The body does not validate.
           content:
             application/problem+json: {}
+  /administration/tenants/{tenant}/export:
+    get:
+      tags:
+      - administration
+      summary: Export a tenant
+      description: 'Everything the instance holds of the tenant — processes, runs, ledger, provenance,
+        artifacts, identities — in one document, with the newest hash of every chain and the document''s
+        own digest, for another instance to import (ADR-0221). The export is an entry of the tenant''s
+        ledger, `tenant.exported`, after it was read. It holds the tenant''s data: keep it as a backup
+        is kept.'
+      operationId: export_administration_tenants__tenant__export_get
+      parameters:
+      - name: tenant
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The export.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No administration key, or another one.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such tenant, or the administration is off.
+          content:
+            application/problem+json: {}
+        '409':
+          description: This instance keeps its state in files.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /administration/tenants/import:
+    post:
+      tags:
+      - administration
+      summary: Import a tenant
+      description: 'An export written into this instance, into a tenant that holds nothing here, then
+        checked: the ledger verified from its first entry, every chain''s newest entry the one the export
+        names, every run''s provenance chain verified. The body is the export as `GET …/export` answered
+        it. The import is an entry of the tenant''s ledger, `tenant.imported`, after the check (ADR-0221).'
+      operationId: imported_administration_tenants_import_post
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '201':
+          description: What was written and what the check found.
+          content:
+            application/json:
+              schema:
+                title: Response Imported Administration Tenants Import Post
+        '401':
+          description: No administration key, or another one.
+          content:
+            application/problem+json: {}
+        '404':
+          description: The administration on HTTP is not enabled.
+          content:
+            application/problem+json: {}
+        '409':
+          description: The tenant holds something here already.
+          content:
+            application/problem+json: {}
+        '422':
+          description: Not an export, or one whose bytes changed.
+          content:
+            application/problem+json: {}
   /findings/intake:
     post:
       tags:

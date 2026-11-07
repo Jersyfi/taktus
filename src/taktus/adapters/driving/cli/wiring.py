@@ -70,7 +70,7 @@ from taktus.components.run.application.service.stops import Stops
 from taktus.components.run.domain.model import Run
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.ledger import Ledger
-from taktus.ports.persistence import Repository, Tenant, UnitOfWork
+from taktus.ports.persistence import Repository, Tenant, TenantImported, UnitOfWork
 
 
 class NotOperable(Exception):
@@ -271,6 +271,19 @@ class Services:
     instructions: TakeoverTrials | None = None
     """A process's takeover instructions shown, and a trial of them recorded
     (`taktusctl takeover`, ADR-0180)."""
+    exports: TenantExportActs | None = None
+    """A tenant exported, and an export imported and checked (`taktusctl tenant export` and
+    `import`, ADR-0221); None where the state is files."""
+
+
+class TenantExportActs(Protocol):
+    async def export(self, tenant: Tenant, *, by: str) -> bytes:
+        """The tenant's export document."""
+        ...
+
+    async def import_(self, content: bytes, *, by: str) -> TenantImported:
+        """An export written into this instance, its chains checked here."""
+        ...
 
 
 class Evidence(Protocol):

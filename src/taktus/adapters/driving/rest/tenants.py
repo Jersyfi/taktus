@@ -6,6 +6,10 @@ the instance's administration key, `Authorization: Bearer`, compared in constant
 account key of an identity is not admitted: an identity belongs to one tenant, and
 administering the instance from inside a tenant would reach past that tenant's boundary.
 Without the key configured, the routes answer 404 and say how to enable them.
+
+The same key exports a tenant — everything the instance holds of it, in one document — and
+imports such a document into a tenant that holds nothing here, answering what the check of its
+chains found (ADR-0221).
 """
 
 from __future__ import annotations
@@ -13,14 +17,14 @@ from __future__ import annotations
 import hmac
 from typing import Any
 
-from fastapi import APIRouter, Header
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Header, Request
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from taktus.adapters.driving.rest.problems import problem
 from taktus.adapters.driving.rest.wiring import RestServices
 from taktus.components.identity.application.service import BadName, NoSuchTenant
-from taktus.ports.persistence import TenantEntry
+from taktus.ports.persistence import TenantEntry, TenantNotEmpty
 
 PROBLEM: dict[str, Any] = {"content": {"application/problem+json": {}}}
 NOT_ENABLED = (
@@ -137,5 +141,67 @@ def router(services: RestServices) -> APIRouter:
         except BadName as error:
             return problem(422, str(error))
         return JSONResponse(tenant_document(entry))
+
+    @routes.get(
+        "/administration/tenants/{tenant}/export",
+        summary="Export a tenant",
+        description="Everything the instance holds of the tenant — processes, runs, ledger, "
+        "provenance, artifacts, identities — in one document, with the newest hash of every "
+        "chain and the document's own digest, for another instance to import (ADR-0221). The "
+        "export is an entry of the tenant's ledger, `tenant.exported`, after it was read. It "
+        "holds the tenant's data: keep it as a backup is kept.",
+        responses={
+            200: {"description": "The export.", "content": {"application/json": {}}},
+            401: refused[401],
+            404: {"description": "No such tenant, or the administration is off.", **PROBLEM},
+            409: {"description": "This instance keeps its state in files.", **PROBLEM},
+            422: {"description": "A parameter does not validate.", **PROBLEM},
+        },
+    )
+    async def export(tenant: str, authorization: str | None = Header(default=None)) -> Response:
+        if (refusal := admitted(authorization)) is not None:
+            return refusal
+        exports = services.tenant_exports
+        if exports is None:
+            return problem(409, "an export reads the database; this instance has none")
+        try:
+            content = await exports.export(tenant, by="administrator")
+        except ValueError as error:
+            return problem(404, str(error))
+        return Response(content, media_type="application/json")
+
+    @routes.post(
+        "/administration/tenants/import",
+        summary="Import a tenant",
+        description="An export written into this instance, into a tenant that holds nothing "
+        "here, then checked: the ledger verified from its first entry, every chain's newest "
+        "entry the one the export names, every run's provenance chain verified. The body is "
+        "the export as `GET …/export` answered it. The import is an entry of the tenant's "
+        "ledger, `tenant.imported`, after the check (ADR-0221).",
+        status_code=201,
+        responses={
+            201: {"description": "What was written and what the check found."},
+            401: refused[401],
+            404: refused[404],
+            409: {"description": "The tenant holds something here already.", **PROBLEM},
+            422: {"description": "Not an export, or one whose bytes changed.", **PROBLEM},
+        },
+    )
+    async def imported(request: Request, authorization: str | None = Header(default=None)) -> Any:
+        if (refusal := admitted(authorization)) is not None:
+            return refusal
+        exports = services.tenant_exports
+        if exports is None:
+            return problem(409, "an import writes the database; this instance has none")
+        try:
+            done = await exports.import_(await request.body(), by="administrator")
+        except TenantNotEmpty as error:
+            return problem(409, str(error))
+        except ValueError as error:
+            return problem(422, str(error))
+        return JSONResponse(
+            {**done.document(), "verified": done.verified},
+            status_code=201 if done.verified else 200,
+        )
 
     return routes

@@ -52,6 +52,7 @@ from taktus.adapters.driven.postgres import (
     PostgresQueue,
     PostgresRelay,
     PostgresRepository,
+    PostgresTenantArchive,
     PostgresTenantStore,
     PostgresTraceStore,
     SchemaOutOfDate,
@@ -243,6 +244,7 @@ from taktus.composition.stops import StopsConfirmed
 from taktus.composition.streams import StreamReads
 from taktus.composition.subjects import ProcessingEvidence, RunHoldings
 from taktus.composition.takeover_in_channel import TakeoverInChannel
+from taktus.composition.tenant_export import TenantExports
 from taktus.composition.traces import traces_tick
 from taktus.composition.trials import Trials, trials_tick
 from taktus.composition.triggers import Triggers
@@ -377,6 +379,8 @@ class Wired:
     """Data-protection requests, prepared and carried out by a person (ADR-0176)."""
     evidence: ProcessingEvidence | None = None
     """What is processed for a tenant, generated (ADR-0176 §8)."""
+    exports: TenantExports | None = None
+    """A tenant exported, and an export imported and checked (ADR-0221)."""
     agents: SharedAgents | None = None
     """Shared agents with role profiles (ADR-0163)."""
     connected: ConnectedHost | None = None
@@ -420,6 +424,11 @@ class Wired:
         if self.instructions is None:
             raise RuntimeError("the daemon wires the takeover instructions")
         return self.instructions
+
+    @property
+    def tenant_exports(self) -> TenantExports | None:
+        """A tenant's export and import on the HTTP surface (ADR-0221)."""
+        return self.exports
 
     @property
     def subject_requests(self) -> SubjectRequests:
@@ -1325,6 +1334,18 @@ async def wire(
                 work=persistence,
                 clock=clock,
                 traces=trace_store,
+            )
+            wired.exports = TenantExports(
+                archive=PostgresTenantArchive(persistence),
+                tenants=PostgresTenantStore(persistence),
+                objects=object_store_of(
+                    settings.object_store, state_dir=settings.state_dir, cache_bytes=0
+                ),
+                ledger=ledger,
+                provenance=provenance_store,
+                runs=runs,
+                work=persistence,
+                clock=clock,
             )
             wired.subjects = SubjectRequests(
                 PostgresRepository(persistence, SubjectRequest),

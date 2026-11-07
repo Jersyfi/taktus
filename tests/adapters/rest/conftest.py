@@ -256,6 +256,9 @@ class Services:
     """The data-protection requests (ADR-0176); a test that reaches them sets them. What they
     find and erase is held by `tests/composition/test_subjects.py`."""
     evidenced: Any = None
+    exported: Any = None
+    """A tenant's export and import (ADR-0221); None, as where the state is files. What they
+    write and check is held by `tests/integration/test_tenant_export.py`."""
     """The processing evidence (ADR-0176 §8); a test that reaches it sets it."""
 
     @property
@@ -448,6 +451,10 @@ class Services:
     def subject_requests(self) -> Any:
         assert self.requested is not None, "this test sets the requests it reaches"
         return self.requested
+
+    @property
+    def tenant_exports(self) -> Any:
+        return self.exported
 
     @property
     def processing_evidence(self) -> Any:
