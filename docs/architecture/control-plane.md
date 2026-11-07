@@ -177,7 +177,8 @@ by a `rule` step of work `screen` before a model or a worker reads it: it names 
 `injection` and `personal_data` to run over a text. A check that finds something fails the step,
 the failure names the check and never the text found, the steps after it do not start and the
 run goes to a person. A text that passes is not declared safe: the patterns are fixed and name
-only what they name, so the step is classed `tolerant` at best and never `exact`. It is drawn in
+only what they name, so the step is classed `tolerant` at best and never `exact`: a version that
+classes one `exact` does not register. It is drawn in
 the graph and has its own entry in the ledger like any step.
 
 ### 4.2 Versioning

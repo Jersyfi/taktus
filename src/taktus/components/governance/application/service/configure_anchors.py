@@ -8,7 +8,10 @@ undefined risk class, or name an anchor twice is refused, and nothing is stored.
 configuration replaces the one before it; the ledger entry `anchors.configured` carries the
 digest of what was stored and the identity who configured it, in the same transaction.
 
-A tenant that configured nothing holds the shipped default (`shipped_default`).
+A tenant that configured nothing holds the shipped default (`shipped_default`). A configuration
+that would leave a domain of the tenant without a legal anchor in force is refused as well
+(UC-15.5, ADR-0259), and the anchors in force are read within the scope the tenant's domains
+give them.
 """
 
 from __future__ import annotations
@@ -25,7 +28,8 @@ from taktus.components.governance.domain.model.anchors import (
     AnchorConfiguration,
     shipped_default,
 )
-from taktus.components.governance.domain.service.anchors import applying, ceilings
+from taktus.components.governance.domain.model.domains import Domain
+from taktus.components.governance.domain.service.anchors import applying, ceilings, legal_for
 from taktus.ports.clock import Clock
 from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
@@ -53,11 +57,13 @@ class ConfigureAnchorsHandler:
         work: UnitOfWork,
         ledger: Ledger,
         clock: Clock,
+        domains: Repository[Domain] | None = None,
     ) -> None:
         self._configurations = configurations
         self._work = work
         self._ledger = ledger
         self._clock = clock
+        self._domains = domains
 
     async def execute(self, command: ConfigureAnchors) -> AnchorConfiguration:
         unknown = set(command.document) - {"anchors", "risk_classes", "levels"}
@@ -84,6 +90,13 @@ class ConfigureAnchorsHandler:
             ).hexdigest()
         )
         async with self._work.transaction(command.tenant):
+            domains = [] if self._domains is None else await self._domains.list(command.tenant)
+            emptied = sorted(d.id for d in domains if not legal_for(configuration, d))
+            if emptied:
+                raise AnchorsRefused(
+                    f"the domain(s) {', '.join(emptied)} would keep no legal anchor in force: a "
+                    "domain's catalogue can be reduced but never emptied (UC-15.5)"
+                )
             await self._configurations.put(command.tenant, configuration)
             await self._ledger.record(
                 command.tenant,
@@ -100,9 +113,15 @@ class ConfigureAnchorsHandler:
 class AnchorsInForce:
     """The anchors a tenant holds now: its configuration, or the shipped default."""
 
-    def __init__(self, configurations: Repository[AnchorConfiguration], work: UnitOfWork) -> None:
+    def __init__(
+        self,
+        configurations: Repository[AnchorConfiguration],
+        work: UnitOfWork,
+        domains: Repository[Domain] | None = None,
+    ) -> None:
         self._configurations = configurations
         self._work = work
+        self._domains = domains
 
     async def of(self, tenant: Tenant) -> AnchorConfiguration:
         async with self._work.transaction(tenant):
@@ -112,8 +131,13 @@ class AnchorsInForce:
     async def applying(
         self, tenant: Tenant, process: str, actions: Sequence[str]
     ) -> tuple[Anchor, ...]:
-        """The anchors that name a step's act."""
-        return applying(await self.of(tenant), process=process, actions=actions)
+        """The anchors that name a step's act, within the scope the tenant's domains give
+        them (ADR-0259)."""
+        domains: list[Domain] = []
+        if self._domains is not None:
+            async with self._work.transaction(tenant):
+                domains = list(await self._domains.list(tenant))
+        return applying(await self.of(tenant), process=process, actions=actions, domains=domains)
 
     async def ceilings(self, tenant: Tenant, actions: Sequence[str]) -> Mapping[str, int]:
         """The ceiling a risk class sets on each of `actions` it covers (ADR-0170)."""

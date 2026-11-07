@@ -405,6 +405,7 @@ class ProcessVersion(Value):
         findings = validate_graph(self.steps)
         findings.extend(self._evaluation_findings())
         findings.extend(self._skill_findings())
+        findings.extend(self._screen_findings())
         findings.extend(
             f"`open_work` names the kind {kind!r}; a kind is a lowercase token such as "
             "pull_requests"
@@ -482,6 +483,18 @@ class ProcessVersion(Value):
         if findings:
             raise InvalidProcess(tuple(findings))
         return self
+
+    def _screen_findings(self) -> list[str]:
+        """An input check is never `exact` (UC-7.9): its patterns name what they look for, and
+        what they do not find is not declared safe."""
+        return [
+            f"the step {step.id!r} is an input check (`rule: screen`) classed exact; a check "
+            "names what it looks for, and what it does not find is not declared safe: it is "
+            "classed tolerant at best (UC-7.9)"
+            for step in self.steps
+            if step.exactness is ExactnessClass.EXACT
+            and (self.work.get(step.id) or {}).get("rule") == "screen"
+        ]
 
     def _skill_findings(self) -> list[str]:
         """A step names its skills as a list of skill names, each once (ADR-0113 §2)."""

@@ -47,7 +47,7 @@ from taktus.shared.v1 import (
     Value,
 )
 
-type Refusal = Literal["no_approval", "no_history_named", "history_short"]
+type Refusal = Literal["no_approval", "no_history_named", "history_short", "no_owner"]
 
 CLEAN_STEP_OUTCOMES = frozenset({"succeeded", "rehearsed", "stopped"})
 """What a `step.finished` entry may say without the run counting as failed."""

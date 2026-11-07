@@ -18,6 +18,28 @@ from taktus.ports.identity import ServedTenants
 log = structlog.get_logger("taktus.stops")
 
 
+class RuleStops:
+    """The governance component's port for a rule's stop, answered from the run component's
+    stops (ADR-0256 §3)."""
+
+    def __init__(self, stops: Stops) -> None:
+        self._stops = stops
+
+    async def stop_process(self, tenant: str, process: str, *, rule: str, incident: str) -> str:
+        stop = await self._stops.request_process(
+            tenant, process, None, rule=rule or "none", incident=incident
+        )
+        log.warning(
+            "a rule stopped a process",
+            tenant=tenant,
+            process=process,
+            rule=rule,
+            incident=incident,
+            stop=stop.id,
+        )
+        return stop.id
+
+
 class StopsConfirmed:
     def __init__(self, tenants: ServedTenants, stops: Stops) -> None:
         self._tenants = tenants

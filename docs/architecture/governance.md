@@ -277,7 +277,11 @@ in [`docs/status.md`](../status.md).
   relevance of the process (ADR-0023). Thresholds are tenant configuration; a criterion may be
   added and a threshold changed, but the set cannot be emptied. Only the narrative — the
   incident description, the situation package — may come from a language model, and it names
-  the rule and the facts it fired on.
+  the rule and the facts it fired on. A stop is scoped to an adapter (ADR-0138), a process, a
+  tenant or the instance — a stop of each tenant it serves — and every run it covers halts at
+  its next boundary. Where the rule over a result reported wrong decides `stop`, it stops the
+  process that produced the result before the incident is written; the stop names the rule
+  and the incident, and the incident the facts (ADR-0256).
 
 ---
 
@@ -286,6 +290,18 @@ in [`docs/status.md`](../status.md).
 Taktus works with the minimum permissions needed, and that extends to the worker: it receives only
 the tools and credentials the process allows, injected at runtime, never stored. Role profiles of
 shared agents may only **narrow** the core's permissions, never widen them.
+
+Creating a process, approving a version for operation and setting or raising its autonomy level
+are three rights — `process.create`, `process.approve`, `autonomy.set` — each granted to a role,
+never to a person. Once a role of the tenant holds one, registration asks for them, and a
+version an identity lacks a right for is refused with `process.refused` naming the right
+(ADR-0257).
+
+Every domain a tenant instantiates has exactly one owner, an identity of the tenant, and a
+jurisdiction. Without an owner nothing in it is raised. An anchor scoped to a domain or a
+jurisdiction holds for that domain's processes, and no configuration may leave a domain without
+a legal anchor in force (ADR-0259). A tenant's monthly money budget across all its runs holds
+every run of it at its next boundary once the month's runs cost it (ADR-0260).
 
 Shared agents run strictly in the permission, credential and cost context of the *calling user*,
 never of their author. No user sees another's mailbox, data or secrets.

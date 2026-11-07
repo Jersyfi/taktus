@@ -192,6 +192,7 @@ from taktus.composition.shipped import load as load_shipped
 from taktus.composition.signals import signal_wiring
 from taktus.composition.skills import CatalogGuidance, SkillLifecycle
 from taktus.composition.stages import stage_wiring
+from taktus.composition.stops import RuleStops
 from taktus.composition.subjects import ProcessingEvidence, RunHoldings
 from taktus.composition.tenant_export import TenantExports
 from taktus.ports.backups import BackupLog
@@ -418,6 +419,7 @@ class LocalWiring:
                     traces=stores.traces,
                     masking=known_secrets(os.environ),
                     stops=stops,
+                    tenant_budget=decisions.budget_of_the_run,
                     messages=decisions.messages,
                     statements=VersionStatements(
                         stores.work, stores.of(ProcessVersion), CorrectionRates(ledger, stores.work)
@@ -603,6 +605,8 @@ class LocalWiring:
                 sources=decisions.sources,
                 stages=staged.ceilings,
                 structure=identities,
+                rights=identities,
+                domains=decisions.domains,
             )
             findings = ProductFindings(
                 RunBlocks(BlockedTime(ledger, objects, stores.work, runs)),
@@ -769,8 +773,10 @@ class LocalWiring:
                     stores.of(AnchorConfiguration),
                     stores.work,
                     clock,
+                    stops=RuleStops(stops),
                 ),
                 residency=decisions.residency,
+                budget=decisions.budget,
                 sources=decisions.sources,
                 messages=decisions.messages.tenant,
                 org_units=decisions.org_units,

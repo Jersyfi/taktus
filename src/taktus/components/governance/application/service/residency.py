@@ -31,6 +31,9 @@ class ConfigureResidency:
     location: Permitted | None = None
     classes: Mapping[str, Permitted] = field(default_factory=dict)
     cleared: tuple[str, ...] = ()
+    processes: Mapping[str, Permitted] = field(default_factory=dict)
+    """Adds or replaces the rule of each process it names (ADR-0258)."""
+    cleared_processes: tuple[str, ...] = ()
 
 
 class TenantResidency:
@@ -48,9 +51,12 @@ class TenantResidency:
             found = await self._rules.get(tenant, tenant)
         return found or shipped_rule(tenant)
 
-    async def permitted(self, tenant: Tenant, data_class: str | None) -> Permitted:
-        """The run's port: where data of the class may be processed for the tenant."""
-        return (await self.rule(tenant)).permitted(data_class)
+    async def permitted(
+        self, tenant: Tenant, data_class: str | None, process: str | None = None
+    ) -> Permitted:
+        """The run's port: where data of the class may be processed for the tenant, in a run
+        of the process."""
+        return (await self.rule(tenant)).permitted(data_class, process)
 
     async def configure(self, command: ConfigureResidency, *, by: str) -> ResidencyRule:
         """Set what the command names, keep the rest. A rule that does not hold — a class wider
@@ -61,11 +67,17 @@ class TenantResidency:
             for name, location in {**current.classes, **command.classes}.items()
             if name not in command.cleared
         }
+        processes = {
+            name: location
+            for name, location in {**current.processes, **command.processes}.items()
+            if name not in command.cleared_processes
+        }
         configured = ResidencyRule.model_validate(
             {
                 **current.model_dump(),
                 "location": command.location or current.location,
                 "classes": classes,
+                "processes": processes,
                 "configured_at": self._clock.now(),
             }
         )

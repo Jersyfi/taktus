@@ -369,3 +369,77 @@ def test_a_package_missing_a_part_says_which_part_it_lacks() -> None:
     )
     assert complete.lacking == ()
     assert "lacks" not in defects.render_package(complete)
+
+
+class RecordedStops:
+    """The port a rule's stop goes through, recording what it was asked (ADR-0256 §3)."""
+
+    def __init__(self) -> None:
+        self.asked: list[tuple[str, str, str, str]] = []
+
+    async def stop_process(self, tenant: str, process: str, *, rule: str, incident: str) -> str:
+        self.asked.append((tenant, process, rule, incident))
+        return "stp_0001"
+
+
+async def _raised(
+    rules: tuple[Rule, ...], relevance: int | None, stops: RecordedStops
+) -> tuple[Incident, Any, list[LedgerEntry]]:
+    persistence = MemoryPersistence()
+    clock = FakeClock(AT + timedelta(days=6))
+    ledger = ChainedLedger(MemoryLedgerStore(persistence), clock)
+    provenance = MemoryProvenanceStore(persistence)
+    watch = MemoryRepository(persistence, WatchConfiguration)
+    async with persistence.transaction(TENANT):
+        for r in RECORDS:
+            await ledger.record(
+                TENANT,
+                Fact(
+                    kind="step.finished",
+                    refs=LedgerRefs(tenant=TENANT, run_id=r.run_id, step_id=r.step_id),
+                    outcome="succeeded",
+                ),
+            )
+            await provenance.append(TENANT, r)
+        await watch.put(TENANT, WatchConfiguration(id=TENANT, tenant=TENANT, defect_rules=rules))
+    service = ResultDefects(
+        provenance,
+        ledger,
+        MemoryRepository(persistence, Incident),
+        watch,
+        MemoryRepository(persistence, AnchorConfiguration),
+        persistence,
+        clock,
+        stops=stops,
+    )
+    report = ReportDefect(
+        tenant=TENANT, run_id="r4", step_id="import", found=Found.CORRECTED, relevance=relevance
+    )
+    incident, assessed = await service.raise_incident(report)
+    await service.raise_incident(report)
+    async with persistence.transaction(TENANT):
+        entries = list(await ledger.entries(TENANT))
+    return incident, assessed, entries
+
+
+async def test_a_rule_that_decides_stop_stops_the_process_and_records_the_rule_and_the_facts() -> (
+    None
+):
+    relevant = Rule(id="relevant", when=When(relevance_at_least=4), then=Verdict.STOP)
+    stops = RecordedStops()
+    incident, assessed, entries = await _raised((*SHIPPED, relevant), 5, stops)
+    assert assessed.decision.verdict is Verdict.STOP
+    assert stops.asked == [(TENANT, "billing", incident.rule, incident.id)], "stopped once"
+    assert "relevant" in incident.rule.split(",")
+    assert incident.facts["verdict"] == "stop" and incident.facts["stop"] == "stp_0001"
+    assert incident.facts["relevance"] == 5 and incident.facts["strictest"] == "exact"
+    assert "relevant: " in str(incident.facts["thresholds"])
+    [raised] = [e for e in entries if e.kind == "incident.raised"]
+    assert raised.outcome == "stop" and raised.refs.actor is None, "a rule, not a person"
+
+
+async def test_a_verdict_short_of_stop_stops_nothing() -> None:
+    stops = RecordedStops()
+    incident, assessed, _ = await _raised(SHIPPED, 5, stops)
+    assert assessed.decision.verdict is Verdict.ESCALATE
+    assert stops.asked == [] and incident.facts["stop"] is None

@@ -459,6 +459,45 @@ adapter_stop = Table(
 """One row per stop of an adapter a person requested (ADR-0138). A row is never deleted: its
 state moves on."""
 
+scoped_stop = Table(
+    "scoped_stop",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("scope", Text, nullable=False),  # process, tenant (ADR-0256)
+    Column("process", Text, nullable=True),
+    Column("state", Text, nullable=False),  # holding, confirmed, lifted
+    _at("requested_at"),
+    Column("stop", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+    Index("scoped_stop_state", "tenant", "state"),
+)
+"""One row per stop of a process or of a tenant, by a person or a rule (ADR-0256). A row is
+never deleted: its state moves on. Kept apart from `adapter_stop`, which the previous release
+reads (ADR-0093)."""
+
+domain = Table(
+    "domain",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("owner", Text, nullable=True),  # None while the domain has no owner (ADR-0259)
+    Column("domain", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per domain a tenant instantiated, with its owner (ADR-0259). A row is never
+deleted: its owner moves on."""
+
+tenant_month_budget = Table(
+    "tenant_month_budget",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("budget", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per tenant that set a monthly budget across all its runs (ADR-0260)."""
+
 working_time = Table(
     "working_time",
     metadata,

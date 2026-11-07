@@ -7,6 +7,11 @@ anchored (ADR-0022 §1). `raise_incident` raises the incident of kind `result.de
 the rule read and decided, in one transaction with its ledger entry `incident.raised`, whose
 outcome is the verdict; a second report of the same result raises nothing.
 
+Where the verdict is `stop` and a stop is wired, the rule stops the process of the reported
+result before the incident is written: every run of it halts at its next boundary, and the
+incident names the stop beside the rule and the facts it read (ADR-0023, ADR-0256 §3). No model
+takes part in the decision; a narrative written afterwards names the rule and the facts.
+
 A **legal anchor downstream** is a legal anchor of the tenant that applies to a step reading an
 affected result: to its process, and to the adapter and the capabilities its record names.
 """
@@ -25,6 +30,7 @@ from taktus.components.governance.domain.model.defects import (
     Decision,
     Found,
     Plan,
+    Verdict,
 )
 from taktus.components.governance.domain.model.egress import ResultRef
 from taktus.components.governance.domain.model.incident import (
@@ -38,6 +44,7 @@ from taktus.components.governance.domain.model.incident import (
 )
 from taktus.components.governance.domain.service import defects
 from taktus.components.governance.domain.service.anchors import applies
+from taktus.components.governance.ports.stops import ProcessStops
 from taktus.ports.clock import Clock
 from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.persistence import ProvenanceStore, Repository, Tenant, UnitOfWork
@@ -97,7 +104,11 @@ class ResultDefects:
         anchors: Repository[AnchorConfiguration],
         work: UnitOfWork,
         clock: Clock,
+        stops: ProcessStops | None = None,
     ) -> None:
+        self._stops = stops
+        """Where a verdict `stop` goes (ADR-0256 §3). None: the verdict is the incident's
+        severity alone, and no process is stopped."""
         self._provenance = provenance
         self._ledger = ledger
         self._incidents = incidents
@@ -176,6 +187,17 @@ class ResultDefects:
         facts = decision.facts
         async with self._work.transaction(tenant):
             existing = await self._incidents.get(tenant, iid)
+        if existing is not None:
+            return existing, assessed
+        stopped: str | None = None
+        if decision.verdict is Verdict.STOP and self._stops is not None:
+            # The rule's decision is carried out before the incident is written, so that no
+            # further run of the process goes on while a person reads it (ADR-0256 §3).
+            stopped = await self._stops.stop_process(
+                tenant, process, rule=",".join(decision.fired), incident=iid
+            )
+        async with self._work.transaction(tenant):
+            existing = await self._incidents.get(tenant, iid)
             if existing is not None:
                 return existing, assessed
             incident = Incident(
@@ -206,6 +228,7 @@ class ResultDefects:
                     "unbounded": "yes" if assessed.analysis.unbounded else "no",
                     "thresholds": "; ".join(f"{k}: {v}" for k, v in decision.thresholds.items())
                     or None,
+                    "stop": stopped,
                 },
                 raised_at=now,
             )

@@ -61,3 +61,23 @@ async def test_a_class_is_never_wider_than_the_tenant_s_rule() -> None:
             ConfigureResidency(tenant=TENANT, classes={"public": "anywhere"}), by="op"
         )
     assert await service.permitted(TENANT, "public") == "eu"
+
+
+async def test_a_process_narrows_the_rule_never_widens_it_and_the_narrowest_holds() -> None:
+    service, _, _ = residency()
+    rule = await service.configure(
+        ConfigureResidency(
+            tenant=TENANT, location="eu", classes={"public": "eu"}, processes={"payroll": "own"}
+        ),
+        by="op",
+    )
+    assert rule.processes == {"payroll": "own"}
+    assert await service.permitted(TENANT, None, "payroll") == "own"
+    assert await service.permitted(TENANT, "public", "payroll") == "own", "the narrowest holds"
+    assert await service.permitted(TENANT, "public", "billing") == "eu"
+    with pytest.raises(ValidationError, match="never widens"):
+        ResidencyRule(id=TENANT, tenant=TENANT, location="eu", processes={"billing": "anywhere"})
+    cleared = await service.configure(
+        ConfigureResidency(tenant=TENANT, cleared_processes=("payroll",)), by="op"
+    )
+    assert cleared.processes == {}

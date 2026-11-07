@@ -165,8 +165,16 @@ class BrowserSession(Value):
 
 
 class Right(StrEnum):
-    """What a role may let an agent do on the MCP surface beyond reading (ADR-0131 §3), and what
-    a role may do to runs beyond its own (ADR-0236)."""
+    """What a role may let an agent do on the MCP surface beyond reading (ADR-0131 §3), what a
+    role may do to runs beyond its own (ADR-0236), and the three acts on a process that are
+    rights of their own (ADR-0257)."""
+
+    PROCESS_CREATE = "process.create"
+    """Register the first version of a process the tenant does not have yet."""
+    PROCESS_APPROVE = "process.approve"
+    """Register a version, which approves it for operation: it becomes the active version."""
+    AUTONOMY_SET = "autonomy.set"
+    """Set the autonomy level of a new process, or approve a version that raises one."""
 
     START = "agent.start"
     """Start a process's active version."""

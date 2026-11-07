@@ -97,6 +97,10 @@ claim skipped its job until one freed (ADR-0166). Booked to `limit.quota`."""
 AT_UNIT_BUDGET = "at_unit_budget"
 """The run's budget did not fit what is left of its organisational unit's budget quota for the
 month, or names no amount in the quota's currency (ADR-0166). Booked to `limit.budget`."""
+AT_TENANT_BUDGET = "at_tenant_budget"
+"""What the tenant's runs of the month cost reached its monthly budget: every run of the
+tenant waits at its next boundary until a person raises the budget or the month turns
+(ADR-0260). Booked to `limit.budget`."""
 HELD_BACK = "held_back"
 """The step depends on a step that waits, and cannot start before it ends."""
 NO_WORKER = "no_worker"

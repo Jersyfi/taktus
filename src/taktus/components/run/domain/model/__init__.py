@@ -62,7 +62,7 @@ from taktus.components.run.domain.model.steering import (
     SteeringReply,
     SteeringState,
 )
-from taktus.components.run.domain.model.stop import HELD, AdapterStop, StopState
+from taktus.components.run.domain.model.stop import HELD, AdapterStop, StopScope, StopState
 from taktus.components.run.domain.model.work import (
     Ask,
     BacklogRule,
@@ -192,6 +192,7 @@ __all__ = [
     "SteeringState",
     "StepRun",
     "StepState",
+    "StopScope",
     "StopState",
     "Takeover",
     "TakeoverOfStep",
