@@ -192,6 +192,7 @@ from taktus.composition.shipped import load as load_shipped
 from taktus.composition.signals import signal_wiring
 from taktus.composition.skills import CatalogGuidance, SkillLifecycle
 from taktus.composition.stages import stage_wiring
+from taktus.composition.stops import RuleStops
 from taktus.composition.subjects import ProcessingEvidence, RunHoldings
 from taktus.composition.tenant_export import TenantExports
 from taktus.ports.backups import BackupLog
@@ -602,6 +603,7 @@ class LocalWiring:
                 sources=decisions.sources,
                 stages=staged.ceilings,
                 structure=identities,
+                rights=identities,
             )
             findings = ProductFindings(
                 RunBlocks(BlockedTime(ledger, objects, stores.work, runs)),
@@ -768,6 +770,7 @@ class LocalWiring:
                     stores.of(AnchorConfiguration),
                     stores.work,
                     clock,
+                    stops=RuleStops(stops),
                 ),
                 residency=decisions.residency,
                 sources=decisions.sources,

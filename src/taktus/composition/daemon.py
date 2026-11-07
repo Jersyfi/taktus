@@ -243,7 +243,7 @@ from taktus.composition.signals import CommandInterventions, signal_wiring, sign
 from taktus.composition.skills import CatalogGuidance, SkillLifecycle, skills_tick
 from taktus.composition.spend_in_channel import SpendInChannel
 from taktus.composition.stages import stage_wiring, stages_tick
-from taktus.composition.stops import StopsConfirmed
+from taktus.composition.stops import RuleStops, StopsConfirmed
 from taktus.composition.streams import StreamReads
 from taktus.composition.subjects import ProcessingEvidence, RunHoldings
 from taktus.composition.takeover_in_channel import TakeoverInChannel
@@ -882,6 +882,7 @@ async def wire(
                 sources=decisions.sources,
                 stages=staged.ceilings,
                 structure=identities,
+                rights=identities,
             )
             moves = MethodMoves(
                 versions=PostgresRepository(persistence, ProcessVersion),
@@ -1069,6 +1070,7 @@ async def wire(
                 PostgresRepository(persistence, AnchorConfiguration),
                 persistence,
                 clock,
+                stops=RuleStops(stops),
             )
             wired = Wired(
                 connected=connected_host(settings.workers, configuration, relay),

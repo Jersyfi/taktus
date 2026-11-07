@@ -53,6 +53,14 @@ Registering is where a version must carry its takeover instructions: a bundle wi
 a step names and its entry does not, or naming an identifier a person could not look up without
 Taktus, is refused (UC-6.3, ADR-0180 §2).
 
+Registering is where the three rights of a process hold, once a role of the tenant holds one of
+them: the first version of a process is registered only by an identity holding
+`process.create`; every version only by one holding `process.approve`, since registering
+approves it for operation; and a first version, or one that raises a level, only with an
+identity holding `autonomy.set` — the approving person, or whoever registers where none
+approves. A version an identity lacks a right for is refused, and `process.refused` records it
+with the right it lacked as its outcome (UC-7.3, ADR-0257).
+
 Registering is where a person's step must name its role once the tenant has a structure: a
 `human` step, or a fallback to a person, without a role, or naming a role no identity of the
 tenant holds, is refused (UC-4.20, ADR-0146). While no identity holds a role, nothing is
@@ -94,8 +102,15 @@ from taktus.components.process.ports import (
     FreeSources,
     LoweredLevels,
     LoweredVersions,
+    ProcessRights,
     RoleStructure,
     StageCeilings,
+)
+from taktus.components.process.ports.rights import (
+    APPROVE,
+    CREATE,
+    OF_A_PROCESS,
+    SET_AUTONOMY,
 )
 from taktus.ports.administration import Administration
 from taktus.ports.clock import Clock
@@ -125,9 +140,8 @@ class RegisterProcessVersion:
     act for that identity."""
     approved_by: str | None = None
     """The person who approves a raise of an autonomy level this version makes, or a change of
-    its caps on open work (ADR-0132). A version that does neither needs no approval. Who holds
-    the right to approve is a right per role (UC-7.3); until it exists, any identity the tenant
-    knows may."""
+    its caps on open work (ADR-0132). A version that does neither needs no approval. Once the
+    tenant grants the rights of a process, the person holds `autonomy.set` (ADR-0257)."""
 
 
 class RegisterProcessVersionHandler:
@@ -150,7 +164,10 @@ class RegisterProcessVersionHandler:
         sources: FreeSources | None = None,
         stages: StageCeilings | None = None,
         structure: RoleStructure | None = None,
+        rights: ProcessRights | None = None,
     ) -> None:
+        self._rights = rights
+        """Who holds the rights of a process (ADR-0257). None: no right is asked for."""
         self._structure = structure
         """Which roles the tenant's identities hold (ADR-0146). None: no role is required."""
         self._stages = stages
@@ -204,6 +221,15 @@ class RegisterProcessVersionHandler:
         refused: autonomy.RaiseVerdict | None = None
         capped: str | None = None
         lowerings = await self._lowerings(tenant, version)
+        lacking = await self._lacking(tenant, version, lowerings, command)
+        if lacking:
+            async with self._work.transaction(tenant):
+                for right, _, actor in lacking:
+                    outcome = "lacks_" + right.replace(".", "_")
+                    await self._record(
+                        tenant, version, "process.refused", outcome, command, actor=actor
+                    )
+            raise InvalidProcess(tuple(finding for _, finding, _ in lacking))
         async with self._work.transaction(tenant):
             stored = await self._versions.get(tenant, version.ref)
             # A registered version never changes: the runs that name it, their ledger and their
@@ -328,6 +354,53 @@ class RegisterProcessVersionHandler:
         if not held:
             return []
         return [f for step in version.steps if (f := unroled(step, held)) is not None]
+
+    async def _lacking(
+        self,
+        tenant: Tenant,
+        version: ProcessVersion,
+        lowerings: Mapping[str, LoweredLevels],
+        command: RegisterProcessVersion,
+    ) -> list[tuple[str, str, str | None]]:
+        """Every right of a process the act needs and its identity lacks, each with its
+        finding and the identity that lacked it (ADR-0257). Nothing while no role of the
+        tenant holds one of the rights."""
+        if self._rights is None or not await self._rights.granting(tenant, OF_A_PROCESS):
+            return []
+        async with self._work.transaction(tenant):
+            replaced = [r for r in await self._replaced(tenant, version) if r.ref != version.ref]
+            first = not replaced and await self._versions.get(tenant, version.ref) is None
+        raised = any(
+            autonomy.raises(self._running(old, lowerings), version.autonomy) for old in replaced
+        )
+        needed: list[tuple[str, str | None, str]] = []
+        if first:
+            needed.append((CREATE, command.by, f"create the process {version.process_id}"))
+        needed.append((APPROVE, command.by, f"approve {version.ref} for operation"))
+        if first or raised:
+            what = "set" if first else "raise"
+            needed.append(
+                (
+                    SET_AUTONOMY,
+                    command.approved_by or command.by,
+                    f"{what} the autonomy level of {version.process_id} to "
+                    f"{version.autonomy.level}",
+                )
+            )
+        lacking: list[tuple[str, str, str | None]] = []
+        for right, who, act in needed:
+            if who is not None and await self._rights.holds(tenant, who, right):
+                continue
+            named = "an act naming no identity" if who is None else f"{who!r}"
+            lacking.append(
+                (
+                    right,
+                    f"{named} may not {act}: it lacks the right {right}, which a role of the "
+                    "tenant holds and grants to those who hold the role (UC-7.3, ADR-0257)",
+                    who,
+                )
+            )
+        return lacking
 
     async def _lowerings(self, tenant: Tenant, version: ProcessVersion) -> dict[str, LoweredLevels]:
         """The lowered levels of every version the new one would replace, read before the

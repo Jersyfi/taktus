@@ -4,10 +4,10 @@ title: Rights, roles and least privilege down to the worker
 component: governance
 epic: E7
 serves: [P11, P12, P14]
-state: building
+state: built
 version: 0.2.0
-tests: [tests/adapters/execution/test_process.py::test_a_credential_reaches_the_unit_s_environment_and_nothing_else, tests/adapters/execution/test_container.py::test_an_empty_allowlist_reaches_nothing_and_a_named_host_is_reached_through_the_proxy]
-adrs: {ADR-0007: 26804369941b, ADR-0020: aaf943a7f2e5, ADR-0025: cba7351885b6, ADR-0026: ccc4bd1f5423}
+tests: [tests/adapters/execution/test_process.py::test_a_credential_reaches_the_unit_s_environment_and_nothing_else, tests/adapters/execution/test_container.py::test_an_empty_allowlist_reaches_nothing_and_a_named_host_is_reached_through_the_proxy, tests/components/process/test_rights.py::test_while_no_role_holds_a_right_of_a_process_nothing_is_asked, tests/components/process/test_rights.py::test_each_act_on_a_new_process_is_a_right_of_its_own_and_refused_without_it, tests/components/process/test_rights.py::test_an_identity_holding_the_three_rights_through_its_roles_registers, tests/components/process/test_rights.py::test_approving_a_new_version_and_raising_its_level_are_separate_rights, tests/components/process/test_rights.py::test_an_act_naming_no_identity_is_refused_once_rights_are_granted, tests/components/process/test_rights.py::test_a_right_is_held_by_a_role_and_no_record_grants_one_to_a_person, tests/components/catalog/test_agents.py::test_a_profile_that_would_grant_more_than_the_core_is_refused, tests/components/catalog/test_agents.py::test_the_profile_is_resolved_from_the_callers_role_and_the_fewest_rights_win, tests/components/run/test_engine.py::test_a_run_completes_and_every_state_change_is_in_the_ledger]
+adrs: {ADR-0007: 26804369941b, ADR-0020: aaf943a7f2e5, ADR-0025: cba7351885b6, ADR-0026: ccc4bd1f5423, ADR-0257: b1dc6b5fcc06}
 supersedes: null
 ---
 
@@ -57,5 +57,12 @@ right of its own (ADR-0026); `docs/architecture/governance.md` §5. Definition `
 ## 5. What is proven so far
 
 A credential reaches the unit it was given to and nothing else, and a unit reaches
-only the hosts its frame names, by the named tests. Rights per role, approval and the role profiles
-are not built; the identity component that holds roles is `0.2.0`.
+only the hosts its frame names, by the named tests. A worker's frame allows the tools its step
+declares and nothing it asks for (`test_engine.py`). A role profile that would grant more than the
+agent's core is refused, and the profile is resolved from the caller's role (`test_agents.py`).
+
+Creating a process, approving a version for operation and setting or raising its level are three
+rights of a role (ADR-0257), by the named tests in `test_rights.py`: once a role of the tenant
+holds one, each act is refused without its right, and `process.refused` names the right lacked;
+a right is held by a role alone. Hosts are enforced by the container adapter; the process and
+endpoint adapters declare them without enforcing (`docs/status.md` §5).

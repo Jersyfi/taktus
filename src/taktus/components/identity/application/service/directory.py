@@ -393,6 +393,26 @@ class IdentityDirectory(IdentityResolver):
                     held.update(found.rights)
         return frozenset(held)
 
+    async def holds(self, tenant: Tenant, identity: str, right: str) -> bool:
+        """Whether the identity holds the right through one of its roles now: registration's
+        port (ADR-0257). An identity the tenant does not know holds none."""
+        async with self._work.transaction(tenant):
+            found = await self._identities.get(tenant, identity)
+            if found is None:
+                return False
+            for role in found.roles:
+                rights = await self._rights.get(tenant, role)
+                if rights is not None and any(r.value == right for r in rights.rights):
+                    return True
+        return False
+
+    async def granting(self, tenant: Tenant, rights: frozenset[str]) -> bool:
+        """Whether any role of the tenant holds one of the rights: from then on, registration
+        asks for them (ADR-0257 §2)."""
+        async with self._work.transaction(tenant):
+            listed = await self._rights.list(tenant)
+        return any(r.value in rights for granted in listed for r in granted.rights)
+
     async def granted(self, tenant: Tenant) -> list[RoleRights]:
         """Every role of the tenant that holds a right, by role."""
         await self._served(tenant)
