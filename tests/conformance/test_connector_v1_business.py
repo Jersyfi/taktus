@@ -22,9 +22,22 @@ from taktus.conformance.connector.rules import CHECKS
 from .conftest import BUSINESS, CONNECTORS, RunningConnector, open_standard_faults
 
 type Start = Callable[..., RunningConnector]
-SCOPED = frozenset({"paypal", "revenuecat", "stripe"})
+SCOPED = frozenset({"hubspot", "paypal", "revenuecat", "stripe"})
 """The business connectors that declare a scoped capability (C-11)."""
-WRITERS = frozenset({"accounting", "appstore", "canny", "freshdesk", "googleplay", "kubernetes", "zendesk"})
+WRITERS = frozenset(
+    {
+        "accounting",
+        "appstore",
+        "canny",
+        "freshdesk",
+        "googleplay",
+        "hubspot",
+        "jira",
+        "kubernetes",
+        "linear",
+        "zendesk",
+    }
+)
 """The business connectors with an operation that leaves the system (C-05)."""
 FAULTS = [
     (module, fault, check)

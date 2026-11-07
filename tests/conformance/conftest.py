@@ -1181,7 +1181,12 @@ BUSINESS: dict[str, BusinessConnector] = {
         ("--subject", "admin@org.example", "--token-url", "{target}/token"),
         service_account=True,
     ),
+    "hubspot": BusinessConnector("hubspot", FAKES / "customer_system_service.py", "CRM_TOKEN"),
+    "jira": BusinessConnector(
+        "jira", FAKES / "task_rest_service.py", "TASKS_TOKEN", ("--project", "TSK"), pair=True
+    ),
     "kubernetes": BusinessConnector("kubernetes", FAKES / "workload_cluster.py", "WORKLOADS_TOKEN"),
+    "linear": BusinessConnector("linear", FAKES / "task_graph_service.py", "TASKS_TOKEN"),
     "mastodon": BusinessConnector("mastodon", FAKES / "social_service.py", "MENTIONS_TOKEN"),
     "openai": BusinessConnector("openai", FAKES / "model_costs_service.py", "MODEL_COSTS_TOKEN"),
     "paypal": BusinessConnector(
