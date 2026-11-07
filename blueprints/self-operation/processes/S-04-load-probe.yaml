@@ -1,0 +1,88 @@
+# S-04 Load measurement — the probe: the process an instance runs many times at once while
+# `taktusctl load measure` measures how many concurrent runs it carries at which latency
+# (ADR-0223, roadmap 1.0.0 "measured load behaviour").
+#
+# The probe is what every run asks of an instance whatever its steps: a plan commissioned, a
+# run created, a job claimed by a runner, three steps executed at their boundaries with their
+# checkpoints, ledger entries and provenance records, the run finished. Its steps are rules, so
+# that what is measured is the instance and not a worker, a connector or a model: those have
+# latencies of their own, which their own measures report (ADR-0084).
+#
+#     taktusctl load measure --process blueprints/self-operation/processes/S-04-load-probe.yaml \
+#         --levels 1,10,25,50 --out load.json
+#
+# registers this bundle in the tenant it is given and submits it. It acts on nothing outside the
+# instance, and a person never needs to run it by hand: its takeover instructions say what a
+# person would do, for the obligation every bundle carries (ADR-0180).
+
+id: s04-load-probe
+version: "1"
+name: S-04 Load probe
+autonomy:
+  level: 3
+  reason: >
+    three rules over constants; nothing is read from outside the instance and nothing leaves it
+  toward_next: >
+    none is needed: the probe stays a measurement's load and never does a business's work
+author: the repository
+reason: the load measurement of the road to 1.0.0 needs a run that every instance can execute
+
+limits:
+  compute: { seconds: 30, resource_class: cpu.small }
+
+steps:
+  - id: start
+    method: rule
+    reason: a constant is the cheapest result a step can store; the step measures the boundary
+    rejected:
+      - method: llm
+        why: a model's latency would be measured instead of the instance's
+    exactness: exact
+    checks: [{ kind: recomputation }]
+    work: { rule: constant, value: { probe: 1 } }
+
+  - id: middle
+    method: rule
+    reason: a second boundary, its input the first step's result, as every run has
+    rejected:
+      - method: worker
+        why: a worker's start-up would be measured instead of the instance's
+    exactness: exact
+    checks: [{ kind: recomputation }]
+    depends_on: [start]
+    work: { rule: constant, value: { probe: 2 } }
+
+  - id: end
+    method: rule
+    reason: the last boundary, after which the run finishes
+    rejected:
+      - method: worker
+        why: as above
+    exactness: exact
+    checks: [{ kind: recomputation }]
+    depends_on: [middle]
+    work: { rule: constant, value: { probe: 3 } }
+
+takeover:
+  sequence: >
+    Nobody runs the probe by hand: it exists to load an instance while it is measured. Were it
+    run by hand, its three steps would be written down in order, each a fixed value.
+  steps:
+    start:
+      system: a sheet of paper
+      do: write down the value probe 1
+      expertise: none
+      credentials: []
+      done: the value is written down
+    middle:
+      system: the same sheet
+      do: write down the value probe 2 under the first
+      expertise: none
+      credentials: []
+      done: the second value is written down
+    end:
+      system: the same sheet
+      do: write down the value probe 3 under the second
+      expertise: none
+      credentials: []
+      done: the three values are written down

@@ -446,6 +446,10 @@ role it would tie the core to a model stack and the removal test would be lost.
   into `OwnerAnswers` beside the change in dialogue). Where a served take-over stands is read
   from the step run alone (`StepRun.takeovers`) and handed to the run level by
   `composition/levels.py`.
+- **The load measurement** (S-04, ADR-0223) is `adapters/driving/cli/load_command.py`: it
+  submits the probe `blueprints/self-operation/processes/S-04-load-probe.yaml`, which the control
+  plane's image carries, through the same services as `taktusctl submit`, and reads each run's
+  latency from its record.
 - **A tenant's export and import** (ADR-0221): the port `TenantArchive` of
   `ports/persistence.py`, implemented over every table with a `tenant` column by
   `adapters/driven/postgres/archive.py`; `composition/tenant_export.py`'s `TenantExports`
