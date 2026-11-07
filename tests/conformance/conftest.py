@@ -1135,6 +1135,15 @@ BUSINESS: dict[str, BusinessConnector] = {
     ),
     "kubernetes": BusinessConnector("kubernetes", FAKES / "workload_cluster.py", "WORKLOADS_TOKEN"),
     "openai": BusinessConnector("openai", FAKES / "model_costs_service.py", "MODEL_COSTS_TOKEN"),
+    "paypal": BusinessConnector(
+        "paypal", FAKES / "billing_plans_service.py", "PAYMENTS_TOKEN", pair=True
+    ),
+    "revenuecat": BusinessConnector(
+        "revenuecat",
+        FAKES / "app_subscriptions_service.py",
+        "PAYMENTS_TOKEN",
+        ("--project", "proj_fake"),
+    ),
     "sentry": BusinessConnector(
         "sentry", FAKES / "error_tracking_service.py", "ERRORS_TOKEN", ("--organization", "example")
     ),
