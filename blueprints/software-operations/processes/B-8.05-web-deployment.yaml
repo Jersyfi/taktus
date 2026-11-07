@@ -51,7 +51,7 @@ inputs:
     example: /health
 
 limits:
-  quota: { units: 80 }
+  quota: { units: 200 }
 
 steps:
   - id: release

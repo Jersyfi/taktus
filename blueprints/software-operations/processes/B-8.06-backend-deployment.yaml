@@ -54,7 +54,7 @@ inputs:
     example: "0.02"
 
 limits:
-  quota: { units: 80 }
+  quota: { units: 200 }
 
 steps:
   - id: release
