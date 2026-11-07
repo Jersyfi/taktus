@@ -122,6 +122,16 @@
     },
     {
       "capabilities": [
+        "packages.licences"
+      ],
+      "image": "taktus-connector-depsdev",
+      "name": "depsdev",
+      "operations": [
+        "packages.licences.list"
+      ]
+    },
+    {
+      "capabilities": [
         "knowledge.pages"
       ],
       "image": null,
@@ -453,12 +463,18 @@
     {
       "capabilities": [
         "payments.customers",
+        "payments.failures",
+        "payments.invoices",
         "payments.subscriptions"
       ],
       "image": "taktus-connector-paypal",
       "name": "paypal",
       "operations": [
+        "payments.customers.contact",
+        "payments.customers.failures",
         "payments.customers.subscriptions",
+        "payments.failures.list",
+        "payments.invoices.list",
         "payments.subscriptions.list",
         "payments.subscriptions.read"
       ]
@@ -477,12 +493,15 @@
     {
       "capabilities": [
         "payments.customers",
+        "payments.failures",
         "payments.subscriptions"
       ],
       "image": "taktus-connector-revenuecat",
       "name": "revenuecat",
       "operations": [
+        "payments.customers.failures",
         "payments.customers.subscriptions",
+        "payments.failures.list",
         "payments.subscriptions.list",
         "payments.subscriptions.read"
       ]
@@ -528,12 +547,20 @@
     {
       "capabilities": [
         "payments.customers",
+        "payments.events",
+        "payments.failures",
+        "payments.invoices",
         "payments.subscriptions"
       ],
       "image": "taktus-connector-stripe",
       "name": "stripe",
       "operations": [
+        "payments.customers.contact",
+        "payments.customers.failures",
         "payments.customers.subscriptions",
+        "payments.events.undelivered",
+        "payments.failures.list",
+        "payments.invoices.list",
         "payments.subscriptions.list",
         "payments.subscriptions.read"
       ]

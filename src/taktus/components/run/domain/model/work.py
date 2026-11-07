@@ -557,6 +557,26 @@ class InvoiceRule(Value):
     order: Any
 
 
+class RecurringRule(Value):
+    """Recurring revenue, new subscriptions, cancellations and failed payments, day by day,
+    counted from the subscriptions and failures a payment provider gave (`domain.service.
+    recurring`, ADR-0231). `subscriptions` is a list in the shape of `payments.subscriptions`,
+    `failures` one in the shape of `payments.failures`, both usually references; `as_of` the
+    moment of the reading in seconds since the epoch, usually the failures reading's own.
+
+    The series are the `days` whole days in UTC before the day of `as_of`, oldest first, each
+    `{"date", "total"}` with the total as decimal text: the monthly recurring revenue in minor
+    units of `currency` at the day's end, and the subscriptions started, ended, and failed that
+    day. The same readings give the same series every time: admissible for `exact`."""
+
+    rule: Literal["recurring"]
+    subscriptions: Any
+    failures: Any = None
+    as_of: Any
+    currency: str = Field(pattern=r"^[A-Z]{3}$")
+    days: int = Field(default=8, ge=2, le=366)
+
+
 class ConnectorRule(Value):
     """The result is what one connector operation answered: its output, the effect it reported
     and what it consumed (`contracts/connector/v1` §5). The operation's capability — every
@@ -598,6 +618,7 @@ type RuleWork = Annotated[
     | MatchRule
     | CommitTitleRule
     | InvoiceRule
+    | RecurringRule
     | ConnectorRule,
     Field(discriminator="rule"),
 ]
@@ -1411,6 +1432,8 @@ def referenced_values(work: Work) -> list[Any]:
         return [work.items, work.excluding]
     if isinstance(work, MatchRule):
         return [work.left.items, work.right.items]
+    if isinstance(work, RecurringRule):
+        return [work.subscriptions, work.failures, work.as_of]
     if isinstance(work, DeviationStatistic):
         return [work.days]
     if isinstance(work, CommitTitleRule):

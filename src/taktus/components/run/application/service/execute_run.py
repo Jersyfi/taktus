@@ -217,6 +217,7 @@ from taktus.components.run.domain.model import (
     ParticipantWork,
     ReadyRule,
     ReceivedMessage,
+    RecurringRule,
     Remedy,
     RoadmapRule,
     RuleFailed,
@@ -266,6 +267,7 @@ from taktus.components.run.domain.service import (
     participants,
     prediction,
     provenance,
+    recurring,
     repetition,
     routing,
     rules,
@@ -4992,6 +4994,12 @@ class RunEngine:
         if isinstance(work, InvoiceRule):
             (invoice, order), read = await self._resolved(run, [work.invoice, work.order])
             return invoices.invoice(invoice, order), Trace(inputs=read), None, None
+        if isinstance(work, RecurringRule):
+            (subscriptions, failures, as_of), read = await self._resolved(
+                run, [work.subscriptions, work.failures, work.as_of]
+            )
+            counted = recurring.recurring(work, subscriptions, failures, as_of)
+            return counted, Trace(inputs=read), None, None
         if isinstance(work, DeviationStatistic):
             (days,), read = await self._resolved(run, [work.days])
             return statistics.deviation(work, days), Trace(inputs=read), None, None

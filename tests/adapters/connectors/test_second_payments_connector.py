@@ -63,8 +63,8 @@ def payments(url: str) -> McpActionConnector:
     return McpActionConnector(build_server(Config(url, timeout=5.0)))
 
 
-def replace(url: str, records: list[dict[str, Any]]) -> None:
-    httpx.post(f"{url}/_fake/subscriptions", content=json.dumps(records), timeout=5.0)
+def replace(url: str, records: list[dict[str, Any]], kind: str = "subscriptions") -> None:
+    httpx.post(f"{url}/_fake/{kind}", content=json.dumps(records), timeout=5.0)
 
 
 async def test_the_active_subscriptions_are_listed_in_the_shared_shape_without_personal_data(
@@ -80,6 +80,8 @@ async def test_the_active_subscriptions_are_listed_in_the_shared_shape_without_p
         "status": "active",
         "current_period_end": 1796119200,  # 2026-12-01T10:00:00Z
         "cancel_at_period_end": False,
+        "started_at": 1767225600,
+        "ended_at": None,
         "items": [
             {
                 "price": provider_fake.PLAN,
@@ -88,6 +90,7 @@ async def test_the_active_subscriptions_are_listed_in_the_shared_shape_without_p
                 "unit_amount": 999,
                 "currency": "EUR",
                 "interval": "month",
+                "interval_count": 1,
             }
         ],
         "metadata": {"custom_id": "acct-1"},
@@ -194,3 +197,69 @@ async def test_a_provider_that_does_not_answer_is_unavailable_and_retryable() ->
         )
     assert failed.value.error.cause.value == "unavailable"
     assert failed.value.error.retryable is True
+
+
+# --- failed payments, invoices, a payer's contact (ADR-0214) --------------------------------
+
+
+async def test_a_failed_payment_is_a_subscription_with_consecutive_failures(provider: str) -> None:
+    result = await payments(provider).call("payments.failures.list", context(), {})
+    [failure] = result.output["failures"]
+    assert failure["id"] == "I-FAKE3" and failure["customer"] == "PAYERFAKE3"
+    assert (failure["amount"], failure["currency"], failure["attempts"]) == (999, "EUR", 2)
+    assert (failure["reason"], failure["days_failing"]) == ("PAYMENT_DENIED", 3)
+    assert failure["update_url"] is None, "the provider names no page to change the method"
+    assert "@customer.example" not in json.dumps(result.output)
+
+
+async def test_a_payers_failures_and_contact_only_under_their_scope(provider: str) -> None:
+    connector = payments(provider)
+    own = await connector.call(
+        "payments.customers.failures", context("PAYERFAKE3"), {"customer": "PAYERFAKE3"}
+    )
+    assert [f["id"] for f in own.output["failures"]] == ["I-FAKE3"]
+    reached = await connector.call(
+        "payments.customers.contact", context("PAYERFAKE3"), {"customer": "PAYERFAKE3"}
+    )
+    assert reached.output == {"customer": "PAYERFAKE3", "email": "person3@customer.example"}
+    for scope in (None, "PAYERFAKE1"):
+        with pytest.raises(CallFailed) as failed:
+            await connector.call(
+                "payments.customers.contact", context(scope), {"customer": "PAYERFAKE3"}
+            )
+        assert failed.value.error.cause.value == "out_of_scope"
+
+
+async def test_the_invoices_of_a_month_are_kept_by_their_date_in_minor_units(
+    provider: str,
+) -> None:
+    records = [
+        provider_fake.invoice(1, "2026-10-31"),
+        provider_fake.invoice(2, "2026-11-01"),
+        provider_fake.invoice(3, "2026-11-30", status="SENT"),
+        provider_fake.invoice(4, "2026-12-01"),
+    ]
+    replace(provider, records, "invoices")
+    connector = payments(provider)
+    november = await connector.call("payments.invoices.list", context(), {"month": "2026-11"})
+    assert [i["id"] for i in november.output["invoices"]] == ["INV2-FAKE-0002", "INV2-FAKE-0003"]
+    assert november.output["invoices"][0] == {
+        "id": "INV2-FAKE-0002",
+        "number": "0002",
+        "customer": None,
+        "subscription": None,
+        "status": "paid",
+        "currency": "EUR",
+        "total": 999,
+        "tax": 19,
+        "paid": 999,
+        "remaining": 0,
+        "issued_at": 1793491200,
+        "due_at": 1793491200,
+        "paid_at": None,
+    }
+    opened = await connector.call(
+        "payments.invoices.list", context(), {"month": "2026-11", "status": "open"}
+    )
+    assert [i["remaining"] for i in opened.output["invoices"]] == [999]
+    assert "@customer.example" not in json.dumps(november.output)

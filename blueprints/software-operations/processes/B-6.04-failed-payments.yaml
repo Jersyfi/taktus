@@ -1,0 +1,273 @@
+# B-6.04 Failed payments — UC-03 §4.6: a customer whose payment failed is reminded in stages,
+# and offered the provider's page where they pay with another method (UC-7.6, ADR-0214).
+#
+# Every morning the payments that failed and are still owed are read through
+# `payments.failures`, and the process runs once for each customer among them. For that
+# customer's case it reads their failures through the scoped `payments.customers`, keeps by rule
+# the one whose day of failure is a reminder day — the first, the third or the seventh — and
+# that names the provider's page to pay, reads the customer's address under the case's scope,
+# and sends a fixed reminder that names the page. Nothing a model wrote reaches the customer.
+#
+# The second payment provider names no page to change the payment method, and the in-app
+# service names no day of failure, as the store reminds its customers itself (ADR-0214). A
+# failure on a reminder day without a page is counted under the step `unreachable`; a corridor
+# on its count sends it to the tenant's role, who reminds the customer by hand:
+#
+#     uv run taktusctl signal configure payments.failures_unreachable --process b-6-04 \
+#         --step unreachable --select count --bounds fixed --direction above \
+#         --yellow 0.25 --red 0.5 --fresh 26h --role <role> --case <where payments are worked>
+#
+# Blocking access stays with a person at every level (UC-03 §6): this process never changes a
+# subscription or an entitlement.
+#
+# By hand, for one customer:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-6.04-failed-payments.yaml \
+#         --input customer=cus_…
+#
+# Switching it off (`taktusctl deactivate --process b-6-04`) sends no further reminder.
+
+id: b-6-04
+version: "1"
+name: B-6.04 Failed payments
+autonomy:
+  level: 2
+  reason: >
+    which failure is due a reminder is a fixed rule over the provider's own moment of the
+    failure; the reminder leaves the system to the customer, so a person confirms it, as every
+    process of UC-03 starts at level 1 or 2 when its stage opens
+  toward_next: >
+    stage 2 of the tenant's plan open, and four weeks of reminders a person confirmed without
+    changing them; then Taktus proposes level 3, its target in UC-03 (UC-7.1, UC-9.6)
+author: the repository
+reason: a customer whose payment failed is reminded and offered a way to pay, without a person watching the failed payments (UC-03 B-6.04)
+
+triggers:
+  - schedule: "0 8 * * *"
+    each:
+      input: customer
+      operation: payments.failures.list
+      arguments: { limit: 10000 }
+      select: failures
+      field: customer
+
+inputs:
+  customer:
+    description: the customer's identifier at the payment provider
+    example: cus_fake3
+
+limits:
+  quota: { units: 12 }
+
+steps:
+  - id: failures
+    method: rule
+    reason: the customer's failed payments are read as the payment provider holds them; nothing to judge
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving payments.customers is unavailable
+      to: human
+      role: owner
+    work:
+      scope: { subject: { $input: customer } }
+      rule: connector
+      operation: payments.customers.failures
+      input:
+        customer: { $input: customer }
+      credentials:
+        - { name: PAYMENTS_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the customer's failed payments were not all read" }
+
+  - id: stage
+    method: rule
+    reason: a failure is reminded on its first, third and seventh day, when the provider names the page to pay; a fixed rule over its days
+    rejected:
+      - method: llm
+        why: whether a number is one, three or seven is no judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: whether today is a reminder day of the failure }
+    depends_on: [failures]
+    work:
+      rule: filter
+      items: { $from: failures, $select: output.failures }
+      all:
+        - { field: update_url, matches: "^https://" }
+      any:
+        - { field: days_failing, equals: 1 }
+        - { field: days_failing, equals: 3 }
+        - { field: days_failing, equals: 7 }
+      order: failed_at
+      limit: 1
+
+  - id: unreachable
+    method: rule
+    reason: a failure on a reminder day whose provider names no page to pay is counted for a person, a fixed rule over its fields
+    rejected:
+      - method: llm
+        why: whether a field is empty is no judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the failures due a reminder without a page to pay }
+    depends_on: [failures]
+    work:
+      rule: filter
+      items: { $from: failures, $select: output.failures }
+      all:
+        - { field: update_url, not_matches: "^https://" }
+      any:
+        - { field: days_failing, equals: 1 }
+        - { field: days_failing, equals: 3 }
+        - { field: days_failing, equals: 7 }
+
+  - id: contact
+    method: rule
+    reason: the customer's address is read under the case's scope, only on a reminder day; nothing to judge
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving payments.customers is unavailable
+      to: human
+      role: owner
+    depends_on: [stage]
+    work:
+      when:
+        - { value: { $from: stage, $select: count }, not_matches: "^0$" }
+      scope: { subject: { $input: customer } }
+      rule: connector
+      operation: payments.customers.contact
+      input:
+        customer: { $input: customer }
+      credentials:
+        - { name: PAYMENTS_TOKEN, injected_as: env }
+
+  - id: compose
+    method: rule
+    reason: the reminder is fixed words around the provider's own page and the days since the failure
+    rejected:
+      - method: llm
+        why: a fixed text needs no model, and nothing a model wrote reaches the customer
+    exactness: sourced
+    depends_on: [stage]
+    work:
+      when:
+        - { value: { $from: stage, $select: count }, not_matches: "^0$" }
+      rule: template
+      text: |
+        Hello,
+
+        your last payment for your subscription could not be collected; it has been open for
+        ${days} day(s). You can pay it, or pay with another method, on this page:
+
+        ${url}
+
+        If you have already paid, please disregard this message.
+      values:
+        days: { $from: stage, $select: first.days_failing }
+        url: { $from: stage, $select: first.update_url }
+
+  - id: remind
+    method: rule
+    reason: the reminder is a message through the mail capability; it leaves the system, so at level 2 a person confirms it first
+    rejected:
+      - method: worker
+        why: nothing here needs a sandbox or tools
+    exactness: sourced
+    fallback:
+      when: the connector serving mail.messages is unavailable
+      to: human
+      role: owner
+    depends_on: [stage, contact, compose]
+    work:
+      when:
+        - { value: { $from: stage, $select: count }, not_matches: "^0$" }
+        - { value: { $from: contact, $select: output.email }, matches: "@" }
+      rule: connector
+      operation: mail.messages.send
+      input:
+        to: { $from: contact, $select: output.email }
+        subject: Your payment could not be collected
+        text: { $from: compose }
+      credentials:
+        - { name: MAIL_PASSWORD, injected_as: env }
+
+takeover:
+  sequence: >
+    The process runs every morning at eight UTC once for each customer with a failed payment
+    still owed; whoever looks after payments lists those customers in the payment provider's
+    dashboard and works through them one by one. For each the steps run in order: read the
+    customer's failed payments, decide whether today is a reminder day — the first, third or
+    seventh day since the failure — and whether the provider names a page to pay, read the
+    customer's address, write the reminder and send it. A failure on a reminder day without a
+    page goes to the role the tenant named. At level 2 the owner confirms each reminder before
+    it is sent. Blocking access is never done here.
+  steps:
+    failures:
+      system: the payment provider's dashboard, under failed or open payments
+      do: >
+        open the customer by the identifier the run was started with, and note each payment
+        that failed and is still owed, the day it failed, how many whole days ago that was, and
+        the provider's page where the customer pays it
+      expertise: finding a customer's failed payments in the payment provider's dashboard
+      credentials:
+        - parameter: PAYMENTS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Payment provider key of the
+            requesting identity described in CREDENTIALS.md; a person signs in with their own
+            account that may read payments
+      done: every failed payment of the customer is noted with its days and its page
+    stage:
+      system: the noted failures
+      do: >
+        decide that today is a reminder day only for a failure exactly one, three or seven days
+        old that has a page to pay; take the oldest such failure
+      expertise: none
+      credentials: []
+      done: it is decided which failure, if any, is reminded today
+    unreachable:
+      system: the noted failures
+      do: >
+        note every failure exactly one, three or seven days old that has no page to pay, and
+        report it to the role the tenant named, so that the customer is reminded by hand
+      expertise: none
+      credentials: []
+      done: every such failure is reported, or there is none
+    contact:
+      system: the payment provider's dashboard
+      do: >
+        only on a reminder day, open the customer and note their e-mail address; read nothing
+        else of them
+      expertise: finding a customer in the payment provider's dashboard
+      credentials:
+        - parameter: PAYMENTS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Payment provider key of the
+            requesting identity described in CREDENTIALS.md; a person signs in with their own
+            account
+      done: the customer's address is noted, or that none is held
+    compose:
+      system: a text editor
+      do: >
+        only on a reminder day, write the reminder: the payment could not be collected, how
+        many days it has been open, and the provider's page where it is paid
+      expertise: none
+      credentials: []
+      done: the reminder is written, or it is decided that none is due today
+    remind:
+      system: the business's mail client
+      do: >
+        only on a reminder day, and after the owner confirmed it, send the reminder to the
+        customer's address from the business's mailbox
+      expertise: sending a message from the business's mailbox
+      credentials:
+        - parameter: MAIL_PASSWORD
+          where: >
+            the operator's secret store, under the parameter Mail password of the requesting
+            identity described in CREDENTIALS.md; a person signs in with their own account
+      done: the reminder is sent, or nothing was sent for a stated reason

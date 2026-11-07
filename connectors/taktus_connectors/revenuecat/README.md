@@ -92,6 +92,25 @@ key it does not admit is `unauthenticated`, and one without the permission
 is `forbidden`. A throttled or failing provider is `unavailable` and retryable. Only the error's
 `type` is reported, never its message.
 
+Each subscription carries too `started_at` (`starts_at`) and, for an expired one, `ended_at`
+(`ends_at`), both in seconds; its item's `interval_count` is null (ADR-0214).
+
+## Failed renewals (ADR-0214)
+
+`payments.failures.list` (capability `payments.failures`) and the scoped
+`payments.customers.failures` answer the subscriptions in `in_billing_retry` or
+`in_grace_period`, read customer by customer, in the first connector's shape. The store bills,
+reminds the customer and offers the change of the payment method itself; the subscription's
+`management_url` is `update_url`, its status the `reason`. The API states no amount owed, no
+attempts and no moment of the failure, so they are null and B-6.04 stages no reminder here.
+No contact is declared: the store holds the customer's address. Invoices exist in the API only
+per customer (`GET /projects/{project_id}/customers/{customer_id}/invoices`, documented at
+<https://www.revenuecat.com/docs/api-v2/invoice>), and the API lists no events; neither is
+declared: a month's invoices would cost one request per customer, and the page states not which
+store's purchases they cover. The documentation: the subscription object,
+<https://www.revenuecat.com/docs/api-v2/subscription> (`status`, `management_url`,
+`starts_at`, `ends_at`).
+
 ## Credentials
 
 | Name | Purpose | How it reaches the connector |

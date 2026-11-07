@@ -35,11 +35,18 @@ The country, the management address and the revenue are never copied.
 | any other status, a body that is not the API's | `unexpected` |
 
 The provider's own message stays out of `detail`: only its error `type` is reported.
+
+The **failed payments** (ADR-0214) are the subscriptions in `in_billing_retry` or
+`in_grace_period`: the store failed to renew and retries. The store bills, reminds and offers
+the change of the payment method itself; the subscription names the page for it,
+`management_url`, as `update_url`. The API states no amount owed, no count of attempts and no
+moment of the failure, so they are null.
 """
 
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote
@@ -136,6 +143,10 @@ async def _get(config: Config, call: Call, path: str, params: Json | None = None
     raise _unexpected(f"the provider answered {status} {kind}".rstrip())
 
 
+def _milliseconds(value: Any) -> int | None:
+    return value // 1000 if isinstance(value, int) and not isinstance(value, bool) else None
+
+
 def _subscription(record: Any) -> Json:
     if not isinstance(record, dict) or record.get("object") != "subscription":
         raise _unexpected("a record is not a subscription")
@@ -154,6 +165,10 @@ def _subscription(record: Any) -> Json:
         if isinstance(end, int) and not isinstance(end, bool)
         else None,
         "cancel_at_period_end": record.get("auto_renewal_status") == "will_not_renew",
+        "started_at": _milliseconds(record.get("starts_at")),
+        "ended_at": _milliseconds(record.get("ends_at"))
+        if record.get("status") == "expired"
+        else None,
         "items": [
             {
                 "price": None,
@@ -162,6 +177,7 @@ def _subscription(record: Any) -> Json:
                 "unit_amount": None,
                 "currency": None,
                 "interval": None,
+                "interval_count": None,
             }
         ],
         "metadata": metadata,
@@ -251,8 +267,74 @@ async def customer_subscriptions(config: Config, call: Call, input: Json) -> Out
     return Outcome(output=output, effect={"kind": "read"})
 
 
+RETRYING = frozenset({"in_billing_retry", "in_grace_period"})
+"""The provider's statuses of a renewal that failed and is retried."""
+
+
+def _failure(record: Any) -> Json | None:
+    if not isinstance(record, dict) or record.get("object") != "subscription":
+        raise _unexpected("a record is not a subscription")
+    if record.get("status") not in RETRYING:
+        return None
+    customer = record.get("customer_id")
+    url = record.get("management_url")
+    return {
+        "id": record.get("id"),
+        "customer": customer if isinstance(customer, str) else None,
+        "subscription": record.get("id"),
+        "amount": None,
+        "currency": None,
+        "attempts": None,
+        "failed_at": None,
+        "days_failing": None,
+        "next_attempt_at": None,
+        "reason": record.get("status"),
+        "update_url": url if isinstance(url, str) else None,
+    }
+
+
+async def _failures_of(config: Config, call: Call, customer: str) -> tuple[list[Json], bool]:
+    path = f"/customers/{quote(customer, safe='')}/subscriptions"
+    records, complete = await _pages(config, call, path, MAX_LIMIT)
+    return [f for f in (_failure(record) for record in records) if f is not None], complete
+
+
+async def failures(config: Config, call: Call, input: Json) -> Outcome:
+    """Every subscription whose renewal failed and is retried, customer by customer."""
+    limit = input.get("limit", LIMIT)
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= MAX_LIMIT:
+        raise invalid(f"limit must be a whole number from 1 to {MAX_LIMIT}")
+    as_of = int(time.time())
+    customers, complete = await _pages(config, call, "/customers", limit)
+    found: list[Json] = []
+    for customer in customers[:limit]:
+        identifier = customer.get("id") if isinstance(customer, dict) else None
+        if not isinstance(identifier, str):
+            raise _unexpected("a customer has no identifier")
+        own, whole = await _failures_of(config, call, identifier)
+        complete = complete and whole
+        found.extend(own)
+    output = {"failures": found, "complete": complete, "as_of": as_of}
+    return Outcome(output=output, effect={"kind": "read"})
+
+
+async def customer_failures(config: Config, call: Call, input: Json) -> Outcome:
+    """The failed renewals of one customer, under that customer's scope (ADR-0130)."""
+    customer = input.get("customer")
+    if not isinstance(customer, str) or CUSTOMER.match(customer) is None:
+        raise invalid("customer must be the app's user identifier, 1 to 1500 characters")
+    if call.scope is not None and customer != call.scope:
+        raise out_of_scope("the customer is not the subject of the case this call serves")
+    as_of = int(time.time())
+    found, complete = await _failures_of(config, call, customer)
+    output = {"customer": customer, "failures": found, "complete": complete, "as_of": as_of}
+    return Outcome(output=output, effect={"kind": "read"})
+
+
 OPERATIONS = {
     "payments.subscriptions.list": list_,
     "payments.subscriptions.read": read,
     "payments.customers.subscriptions": customer_subscriptions,
+    "payments.customers.failures": customer_failures,
+    "payments.failures.list": failures,
 }

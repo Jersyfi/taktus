@@ -80,6 +80,8 @@ async def test_the_active_subscriptions_are_listed_in_the_shared_shape_without_p
         "status": "active",
         "current_period_end": 1790000001,
         "cancel_at_period_end": False,
+        "started_at": 1780000000,
+        "ended_at": None,
         "items": [
             {
                 "price": None,
@@ -88,6 +90,7 @@ async def test_the_active_subscriptions_are_listed_in_the_shared_shape_without_p
                 "unit_amount": None,
                 "currency": None,
                 "interval": None,
+                "interval_count": None,
             }
         ],
         "metadata": {"store": "app_store", "environment": "production"},
@@ -197,3 +200,20 @@ async def test_a_provider_that_does_not_answer_is_unavailable_and_retryable() ->
         )
     assert failed.value.error.cause.value == "unavailable"
     assert failed.value.error.retryable is True
+
+
+async def test_a_renewal_the_store_retries_is_a_failure_with_the_stores_page(
+    provider: str,
+) -> None:
+    records = [service.subscription(1), service.subscription(2, "in_billing_retry")]
+    replace(provider, records)
+    connector = payments(provider)
+    result = await connector.call("payments.failures.list", context(), {})
+    [failure] = result.output["failures"]
+    assert failure["customer"] == "cus_fake2" and failure["reason"] == "in_billing_retry"
+    assert failure["update_url"] == "https://apps.apple.example/account/subscriptions/2"
+    assert failure["amount"] is None and failure["days_failing"] is None, "never guessed"
+    own = await connector.call(
+        "payments.customers.failures", context("cus_fake2"), {"customer": "cus_fake2"}
+    )
+    assert [f["id"] for f in own.output["failures"]] == ["sub_fake2"]

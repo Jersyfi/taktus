@@ -85,6 +85,11 @@ COPY --chown=connector:connector connectors/taktus_connectors/cloudrun /app/takt
 ENTRYPOINT ["python", "-m", "taktus_connectors.cloudrun"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
+FROM base AS depsdev
+COPY --chown=connector:connector connectors/taktus_connectors/depsdev /app/taktus_connectors/depsdev
+ENTRYPOINT ["python", "-m", "taktus_connectors.depsdev"]
+CMD ["--host", "0.0.0.0", "--port", "9171"]
+
 FROM base AS discourse
 COPY --chown=connector:connector connectors/taktus_connectors/discourse /app/taktus_connectors/discourse
 ENTRYPOINT ["python", "-m", "taktus_connectors.discourse"]

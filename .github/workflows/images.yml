@@ -152,6 +152,9 @@ jobs:
           - name: taktus-connector-cloudrun
             dockerfile: connectors/Dockerfile
             target: cloudrun
+          - name: taktus-connector-depsdev
+            dockerfile: connectors/Dockerfile
+            target: depsdev
           - name: taktus-connector-discourse
             dockerfile: connectors/Dockerfile
             target: discourse

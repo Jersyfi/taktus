@@ -21,11 +21,17 @@ What it enforces, because the connector's checks depend on it:
   list of the provider's statuses. Anything else is 400 `INVALID_REQUEST`. A `next` link
   follows while more remain. The list cannot be narrowed to a payer: the API has no such filter.
 - **One subscription or plan.** An unknown identifier is 404 `RESOURCE_NOT_FOUND`.
+- **Invoices.** `GET /v2/invoicing/invoices` of the Invoicing API v2
+  (`https://developer.paypal.com/api/invoicing/v2/schema.json`): `page` 1 to 1000, `page_size`
+  1 to 100 (default 20), `total_required` adds `total_items` and `total_pages`; otherwise 400
+  `INVALID_REQUEST`. The list cannot be narrowed by date or status.
 
 The subscriptions: five, `I-FAKE1` to `I-FAKE5` of the payers `PAYERFAKE1` to `PAYERFAKE5`,
 four `ACTIVE` and one `CANCELLED`, each on the monthly plan of one product at 9.99 EUR, unless a
-test replaced them with `POST /_fake/subscriptions`. Every subscriber carries an e-mail and a
-name, as the API answers them, so that a test can show the connector copies neither.
+test replaced them with `POST /_fake/subscriptions`. The third payer's last two payments failed,
+the last three days ago. The invoices: one paid of each active payer, dated eleven to fourteen
+days ago, unless a test replaced them with `POST /_fake/invoices`. Every subscriber carries an
+e-mail and a name, as the API answers them, so that a test can show the connector copies neither.
 Test-only: `GET /_fake/state` counts the requests and names the bearer tokens seen.
 Standard library only; runnable as `python3 tests/fakes/billing_plans_service.py --port 9244`.
 """
@@ -40,6 +46,8 @@ import re
 import secrets
 import sys
 import threading
+import time
+from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -99,8 +107,65 @@ def subscription(number: int, status: str = "ACTIVE", quantity: str = "1") -> di
     return record
 
 
+DAY = 86_400
+
+
+def _moment(seconds: float) -> str:
+    return datetime.fromtimestamp(seconds, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def default_subscriptions() -> list[dict[str, Any]]:
-    return [subscription(n, "CANCELLED" if n == 5 else "ACTIVE") for n in range(1, 6)]
+    records = [subscription(n, "CANCELLED" if n == 5 else "ACTIVE") for n in range(1, 6)]
+    records[4]["status_update_time"] = "2026-09-01T00:00:00Z"
+    now = time.time()
+    records[2]["billing_info"].update(
+        {
+            "outstanding_balance": {"currency_code": "EUR", "value": "9.99"},
+            "failed_payments_count": 2,
+            "last_failed_payment": {
+                "amount": {"currency_code": "EUR", "value": "9.99"},
+                "time": _moment(now - 3 * DAY - 3600),
+                "reason_code": "PAYMENT_DENIED",
+                "next_payment_retry_time": _moment(now + 2 * DAY),
+            },
+        }
+    )
+    return records
+
+
+def invoice(number: int, date: str, status: str = "PAID", value: str = "9.99") -> dict[str, Any]:
+    """An invoice in the Invoicing API's shape, of `value` EUR, 0.19 of it tax."""
+    return {
+        "id": f"INV2-FAKE-{number:04d}",
+        "status": status,
+        "detail": {
+            "invoice_number": f"{number:04d}",
+            "invoice_date": date,
+            "currency_code": "EUR",
+            "payment_term": {"term_type": "NET_10", "due_date": date},
+            "metadata": {"create_time": f"{date}T08:00:00Z"},
+        },
+        "invoicer": {"email_address": "merchant@business.example"},
+        "primary_recipients": [
+            {"billing_info": {"email_address": f"person{number}@customer.example"}}
+        ],
+        "amount": {
+            "currency_code": "EUR",
+            "value": value,
+            "breakdown": {"tax_total": {"currency_code": "EUR", "value": "0.19"}},
+        },
+        "due_amount": {"currency_code": "EUR", "value": "0.00" if status == "PAID" else value},
+        "payments": {"paid_amount": {"currency_code": "EUR", "value": value}}
+        if status == "PAID"
+        else {},
+        "links": [],
+    }
+
+
+def default_invoices() -> list[dict[str, Any]]:
+    now = time.time()
+    days = [datetime.fromtimestamp(now - (10 + n) * DAY, UTC).date() for n in range(1, 5)]
+    return [invoice(n, day.isoformat()) for n, day in enumerate(days, start=1)]
 
 
 class State:
@@ -109,6 +174,7 @@ class State:
         self.issued: set[str] = set()
         self.subscriptions = default_subscriptions()
         self.plans = {PLAN: plan()}
+        self.invoices = default_invoices()
         self.requests = 0
         self.seen_tokens: list[str] = []
         self.lock = threading.Lock()
@@ -142,10 +208,10 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
 
         def do_POST(self) -> None:
             path = urlparse(self.path).path
-            if path == "/_fake/subscriptions":
+            if path in ("/_fake/subscriptions", "/_fake/invoices"):
                 records = json.loads(self.body())
                 with state.lock:
-                    state.subscriptions = records
+                    setattr(state, path.removeprefix("/_fake/"), records)
                 self.answer(200, {"ok": True})
                 return
             with state.lock:
@@ -197,7 +263,9 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
             if token not in state.issued:
                 self.refuse(401, "AUTHENTICATION_FAILURE")
                 return
-            if url.path == "/v1/billing/subscriptions":
+            if url.path == "/v2/invoicing/invoices":
+                self._invoices(parse_qs(url.query))
+            elif url.path == "/v1/billing/subscriptions":
                 self._list(parse_qs(url.query))
             elif url.path.startswith("/v1/billing/subscriptions/"):
                 wanted = url.path.removeprefix("/v1/billing/subscriptions/")
@@ -217,6 +285,24 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
                     self.refuse(404, "RESOURCE_NOT_FOUND", "INVALID_RESOURCE_ID")
             else:
                 self.refuse(404, "RESOURCE_NOT_FOUND")
+
+        def _invoices(self, query: dict[str, list[str]]) -> None:
+            try:
+                size = int(query.get("page_size", ["20"])[0])
+                page = int(query.get("page", ["1"])[0])
+            except ValueError:
+                size = page = 0
+            if not 1 <= size <= 100 or not 1 <= page <= 1000:
+                self.refuse(400, "INVALID_REQUEST", "INVALID_PARAMETER_VALUE")
+                return
+            with state.lock:
+                every = list(state.invoices)
+            start = (page - 1) * size
+            body: dict[str, Any] = {"items": every[start : start + size], "links": []}
+            if query.get("total_required") == ["true"]:
+                body["total_items"] = len(every)
+                body["total_pages"] = max(1, -(-len(every) // size))
+            self.answer(200, body)
 
         def _list(self, query: dict[str, list[str]]) -> None:
             try:
