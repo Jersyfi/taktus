@@ -16,12 +16,18 @@ from typing import Any
 import pytest
 from taktus_connectors.anthropic.operations import Config as CostReportConfig
 from taktus_connectors.anthropic.server import build_server as cost_report_server
+from taktus_connectors.appstore.operations import Config as StoreConfig
+from taktus_connectors.appstore.server import build_server as store_server
 from taktus_connectors.aws.operations import Config as BillingConfig
 from taktus_connectors.aws.server import build_server as billing_server
+from taktus_connectors.gcp.api import Config as CloudConfig
+from taktus_connectors.gcp.server import build_server as cloud_server
 from taktus_connectors.httpcheck.operations import Config as CheckConfig
 from taktus_connectors.httpcheck.server import build_server as check_server
 from taktus_connectors.kubernetes.operations import Config as WorkloadsConfig
 from taktus_connectors.kubernetes.server import build_server as workloads_server
+from taktus_connectors.loki.operations import Config as LogsConfig
+from taktus_connectors.loki.server import build_server as logs_server
 from taktus_connectors.mail.protocol import Config as MailConfig
 from taktus_connectors.mail.server import build_server as mail_server
 from taktus_connectors.openai.operations import Config as ModelCostsConfig
@@ -32,6 +38,8 @@ from taktus_connectors.sentry.operations import Config as ErrorsConfig
 from taktus_connectors.sentry.server import build_server as errors_server
 from taktus_connectors.stripe.operations import Config as PaymentsConfig
 from taktus_connectors.stripe.server import build_server as payments_server
+from taktus_connectors.vault.operations import Config as SecretsConfig
+from taktus_connectors.vault.server import build_server as secrets_server
 
 from integration.test_removal_test import RECORDS, connector_services, result_of, run_removal
 from taktus.adapters.driven.connectors.mcp import McpActionConnector
@@ -56,17 +64,25 @@ SERVERS: dict[str, Any] = {
     "errors": lambda: errors_server(ErrorsConfig("http://127.0.0.1:9", organization="example")),
     "payments": lambda: payments_server(PaymentsConfig("http://127.0.0.1:9")),
     "workloads": lambda: workloads_server(WorkloadsConfig("http://127.0.0.1:9")),
+    "cloud": lambda: cloud_server(CloudConfig.at("example", target="http://127.0.0.1:9")),
+    "logs": lambda: logs_server(LogsConfig("http://127.0.0.1:9")),
+    "secrets": lambda: secrets_server(SecretsConfig("http://127.0.0.1:9")),
+    "store": lambda: store_server(StoreConfig("http://127.0.0.1:9")),
 }
 SERVES = {
     "mail": ["channel.mail", "mail.messages"],
     "metrics": ["metrics.series"],
     "check": ["check.http"],
-    "billing": ["billing.costs"],
-    "model-costs": ["models.costs"],
-    "cost-report": ["models.costs"],
+    "billing": ["billing.costs", "logs.query", "secrets.metadata"],
+    "model-costs": ["models.catalogue", "models.costs"],
+    "cost-report": ["models.catalogue", "models.costs"],
     "errors": ["errors.issues"],
     "payments": ["payments.customers", "payments.subscriptions"],
     "workloads": ["deployment.workloads"],
+    "cloud": ["billing.costs", "logs.query", "secrets.metadata"],
+    "logs": ["logs.query"],
+    "secrets": ["secrets.metadata"],
+    "store": ["expiry.credentials"],
 }
 
 

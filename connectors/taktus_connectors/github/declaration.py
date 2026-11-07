@@ -38,6 +38,9 @@ CAPABILITIES = [
     "repository.labels",
     "repository.files",
     "repository.members",
+    "repository.runners",
+    "repository.ratelimit",
+    "repository.advisories",
 ]
 
 OPERATIONS: list[Json] = [
@@ -149,6 +152,58 @@ OPERATIONS: list[Json] = [
         "since it was created at the moment of the reading.",
     },
     {
+        "name": "repository.pipelines.rerun",
+        "demand": {"quota_units": 2},
+        "capability": "repository.pipelines",
+        "effect": "write",
+        "idempotency": "marked",
+        "summary": "Rerun the failed jobs of one completed pipeline run, named by `run` and the "
+        "`attempt` the caller read. The run's attempt is its own mark: a run whose attempt is "
+        "higher was rerun since the reading, and the repeat changes nothing and reports "
+        "replayed. Weaker than a key, and stated so: a rerun by somebody else reads the same. "
+        "A run not completed is a conflict.",
+    },
+    {
+        "name": "repository.pipelines.cancel",
+        "demand": {"quota_units": 3},
+        "capability": "repository.pipelines",
+        "effect": "write",
+        "idempotency": "marked",
+        "summary": "Cancel one pipeline run that is queued or in progress, named by `run`. A "
+        "completed run is its own mark: the repeat changes nothing and reports replayed.",
+    },
+    {
+        "name": "repository.runners.list",
+        "demand": {"quota_units": 10},
+        "capability": "repository.runners",
+        "effect": "read",
+        "summary": "List the repository's self-hosted runners: each one's id, name, operating "
+        "system, `status` (online or offline), whether it is busy, and its labels; `offline` "
+        "counts those not online. At most ten pages of 100.",
+    },
+    {
+        "name": "repository.ratelimit.read",
+        "demand": {"quota_units": 1},
+        "capability": "repository.ratelimit",
+        "effect": "read",
+        "summary": "The requesting identity's rate limits, one entry per resource the service "
+        "names, the fullest first: its limit, used and remaining, `used_share` as decimal text "
+        "rounded down to four places, and the whole minutes until it resets. The service does "
+        "not count this request.",
+    },
+    {
+        "name": "repository.advisories.list",
+        "demand": {"quota_units": 10},
+        "capability": "repository.advisories",
+        "effect": "read",
+        "summary": "List the repository's dependency alerts in `state` (default open; fixed, "
+        "dismissed, auto_dismissed, or a list), optionally of `severity` (low, medium, high, "
+        "critical, or a list), newest first: each with its number, severity, advisory "
+        "identifiers and summary, package and ecosystem, manifest, vulnerable range, the first "
+        "patched version or null, its link and its whole days since it was raised. Never a "
+        "person. At most ten pages of 100.",
+    },
+    {
         "name": "repository.comments.list",
         "demand": {"quota_units": 10},
         "capability": "repository.comments",
@@ -183,6 +238,15 @@ OPERATIONS: list[Json] = [
         "idempotency key that commit carries, or null. Given a `key`, `free` says whether "
         "`repository.branches.create` under that key would create the branch or find it as its "
         "own; without one, whether no branch of that name exists.",
+    },
+    {
+        "name": "repository.branches.list",
+        "demand": {"quota_units": 10},
+        "capability": "repository.branches",
+        "effect": "read",
+        "summary": "List the repository's branches, or with `protected` only the protected or "
+        "the unprotected ones: each one's name, head commit and whether it is protected. At "
+        "most ten pages of 100; `complete` says whether every page was read.",
     },
     {
         "name": "repository.branches.create",

@@ -1,4 +1,4 @@
-"""How the costs are asked and their answer read.
+"""How the costs and the catalogue of models are asked and their answers read.
 
 The Admin API answers `GET /v1/organizations/cost_report` with daily buckets, each holding one
 result per group. The connector asks for buckets of one day, grouped by description — the model
@@ -11,6 +11,17 @@ connector moves the decimal point two places, which is exact, and reports the am
 currency's main unit, as the other `models.costs` connector does. A day's `total` is the exact
 sum of its groups: a figure a later step holds `exact` is built from it (CLAUDE.md §4). Amounts
 in more than one currency are not summed: the answer is `unexpected`, because no rule converts.
+
+The catalogue is `GET /v1/models`, newest release first, at most 1000 models per answer. The
+connector asks with `limit` and follows `last_id` as `after_id` while the answer says
+`has_more`. It names all three lifecycle stages as `lifecycle[]`, repeated, as the API's other
+array parameters are written: without them the API leaves the retired models out. Each model
+gives its `id`, its `display_name` and its release moment `created_at`; the API gives the epoch
+where it does not know the release, which the connector reports as null. Each model also gives
+its `lifecycle` stage, `deprecated_at` and `retires_at`, copied as they are. The list takes an
+ordinary API key: an Admin API key authenticates only the Admin APIs. The key is whichever
+credential the call references, sent the same way, so a process that reads both costs and
+models names two credentials.
 
 How the provider's answers map to the contract's causes:
 
@@ -57,6 +68,11 @@ MAX_PAGES = 20
 GROUPS = {"line_item": "description", "workspace": "workspace_id"}
 DEFAULT_WORKSPACE = "(default)"
 NONE = "(none)"
+MODELS_PATH = "/v1/models"
+MAX_MODELS = 1000
+"""The most models the list gives in one answer, and the most the catalogue reads."""
+LIFECYCLE = ("active", "deprecated", "retired")
+"""The lifecycle stages the API states, all of them asked for."""
 
 
 @dataclass(frozen=True)
@@ -108,6 +124,10 @@ def _amount(value: Any) -> Decimal:
 
 
 async def _page(config: Config, call: Call, params: Json) -> Json:
+    return await _get(config, call, PATH, params, "the costs")
+
+
+async def _get(config: Config, call: Call, path: str, params: Json, what: str) -> Json:
     call.count()
     try:
         async with httpx.AsyncClient(
@@ -115,7 +135,7 @@ async def _page(config: Config, call: Call, params: Json) -> Json:
             timeout=httpx.Timeout(config.timeout, connect=min(10.0, config.timeout)),
             headers={"x-api-key": call.token, "anthropic-version": VERSION},
         ) as client:
-            response = await client.get(PATH, params=params)
+            response = await client.get(path, params=params)
     except httpx.TimeoutException as error:
         raise unavailable(f"the provider did not answer in time: {type(error).__name__}") from error
     except httpx.HTTPError as error:
@@ -125,7 +145,7 @@ async def _page(config: Config, call: Call, params: Json) -> Json:
     if status == 401:
         raise TargetError("unauthenticated", "none", False, "the provider does not admit the key")
     if status == 403:
-        raise TargetError("forbidden", "none", False, "the key may not read the costs")
+        raise TargetError("forbidden", "none", False, f"the key may not read {what}")
     if status == 429 or status >= 500:
         raise unavailable(f"the provider answered {status}")
     if status in (400, 404, 422):
@@ -211,4 +231,93 @@ async def daily(config: Config, call: Call, input: Json) -> Outcome:
     return Outcome(output=output, effect={"kind": "read"})
 
 
-OPERATIONS = {"models.costs.daily": daily}
+def _limit(input: Json) -> int:
+    limit = input.get("limit", MAX_MODELS)
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= MAX_MODELS:
+        raise invalid(f"limit must be a whole number from 1 to {MAX_MODELS}")
+    return limit
+
+
+def _instant(value: Any, what: str, epoch_unknown: bool = False) -> str | None:
+    """An RFC 3339 moment of the answer in UTC, or None where the API gives none. With
+    `epoch_unknown`, the epoch is None too: the API gives it for a release date it does not
+    know."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise TargetError("unexpected", "none", False, f"a model's {what} is not a moment")
+    try:
+        moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise TargetError(
+            "unexpected", "none", False, f"a model's {what} is not a moment"
+        ) from error
+    if moment.tzinfo is None:
+        raise TargetError("unexpected", "none", False, f"a model's {what} names no offset")
+    moment = moment.astimezone(UTC)
+    if epoch_unknown and moment.timestamp() == 0:
+        return None
+    return moment.isoformat().replace("+00:00", "Z")
+
+
+def _lifecycle(value: Any) -> str | None:
+    if value is None:
+        return None
+    if value not in LIFECYCLE:
+        raise TargetError("unexpected", "none", False, "a model's lifecycle is not known")
+    return str(value)
+
+
+def _model(entry: Any) -> Json:
+    if not isinstance(entry, dict) or not isinstance(entry.get("id"), str) or not entry["id"]:
+        raise TargetError("unexpected", "none", False, "a model names no identifier")
+    name = entry.get("display_name")
+    return {
+        "id": entry["id"],
+        "name": name if isinstance(name, str) and name else None,
+        "created_at": _instant(entry.get("created_at"), "release", epoch_unknown=True),
+        "lifecycle": _lifecycle(entry.get("lifecycle")),
+        "deprecated_at": _instant(entry.get("deprecated_at"), "deprecation"),
+        "retires_at": _instant(entry.get("retires_at"), "retirement"),
+    }
+
+
+def retiring(models: list[Json]) -> list[str]:
+    """The sorted identifiers of the models deprecated, retired or with a retirement set."""
+    return sorted(
+        m["id"]
+        for m in models
+        if m["lifecycle"] in ("deprecated", "retired") or m["retires_at"] is not None
+    )
+
+
+async def catalogue(config: Config, call: Call, input: Json) -> Outcome:
+    """The models the key may use, retired ones among them, sorted by identifier: page after
+    page while the answer says `has_more`, from the `last_id` of the page before, until `limit`
+    models are read."""
+    limit = _limit(input)
+    models: list[Json] = []
+    stages = {"lifecycle[]": list(LIFECYCLE)}
+    params: Json = {"limit": limit, **stages}
+    more = True
+    for _ in range(MAX_PAGES):
+        answer = await _get(config, call, MODELS_PATH, params, "the models")
+        models.extend(_model(entry) for entry in answer["data"])
+        more = bool(answer.get("has_more"))
+        last = answer.get("last_id")
+        if not more or len(models) >= limit or not isinstance(last, str) or not last:
+            break
+        params = {"limit": limit - len(models), "after_id": last, **stages}
+    cut = len(models) > limit
+    kept = sorted(models[:limit], key=lambda m: m["id"])
+    output: Json = {
+        "models": kept,
+        "ids": [m["id"] for m in kept],
+        "retiring": retiring(kept),
+        "current": [m["id"] for m in kept if m["id"] not in retiring(kept)],
+        "complete": not more and not cut,
+    }
+    return Outcome(output=output, effect={"kind": "read"})
+
+
+OPERATIONS = {"models.costs.daily": daily, "models.catalogue.list": catalogue}

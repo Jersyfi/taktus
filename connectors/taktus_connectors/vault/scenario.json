@@ -1,0 +1,17 @@
+{
+  "credentials": {
+    "actions": "SECRETS_TOKEN"
+  },
+  "read": {
+    "operation": "secrets.metadata.list",
+    "input": {}
+  },
+  "writes": [],
+  "invalid": {
+    "operation": "secrets.metadata.list",
+    "input": {
+      "limit": 0
+    },
+    "expected_cause": "invalid"
+  }
+}

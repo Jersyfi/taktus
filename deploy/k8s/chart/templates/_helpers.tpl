@@ -117,7 +117,7 @@ connectors/taktus_connectors/ that run as a module. tests/governance/test_chart.
 list to that directory.
 */}}
 {{- define "taktus.shippedConnectors" -}}
-accounting anthropic aws bookstack calendar einvoice expiry github httpcheck kubernetes mail openai prometheus sentry slack stripe vendor
+accounting anthropic appstore aws bookstack calendar einvoice expiry gcp github httpcheck kubernetes loki mail openai prometheus sentry slack stripe vault vendor
 {{- end -}}
 
 {{/*

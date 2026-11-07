@@ -26,7 +26,8 @@ OPERATIONS: list[Json] = [
         "effect": "read",
         "summary": "Read one deployment of the namespace: its containers with their images, "
         "the replicas wanted, updated, ready and available, its revision, the key its pod "
-        "template carries, and `rolled_out`: the controller has seen the newest change and "
+        "template carries, `changed_at`: when its rollout last progressed, and "
+        "`rolled_out`: the controller has seen the newest change and "
         "every wanted replica is updated and available.",
     },
     {

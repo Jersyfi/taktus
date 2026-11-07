@@ -1,0 +1,17 @@
+{
+  "credentials": {
+    "actions": "STORE_API_KEY"
+  },
+  "read": {
+    "operation": "expiry.credentials.list",
+    "input": {}
+  },
+  "writes": [],
+  "invalid": {
+    "operation": "expiry.credentials.list",
+    "input": {
+      "kinds": ["passport"]
+    },
+    "expected_cause": "invalid"
+  }
+}

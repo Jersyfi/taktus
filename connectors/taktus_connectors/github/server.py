@@ -32,7 +32,7 @@ from mcp_types import CallToolResult, TextContent
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from taktus_connectors.github import declaration, intake, operations
+from taktus_connectors.github import declaration, infrastructure, intake, operations
 from taktus_connectors.github.api import Api, TargetError, unreadable
 from taktus_connectors.github.app import AppConfig, AppTokens
 from taktus_connectors.github.faults import validate
@@ -41,6 +41,8 @@ type Json = dict[str, Any]
 
 CAPABILITIES_URI = "taktus://connector/v1/capabilities"
 META_KEY = "taktus.eu/connector/v1"
+OPERATIONS = {**operations.OPERATIONS, **infrastructure.OPERATIONS}
+"""Every operation the connector implements, by the name it declares."""
 
 
 @dataclass(frozen=True)
@@ -194,7 +196,7 @@ class Connector:
         api.requests = minted
         try:
             try:
-                outcome = await operations.OPERATIONS[name](api, input, key)
+                outcome = await OPERATIONS[name](api, input, key)
             except (KeyError, TypeError, IndexError, AttributeError) as unread:
                 # The service answered with a shape the operation does not foresee: a field
                 # missing, a list where a record was expected (ADR-0047).

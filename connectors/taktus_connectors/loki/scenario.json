@@ -1,0 +1,19 @@
+{
+  "credentials": {
+    "actions": "LOGS_TOKEN"
+  },
+  "read": {
+    "operation": "logs.query.entries",
+    "input": {
+      "filter": "{app=\"shop\"} |= \"order\""
+    }
+  },
+  "writes": [],
+  "invalid": {
+    "operation": "logs.query.entries",
+    "input": {
+      "filter": "count_over_time({app=\"shop\"}[5m])"
+    },
+    "expected_cause": "invalid"
+  }
+}
