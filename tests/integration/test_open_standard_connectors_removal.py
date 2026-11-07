@@ -24,6 +24,8 @@ from taktus_connectors.bigquery.operations import Config as WarehouseConfig
 from taktus_connectors.bigquery.server import build_server as warehouse_server
 from taktus_connectors.canny.operations import Config as FeedbackConfig
 from taktus_connectors.canny.server import build_server as feedback_server
+from taktus_connectors.cloudfunctions.operations import Config as FunctionsConfig
+from taktus_connectors.cloudfunctions.server import build_server as functions_server
 from taktus_connectors.cloudrun.operations import Config as ServerlessConfig
 from taktus_connectors.cloudrun.server import build_server as serverless_server
 from taktus_connectors.depsdev.operations import Config as PackagesConfig
@@ -54,12 +56,18 @@ from taktus_connectors.mailchimp.operations import Config as NewsletterConfig
 from taktus_connectors.mailchimp.server import build_server as newsletter_server
 from taktus_connectors.mastodon.operations import Config as SocialConfig
 from taktus_connectors.mastodon.server import build_server as social_server
+from taktus_connectors.mixpanel.operations import Config as EventsConfig
+from taktus_connectors.mixpanel.server import build_server as events_server
 from taktus_connectors.netlify.operations import Config as SiteDeploysConfig
 from taktus_connectors.netlify.server import build_server as site_deploys_server
 from taktus_connectors.openai.operations import Config as ModelCostsConfig
 from taktus_connectors.openai.server import build_server as model_costs_server
 from taktus_connectors.prometheus.operations import Config as MetricsConfig
 from taktus_connectors.prometheus.server import build_server as metrics_server
+from taktus_connectors.resend.api import Config as MailApiConfig
+from taktus_connectors.resend.server import build_server as mail_api_server
+from taktus_connectors.sanity.operations import Config as ContentConfig
+from taktus_connectors.sanity.server import build_server as content_server
 from taktus_connectors.sentry.operations import Config as ErrorsConfig
 from taktus_connectors.sentry.server import build_server as errors_server
 from taktus_connectors.stripe.operations import Config as PaymentsConfig
@@ -86,6 +94,7 @@ SERVERS: dict[str, Any] = {
             security="none",
         )
     ),
+    "mail-api": lambda: mail_api_server(MailApiConfig("http://127.0.0.1:9", "support@example.org")),
     "metrics": lambda: metrics_server(MetricsConfig("http://127.0.0.1:9")),
     "check": lambda: check_server(CheckConfig("http://127.0.0.1:9")),
     "billing": lambda: billing_server(BillingConfig("http://127.0.0.1:9")),
@@ -105,6 +114,9 @@ SERVERS: dict[str, Any] = {
     "serverless": lambda: serverless_server(
         ServerlessConfig("http://127.0.0.1:9", "example", "europe-west1")
     ),
+    "functions": lambda: functions_server(
+        FunctionsConfig("http://127.0.0.1:9", "example", "europe-west1")
+    ),
     "site-releases": lambda: site_releases_server(SiteReleasesConfig("http://127.0.0.1:9")),
     "site-deploys": lambda: site_deploys_server(SiteDeploysConfig("http://127.0.0.1:9")),
     "site-deployments": lambda: site_deployments_server(
@@ -112,7 +124,9 @@ SERVERS: dict[str, Any] = {
     ),
     "newsletter": lambda: newsletter_server(NewsletterConfig("http://127.0.0.1:9")),
     "website": lambda: website_server(WebsiteConfig("http://127.0.0.1:9")),
+    "content": lambda: content_server(ContentConfig("http://127.0.0.1:9")),
     "analytics": lambda: analytics_server(AnalyticsConfig("http://127.0.0.1:9", "123456789")),
+    "events": lambda: events_server(EventsConfig("http://127.0.0.1:9", "1234567")),
     "warehouse": lambda: warehouse_server(
         WarehouseConfig("http://127.0.0.1:9", "example", "product_copy")
     ),
@@ -122,6 +136,7 @@ SERVERS: dict[str, Any] = {
 }
 SERVES = {
     "mail": ["channel.mail", "mail.messages"],
+    "mail-api": ["channel.mail", "mail.messages", "newsletter.broadcasts"],
     "metrics": ["metrics.series"],
     "check": ["check.http"],
     "billing": ["billing.costs", "logs.query", "secrets.metadata"],
@@ -145,12 +160,15 @@ SERVES = {
     "secrets": ["secrets.metadata"],
     "stores": ["expiry.credentials", "stores.beta", "stores.releases", "stores.reviews"],
     "serverless": ["deployment.workloads"],
+    "functions": ["deployment.sites"],
     "site-releases": ["deployment.sites"],
     "site-deploys": ["deployment.sites"],
     "site-deployments": ["deployment.sites"],
     "newsletter": ["newsletter.broadcasts"],
     "website": ["website.posts"],
+    "content": ["website.posts"],
     "analytics": ["analytics.reports"],
+    "events": ["analytics.reports"],
     "warehouse": ["warehouse.queries"],
     "crm": ["crm.contacts"],
     "tasks-graph": ["tasks.items"],

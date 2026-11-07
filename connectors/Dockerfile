@@ -80,6 +80,11 @@ COPY --chown=connector:connector connectors/taktus_connectors/canny /app/taktus_
 ENTRYPOINT ["python", "-m", "taktus_connectors.canny"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
+FROM base AS cloudfunctions
+COPY --chown=connector:connector connectors/taktus_connectors/cloudfunctions /app/taktus_connectors/cloudfunctions
+ENTRYPOINT ["python", "-m", "taktus_connectors.cloudfunctions"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
 FROM base AS cloudrun
 COPY --chown=connector:connector connectors/taktus_connectors/cloudrun /app/taktus_connectors/cloudrun
 ENTRYPOINT ["python", "-m", "taktus_connectors.cloudrun"]
@@ -185,6 +190,11 @@ COPY --chown=connector:connector connectors/taktus_connectors/mastodon /app/takt
 ENTRYPOINT ["python", "-m", "taktus_connectors.mastodon"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
+FROM base AS mixpanel
+COPY --chown=connector:connector connectors/taktus_connectors/mixpanel /app/taktus_connectors/mixpanel
+ENTRYPOINT ["python", "-m", "taktus_connectors.mixpanel"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
 FROM base AS netlify
 COPY --chown=connector:connector connectors/taktus_connectors/netlify /app/taktus_connectors/netlify
 ENTRYPOINT ["python", "-m", "taktus_connectors.netlify"]
@@ -205,9 +215,19 @@ COPY --chown=connector:connector connectors/taktus_connectors/prometheus /app/ta
 ENTRYPOINT ["python", "-m", "taktus_connectors.prometheus"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
+FROM base AS resend
+COPY --chown=connector:connector connectors/taktus_connectors/resend /app/taktus_connectors/resend
+ENTRYPOINT ["python", "-m", "taktus_connectors.resend"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
 FROM base AS revenuecat
 COPY --chown=connector:connector connectors/taktus_connectors/revenuecat /app/taktus_connectors/revenuecat
 ENTRYPOINT ["python", "-m", "taktus_connectors.revenuecat"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
+FROM base AS sanity
+COPY --chown=connector:connector connectors/taktus_connectors/sanity /app/taktus_connectors/sanity
+ENTRYPOINT ["python", "-m", "taktus_connectors.sanity"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
 FROM base AS scim

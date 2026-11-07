@@ -149,6 +149,9 @@ jobs:
           - name: taktus-connector-canny
             dockerfile: connectors/Dockerfile
             target: canny
+          - name: taktus-connector-cloudfunctions
+            dockerfile: connectors/Dockerfile
+            target: cloudfunctions
           - name: taktus-connector-cloudrun
             dockerfile: connectors/Dockerfile
             target: cloudrun
@@ -212,6 +215,9 @@ jobs:
           - name: taktus-connector-mastodon
             dockerfile: connectors/Dockerfile
             target: mastodon
+          - name: taktus-connector-mixpanel
+            dockerfile: connectors/Dockerfile
+            target: mixpanel
           - name: taktus-connector-netlify
             dockerfile: connectors/Dockerfile
             target: netlify
@@ -224,9 +230,15 @@ jobs:
           - name: taktus-connector-prometheus
             dockerfile: connectors/Dockerfile
             target: prometheus
+          - name: taktus-connector-resend
+            dockerfile: connectors/Dockerfile
+            target: resend
           - name: taktus-connector-revenuecat
             dockerfile: connectors/Dockerfile
             target: revenuecat
+          - name: taktus-connector-sanity
+            dockerfile: connectors/Dockerfile
+            target: sanity
           - name: taktus-connector-scim
             dockerfile: connectors/Dockerfile
             target: scim
