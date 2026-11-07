@@ -257,6 +257,10 @@ class WorkerSettings:
         ]
 
 
+MASKED_KINDS = ("email", "iban", "phone")
+"""The kinds of personal content the masking of exported spans knows (ADR-0286)."""
+
+
 @dataclass(frozen=True)
 class TelemetrySettings:
     """Where spans go. Absent endpoint: spans are real and exported nowhere — the no-op is the
@@ -270,6 +274,11 @@ class TelemetrySettings:
     that is where an authorisation token goes: `TAKTUS_OTLP_HEADERS_FILE`."""
     headers_source: str | None
     service_name: str
+    masked_attributes: tuple[str, ...] = ()
+    """Patterns of attribute names masked whole before a span leaves (ADR-0286)."""
+    masked_kinds: tuple[str, ...] = MASKED_KINDS
+    """The kinds of personal content masked wherever a text carries them before a span leaves:
+    every kind known by default."""
 
     def effective(self) -> list[tuple[str, str]]:
         headers = "" if self.headers is None else f"{self.headers} (from {self.headers_source})"
@@ -278,6 +287,8 @@ class TelemetrySettings:
             ("TAKTUS_OTLP_PROTOCOL", self.protocol),
             ("TAKTUS_OTLP_HEADERS", headers),
             ("TAKTUS_OTLP_SERVICE_NAME", self.service_name),
+            ("TAKTUS_OTLP_MASKED_ATTRIBUTES", ",".join(self.masked_attributes)),
+            ("TAKTUS_OTLP_MASKED_KINDS", ",".join(self.masked_kinds)),
         ]
 
     def parsed_headers(self) -> dict[str, str]:
@@ -303,7 +314,20 @@ def load_telemetry(configuration: Configuration) -> TelemetrySettings:
         headers=configuration.secret("otlp.headers"),
         headers_source=configuration.source("otlp.headers"),
         service_name=reader.text("otlp.service.name", "taktus"),
+        masked_attributes=reader.names("otlp.masked.attributes", ()),
+        masked_kinds=_masked_kinds(configuration, reader),
     )
+
+
+def _masked_kinds(configuration: Configuration, reader: _Reader) -> tuple[str, ...]:
+    kinds = reader.names("otlp.masked.kinds", MASKED_KINDS)
+    unknown = sorted(set(kinds) - set(MASKED_KINDS) - {"none"})
+    if unknown:
+        raise ConfigurationError(
+            configuration.name("otlp.masked.kinds"),
+            f"no masking for {', '.join(unknown)}; known: {', '.join(MASKED_KINDS)}, or none",
+        )
+    return () if kinds == ("none",) else kinds
 
 
 OBJECT_STORE_ACCESS_KEY_ID = "object.store.access.key.id"

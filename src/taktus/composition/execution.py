@@ -31,6 +31,7 @@ from taktus.adapters.driven.telemetry import (
     exporter_for,
     metric_exporter_for,
 )
+from taktus.adapters.driven.telemetry.masking import MaskingExporter, MaskingPolicy
 from taktus.adapters.driven.workers.connected import connected_worker
 from taktus.adapters.driven.workers.http import HttpWorker
 from taktus.adapters.driven.workers.launched import LaunchedWorker
@@ -293,8 +294,10 @@ def telemetry_of(settings: TelemetrySettings) -> OpenTelemetryTelemetry:
     metrics = None
     if settings.endpoint is not None:
         protocol: Literal["grpc", "http"] = "grpc" if settings.protocol == "grpc" else "http"
-        exporter = exporter_for(
-            settings.endpoint, protocol=protocol, headers=settings.parsed_headers()
+        # What leaves is masked by the organisation's policy first (UC-5.8, ADR-0286).
+        exporter = MaskingExporter(
+            exporter_for(settings.endpoint, protocol=protocol, headers=settings.parsed_headers()),
+            MaskingPolicy(settings.masked_attributes, settings.masked_kinds),
         )
         metrics = metric_exporter_for(
             settings.endpoint, protocol=protocol, headers=settings.parsed_headers()
