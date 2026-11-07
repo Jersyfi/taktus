@@ -304,6 +304,9 @@ role it would tie the core to a model stack and the removal test would be lost.
   removal tests through `composition/domains.py`, and `AnchorsInForce` reads the domains to scope
   the anchors (ADR-0259). Its `TenantBudgets` answers the run's `TenantBudget` through
   `BudgetOfTheRun` in `composition/decisions.py`, and `taktusctl budget` sets it (ADR-0260).
+  Its `UnitLimits` answers the run's `UnitLimitsPort` through `UnitLimitsOfTheRun` in
+  `composition/unit_limits.py`, which reads where an identity sits from the identity component's
+  `IdentityDirectory`; `taktusctl units limit` sets the limits (ADR-0282).
   `composition/acting.py`'s `ActingReads` gathers what acts for a tenant, what depends on it and
   how a process really runs from the catalog's maturity records, the pools, the process
   versions, the residency rule, the stops, the blocks, the provenance store and the identities'

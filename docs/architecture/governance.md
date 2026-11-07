@@ -301,7 +301,14 @@ Every domain a tenant instantiates has exactly one owner, an identity of the ten
 jurisdiction. Without an owner nothing in it is raised. An anchor scoped to a domain or a
 jurisdiction holds for that domain's processes, and no configuration may leave a domain without
 a legal anchor in force (ADR-0259). A tenant's monthly money budget across all its runs holds
-every run of it at its next boundary once the month's runs cost it (ADR-0260).
+every run of it at its next boundary once the month's runs cost it (ADR-0260). A limit per unit of
+the structure — the company, a department, a team, a person — holds money, compute seconds or
+tokens per day, week or month. A run is attributed to where its identity sat when it was
+created, and a step is admitted only where its priced reservation fits what remains of every
+limit on that path, so that a child never lets through what its parent refuses. Alerts, the
+forecast band, an anomaly and a limit that does harm are each decided by a rule or a statistic
+over the runs' records and the ledger, and reach the limit's role; a person's limit is shown to
+that person alone, and Taktus never changes a limit (ADR-0282).
 
 Shared agents run strictly in the permission, credential and cost context of the *calling user*,
 never of their author. No user sees another's mailbox, data or secrets.

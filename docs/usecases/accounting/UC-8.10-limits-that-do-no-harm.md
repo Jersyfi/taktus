@@ -6,8 +6,8 @@ epic: E8
 serves: [P8, P10, P12]
 state: building
 version: 0.5.0
-tests: [tests/components/run/test_engine.py::test_a_step_that_does_not_fit_is_rejected_before_it_starts, tests/components/run/test_engine.py::test_a_stop_mid_step_lands_on_the_worker_s_boundary_and_resume_duplicates_nothing, tests/components/run/test_engine.py::test_a_rejected_run_resumes_with_a_raised_limit, tests/components/run/test_capacity_admission.py::test_admission_against_the_platform, tests/components/governance/test_capacity.py::test_the_owner_s_example_reads_as_a_figure_and_a_date]
-adrs: {ADR-0005: 0ea928e2016b, ADR-0015: 3a42705e5561, ADR-0031: e81473d81850}
+tests: [tests/components/run/test_engine.py::test_a_step_that_does_not_fit_is_rejected_before_it_starts, tests/components/run/test_engine.py::test_a_stop_mid_step_lands_on_the_worker_s_boundary_and_resume_duplicates_nothing, tests/components/run/test_engine.py::test_a_rejected_run_resumes_with_a_raised_limit, tests/components/run/test_capacity_admission.py::test_admission_against_the_platform, tests/components/governance/test_capacity.py::test_the_owner_s_example_reads_as_a_figure_and_a_date, tests/components/run/test_unit_limits.py::test_a_step_that_does_not_fit_a_team_s_limit_is_refused_before_it_starts, tests/components/run/test_unit_limits.py::test_a_child_never_lets_a_step_through_its_parent, tests/components/run/test_unit_limits.py::test_the_company_s_limit_holds_every_unit_below_it, tests/components/run/test_unit_limits.py::test_a_limit_that_holds_too_many_runs_is_reported_with_a_recommendation, tests/components/run/test_unit_limits.py::test_a_limit_held_per_person_tells_no_role_and_names_no_one, tests/components/run/test_unit_limits.py::test_what_applies_to_a_run_names_every_limit_with_its_unit, tests/components/governance/test_unit_limits.py::test_a_limit_does_harm_where_it_held_more_runs_or_longer_than_the_watch, tests/components/governance/test_unit_limits.py::test_a_limit_held_per_person_raises_no_alert_to_a_role, tests/integration/test_units_command.py::test_an_operator_sets_a_unit_limit_watches_it_and_sees_its_consumption]
+adrs: {ADR-0005: 0ea928e2016b, ADR-0015: 3a42705e5561, ADR-0031: e81473d81850, ADR-0282: c98f98a54368}
 supersedes: null
 ---
 
@@ -81,5 +81,22 @@ recommendations come with numbers.
 A step that does not fit is rejected before it starts; a stop lands on the
 worker's boundary and a resume duplicates nothing; a rejected run resumes with a raised limit; a job
 the platform cannot hold is refused; the platform's capacity is reported as a figure and a date —
-by the named tests. Limits per unit and their inheritance, the view of what applies, and the reports
-on harmful limits are not built.
+by the named tests.
+
+Limits per unit of the structure and their inheritance (ADR-0282), by the named tests: a limit
+in money, compute seconds or tokens for the company, a department, a team, or each person of a
+unit on their own, holds
+every run on its path, and a child never admits a step its parent refuses. `taktusctl units
+applies` shows, for a run or a process, what it needs — its budget, every step's reservation,
+or for a process what its runs of the month cost on average and at most — what it used, and
+every limit that holds it with the unit it comes from: the run's own budget, every unit limit
+with its period's cost and what remains, the department's quota and the tenant's monthly budget.
+A limit at which more runs, or longer, were held than the tenant's watch allows is reported to
+the limit's role as `limit.harmful`, by a rule over the ledger entries `unit_limit.held` and
+`unit_limit.released`: the limit, the runs, processes and seconds held, and the amount
+recommended with its cost per period and its benefit. Taktus never changes the limit. What
+one person's runs used against a limit held per person is shown only to that person.
+
+Not built: the estimated demand shown to the person who commissions a run before a run that
+needs much starts; and the report reaches the limit's role as an incident, not a view of the
+administrator, management and the team affected of its own. The state stays `building`.

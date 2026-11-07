@@ -6,8 +6,8 @@ epic: E8
 serves: [P7, P8, P14]
 state: building
 version: 0.2.0
-tests: [tests/components/accounting/test_cost.py::test_a_run_costs_what_its_tokens_cost_at_the_table_it_was_held_to, tests/components/accounting/test_cost.py::test_a_run_costs_its_tokens_plus_its_compute_seconds_at_the_table_it_was_held_to, tests/components/run/test_engine.py::test_admission_counts_what_earlier_steps_used, tests/components/run/test_budget.py::test_the_margin_absorbs_an_overrun_and_nothing_beyond_it, tests/components/run/test_budget.py::test_money_reported_per_assignment_is_held_as_an_estimate, tests/components/run/test_estimates.py::test_the_budget_says_what_it_can_promise_when_it_is_set, tests/components/run/test_estimates.py::test_a_step_whose_compute_at_the_table_would_cross_what_remains_is_not_admitted, tests/components/accounting/test_takt.py::test_a_run_is_weighed_at_the_table_in_force_when_it_started, tests/components/accounting/test_takt.py::test_the_takte_stand_beside_the_money_and_say_uncalibrated, tests/components/accounting/test_takt.py::test_another_table_recomputes_the_takte_from_the_ledger, tests/components/accounting/test_takt.py::test_what_the_table_does_not_weigh_is_named_never_counted_as_zero, tests/components/accounting/test_takt.py::test_the_takt_rate_of_a_tenant_is_its_takte_per_hour_over_the_window, tests/components/run/test_tenant_budget.py::test_a_reached_month_budget_holds_every_run_of_the_tenant_at_its_boundary, tests/components/run/test_tenant_budget.py::test_the_month_s_turn_lets_the_waiting_runs_go_on, tests/components/run/test_tenant_budget.py::test_a_tenant_without_a_budget_is_held_by_none]
-adrs: {ADR-0005: 0ea928e2016b, ADR-0010: e381de241d4a, ADR-0015: 3a42705e5561, ADR-0260: d26cc3cb308b}
+tests: [tests/components/accounting/test_cost.py::test_a_run_costs_what_its_tokens_cost_at_the_table_it_was_held_to, tests/components/accounting/test_cost.py::test_a_run_costs_its_tokens_plus_its_compute_seconds_at_the_table_it_was_held_to, tests/components/run/test_engine.py::test_admission_counts_what_earlier_steps_used, tests/components/run/test_budget.py::test_the_margin_absorbs_an_overrun_and_nothing_beyond_it, tests/components/run/test_budget.py::test_money_reported_per_assignment_is_held_as_an_estimate, tests/components/run/test_estimates.py::test_the_budget_says_what_it_can_promise_when_it_is_set, tests/components/run/test_estimates.py::test_a_step_whose_compute_at_the_table_would_cross_what_remains_is_not_admitted, tests/components/accounting/test_takt.py::test_a_run_is_weighed_at_the_table_in_force_when_it_started, tests/components/accounting/test_takt.py::test_the_takte_stand_beside_the_money_and_say_uncalibrated, tests/components/accounting/test_takt.py::test_another_table_recomputes_the_takte_from_the_ledger, tests/components/accounting/test_takt.py::test_what_the_table_does_not_weigh_is_named_never_counted_as_zero, tests/components/accounting/test_takt.py::test_the_takt_rate_of_a_tenant_is_its_takte_per_hour_over_the_window, tests/components/run/test_tenant_budget.py::test_a_reached_month_budget_holds_every_run_of_the_tenant_at_its_boundary, tests/components/run/test_tenant_budget.py::test_the_month_s_turn_lets_the_waiting_runs_go_on, tests/components/run/test_tenant_budget.py::test_a_tenant_without_a_budget_is_held_by_none, tests/components/run/test_unit_limits.py::test_a_step_that_does_not_fit_a_team_s_limit_is_refused_before_it_starts, tests/components/run/test_unit_limits.py::test_a_child_never_lets_a_step_through_its_parent, tests/components/run/test_unit_limits.py::test_the_company_s_limit_holds_every_unit_below_it, tests/components/run/test_unit_limits.py::test_booking_children_over_a_parent_that_keeps_them_within_is_refused, tests/components/run/test_unit_limits.py::test_a_unit_is_never_a_person, tests/components/run/test_unit_limits.py::test_wait_parks_the_run_until_the_next_period, tests/components/run/test_unit_limits.py::test_a_limit_of_one_process_holds_only_that_process, tests/components/run/test_unit_limits.py::test_an_alert_fires_at_its_share_and_reaches_the_role_once, tests/components/run/test_unit_limits.py::test_a_limit_held_per_person_tells_no_role_and_names_no_one, tests/components/governance/test_unit_limits.py::test_periods_are_a_day_an_iso_week_or_a_month_in_utc, tests/components/governance/test_unit_limits.py::test_a_forecast_is_a_band_and_says_what_it_was_computed_from, tests/components/governance/test_unit_limits.py::test_an_anomaly_is_a_day_far_above_the_robust_median_of_the_days_before, tests/components/governance/test_unit_limits.py::test_a_day_far_above_its_history_raises_an_anomaly_to_the_role_once, tests/components/governance/test_unit_limits.py::test_a_forecast_that_reaches_the_share_alerts_before_the_cost_does, tests/components/governance/test_unit_limits.py::test_a_limit_held_per_person_raises_no_alert_to_a_role, tests/integration/test_units_command.py::test_an_operator_sets_a_unit_limit_watches_it_and_sees_its_consumption]
+adrs: {ADR-0005: 0ea928e2016b, ADR-0010: e381de241d4a, ADR-0015: 3a42705e5561, ADR-0260: d26cc3cb308b, ADR-0282: c98f98a54368}
 supersedes: null
 ---
 
@@ -108,7 +108,8 @@ reading, and the owner kept it in DEC-0069. Comparing the working time of named 
 Money recomputed from the ledger, admission against what earlier steps used,
 the margin that absorbs an overrun, money per assignment held as an estimate, and the statement of
 what a budget can promise, by the named tests — for a run's budget. Units, inheritance along the
-organisation, alerts, policies other than halting, forecasts and anomalies are not built. The
+organisation, alerts, the policy of waiting, forecasts and anomalies are built for a limit per
+unit (ADR-0282), described below. The
 Takt of every run at the table in force when it started, recomputed at another table, with what
 it leaves out named and "uncalibrated" beside it, and the tenant's rate, by the named tests
 (#81).
@@ -117,3 +118,21 @@ A monthly budget for the tenant as a whole (ADR-0260), by the named tests in
 `test_tenant_budget.py`: once what the tenant's runs of the month cost reaches the amount the
 tenant set, every run of it waits at its next boundary, the role the budget names is told once by
 the incident `budget.reached`, and a raised budget or the month's turn lets the runs go on.
+
+Limits per unit of the structure (ADR-0282), by the named tests in `test_unit_limits.py` of the
+run and of the governance component: a limit for the company, a department, a team, or each
+person of a unit on their own, in money, compute seconds or tokens per day, week or month, for every process or one. A
+run is attributed to where its identity sat when it was created. A step is admitted only where
+its priced reservation fits what remains of every limit on that path, so a child never lets
+through what its parent refuses, and children are booked within or over a parent as the parent
+says. At the line the run halts for a person, or waits until the next check or period. An alert
+at a share of the amount or of the forecast's upper edge, the line reached, and an anomaly by a
+robust median rule reach the limit's role as incidents, each once. A forecast is a band naming
+the days it was computed from. A limit held per person names no one; what one person spent
+against it is shown only to that person, raises nothing to a role, and its harm report counts
+every person's holds together. A limit naming one person beside an amount is refused by the data
+model (principle 14); a budget for one person is a limit held per person on a team of one.
+
+Not built: the policy "continue on a cheaper model the process allows", so that the condition on
+policies is not yet met; and two runners admitting against one unit limit at the same instant
+may each cross it by one step (ADR-0282, *Where this promise ends*). The state stays `building`.
