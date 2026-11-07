@@ -12,7 +12,7 @@ directory, this file and the configuration that points at it are the only places
 repository that name the products. Everywhere else it is the capabilities.
 
 ```
-uv run python -m taktus_connectors.appstores --port 9140
+uv run python -m taktus_connectors.appstores --port 9139
 ```
 
 serves MCP over streamable HTTP at `/mcp` and readiness at `GET /health`.
@@ -103,7 +103,7 @@ token is ever logged. The connector has no key of its own.
 
 ```
 uv run taktusctl conformance run --contract connector/v1 \
-    --endpoint http://127.0.0.1:9140/mcp --scenario connectors/taktus_connectors/appstores/scenario.json
+    --endpoint http://127.0.0.1:9139/mcp --scenario connectors/taktus_connectors/appstores/scenario.json
 ```
 
 [`scenario.json`](scenario.json) lists the builds of an iOS app, gives an Android build to the

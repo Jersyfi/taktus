@@ -1,6 +1,6 @@
 """Run the helpdesk connector as a process.
 
-    uv run python -m taktus_connectors.zendesk --port 9140 --target https://acme.zendesk.com
+    uv run python -m taktus_connectors.zendesk --port 9142 --target https://acme.zendesk.com
 
 It serves MCP over streamable HTTP at `/mcp` and readiness at `GET /health`. `--target` is the
 account's own address; point it at the fake under `tests/fakes/helpdesk_service.py` to run
@@ -19,7 +19,7 @@ from taktus_connectors.zendesk.server import served
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = serving.arguments("The helpdesk connector.", 9140)
+    parser = serving.arguments("The helpdesk connector.", 9142)
     parser.add_argument("--target", default="", help="the account's address (required)")
     args = parser.parse_args(argv)
     if not args.target and not args.list_faults:

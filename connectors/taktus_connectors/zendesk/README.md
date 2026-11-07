@@ -11,13 +11,13 @@ helpdesk connector, [`freshdesk/`](../freshdesk/README.md), declares `helpdesk.t
 same operations and shapes, so that a process runs on either.
 
 ```
-uv run python -m taktus_connectors.zendesk --port 9140 --target https://acme.zendesk.com
+uv run python -m taktus_connectors.zendesk --port 9142 --target https://acme.zendesk.com
 ```
 
 serves MCP over streamable HTTP at `/mcp` and readiness at `GET /health`. `--target` is the
 account's own address and is required; point it at the fake under
 `tests/fakes/helpdesk_service.py` to run without a network. Added to an instance by one entry of
-`TAKTUS_CONNECTORS` per capability: `helpdesk.tickets=http://helpdesk-connector:9140/mcp`, and
+`TAKTUS_CONNECTORS` per capability: `helpdesk.tickets=http://helpdesk-connector:9142/mcp`, and
 `helpcentre.articles` at the same address.
 
 ## The documentation it follows
@@ -94,7 +94,7 @@ goes to the configured address and nowhere else.
 
 ```
 uv run taktusctl conformance run --contract connector/v1 \
-    --endpoint http://127.0.0.1:9140/mcp --scenario connectors/taktus_connectors/zendesk/scenario.json
+    --endpoint http://127.0.0.1:9142/mcp --scenario connectors/taktus_connectors/zendesk/scenario.json
 ```
 
 [`scenario.json`](scenario.json) lists every ticket of the fake, writes a note, closes a ticket

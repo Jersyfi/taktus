@@ -8,7 +8,7 @@ points at it are the only places in the repository that name the product. Everyw
 is `deployment.workloads` (ADR-0211).
 
 ```
-uv run python -m taktus_connectors.cloudrun --port 9131 \
+uv run python -m taktus_connectors.cloudrun --port 9146 \
     --project shop-prod --location europe-west1
 ```
 
@@ -60,7 +60,7 @@ key of its own.
 
 ```
 uv run taktusctl conformance run --contract connector/v1 \
-    --endpoint http://127.0.0.1:9131/mcp --scenario connectors/taktus_connectors/cloudrun/scenario.json
+    --endpoint http://127.0.0.1:9146/mcp --scenario connectors/taktus_connectors/cloudrun/scenario.json
 ```
 
 [`scenario.json`](scenario.json) reads the service `web`, releases an image to it twice under one

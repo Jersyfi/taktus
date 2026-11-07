@@ -1,6 +1,6 @@
 """Run the app stores connector as a process.
 
-    uv run python -m taktus_connectors.appstores --port 9140
+    uv run python -m taktus_connectors.appstores --port 9139
 
 It serves MCP over streamable HTTP at `/mcp` and readiness at `GET /health`.
 `--app-store-target` and `--play-target` are the two stores' API addresses, each its store's own
@@ -20,7 +20,7 @@ from taktus_connectors.appstores.server import served
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = serving.arguments("The app stores connector.", 9140)
+    parser = serving.arguments("The app stores connector.", 9139)
     parser.add_argument("--app-store-target", default=APP_STORE, help="the iOS store's API")
     parser.add_argument("--play-target", default=PLAY, help="the Android store's API")
     parser.add_argument("--target", default="", help="one address for both stores' APIs")

@@ -1,6 +1,6 @@
 """Run the serverless connector as a process.
 
-    uv run python -m taktus_connectors.cloudrun --port 9131 \
+    uv run python -m taktus_connectors.cloudrun --port 9146 \
         --project shop-prod --location europe-west1
 
 It serves MCP over streamable HTTP at `/mcp` and readiness at `GET /health`. `--target` is the
@@ -21,7 +21,7 @@ from taktus_connectors.cloudrun.server import served
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = serving.arguments("The serverless connector.", 9131)
+    parser = serving.arguments("The serverless connector.", 9146)
     parser.add_argument("--target", default=TARGET, help="the API")
     parser.add_argument("--project", default="", help="the project (required)")
     parser.add_argument("--location", default="", help="the location (required)")
