@@ -113,6 +113,7 @@ def test_the_document_is_openapi_3_1_with_the_prefix_as_a_server_variable() -> N
         "/value/proposals",
         "/value/transformation",
         "/value/basis",
+        "/value/knowledge",
         "/reports/definitions",
         "/reports/definitions/{report}",
         "/reports/definitions/{report}/now",

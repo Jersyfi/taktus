@@ -24,24 +24,29 @@ from taktus.components.process.domain.model import Process, ProcessVersion, Take
 from taktus.components.process.domain.model.proposal import OPEN, Proposal
 from taktus.components.reporting.application.query import LevelQueries
 from taktus.components.reporting.domain.model.live import Reader
+from taktus.components.reporting.domain.model.signal import Corridor, Judged
 from taktus.components.reporting.domain.model.views import Shown, ViewConfiguration
 from taktus.components.reporting.domain.service import views as selection
+from taktus.components.reporting.domain.service import warehouse
 from taktus.components.value.application.query import ValueLedger
 from taktus.components.value.application.service import ValueBases
 from taktus.components.value.domain.model import DiscoveredProcess, Figure, ValueProposal
 from taktus.components.value.domain.service import figures as value
 from taktus.components.value.domain.service.proposals import proposals as proposed
 from taktus.ports.clock import Clock
+from taktus.ports.connector import QUERYING
 from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 from taktus.shared.v1 import LedgerRefs, Method
 
 CONFIGURED = "views.configured"
+QUERY_SENT = "query.sent"
+"""The ledger's record of a query sent to the warehouse, by reference (ADR-0262 §3)."""
 RUN_FIGURES = {
     "run.working": "runs of the process working now, by the run component's definition WORKING",
     "run.waiting": "runs of the process waiting now, by the run component's definition WAITING",
 }
-KNOWN = frozenset({*value.DEFINITIONS, *RUN_FIGURES})
+KNOWN = frozenset({*value.DEFINITIONS, *RUN_FIGURES, warehouse.FIGURE})
 """Every figure an owner hands in: what a view may name."""
 
 
@@ -57,6 +62,75 @@ class Gathered:
 
 def shown(figure: Figure) -> Shown:
     return Shown.model_validate(figure.model_dump())
+
+
+class WarehouseFigures:
+    """The warehouse figures among the signals judged now: each signal whose step queries the
+    warehouse, with the query by reference (UC-5.6 §2, ADR-0291 §3)."""
+
+    def __init__(
+        self,
+        processes: Repository[Process],
+        versions: Repository[ProcessVersion],
+        ledger: Ledger,
+        work: UnitOfWork,
+    ) -> None:
+        self._processes = processes
+        self._versions = versions
+        self._ledger = ledger
+        self._work = work
+
+    async def shown(
+        self,
+        reader: Reader,
+        visible: frozenset[str],
+        judged: Sequence[tuple[Corridor, Judged]],
+    ) -> list[Shown]:
+        """The warehouse figures among the signals judged now: each signal whose step queries
+        the warehouse, with the query by reference (UC-5.6 §2, ADR-0291 §3). A process outside
+        `visible` contributes nothing."""
+        tenant = reader.tenant
+        out: list[Shown] = []
+        for corridor, one in judged:
+            if corridor.tenant != tenant or corridor.process not in visible:
+                continue
+            async with self._work.transaction(tenant):
+                ref = one.process_version
+                if ref is None:
+                    process = await self._processes.get(tenant, corridor.process)
+                    held = None if process is None else process.active_version
+                    ref = None if held is None else f"{corridor.process}@{held}"
+                version = None if ref is None else await self._versions.get(tenant, ref)
+                entries = (
+                    [] if one.run_id is None else await self._ledger.entries(tenant, one.run_id)
+                )
+            step = None if version is None else version.work.get(corridor.step)
+            if not isinstance(step, Mapping) or step.get("rule") != "connector":
+                continue
+            operation = str(step.get("operation", ""))
+            if operation.rsplit(".", 1)[0] not in QUERYING:
+                continue
+            given = step.get("input")
+            sent = [
+                e
+                for e in entries
+                if e.kind == QUERY_SENT and e.refs.step_id == corridor.step and e.content_digest
+            ]
+            newest = sent[-1] if sent else None
+            out.append(
+                warehouse.figure(
+                    corridor,
+                    one,
+                    warehouse.Reading(
+                        operation=operation,
+                        fixed=isinstance(given, Mapping) and isinstance(given.get("query"), str),
+                        seq=None if newest is None else newest.seq,
+                        digest=None if newest is None else newest.content_digest,
+                        sent_at=None if newest is None else newest.ts,
+                    ),
+                )
+            )
+        return out
 
 
 class FigureReads:
@@ -96,6 +170,7 @@ class FigureReads:
         self._ledger = ledger
         self._work = work
         self._clock = clock
+        self._warehouse = WarehouseFigures(processes, versions, ledger, work)
 
     # --- the view configuration (ADR-0241 §2) ------------------------------------------------
 
@@ -185,6 +260,15 @@ class FigureReads:
             facts=facts,
             holders=await self._identities.role_holders(tenant),
         )
+
+    async def warehouse(
+        self,
+        reader: Reader,
+        visible: frozenset[str],
+        judged: Sequence[tuple[Corridor, Judged]],
+    ) -> list[Shown]:
+        """The warehouse figures among the signals judged now (ADR-0291 §3)."""
+        return await self._warehouse.shown(reader, visible, judged)
 
     async def _run_figures(self, reader: Reader, visible: frozenset[str]) -> list[Shown]:
         """The overview's own counts, read from the overview level itself (UC-6.10)."""

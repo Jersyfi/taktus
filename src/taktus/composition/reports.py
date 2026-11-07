@@ -46,6 +46,7 @@ from taktus.components.value.application.query import ValueLedger
 from taktus.components.value.application.service import Discoveries, ValueBases
 from taktus.components.value.domain.model import DiscoveredProcess, ValueBasis
 from taktus.composition.figures import FigureReads, Gathered
+from taktus.composition.knowledge_value import KnowledgeComparison
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.persistence import ProvenanceStore, Repository, Tenant, UnitOfWork
@@ -467,6 +468,7 @@ class ReadingWiring:
     own: OwnViews
     bases: ValueBases
     discoveries: Discoveries
+    knowledge: KnowledgeComparison
 
 
 def reading_wiring(
@@ -535,6 +537,14 @@ def reading_wiring(
         ),
         bases=bases,
         discoveries=Discoveries(of(DiscoveredProcess), ledger, work, clock, identifiers),
+        knowledge=KnowledgeComparison(
+            versions=of(ProcessVersion),
+            ledger=ledger,
+            spend=spend,
+            bases=bases,
+            work=work,
+            clock=clock,
+        ),
     )
 
 

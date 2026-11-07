@@ -93,7 +93,7 @@ from taktus.components.reporting.domain.service.variants import VariantsView
 from taktus.components.run.application.service import HandBack, SteerStep, TakeOver
 from taktus.components.run.domain.model import Run
 from taktus.components.value.application.service import Discoveries, ValueBases
-from taktus.components.value.domain.model import ValueProposal
+from taktus.components.value.domain.model import Figure, ValueProposal
 from taktus.components.value.domain.service.figures import Facts as ValueFacts
 from taktus.components.value.domain.service.figures import Index
 from taktus.ports.clock import Clock
@@ -532,11 +532,27 @@ class FigureGathering(Protocol):
         self, reader: LiveReader, visible: frozenset[str], days: int
     ) -> GatheredFigures: ...
 
+    async def warehouse(
+        self,
+        reader: LiveReader,
+        visible: frozenset[str],
+        judged: Sequence[tuple[Corridor, Judged]],
+    ) -> list[Shown]:
+        """The warehouse figures among the signals judged now (ADR-0291 §3)."""
+        ...
+
     async def configuration(self, tenant: Tenant) -> ViewConfiguration: ...
 
     async def configure(
         self, tenant: Tenant, document: Mapping[str, Any], *, by: str
     ) -> ViewConfiguration: ...
+
+
+class KnowledgeReads(Protocol):
+    """The same work with and without a knowledge source connected, compared on the value
+    ledger's figures (ADR-0291)."""
+
+    async def figures(self, tenant: Tenant, visible: frozenset[str], days: int) -> list[Figure]: ...
 
 
 class ReportReads(Protocol):
@@ -588,6 +604,9 @@ class Reading(Protocol):
 
     @property
     def discoveries(self) -> Discoveries: ...
+
+    @property
+    def knowledge(self) -> KnowledgeReads: ...
 
 
 class RestServices(Protocol):

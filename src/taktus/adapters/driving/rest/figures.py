@@ -2,13 +2,15 @@
 HTTP surface (ADR-0241 to ADR-0245).
 
 - `GET /figures?days=` and `GET /figures.csv?days=` — every figure the reader is entitled to:
-  the export (UC-5.7).
+  the export (UC-5.7), the warehouse figures among the signals with them (UC-5.6, ADR-0291).
 - `GET /views?days=` — the reader's views with their figures (UC-6.4);
   `GET`/`PUT /views/configuration` — the tenant's views and entitlements, set by `owner`.
 - `GET /value/index`, `GET /value/proposals`, `GET /value/transformation` — the bus-factor
   index, the value proposals and the transformation (UC-6.7, UC-9.1, UC-9.3, UC-9.2);
   `GET`/`PUT /value/basis` — the organisation's stated basis, set by a role holding
-  `process.steer`, or by `owner` while no role of the tenant holds it (UC-9.1, ADR-0293).
+  `process.steer`, or by `owner` while no role of the tenant holds it (UC-9.1, ADR-0293);
+  `GET /value/knowledge` — the same work with and without a knowledge source connected,
+  compared on those figures (UC-5.5, ADR-0291).
 - `GET /reports/definitions`, `PUT /reports/definitions/{id}` and
   `GET /reports/definitions/{id}/now` — reports for a role (UC-6.2).
 - `GET /levels/runs/{run}/steps/{step}/explanation` and `GET /summary?days=` (UC-6.5).
@@ -41,7 +43,7 @@ from taktus.components.reporting.domain.service import own
 from taktus.components.reporting.domain.service import views as selection
 from taktus.components.value.domain.model import DiscoveryRefused
 from taktus.components.value.domain.model.discovery import Stage
-from taktus.components.value.domain.service import discovery
+from taktus.components.value.domain.service import discovery, knowledge
 from taktus.ports.identity import Resolution
 
 type Authenticated = Callable[[RestServices, str | None], Awaitable[Resolution | None]]
@@ -102,12 +104,22 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
         return Asked(who=who, reader=reader, visible=await visible(services, who))
 
-    async def entitled(a: Asked, days: int) -> tuple[list[Any], Any]:
+    async def every(a: Asked, days: int) -> tuple[list[Any], Any, Any]:
+        """Every owner's figures and the warehouse figures among the signals judged now
+        (ADR-0291 §3), with the tenant's configuration."""
         reading = services.reading
         gathered = await reading.figures.gather(a.reader, a.visible, days)
-        configuration = await reading.figures.configuration(a.who.tenant)
+        judged = await services.operation.signals(a.who.tenant)
+        shown = [
+            *gathered.shown,
+            *await reading.figures.warehouse(a.reader, a.visible, judged),
+        ]
+        return shown, gathered, await reading.figures.configuration(a.who.tenant)
+
+    async def entitled(a: Asked, days: int) -> tuple[list[Any], Any]:
+        shown, gathered, configuration = await every(a, days)
         return (
-            selection.exported(a.who.roles, configuration, gathered.shown, gathered.holders),
+            selection.exported(a.who.roles, configuration, shown, gathered.holders),
             gathered,
         )
 
@@ -164,13 +176,11 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         a = await asked(authorization)
         if a is None:
             return problem(401, NEEDS_KEY)
-        reading = services.reading
-        gathered = await reading.figures.gather(a.reader, a.visible, days)
-        configuration = await reading.figures.configuration(a.who.tenant)
+        shown, gathered, configuration = await every(a, days)
         return JSONResponse(
             {
                 "views": selection.shown(
-                    a.who.identity, a.who.roles, configuration, gathered.shown, gathered.holders
+                    a.who.identity, a.who.roles, configuration, shown, gathered.holders
                 )
             }
         )
@@ -280,6 +290,37 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
                     if f.id == "value.bus_factor.without_taktus"
                 ],
                 "backlog": gathered.backlog,
+            }
+        )
+
+    @routes.get(
+        "/value/knowledge",
+        summary="The same work with and without a knowledge source connected, compared",
+        description="Per process whose versions read knowledge: the cockpit's figures of the "
+        "runs whose knowledge read a connected source answered, of those it did not, and the "
+        "difference, each with its method and basis. A side without an ended run withholds "
+        "its figures, never zero. A figure reaches a reader entitled to the cockpit figure it "
+        "compares (UC-5.5, ADR-0291).",
+        responses={200: {"description": "The comparison."}, **common},
+    )
+    async def knowledge_compared(
+        days: int = DAYS, authorization: str | None = Header(default=None)
+    ) -> Any:
+        a = await asked(authorization)
+        if a is None:
+            return problem(401, NEEDS_KEY)
+        reading = services.reading
+        found = await reading.knowledge.figures(a.who.tenant, a.visible, days)
+        configuration = await reading.figures.configuration(a.who.tenant)
+        return JSONResponse(
+            {
+                "figures": [
+                    f.model_dump(mode="json")
+                    for f in found
+                    if selection.entitled(
+                        a.who.roles, configuration, knowledge.compared_of(f.id) or f.id
+                    )
+                ]
             }
         )
 

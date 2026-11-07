@@ -37,11 +37,14 @@ from taktus.components.governance.domain.model import IncidentKind
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersion,
 )
-from taktus.components.process.domain.model import ProcessVersion
+from taktus.components.process.domain.model import Process, ProcessVersion
 from taktus.components.reporting.application.service import Changer, ConfigureCorridor
 from taktus.components.reporting.domain.model import Level
+from taktus.components.reporting.domain.model.live import Reader as LiveReader
+from taktus.components.reporting.domain.service import views as selection
 from taktus.components.run.application.service import EngineOptions, RunEngine, StartRun
 from taktus.components.run.domain.model import Run, RunState
+from taktus.composition.figures import KNOWN, WarehouseFigures
 from taktus.ports.worker import Limits
 from taktus.shared.v1 import Commissioned, InputKind, Plan, PlanResult, PlanStatus
 
@@ -232,3 +235,62 @@ async def test_the_daily_report_offers_the_process_a_person_may_start_from_the_f
     assert line.startswith("YELLOW product.subscribers_daily: 90")
     offered: Any = report.document()
     assert "throttle-cloud" in str(offered)
+
+
+async def test_every_warehouse_figure_a_view_or_a_report_shows_is_in_the_export(
+    warehouse: str,
+) -> None:
+    """UC-5.6 §2, ADR-0291 §3: the signals the view shows (`GET /signals` reads them judged
+    now) and the daily report lists are in the export, each with its definition, its method and
+    the query by reference; a signal over a step that queries no warehouse is not."""
+    w = Warehouse(warehouse)
+    await w.ready()
+    await w.signals.corridors.configure(
+        ConfigureCorridor(
+            tenant=TENANT,
+            signal="cost.throttle",
+            fields={
+                "process": "throttle-cloud",
+                "step": THROTTLE["steps"][0]["id"],
+                "bounds": "fixed",
+                "direction": "above",
+                "yellow": 1,
+                "red": 2,
+                "role": "owner",
+                "case": "https://tickets.example/board/cost",
+            },
+        ),
+        by=Changer(identity=OWNER),
+    )
+    await w.day(140)
+    read = await w.day(90)
+    judged = await w.signals.watch.judged(TENANT)
+    report = await w.signals.watch.daily(TENANT)
+    assert report is not None
+    reader = LiveReader(tenant=TENANT, identity=OWNER, roles=("owner",))
+    figures = WarehouseFigures(w.of(Process), w.of(ProcessVersion), w.ledger, w.persistence)
+    seen = frozenset({"read-subscribers", "throttle-cloud"})
+    shown = await figures.shown(reader, seen, judged)
+    configuration = selection.default(TENANT, KNOWN, w.clock.now())
+    exported = selection.exported(("owner",), configuration, shown, {})
+    by_signal = {f.basis["signal"]: f for f in exported}
+    assert set(by_signal) == {"product.subscribers_daily"}, "only the warehouse's"
+
+    warehoused = [(c, j) for c, j in judged if c.process == "read-subscribers"]
+    assert warehoused, "the view shows a warehouse figure"
+    for corridor, one in warehoused:
+        figure = by_signal[corridor.signal]
+        assert figure.value == one.value == 90.0
+        assert figure.definition and "fixed in the process version" in figure.method
+    reported = [n for n in report.needed if "product.subscribers_daily" in n]
+    assert reported and reported[0].startswith("YELLOW product.subscribers_daily: 90")
+    figure = by_signal["product.subscribers_daily"]
+    query = figure.basis["query"]
+    async with w.persistence.transaction(TENANT):
+        entries = await w.ledger.entries(TENANT, read.id)
+    (sent,) = [e for e in entries if e.kind == "query.sent"]
+    assert (query["ledger_seq"], query["digest"]) == (sent.seq, sent.content_digest)
+    assert query["text_at"] == f"/levels/runs/{read.id}/steps/read/queries"
+    assert QUERY not in str(figure.basis), "the query by reference, never its text"
+    elsewhere = await figures.shown(reader, frozenset({"throttle-cloud"}), judged)
+    assert elsewhere == [], "a process the reader may not see contributes nothing"

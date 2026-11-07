@@ -6197,6 +6197,51 @@ paths:
           description: A parameter or a body does not validate.
           content:
             application/problem+json: {}
+  /value/knowledge:
+    get:
+      tags:
+      - figures
+      summary: The same work with and without a knowledge source connected, compared
+      description: 'Per process whose versions read knowledge: the cockpit''s figures of the runs whose
+        knowledge read a connected source answered, of those it did not, and the difference, each with
+        its method and basis. A side without an ended run withholds its figures, never zero. A figure
+        reaches a reader entitled to the cockpit figure it compares (UC-5.5, ADR-0291).'
+      operationId: knowledge_compared_value_knowledge_get
+      parameters:
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 366
+          minimum: 1
+          description: The period, in days up to now.
+          default: 30
+          title: Days
+        description: The period, in days up to now.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The comparison.
+          content:
+            application/json:
+              schema:
+                title: Response Knowledge Compared Value Knowledge Get
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
   /value/basis:
     get:
       tags:

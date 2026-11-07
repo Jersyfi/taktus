@@ -11,10 +11,13 @@ from __future__ import annotations
 import csv
 import io
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import httpx
+import yaml
+from composition.test_warehouse_signals import SUBSCRIBERS
 from fakes.takeover import instructed
 
 from taktus.adapters.driven.memory import MemoryProvenanceStore, MemoryRepository
@@ -25,6 +28,7 @@ from taktus.components.process.application.service.register_version import (
 )
 from taktus.components.process.domain.model import Process, ProcessVersion
 from taktus.components.process.domain.model.proposal import Difference, Proposal
+from taktus.components.reporting.domain.model import Corridor, Judged, Level
 from taktus.components.run.domain.model import Run, StepState
 from taktus.ports.ledger import Fact
 from taktus.ports.worker import ComputeLimit, Limits
@@ -39,6 +43,7 @@ type Client = tuple[httpx.AsyncClient, Services, str]
 
 ROOT = Path(__file__).resolve().parents[3]
 DIGEST = "sha256:" + "3" * 64
+K_01 = ROOT / "blueprints" / "knowledge" / "processes" / "K-01-answer-from-knowledge.yaml"
 
 
 async def world(given: Services) -> dict[str, str]:
@@ -77,14 +82,13 @@ async def world(given: Services) -> dict[str, str]:
 
 async def fact(given: Services, kind: str, run: str, **more: Any) -> None:
     step = more.pop("step", None)
+    version = more.pop("version", "invoice@1")
     async with given.persistence.transaction(TENANT):
         await given.ledger.record(
             TENANT,
             Fact(
                 kind=kind,
-                refs=LedgerRefs(
-                    tenant=TENANT, process_version="invoice@1", run_id=run, step_id=step
-                ),
+                refs=LedgerRefs(tenant=TENANT, process_version=version, run_id=run, step_id=step),
                 **more,
             ),
         )
@@ -240,6 +244,135 @@ async def test_the_overview_s_counts_are_in_the_export_as_the_overview_counts_th
         if f["subject"] == "invoice" and f["id"].startswith("run.")
     }
     assert counted == {"run.working": process["working"], "run.waiting": process["waiting"]}
+
+
+async def test_the_same_work_with_and_without_a_knowledge_source_is_compared_for_whom_may_read_it(
+    client: Client,
+) -> None:
+    """UC-5.5 §2, ADR-0291: the comparison at `GET /value/knowledge`, entitled as the cockpit
+    figure it compares."""
+    http, given, base = client
+    keys = await world(given)
+    register = RegisterProcessVersionHandler(
+        MemoryRepository(given.persistence, ProcessVersion),
+        given.persistence,
+        MemoryRepository(given.persistence, Process),
+        ledger=given.ledger,
+    )
+    bundle = yaml.safe_load(K_01.read_text(encoding="utf-8"))
+    await register.execute(RegisterProcessVersion(bundle, tenant=TENANT, by="idn_owner"))
+    for run, served, end in (("run_k1", True, "run.finished"), ("run_k2", False, "run.escalated")):
+        await fact(given, "run.created", run, version="k-01@1")
+        await fact(
+            given,
+            "step.finished",
+            run,
+            version="k-01@1",
+            step="search",
+            outcome="succeeded",
+            method=Method.RULE if served else Method.HUMAN,
+            adapter="connector.knowledge" if served else None,
+        )
+        await fact(given, end, run, version="k-01@1")
+    owner = await http.get(f"{base}/value/knowledge", headers=bearer(keys["idn_owner"]))
+    assert owner.status_code == 200, owner.text
+    found = {f["id"]: f for f in owner.json()["figures"] if f["subject"] == "k-01"}
+    assert found["value.with_knowledge.runs_ended"]["basis"]["runs"] == ["run_k1"]
+    assert found["value.without_knowledge.runs_ended"]["basis"]["runs"] == ["run_k2"]
+    assert found["value.knowledge_effect.escalation_rate"]["value"] == -1
+    assert found["value.knowledge_effect.quality"]["value"] == 1
+    cost = found["value.knowledge_effect.cost_per_case"]
+    assert cost["value"] is None and cost["withheld"], "never zero for want of a basis"
+    assert not any(f["subject"] == "invoice" for f in owner.json()["figures"]), (
+        "a process that reads no knowledge is not compared"
+    )
+    await configured(http, base, keys)
+    cy = (await http.get(f"{base}/value/knowledge", headers=bearer(keys["idn_cy"]))).json()
+    assert {f["id"].rsplit(".", 1)[1] for f in cy["figures"]} == {"quality", "escalation_rate"}
+    other = (await http.get(f"{base}/value/knowledge", headers=bearer(keys["other"]))).json()
+    assert other["figures"] == [], "another tenant"
+    assert (await http.get(f"{base}/value/knowledge")).status_code == 401
+
+
+async def test_every_warehouse_figure_the_signals_view_shows_is_in_the_export(
+    client: Client,
+) -> None:
+    """UC-5.6 §2, ADR-0291 §3: a signal over a step that queries the warehouse, shown at
+    `GET /signals`, is in `GET /figures` and its CSV with the same value; a view may name it."""
+    http, given, base = client
+    keys = await world(given)
+    register = RegisterProcessVersionHandler(
+        MemoryRepository(given.persistence, ProcessVersion),
+        given.persistence,
+        MemoryRepository(given.persistence, Process),
+        ledger=given.ledger,
+    )
+    await register.execute(
+        RegisterProcessVersion(instructed(SUBSCRIBERS), tenant=TENANT, by="idn_owner")
+    )
+    at = datetime(2026, 11, 6, 6, 0, tzinfo=UTC)
+    corridor = Corridor(
+        id="product.subscribers_daily@1",
+        tenant=TENANT,
+        signal="product.subscribers_daily",
+        version=1,
+        process="read-subscribers",
+        step="read",
+        select="output.rows.0.subscribers",
+        bounds="fixed",
+        direction="below",
+        yellow=100,
+        red=80,
+        role="owner",
+        case="https://tickets.example/board/subscribers",
+        changed_at=at,
+    )
+    judged = Judged(
+        signal=corridor.signal,
+        corridor=corridor.id,
+        level=Level.YELLOW,
+        value=90.0,
+        yellow_at=100,
+        red_at=80,
+        run_id="run_w1",
+        step_id="read",
+        process_version="read-subscribers@1",
+        at=at,
+    )
+    given.operation.signals_of[TENANT] = [(corridor, judged)]
+    owner = bearer(keys["idn_owner"])
+    (signal,) = (await http.get(f"{base}/signals", headers=owner)).json()["signals"]
+    export = (await http.get(f"{base}/figures", headers=owner)).json()
+    (figure,) = [f for f in export["figures"] if f["id"] == "signal.warehouse"]
+    assert (figure["subject"], figure["value"]) == ("read-subscribers", signal["value"])
+    assert figure["basis"]["signal"] == signal["signal"]
+    assert figure["basis"]["query"]["operation"] == "warehouse.queries.run"
+    assert figure["basis"]["query"]["fixed"] is True
+    rows = list(
+        csv.DictReader(io.StringIO((await http.get(f"{base}/figures.csv", headers=owner)).text))
+    )
+    assert ("signal.warehouse", "read-subscribers") in {(r["id"], r["subject"]) for r in rows}
+    stored = await http.put(
+        f"{base}/views/configuration",
+        headers=owner,
+        json={
+            "views": [
+                {
+                    "id": "data",
+                    "title": "Data",
+                    "roles": ["owner"],
+                    "group_by": "process",
+                    "figures": ["signal.warehouse"],
+                }
+            ],
+            "entitlements": {"signal.warehouse": ["owner"]},
+        },
+    )
+    assert stored.status_code == 200, stored.text
+    (view,) = (await http.get(f"{base}/views", headers=owner)).json()["views"]
+    assert [f["value"] for f in view["figures"]] == [90.0]
+    cy = (await http.get(f"{base}/figures", headers=bearer(keys["idn_cy"]))).json()
+    assert all(f["id"] != "signal.warehouse" for f in cy["figures"]), "entitled to owner only"
 
 
 async def test_a_report_without_a_reader_is_refused_and_one_with_one_tells_what_bears_on_it(
