@@ -24,8 +24,14 @@ from taktus_connectors.discourse.operations import Config as ForumConfig
 from taktus_connectors.discourse.server import build_server as forum_server
 from taktus_connectors.httpcheck.operations import Config as CheckConfig
 from taktus_connectors.httpcheck.server import build_server as check_server
+from taktus_connectors.hubspot.operations import Config as CrmConfig
+from taktus_connectors.hubspot.server import build_server as crm_server
+from taktus_connectors.jira.operations import Config as RestTasksConfig
+from taktus_connectors.jira.server import build_server as rest_tasks_server
 from taktus_connectors.kubernetes.operations import Config as WorkloadsConfig
 from taktus_connectors.kubernetes.server import build_server as workloads_server
+from taktus_connectors.linear.operations import Config as GraphTasksConfig
+from taktus_connectors.linear.server import build_server as graph_tasks_server
 from taktus_connectors.mail.protocol import Config as MailConfig
 from taktus_connectors.mail.server import build_server as mail_server
 from taktus_connectors.mastodon.operations import Config as SocialConfig
@@ -65,6 +71,9 @@ SERVERS: dict[str, Any] = {
     "mentions-social": lambda: social_server(SocialConfig("http://127.0.0.1:9")),
     "payments": lambda: payments_server(PaymentsConfig("http://127.0.0.1:9")),
     "workloads": lambda: workloads_server(WorkloadsConfig("http://127.0.0.1:9")),
+    "crm": lambda: crm_server(CrmConfig("http://127.0.0.1:9")),
+    "tasks-graph": lambda: graph_tasks_server(GraphTasksConfig("http://127.0.0.1:9")),
+    "tasks-rest": lambda: rest_tasks_server(RestTasksConfig("http://127.0.0.1:9", "TSK")),
 }
 SERVES = {
     "mail": ["channel.mail", "mail.messages"],
@@ -79,6 +88,9 @@ SERVES = {
     "mentions-social": ["mentions.search"],
     "payments": ["payments.customers", "payments.subscriptions"],
     "workloads": ["deployment.workloads"],
+    "crm": ["crm.contacts"],
+    "tasks-graph": ["tasks.items"],
+    "tasks-rest": ["tasks.items"],
 }
 
 
