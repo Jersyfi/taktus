@@ -3,9 +3,9 @@ id: UC-7.9
 title: An input check is a visible step, not a hidden filter
 component: governance
 serves: [P7, P8, P12]
-state: building
+state: verified
 version: 0.5.0
-tests: [tests/components/run/test_input_screen.py::test_an_input_the_check_refuses_never_reaches_the_model, tests/components/run/test_input_screen.py::test_personal_data_is_refused_and_the_reason_does_not_repeat_it, tests/components/run/test_input_screen.py::test_an_input_the_check_passes_reaches_the_model_unchanged, tests/components/run/test_input_screen.py::test_the_screen_runs_the_checks_it_names_and_reads_a_list_as_one_text, tests/components/run/test_input_screen.py::test_a_check_is_named_once_and_only_from_the_catalogue]
+tests: [tests/components/run/test_input_screen.py::test_an_input_the_check_refuses_never_reaches_the_model, tests/components/run/test_input_screen.py::test_personal_data_is_refused_and_the_reason_does_not_repeat_it, tests/components/run/test_input_screen.py::test_an_input_the_check_passes_reaches_the_model_unchanged, tests/components/run/test_input_screen.py::test_the_screen_runs_the_checks_it_names_and_reads_a_list_as_one_text, tests/components/run/test_input_screen.py::test_a_check_is_named_once_and_only_from_the_catalogue, tests/components/run/test_input_screen.py::test_an_input_check_classed_exact_does_not_register]
 adrs: {ADR-0004: ffdb1f1537f5, ADR-0014: 6611f7833deb}
 supersedes: null
 ---
