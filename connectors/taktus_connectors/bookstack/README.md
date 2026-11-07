@@ -4,8 +4,10 @@ The connector contract v1 ([`contracts/connector/v1`](../../../../../../contract
 implemented against the REST interface of BookStack, the wiki the owner chose for the guides
 (DEC-0176, NEED-0021). This directory, this file and the configuration that points at it are
 the only places in the repository that name the product. Everywhere else — processes,
-blueprints, documents — it is the capability `knowledge.pages` (ADR-0065 §4). Another tenant's
-knowledge system is configuration, and another connector serves the same capability.
+blueprints, documents — it is the capability `knowledge.pages` (ADR-0065 §4), where the guides
+are written, and `knowledge.documents`, the wiki as a knowledge source that answers are drawn
+from (ADR-0265). Another tenant's knowledge system is configuration, and another connector
+serves the same capabilities.
 
 It is a knowledge system, not a requirement: with it removed the guides go to the directory the
 instance serves where one is configured (`TAKTUS_KNOWLEDGE_DIRECTORY`), and nowhere otherwise.
@@ -21,7 +23,9 @@ fake under `tests/fakes/wiki_service.py` to run without a network.
 
 **Adding it to an instance** is one entry of `TAKTUS_CONNECTORS`:
 `knowledge.pages=http://knowledge-connector:9102/mcp`. The run's connector pool then finds
-`knowledge.pages` in its declaration, and S-05 publishes the guides into the wiki. Nothing under
+`knowledge.pages` in its declaration, and S-05 publishes the guides into the wiki. A second
+entry, `knowledge.documents=http://knowledge-connector:9102/mcp`, makes it a source K-01
+answers from (`blueprints/knowledge/`). Nothing under
 `src/taktus/components/` changes (`tests/adapters/connectors/test_guides_wiki.py`). On a
 cluster the chart deploys it from an entry of `connectors.others`, which writes that entry
 itself (`deploy/k8s/README.md` §2, #259).
@@ -35,6 +39,8 @@ The resource `taktus://connector/v1/capabilities` ([`declaration.py`](declaratio
 | `knowledge.pages.list` | read | — | `place` of one to three names | `pages`: every page at or below the place, each with `place`, `digest` and `mark` |
 | `knowledge.pages.read` | read | — | `place` of three names | `place`, `body`, `digest`, `mark`; `not_found` where no page is |
 | `knowledge.pages.write` | write | marked | `place` of three names, `body`, `mark`, `expected` | `place`, `digest`; `conflict` where the page does not hold `expected`, or a page is there when `expected` is `null` |
+| `knowledge.documents.search` | read | — | `query`, `count` from 1 to 10, 5 where none is given | `documents`: each page the wiki's search found and shows the token, with `document`, `title`, `url`, `version`, `digest` and `body` |
+| `knowledge.documents.versions` | read | — | `documents`: 1 to 10 identifiers a search gave, or the documents it answered | `documents`: each with `document`, `version` and `digest`, or `absent: true` |
 
 `digest` is the SHA-256 of a page's text as UTF-8, written `sha256:<hex>`. A write's record is
 the page, `knowledge.page` with the wiki's identifier of it.
@@ -43,7 +49,8 @@ Consumption is counted in `quota` units named `requests`, in a window of 60 seco
 the wiki's rate limit is stated in. Every result reports how many requests the call made. A
 call's `demand` is its most: a list at most 70 — two to find the shelf and its books, at most two
 listings of 500 pages per book for at most four books, and one read per page for at most 60
-pages; a read at most 5; a write at most 8. A list over a place with more books or pages is
+pages; a read at most 5; a write at most 8; a search at most 11; a reading of versions at
+most 10. A list over a place with more books or pages is
 refused as `invalid`, never cut short.
 
 ## How a place maps onto the wiki
@@ -64,6 +71,30 @@ its pages are the third level.
   listed, read or written. A page the connector creates is never in a chapter.
 - Shelves and books are made by a person in the wiki (NEED-0021). A write into a shelf or a book
   that does not exist ends `not_found`; the connector only creates and changes pages.
+
+## The wiki as a knowledge source
+
+`knowledge.documents` is read from the wiki's published interface for programs, as its API
+documentation states it (`<base address>/api/docs`; the public demonstration at
+`https://demo.bookstackapp.com/api/docs`): the endpoint *search-all*, `GET /api/search` with
+`query`, `page` and `count` of at most 100, and *pages-read*, `GET /api/pages/{id}`.
+
+- **A search** asks `GET /api/search` once, for 50 results on its first page. The wiki's
+  search finds shelves, books, chapters and pages; the connector keeps the pages that are not
+  drafts, in the order the wiki ranked them, up to `count`, and reads each with
+  `GET /api/pages/{id}`. A page in a chapter is a document too: a search has no place to fit.
+- **What each document is.** `document` is the page's identifier in the wiki. `url` is the
+  link the search answers for it, absolute, built by the wiki from the book's and the page's
+  slugs. `version` is the page's `revision_count`, the number of revisions the wiki keeps of
+  it. `digest` is the SHA-256 of its text as it stands, and `body` that text: the page's
+  Markdown, or its HTML where its Markdown is empty.
+- **What a token may view.** The wiki limits everything its interface answers to what the
+  token's user may view, by its roles and permissions (the API documentation, *Authentication*).
+  So a search with a person's token (ADR-0264) finds what that person may view, and nothing
+  more.
+- **A reading of versions** reads each page named again. A page the wiki answers 404 or 403
+  for is `absent`: the wiki answers a page its user may not view as not found, so a page
+  deleted and a page hidden since cannot be told apart.
 
 ## What it keeps beside a page
 
@@ -109,7 +140,7 @@ describes it as a parameter, under NEED-0021:
 
 | Name | Purpose | How it reaches the connector |
 |---|---|---|
-| `KNOWLEDGE_TOKEN` | actions: the token of the wiki's user `Taktus`, `<id>:<secret>`, sent as `Authorization: Token <id>:<secret>` | referenced in the call's context. For a reference `injected_as: env`, read from the file `TAKTUS_CREDENTIAL_KNOWLEDGE_TOKEN_FILE` names; for `injected_as: file`, from the path the reference gives. At the moment of the call; never stored |
+| `KNOWLEDGE_TOKEN` | actions: the token of the wiki's user `Taktus`, `<id>:<secret>`, sent as `Authorization: Token <id>:<secret>`. For a step on behalf of a person, that person's own token in its place (ADR-0264) | referenced in the call's context. For a reference `injected_as: env`, read from the file `TAKTUS_CREDENTIAL_KNOWLEDGE_TOKEN_FILE` names; for `injected_as: file`, from the path the reference gives. At the moment of the call; never stored |
 
 **Never from the environment.** A variable holding the value itself is not read, because a
 process listing shows variables: a call whose file is missing ends `unauthenticated`. The

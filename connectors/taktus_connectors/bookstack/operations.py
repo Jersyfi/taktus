@@ -40,6 +40,16 @@ request.
 
 **A repeat** is a write whose key the page already carries in its tags, with the digest of the
 same text. It writes nothing and answers `replayed`.
+
+**The wiki as a knowledge source** (`knowledge.documents`, ADR-0265). A search asks the wiki's
+search (`GET /api/search`) once, for `SEARCHED` results, and keeps the pages among them — the
+search also finds shelves, books and chapters — up to `count`. It then reads each page it kept,
+for its text and the number of its revisions. The wiki searches with the rights of the token the
+call names, so a page that token may not view is not found. A page's `document` is its
+identifier in the wiki, its `url` the link the search gives, its `version` the number of
+revisions the wiki holds of it, its `digest` that of its text as it stands. A reading of
+versions reads each page named again: a page the wiki answers `not_found` or `forbidden` for is
+`absent`, since the wiki answers a page its token may not view as not found too.
 """
 
 from __future__ import annotations
@@ -56,10 +66,13 @@ from taktus_connectors.bookstack.api import Api, TargetError
 from taktus_connectors.bookstack.declaration import (
     LIST,
     MAX_BOOKS,
+    MAX_FOUND,
     MAX_LISTINGS,
     MAX_PAGES,
     PAGE,
     READ,
+    SEARCH,
+    VERSIONS,
     WRITE,
 )
 
@@ -75,6 +88,11 @@ CHUNK = 160
 MAX_NAME = 255
 CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 RECORD = "knowledge.page"
+SEARCHED = 50
+"""How many results one search asks the wiki for: pages and the shelves, books and chapters
+among which it finds them. The wiki answers at most 100."""
+MAX_QUERY = 500
+DEFAULT_FOUND = 5
 
 
 @dataclass(frozen=True)
@@ -378,10 +396,100 @@ def _written(place: tuple[str, ...], page: Json, written: str, *, replayed: bool
     return Outcome({"place": list(place), "digest": written}, effect)
 
 
+def _found(input: Json) -> int:
+    count = input.get("count", DEFAULT_FOUND)
+    if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= MAX_FOUND:
+        raise invalid(f"`count` is a whole number from 1 to {MAX_FOUND}")
+    return count
+
+
+def _query(input: Json) -> str:
+    query = input.get("query")
+    if not isinstance(query, str) or not query.strip():
+        raise invalid("`query` is the text to search for")
+    if len(query) > MAX_QUERY or CONTROL.search(query):
+        raise invalid(f"`query` has a control character or more than {MAX_QUERY} characters")
+    return query.strip()
+
+
+def _version(page: Json) -> str:
+    """The number of revisions the wiki holds of a page; its last change where it gives none."""
+    revisions = page.get("revision_count")
+    if isinstance(revisions, int) and not isinstance(revisions, bool):
+        return str(revisions)
+    return str(page.get("updated_at") or "")
+
+
+def _document(page: Json, url: str) -> Json:
+    text = text_of(page)
+    return {
+        "document": str(int(page["id"])),
+        "title": str(page.get("name") or ""),
+        "url": url,
+        "version": _version(page),
+        "digest": digest(text),
+        "body": text,
+    }
+
+
+async def search_documents(api: Api, input: Json, key: str) -> Outcome:
+    query, count = _query(input), _found(input)
+    answer = await api.get("search", {"query": query, "count": SEARCHED, "page": 1})
+    hits = [
+        h
+        for h in answer.get("data") or []
+        if isinstance(h, dict) and h.get("type") == "page" and not h.get("draft")
+    ]
+    documents: list[Json] = []
+    for hit in hits[:count]:
+        url = hit.get("url")
+        if not isinstance(url, str) or not url:
+            continue
+        try:
+            page = await api.get(f"pages/{int(hit['id'])}")
+        except TargetError as error:
+            if error.cause not in {"not_found", "forbidden"}:
+                raise
+            continue  # gone, or hidden from this token, since the search found it
+        documents.append(_document(page, url))
+    return Outcome({"documents": documents}, {"kind": "read"})
+
+
+def _named(input: Json) -> list[str]:
+    named = input.get("documents")
+    if not isinstance(named, list) or not 1 <= len(named) <= MAX_FOUND:
+        raise invalid(f"`documents` names from 1 to {MAX_FOUND} documents read before")
+    found: list[str] = []
+    for item in named:
+        document = item.get("document") if isinstance(item, dict) else item
+        if not isinstance(document, str) or not document.isdigit():
+            raise invalid("a document of the wiki is named by the identifier a search gave")
+        found.append(document)
+    return list(dict.fromkeys(found))
+
+
+async def document_versions(api: Api, input: Json, key: str) -> Outcome:
+    held: list[Json] = []
+    for document in _named(input):
+        try:
+            page = await api.get(f"pages/{int(document)}")
+        except TargetError as error:
+            if error.cause not in {"not_found", "forbidden"}:
+                raise
+            held.append({"document": document, "absent": True})
+            continue
+        held.append(
+            {"document": document, "version": _version(page), "digest": digest(text_of(page))}
+        )
+    return Outcome({"documents": held}, {"kind": "read"})
+
+
 type Operation = Callable[[Api, Json, str], Awaitable[Outcome]]
 
 OPERATIONS: dict[str, Operation] = {
     LIST: list_pages,
     READ: read_page,
+    SEARCH: search_documents,
+    VERSIONS: document_versions,
     WRITE: write_page,
 }
