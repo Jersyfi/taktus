@@ -17,7 +17,9 @@ from taktus.components.process.domain.model.event import (
 )
 from taktus.components.process.domain.model.process import (
     ChangeRecord,
+    ContractField,
     Control,
+    DataContract,
     DeadlineAction,
     DeadlineDeclaration,
     Each,
@@ -54,9 +56,11 @@ __all__ = [
     "CaseState",
     "ChangeRecord",
     "Condition",
+    "ContractField",
     "Control",
     "CorrectedCase",
     "CredentialPointer",
+    "DataContract",
     "DeadlineAction",
     "DeadlineDeclaration",
     "Difference",

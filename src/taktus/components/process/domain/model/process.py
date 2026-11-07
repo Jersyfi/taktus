@@ -261,6 +261,38 @@ class ChangeRecord(Value):
     """Every change against the predecessor, in words."""
 
 
+class ContractField(Value):
+    name: str = Field(min_length=1)
+    required: bool = True
+
+
+class Responsible(Value):
+    ours: str = Field(pattern=r"^[a-z][a-z0-9-]*$")
+    """The role on the organisation's side. Never a person."""
+    theirs: str = Field(min_length=1)
+    """Who is responsible on the partner's side, in words."""
+
+
+class DataContract(Value):
+    """The documented contract of an exchange with a partner (UC-15.3, ADR-0273): with whom, in
+    which direction, after which open standard or why a proprietary format, the fields and
+    which are required, how often, who is responsible, and the steps that exchange under it."""
+
+    partner: str = Field(min_length=1)
+    direction: Literal["import", "export"]
+    standard: str | None = Field(default=None, min_length=1)
+    proprietary: str | None = Field(default=None, min_length=1)
+    """Why a proprietary format: the partner offers nothing else."""
+    fields: tuple[ContractField, ...] = Field(min_length=1)
+    frequency: timedelta | None = None
+    responsible: Responsible
+    steps: tuple[StepId, ...] = Field(min_length=1)
+
+    @property
+    def required(self) -> tuple[str, ...]:
+        return tuple(f.name for f in self.fields if f.required)
+
+
 class TaskState(Value):
     """Where a decoupled process's task stands in the external tool that holds control
     (UC-5.2, ADR-0272): the read that answers it, the part of the answer that is its state, and
@@ -466,6 +498,8 @@ class ProcessVersion(Value):
     """What Taktus may change in it on its own (ADR-0255 §1). None: nothing."""
     change: ChangeRecord | None = None
     """For a version Taktus registered within the frame: what led to it (ADR-0255 §3)."""
+    contracts: Mapping[str, DataContract] = Field(default_factory=dict)
+    """The data contract of every exchange with a partner, by name (ADR-0273)."""
     control: Control = Field(default_factory=Control)
     """Where its control sits: Taktus (`coupled`, the default) or an external tool (ADR-0272).
     A move between them is a new version; no run in progress changes mode."""

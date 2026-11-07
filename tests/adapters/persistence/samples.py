@@ -146,6 +146,20 @@ def process_version(version: str = "1", tenant: str = "t") -> ProcessVersion:
     }
     document["case"] = "due"
     document["frame"] = {"changes": ["work", "takeover"]}
+    for step in document["steps"]:
+        if step["id"] == "verify-answer":
+            step["checks"] = [*step["checks"], {"kind": "source_shape", "columns": ["answer"]}]
+    document["contracts"] = {
+        "answers": {
+            "partner": "a partner that receives the answer",
+            "direction": "import",
+            "proprietary": "the partner offers no open format for it",
+            "fields": [{"name": "answer", "required": True}],
+            "frequency": "1d",
+            "responsible": {"ours": "operations", "theirs": "the partner's office"},
+            "steps": ["verify-answer"],
+        }
+    }
     document["control"] = {
         "mode": "decoupled",
         "task": {

@@ -72,6 +72,7 @@ from pydantic import ValidationError
 from taktus.components.process.domain.model import (
     ChangeRecord,
     Control,
+    DataContract,
     DeadlineDeclaration,
     Escalation,
     EvaluationSpec,
@@ -92,7 +93,13 @@ from taktus.components.process.domain.model.exactness import (
     InvalidStatement,
 )
 from taktus.components.process.domain.model.process import FRAME_KINDS
-from taktus.components.process.domain.service import autonomy, evaluation, exactness, frame
+from taktus.components.process.domain.service import (
+    autonomy,
+    evaluation,
+    exactness,
+    frame,
+    partners,
+)
 from taktus.components.process.domain.service import takeover as instructed
 from taktus.components.process.domain.service.quality import QUALITY
 from taktus.components.process.ports import (
@@ -521,6 +528,7 @@ def read_bundle(bundle: Document) -> tuple[ProcessVersion, list[str]]:
             frame=_frame(bundle.get("frame")),
             change=_change(bundle.get("change")),
             control=_control(bundle.get("control")),
+            contracts=_contracts(bundle.get("contracts")),
             author=bundle.get("author"),
             reason=bundle.get("reason"),
         )
@@ -533,6 +541,7 @@ def read_bundle(bundle: Document) -> tuple[ProcessVersion, list[str]]:
         )
     refused.extend(evaluation.findings(version.steps, version.work))
     refused.extend(frame.findings(version.steps, version.work, version.inputs))
+    refused.extend(partners.findings(version))
     try:
         exactness.statement(version.ref, version.name, version.steps)
     except InvalidStatement as error:
@@ -782,6 +791,25 @@ def _frame(raw: Any) -> Frame | None:
         raise InvalidProcess(
             (*_describe("frame", error), f"`frame.changes` names any of {', '.join(FRAME_KINDS)}")
         ) from error
+
+
+def _contracts(raw: Any) -> dict[str, DataContract]:
+    """`contracts`: the data contract of every exchange with a partner, by name (ADR-0273)."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, Mapping):
+        raise InvalidProcess(("`contracts` maps a name to a data contract",))
+    found: dict[str, DataContract] = {}
+    for name, given in raw.items():
+        if not isinstance(given, Mapping):
+            raise InvalidProcess((f"`contracts.{name}` is not a mapping",))
+        document = dict(given)
+        document["frequency"] = _duration(document.get("frequency"))
+        try:
+            found[str(name)] = DataContract.model_validate(document)
+        except ValidationError as error:
+            raise InvalidProcess(tuple(_describe(f"contracts.{name}", error))) from error
+    return found
 
 
 def _control(raw: Any) -> Control:
