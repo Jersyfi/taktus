@@ -201,7 +201,7 @@ async def test_the_revision_check_names_what_is_missing(
     try:
         await check_schema(persistence.engine)
         head = head_revision()
-        assert await current_revision(persistence.engine) == head == "0102"
+        assert await current_revision(persistence.engine) == head == "0104"
         with sync_engine.begin() as connection:
             connection.execute(text("UPDATE alembic_version SET version_num = '0074'"))
         try:

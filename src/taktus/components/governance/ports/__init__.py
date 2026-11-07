@@ -1,5 +1,6 @@
 """Ports this component needs beyond the cross-cutting ones."""
 
+from taktus.components.governance.ports.contents import RecordedContents
 from taktus.components.governance.ports.corrections import OpenCorrections
 from taktus.components.governance.ports.stages import (
     Identities,
@@ -16,6 +17,7 @@ __all__ = [
     "OpenCorrections",
     "ProcessLevels",
     "ProcessStops",
+    "RecordedContents",
     "RunningLevel",
     "StageReports",
     "SubjectHoldings",

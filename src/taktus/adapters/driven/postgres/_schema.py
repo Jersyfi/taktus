@@ -101,6 +101,12 @@ process_version = Table(
     Column("evaluation", JSONB),  # the cases, the scorers and their schedule (ADR-0134)
     Column("takeover", JSONB),  # how a person runs it without Taktus (ADR-0180)
     Column("case_input", Text),  # the input that names a run's case (ADR-0216)
+    Column("escalation", JSONB),  # whom a failure's escalation reaches, and how soon (ADR-0252)
+    Column("heal_limit", Integer),  # the heals before a failure is said; null is three (ADR-0254)
+    Column("frame", JSONB),  # what Taktus may change on its own (ADR-0255)
+    Column("change_record", JSONB),  # what led Taktus to a version within the frame (ADR-0255)
+    Column("control", JSONB),  # where the control sits; null is Taktus's (ADR-0272)
+    Column("contracts", JSONB),  # the data contract of every partner exchange (ADR-0273)
     Column("inputs", JSONB, nullable=False),
     Column("author", Text),
     Column("reason", Text),

@@ -173,6 +173,23 @@ async def test_a_run_comes_back_with_its_step_runs_checkpoints_and_artifacts(
     assert stored.next_step_run() is not None and stored.next_step_run().step_id == "compute"
 
 
+def test_the_sample_version_leaves_no_field_at_its_default() -> None:
+    """The guard on the round trip above: a field added to the version and not declared by the
+    sample would come back at its default from a mapper that does not store it, and pass
+    (DEC-0233). Declare it in `samples.process_version`, and store it in the mapper."""
+    version = samples.process_version()
+    defaulted = [
+        name
+        for name, field in ProcessVersion.model_fields.items()
+        if getattr(version, name) == field.get_default(call_default_factory=True)
+    ]
+    assert defaulted == UNDECLARED, f"declare {defaulted} in samples.process_version"
+
+
+UNDECLARED: list[str] = []
+"""The fields the sample leaves at their default: none."""
+
+
 async def test_put_replaces_what_was_there(backend: Backend) -> None:
     tenant = await backend.tenant()
     runs = backend.repository(Run)

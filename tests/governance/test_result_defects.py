@@ -196,6 +196,40 @@ def test_a_window_without_a_found_cause_says_so_and_is_unbounded_at_the_first_re
     assert found.window_start == AT + timedelta(days=1)
 
 
+STEADY = [
+    record(f"r{n}", "import", 10 * n, day=n, adapter_version="1", result=n) for n in range(1, 6)
+]
+
+
+def test_a_cause_in_the_content_of_a_source_starts_the_window_after_its_shape_changed() -> None:
+    """Nothing changed in how the step produced; the partner's file changed its form at r3."""
+    shapes = {
+        (r.run_id, r.step_id): "table(id,amount)" if r.ledger_seq < 30 else "table(amount,id)"
+        for r in STEADY
+    }
+    defect = ResultRef(run_id="r4", step_id="import", digest=digest(4))
+    found = defects.analyse(defect, Found.RECHECKED, STEADY, [], shapes=shapes)
+    assert found.cause is not None
+    assert (found.cause.field, found.cause.before, found.cause.after, found.cause.at_run) == (
+        "source_content",
+        "table(id,amount)",
+        "table(amount,id)",
+        "r3",
+    )
+    assert found.window_start == AT + timedelta(days=3) and not found.unbounded
+    assert found.window_runs == 3
+
+
+def test_without_a_change_the_window_starts_at_the_earliest_result_the_check_marks_again() -> None:
+    defect = ResultRef(run_id="r5", step_id="import", digest=digest(5))
+    found = defects.analyse(
+        defect, Found.RECHECKED, STEADY, [], shapes={}, marked=frozenset({"r3", "r5"})
+    )
+    assert found.cause is None and found.rechecked_from == "r3"
+    assert found.window_start == AT + timedelta(days=3) and not found.unbounded
+    assert found.window_runs == 3, "r3 to r5, the newest"
+
+
 def test_a_result_older_than_the_chain_is_not_reconstructed() -> None:
     with pytest.raises(defects.NotRecorded):
         defects.analyse(ResultRef(run_id="r0", step_id="import"), Found.CORRECTED, RECORDS, [])

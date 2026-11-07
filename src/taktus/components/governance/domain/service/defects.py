@@ -27,7 +27,7 @@ to tell it is done.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 
 from taktus.components.governance.domain.model.defects import (
     SEVERITY,
@@ -66,8 +66,17 @@ def analyse(
     found: Found,
     records: Sequence[Provenance],
     entries: Sequence[LedgerEntry],
+    *,
+    shapes: Mapping[tuple[str, str], str] | None = None,
+    marked: Collection[str] | None = None,
 ) -> Analysis:
-    """The impact analysis of a result reported wrong. `NotRecorded` when no record produced it."""
+    """The impact analysis of a result reported wrong. `NotRecorded` when no record produced it.
+
+    `shapes` is the shape of the content each record's step read, by run and step: where no
+    change in how the step produced is found, the first result after the shape changed starts
+    the window. `marked` names the runs whose result the check that marked the defect marks
+    when it is run again over the recorded results: where no change is found at all, the
+    earliest of them starts the window (ADR-0271 §4, §5)."""
     produced = [r for r in records if r.run_id == defect.run_id and r.step_id == defect.step_id]
     if not produced:
         raise NotRecorded(
@@ -93,6 +102,22 @@ def analyse(
             cause = changed
             start = index
             break
+    if cause is None and shapes:
+        for index in range(at, 0, -1):
+            before = shapes.get((series[index - 1].run_id, series[index - 1].step_id))
+            after = shapes.get((series[index].run_id, series[index].step_id))
+            if before is not None and after is not None and before != after:
+                cause = Change(
+                    field="source_content", before=before, after=after, at_run=series[index].run_id
+                )
+                start = index
+                break
+    rechecked: str | None = None
+    if cause is None and marked:
+        first = next((i for i, r in enumerate(series[: at + 1]) if r.run_id in marked), None)
+        if first is not None:
+            start = first
+            rechecked = series[first].run_id
     window = series[start:]
     unbounded = cause is None and start == 0
     affected: list[Affected] = []
@@ -136,6 +161,7 @@ def analyse(
         window_end=window[-1].recorded_at,
         window_runs=len({r.run_id for r in window}),
         affected=tuple(affected),
+        rechecked_from=rechecked,
     )
 
 
@@ -335,6 +361,32 @@ def render_package(situation: SituationPackage) -> str:
     if situation.lacking:
         out += ["", f"This package lacks: {', '.join(situation.lacking)}."]
     return "\n".join(out)
+
+
+def shape_of(value: object, depth: int = 3) -> str:
+    """The shape of content a step read, in words a person can compare: an object's keys with
+    the shape of each value, a list by the shapes of its items, a table read as text by its
+    header row; the kind of anything else. The same shape says nothing changed; another says
+    the source changed its form (ADR-0271 §4)."""
+    if isinstance(value, Mapping):
+        if depth == 0:
+            return "{…}"
+        inner = ", ".join(f"{k}: {shape_of(v, depth - 1)}" for k, v in sorted(value.items()))
+        return "{" + inner + "}"
+    if isinstance(value, list | tuple):
+        kinds = sorted({shape_of(item, depth - 1) for item in value}) if depth else ["…"]
+        return "[" + " | ".join(kinds) + "]"
+    if isinstance(value, bool):
+        return "truth value"
+    if isinstance(value, int | float):
+        return "number"
+    if isinstance(value, str):
+        first = value.lstrip("\ufeff").splitlines()[0] if value.strip() else ""
+        for separator in (",", ";", "\t"):
+            if separator in first:
+                return "table(" + separator.join(c.strip() for c in first.split(separator)) + ")"
+        return "text"
+    return "nothing" if value is None else type(value).__name__
 
 
 def _changed(before: Provenance, after: Provenance) -> Change | None:

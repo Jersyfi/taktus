@@ -1,0 +1,5 @@
+{
+  "kind": "bounds",
+  "maximum": 100,
+  "method": "statistics"
+}

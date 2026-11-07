@@ -67,6 +67,21 @@ class TakeoverFacts(Value):
     """While it is held: when the lease ends."""
 
 
+class HealFacts(Value):
+    """One self-healing action on a step (UC-4.6, ADR-0160): the failure it answered, what was
+    done, the attempt it admitted, and how that attempt ended. Recorded by the run component as
+    `step.healed`; the outcome is the step's next `step.finished`."""
+
+    failure: str = Field(min_length=1)
+    action: str = Field(min_length=1)
+    """`retry`: the step admitted again through admission, as any retry."""
+    attempt: int = Field(ge=1)
+    """The attempt that failed and was healed; the heal admitted the one after it."""
+    outcome: str | None = Field(default=None, min_length=1)
+    """How the attempt after the heal ended: the outcome of its `step.finished`; None while it
+    has not ended."""
+
+
 class DecisionFacts(Value):
     """A decision request a step raised: its identifier and its status. Never who decides."""
 
@@ -93,6 +108,8 @@ class StepFacts(Value):
     records it (ADR-0042, ADR-0068)."""
     takeover: TakeoverFacts | None = None
     """The latest take-over the step was served for; None for a step never taken over."""
+    heals: tuple[HealFacts, ...] = ()
+    """Every self-healing action on the step, in order (UC-4.6): the run's report shows each."""
 
 
 class StatementPart(Value):

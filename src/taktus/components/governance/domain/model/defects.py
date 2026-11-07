@@ -56,9 +56,18 @@ class Position(StrEnum):
 
 
 class Change(Value):
-    """What changed in how the step produced its results, between two results of the step."""
+    """What changed between two results of the step: in how the step produced them, or in the
+    shape of the content of the source it read (`source_content`, ADR-0271 §4)."""
 
-    field: Literal["process_version", "method", "model", "prompt", "adapter", "adapter_version"]
+    field: Literal[
+        "process_version",
+        "method",
+        "model",
+        "prompt",
+        "adapter",
+        "adapter_version",
+        "source_content",
+    ]
     before: str | None
     after: str | None
     at_run: str = Field(min_length=1)
@@ -95,6 +104,10 @@ class Analysis(Value):
     window_end: datetime
     window_runs: int = Field(ge=1)
     affected: tuple[Affected, ...] = Field(min_length=1)
+    rechecked_from: str | None = Field(default=None, min_length=1)
+    """Where no change was found: the run of the earliest result the check that marked the
+    defect marks when it is run again over the recorded results, where the window starts
+    (ADR-0271 §5). None where a change was found, or no check could be run again."""
 
     @property
     def strictest(self) -> ExactnessClass | None:

@@ -18,6 +18,10 @@ or to the part of it `checking.select` names. Six kinds judge the value on the s
   records by the fields of every record, an object by its keys, each carrying every declared
   column in any order, since a step reads an object's members by name (DEC-0223, ADR-0233).
 
+A **distribution** is a statistic, applied after the result counted: the value against the
+median of the step's `window` earlier results, within `band` of the median's size and of the
+same sign (ADR-0271). One that fails marks the result suspect; it stops nothing (UC-4.10).
+
 Two kinds bring a person in. **Approval** holds a value above `threshold` for the role before it
 counts. **Sampling** chooses `share` of the results after the fact, by a digest of the run and
 the step, so that the same results are chosen for the same runs; the result counts, and a person
@@ -33,6 +37,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import statistics
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
@@ -308,6 +313,47 @@ def sampled(check: Check, run_id: str, step_id: str) -> bool:
     seed = f"{run_id}\n{step_id}".encode()
     drawn = int.from_bytes(hashlib.sha256(seed).digest()[:8], "big") / 2**64
     return drawn < (check.share or 0)
+
+
+def distribution(position: int, check: Check, value: Any, earlier: Sequence[Any]) -> Finding:
+    """The value against the moving median of the step's earlier results (ADR-0271): within
+    `band` of the median's size, and of the median's sign. Fewer earlier results than the
+    window judge nothing yet: the finding passes and says so. A value or an earlier result that
+    is not a number fails: nothing could be compared."""
+    number = decimal(value)
+    if number is None:
+        return Finding(position, check, False, f"the value {_short(value)} is not a number")
+    numbers = [decimal(item) for item in earlier]
+    if any(n is None for n in numbers):
+        return Finding(position, check, False, "an earlier result of the step is not a number")
+    window = check.window or 0
+    if len(numbers) < window:
+        return Finding(
+            position,
+            check,
+            True,
+            f"no baseline yet: {len(numbers)} earlier result(s), fewer than the window of {window}",
+        )
+    taken = [n for n in numbers[-window:] if n is not None]
+    middle = Decimal(str(statistics.median(taken)))
+    band = Decimal(str(check.band))
+    deviation = abs(number - middle)
+    allowed = band * abs(middle)
+    baseline = f"the median {middle} of the {window} result(s) before it"
+    if middle != 0 and (number < 0) != (middle < 0) and number != 0:
+        return Finding(
+            position, check, False, f"the value {number} has another sign than {baseline}"
+        )
+    if deviation > allowed:
+        share = "" if middle == 0 else f", {(deviation / abs(middle)).normalize():f} of its size"
+        return Finding(
+            position,
+            check,
+            False,
+            f"the value {number} lies {deviation} from {baseline}{share}; the band admits "
+            f"{_n(float(band))}",
+        )
+    return Finding(position, check, True, f"the value {number} lies within the band of {baseline}")
 
 
 def approval_key(position: int, digest: str) -> str:

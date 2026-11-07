@@ -9,6 +9,7 @@ from taktus.components.run.ports.anchors import (
     Verdict,
 )
 from taktus.components.run.ports.connectors import ConnectorPool
+from taktus.components.run.ports.control import ExternalControl
 from taktus.components.run.ports.deadlines import DeclaredDeadlines
 from taktus.components.run.ports.evaluated import Evaluated
 from taktus.components.run.ports.guidance import Guidance
@@ -44,6 +45,7 @@ __all__ = [
     "DraftOption",
     "Evaluated",
     "EvaluationScores",
+    "ExternalControl",
     "Guidance",
     "Levels",
     "LoweredLevels",

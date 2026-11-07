@@ -82,10 +82,14 @@ from typing import Any
 from pydantic import ValidationError
 
 from taktus.components.process.domain.model import (
+    ChangeRecord,
+    Control,
+    DataContract,
     DeadlineDeclaration,
     Escalation,
     EvaluationSpec,
     Expect,
+    Frame,
     InputDeclaration,
     InvalidProcess,
     OpenWorkCap,
@@ -100,7 +104,14 @@ from taktus.components.process.domain.model.exactness import (
     ExactnessStatement,
     InvalidStatement,
 )
-from taktus.components.process.domain.service import autonomy, evaluation, exactness, frame
+from taktus.components.process.domain.model.process import FRAME_KINDS
+from taktus.components.process.domain.service import (
+    autonomy,
+    evaluation,
+    exactness,
+    frame,
+    partners,
+)
 from taktus.components.process.domain.service import takeover as instructed
 from taktus.components.process.domain.service.quality import QUALITY
 from taktus.components.process.ports import (
@@ -556,6 +567,17 @@ def _names(node: Any) -> list[str]:
 
 def parse_bundle(bundle: Document) -> ProcessVersion:
     """The bundle document as a process version, or InvalidProcess with every finding."""
+    version, refused = read_bundle(bundle)
+    if refused:
+        raise InvalidProcess(tuple(refused))
+    return version
+
+
+def read_bundle(bundle: Document) -> tuple[ProcessVersion, list[str]]:
+    """The bundle as a process version, and every finding of the rules a version is held to
+    beyond its shape — exactness, takeover instructions, evaluation, the frame of its steps —
+    which `parse_bundle` refuses it for. InvalidProcess where its shape cannot be read at all.
+    A change Taktus made keeps the findings on its proposal (ADR-0255 §3)."""
     findings: list[str] = []
     steps: list[Step] = []
     work: dict[str, Mapping[str, Any]] = {}
@@ -601,6 +623,10 @@ def parse_bundle(bundle: Document) -> ProcessVersion:
             takeover=_takeover(bundle.get("takeover")),
             escalation=_escalation(bundle.get("escalation")),
             heal_limit=bundle.get("heal_limit", 3),
+            frame=_frame(bundle.get("frame")),
+            change=_change(bundle.get("change")),
+            control=_control(bundle.get("control")),
+            contracts=_contracts(bundle.get("contracts")),
             author=bundle.get("author"),
             reason=bundle.get("reason"),
         )
@@ -613,13 +639,12 @@ def parse_bundle(bundle: Document) -> ProcessVersion:
         )
     refused.extend(evaluation.findings(version.steps, version.work))
     refused.extend(frame.findings(version.steps, version.work, version.inputs))
+    refused.extend(partners.findings(version))
     try:
         exactness.statement(version.ref, version.name, version.steps)
     except InvalidStatement as error:
         refused.append(str(error))
-    if refused:
-        raise InvalidProcess(tuple(refused))
-    return version
+    return version, refused
 
 
 def statement_of(bundle: Document) -> ExactnessStatement:
@@ -852,6 +877,59 @@ def _escalation(raw: Any) -> Escalation | None:
         raise InvalidProcess(tuple(_describe("escalation", error))) from error
 
 
+def _frame(raw: Any) -> Frame | None:
+    """`frame`: the `changes` Taktus may make on its own (ADR-0255 §1)."""
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping) or set(raw) - {"changes"}:
+        raise InvalidProcess(("`frame` is a mapping that takes `changes` only",))
+    try:
+        return Frame.model_validate(dict(raw))
+    except ValidationError as error:
+        raise InvalidProcess(
+            (*_describe("frame", error), f"`frame.changes` names any of {', '.join(FRAME_KINDS)}")
+        ) from error
+
+
+def _contracts(raw: Any) -> dict[str, DataContract]:
+    """`contracts`: the data contract of every exchange with a partner, by name (ADR-0273)."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, Mapping):
+        raise InvalidProcess(("`contracts` maps a name to a data contract",))
+    found: dict[str, DataContract] = {}
+    for name, given in raw.items():
+        if not isinstance(given, Mapping):
+            raise InvalidProcess((f"`contracts.{name}` is not a mapping",))
+        document = dict(given)
+        document["frequency"] = _duration(document.get("frequency"))
+        try:
+            found[str(name)] = DataContract.model_validate(document)
+        except ValidationError as error:
+            raise InvalidProcess(tuple(_describe(f"contracts.{name}", error))) from error
+    return found
+
+
+def _control(raw: Any) -> Control:
+    """`control`: `coupled`, or `{mode: decoupled, task: {...}}` (ADR-0272)."""
+    if raw is None or raw == "coupled":
+        return Control()
+    try:
+        return Control.model_validate(raw)
+    except ValidationError as error:
+        raise InvalidProcess(tuple(_describe("control", error))) from error
+
+
+def _change(raw: Any) -> ChangeRecord | None:
+    """`change`: what led Taktus to the version (ADR-0255 §3)."""
+    if raw is None:
+        return None
+    try:
+        return ChangeRecord.model_validate(raw)
+    except ValidationError as error:
+        raise InvalidProcess(tuple(_describe("change", error))) from error
+
+
 def _expect(raw: Any) -> Expect | None:
     """`expect`: a `schedule` or a `gap`, and a `bound` (ADR-0107)."""
     if raw is None:
@@ -897,4 +975,4 @@ def _describe(where: str, error: ValidationError) -> list[str]:
 def _content(version: ProcessVersion) -> dict[str, Any]:
     """What a version is, without who registered it and why: the same bundle registered again
     by someone else is the same version."""
-    return version.model_dump(mode="json", exclude={"author", "reason"})
+    return version.model_dump(mode="json", exclude={"author", "reason", "change"})

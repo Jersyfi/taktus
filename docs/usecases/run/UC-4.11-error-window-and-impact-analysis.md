@@ -4,10 +4,10 @@ title: Error window and impact analysis
 component: run
 epic: E4
 serves: [P6, P8, P12]
-state: building
+state: verified
 version: 0.5.0
-tests: [tests/governance/test_result_defects.py::test_the_window_starts_after_the_change_and_ends_at_the_newest_result, tests/governance/test_result_defects.py::test_every_derived_result_across_two_processes_is_listed_with_its_class, tests/governance/test_result_defects.py::test_a_result_delivered_through_a_channel_is_marked_as_having_left, tests/governance/test_result_defects.py::test_a_window_without_a_found_cause_says_so_and_is_unbounded_at_the_first_record, tests/governance/test_result_defects.py::test_a_result_older_than_the_chain_is_not_reconstructed, tests/governance/test_result_defects.py::test_the_analysis_changes_nothing, tests/composition/test_defect_watch.py::test_a_sample_judged_wrong_is_raised_by_itself_and_one_judged_right_is_not]
-adrs: {ADR-0014: 6611f7833deb, ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0153: f720e5930f42, ADR-0179: b70d264ab655}
+tests: [tests/governance/test_result_defects.py::test_the_window_starts_after_the_change_and_ends_at_the_newest_result, tests/governance/test_result_defects.py::test_every_derived_result_across_two_processes_is_listed_with_its_class, tests/governance/test_result_defects.py::test_a_result_delivered_through_a_channel_is_marked_as_having_left, tests/governance/test_result_defects.py::test_a_window_without_a_found_cause_says_so_and_is_unbounded_at_the_first_record, tests/governance/test_result_defects.py::test_a_result_older_than_the_chain_is_not_reconstructed, tests/governance/test_result_defects.py::test_the_analysis_changes_nothing, tests/composition/test_defect_watch.py::test_a_sample_judged_wrong_is_raised_by_itself_and_one_judged_right_is_not, tests/governance/test_result_defects.py::test_a_cause_in_the_content_of_a_source_starts_the_window_after_its_shape_changed, tests/governance/test_result_defects.py::test_without_a_change_the_window_starts_at_the_earliest_result_the_check_marks_again, tests/exactness/test_distribution.py::test_the_window_of_a_suspect_starts_where_the_check_run_again_marks_first]
+adrs: {ADR-0014: 6611f7833deb, ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0153: f720e5930f42, ADR-0179: b70d264ab655, ADR-0271: b77f5ed6eb3f}
 supersedes: null
 ---
 
@@ -70,6 +70,8 @@ ADR-0179). Each of the three starts its analysis by itself. A change in how the 
 starts the window, and the newest result ends it; every derived result across processes is listed
 with its class and the steps that read it; a result delivered through a channel is marked as having
 left. A window without a found cause says so and is unbounded at the first record; a result older
-than the chain is not reconstructed; the analysis changes nothing — by the named tests. Not built: a
-cause in the content of a source rather than in how the step produced; the window's start found by
-running the check again over the recorded results.
+than the chain is not reconstructed; the analysis changes nothing. Where nothing changed in how
+the step produced, a change in the shape of what it read — a partner file whose header changed —
+is the cause, and the window starts after it; where no change is found at all, the check that
+marked the result is run again over the recorded results, and the earliest it marks starts the
+window (ADR-0271) — by the named tests.

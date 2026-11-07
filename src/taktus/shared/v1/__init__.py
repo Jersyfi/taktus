@@ -5,7 +5,7 @@ from taktus.shared.v1.artifact import Artifact, Digest
 from taktus.shared.v1.autonomy import ActionAutonomy, Autonomy, ClassAutonomy, ClassLimits
 from taktus.shared.v1.autonomy_level import AutonomyLevel
 from taktus.shared.v1.capability import Capability, CapabilityPattern
-from taktus.shared.v1.check import PARAMETERS, Check, CheckKind, Reference
+from taktus.shared.v1.check import PARAMETERS, Check, CheckKind, CheckMethod, Reference
 from taktus.shared.v1.command import Command, Intent, ReplyTo
 from taktus.shared.v1.consumption import (
     PRICE_KINDS,
@@ -74,6 +74,7 @@ __all__ = [
     "CapabilityPattern",
     "Check",
     "CheckKind",
+    "CheckMethod",
     "ClassAutonomy",
     "ClassLimits",
     "Command",

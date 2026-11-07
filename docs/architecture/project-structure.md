@@ -462,6 +462,31 @@ role it would tie the core to a model stack and the removal test would be lost.
   into `OwnerAnswers` beside the change in dialogue). Where a served take-over stands is read
   from the step run alone (`StepRun.takeovers`) and handed to the run level by
   `composition/levels.py`.
+- **A heal in the run's report** (UC-4.6): `composition/levels.py`'s `RepositoryLevelRecords`,
+  given the ledger and the object store, reads each `step.healed` of the run with the failure
+  it answered and the outcome of the step's next `step.finished`, and hands it to the run level
+  as the step's `heals`; the daemon's `Wired` gives both.
+- **The processes Taktus proposes** (ADR-0270) are found by the process component's rule
+  `domain/service/proposing.py` over facts `composition/process_proposals.py`'s
+  `ProcessProposals` reads from the ledger and the runs. Accepting one hands its words to
+  `ProposalActs.ask` (`composition/proposals.py`); a decision is a ledger entry, and nothing is
+  stored to make the list.
+- **A distribution and the window of a defect** (ADR-0271): the engine applies a check of kind
+  `distribution` after the result counted (`_distributed` in
+  `run/application/service/execute_run.py`, the statistic in `run/domain/service/checking.py`)
+  and records `result.unchecked` for a result no check judged. `composition/contents.py`'s
+  `StepContents` answers the governance port `RecordedContents`: the shape of what each result
+  read, and the runs a check run again marks; the daemon gives it to `ResultDefects`.
+- **Where a process's control sits** (ADR-0272): the version's `control`
+  (`process/domain/model/process.py`), the run's port `ExternalControl`
+  (`run/ports/control.py`) that the engine asks at every step boundary, and
+  `composition/control.py`'s `TaskControl`, which reads a decoupled task's state through the
+  connector that serves it; the daemon gives it to the engine.
+- **A partner's data contract and a chain of processes** (ADR-0273, ADR-0274): the process
+  component holds a version's `contracts` (`domain/model/process.py`) and its rule
+  (`domain/service/partners.py`), and a chain's shape and rules (`domain/model/chain.py`,
+  `domain/service/chains.py`); `composition/chains.py`'s `ChainRuns` runs a chain link by link
+  and records every handover.
 - **The load measurement** (S-04, ADR-0223) is `adapters/driving/cli/load_command.py`: it
   submits the probe `blueprints/self-operation/processes/S-04-load-probe.yaml`, which the control
   plane's image carries, through the same services as `taktusctl submit`, and reads each run's

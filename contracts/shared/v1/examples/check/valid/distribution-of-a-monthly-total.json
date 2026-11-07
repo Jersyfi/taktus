@@ -1,0 +1,7 @@
+{
+  "kind": "distribution",
+  "subject": "the monthly total",
+  "window": 11,
+  "band": 0.5,
+  "method": "statistics"
+}

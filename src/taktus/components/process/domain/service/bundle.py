@@ -83,6 +83,22 @@ def bundle_of(
         bundle["takeover"] = version.takeover.document()
     if version.heal_limit != 3:
         bundle["heal_limit"] = version.heal_limit
+    if version.contracts:
+        bundle["contracts"] = {
+            name: {
+                **contract.model_dump(mode="json", exclude_none=True, exclude={"frequency"}),
+                **(
+                    {}
+                    if contract.frequency is None
+                    else {"frequency": contract.frequency.total_seconds()}
+                ),
+            }
+            for name, contract in version.contracts.items()
+        }
+    if version.control.task is not None:
+        bundle["control"] = version.control.document()
+    if version.frame is not None:
+        bundle["frame"] = {"changes": list(version.frame.changes)}
     if version.escalation is not None:
         bundle["escalation"] = {
             "role": version.escalation.role,

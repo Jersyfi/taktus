@@ -92,6 +92,14 @@ CATALOGUE: dict[CheckKind, Row] = {
         does_not_cover="a value wrong inside a source of the right shape",
         needs="the columns or the pattern the step was written for (DEC-0223)",
     ),
+    CheckKind.DISTRIBUTION: Row(
+        name="distribution against the moving median",
+        covers="the result lies within a band around the median of the step's earlier "
+        "results, with the same sign: a monthly total ten times the previous eleven is found",
+        does_not_cover="a wrong value inside the band, and a series that drifts slowly",
+        needs="how many earlier results the median is taken over, and the band (ADR-0271); it "
+        "marks the result suspect after it counted, and stops nothing",
+    ),
 }
 """Every kind of the shared kernel has its row; `tests/exactness` holds the two together."""
 

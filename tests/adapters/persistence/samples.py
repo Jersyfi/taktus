@@ -149,6 +149,43 @@ def process_version(version: str = "1", tenant: str = "t") -> ProcessVersion:
     ]
     document["slo"] = {"freshness": "24h", "latency": "90s"}
     document["expect"] = {"schedule": "0 7 * * 1-5", "bound": "2h"}
+    document["escalation"] = {"role": "support", "react_within": "30m", "path": "ledger"}
+    document["heal_limit"] = 5
+    document["inputs"] = {
+        "due": {"description": "when the answer is due", "example": "2026-11-02", "required": False}
+    }
+    document["case"] = "due"
+    document["frame"] = {"changes": ["work", "takeover"]}
+    for step in document["steps"]:
+        if step["id"] == "verify-answer":
+            step["checks"] = [*step["checks"], {"kind": "source_shape", "columns": ["answer"]}]
+    document["contracts"] = {
+        "answers": {
+            "partner": "a partner that receives the answer",
+            "direction": "import",
+            "proprietary": "the partner offers no open format for it",
+            "fields": [{"name": "answer", "required": True}],
+            "frequency": "1d",
+            "responsible": {"ours": "operations", "theirs": "the partner's office"},
+            "steps": ["verify-answer"],
+        }
+    }
+    document["control"] = {
+        "mode": "decoupled",
+        "task": {
+            "operation": "tasks.items.get",
+            "input": {"id": {"$input": "due"}},
+            "select": "state",
+            "withdrawn": ["withdrawn", "cancelled"],
+        },
+    }
+    document["change"] = {
+        "observed": "interface",
+        "on": "repository.issues.list",
+        "said": "the operation answers `items` where it answered `issues`",
+        "predecessor": "six-times-seven@0",
+        "changes": ["step compute: its work changed"],
+    }
     document["open_work"] = {
         "pull_requests": {
             "cap": 2,
