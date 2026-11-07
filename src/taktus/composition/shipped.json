@@ -110,6 +110,18 @@
     },
     {
       "capabilities": [
+        "deployment.sites"
+      ],
+      "image": "taktus-connector-cloudfunctions",
+      "name": "cloudfunctions",
+      "operations": [
+        "deployment.sites.read",
+        "deployment.sites.release",
+        "deployment.sites.rollback"
+      ]
+    },
+    {
+      "capabilities": [
         "deployment.workloads"
       ],
       "image": "taktus-connector-cloudrun",
@@ -438,6 +450,16 @@
     },
     {
       "capabilities": [
+        "analytics.reports"
+      ],
+      "image": "taktus-connector-mixpanel",
+      "name": "mixpanel",
+      "operations": [
+        "analytics.reports.run"
+      ]
+    },
+    {
+      "capabilities": [
         "deployment.sites"
       ],
       "image": "taktus-connector-netlify",
@@ -492,6 +514,23 @@
     },
     {
       "capabilities": [
+        "channel.mail",
+        "mail.messages",
+        "newsletter.broadcasts"
+      ],
+      "image": "taktus-connector-resend",
+      "name": "resend",
+      "operations": [
+        "channel.mail.reply",
+        "mail.messages.read",
+        "mail.messages.send",
+        "newsletter.broadcasts.draft",
+        "newsletter.broadcasts.read",
+        "newsletter.broadcasts.send"
+      ]
+    },
+    {
+      "capabilities": [
         "payments.customers",
         "payments.failures",
         "payments.subscriptions"
@@ -504,6 +543,18 @@
         "payments.failures.list",
         "payments.subscriptions.list",
         "payments.subscriptions.read"
+      ]
+    },
+    {
+      "capabilities": [
+        "website.posts"
+      ],
+      "image": "taktus-connector-sanity",
+      "name": "sanity",
+      "operations": [
+        "website.posts.draft",
+        "website.posts.publish",
+        "website.posts.read"
       ]
     },
     {

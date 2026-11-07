@@ -12,6 +12,8 @@ from taktus_connectors.appstores.config import PLAY
 from taktus_connectors.appstores.config import Config as Stores
 from taktus_connectors.bigquery.operations import TARGET as WAREHOUSE
 from taktus_connectors.bigquery.operations import Config as Warehouse
+from taktus_connectors.cloudfunctions.operations import TARGET as FUNCTIONS
+from taktus_connectors.cloudfunctions.operations import Config as Functions
 from taktus_connectors.cloudrun.operations import TARGET as SERVERLESS
 from taktus_connectors.cloudrun.operations import Config as Serverless
 from taktus_connectors.firebase.operations import TARGET as SITES
@@ -32,6 +34,7 @@ type Make = Callable[[str | None, str], Exchanging]
 """A connector's configuration at an address (its default where None), with an endpoint."""
 
 MAKERS: dict[str, Make] = {
+    "functions": lambda t, e: Functions(t or FUNCTIONS, "p", "l", token_endpoint=e),
     "warehouse": lambda t, e: Warehouse(t or WAREHOUSE, token_endpoint=e),
     "serverless": lambda t, e: Serverless(t or SERVERLESS, "p", "l", token_endpoint=e),
     "sites": lambda t, e: Sites(t or SITES, token_endpoint=e),

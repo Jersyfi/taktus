@@ -1203,6 +1203,10 @@ class BusinessConnector:
     service_account: bool = False
     """The credential is a service account's key file, JSON with `client_email` and a private
     key; the fake admits the account by its address."""
+    intake: str | None = None
+    """The name of the intake secret, where the connector has an intake: a secret under the
+    open specification of signed webhooks, `whsec_` and base64 (ADR-0186), shared with the suite,
+    which signs with it."""
 
     def value(self, service_url: str = "") -> str:
         if self.key == "google":
@@ -1273,6 +1277,13 @@ BUSINESS: dict[str, BusinessConnector] = {
     ),
     "calendar": BusinessConnector("calendar", FAKES / "calendar_service.py", "CALENDAR_TOKEN"),
     "canny": BusinessConnector("canny", FAKES / "feedback_service.py", "FEEDBACK_TOKEN"),
+    "cloudfunctions": BusinessConnector(
+        "cloudfunctions",
+        FAKES / "functions_service.py",
+        "SITES_TOKEN",
+        ("--project", "example", "--location", "europe-west1"),
+        key="google",
+    ),
     "cloudrun": BusinessConnector(
         "cloudrun",
         FAKES / "serverless_service.py",
@@ -1325,10 +1336,24 @@ BUSINESS: dict[str, BusinessConnector] = {
         "mailchimp", FAKES / "newsletter_service.py", "NEWSLETTER_TOKEN"
     ),
     "mastodon": BusinessConnector("mastodon", FAKES / "social_service.py", "MENTIONS_TOKEN"),
+    "mixpanel": BusinessConnector(
+        "mixpanel",
+        FAKES / "product_analytics_service.py",
+        "ANALYTICS_KEY",
+        ("--project", "1234567"),
+        pair=True,
+    ),
     "netlify": BusinessConnector("netlify", FAKES / "site_deploys_service.py", "SITES_TOKEN"),
     "openai": BusinessConnector("openai", FAKES / "model_costs_service.py", "MODEL_COSTS_TOKEN"),
     "paypal": BusinessConnector(
         "paypal", FAKES / "billing_plans_service.py", "PAYMENTS_TOKEN", pair=True
+    ),
+    "resend": BusinessConnector(
+        "resend",
+        FAKES / "mail_api_service.py",
+        "MAIL_PASSWORD",
+        ("--from", "support@example.org"),
+        intake="MAIL_INTAKE_SECRET",
     ),
     "revenuecat": BusinessConnector(
         "revenuecat",
@@ -1336,6 +1361,7 @@ BUSINESS: dict[str, BusinessConnector] = {
         "PAYMENTS_TOKEN",
         ("--project", "proj_fake"),
     ),
+    "sanity": BusinessConnector("sanity", FAKES / "content_lake_service.py", "WEBSITE_TOKEN"),
     "scim": BusinessConnector("scim", FAKES / "directory_service.py", "DIRECTORY_TOKEN"),
     "sentry": BusinessConnector(
         "sentry", FAKES / "error_tracking_service.py", "ERRORS_TOKEN", ("--organization", "example")
@@ -1369,7 +1395,10 @@ def start_business_connector(tmp_path: Path) -> Iterator[Callable[..., RunningCo
             started, tmp_path, spec.fake, ["--port", str(port)], fake_env,
             f"{service_url}/_fake/state", name,
         )  # fmt: skip
-        env = {**_clean_environment(), **_secret_files(tmp_path, name, {spec.credential: value})}
+        values = {spec.credential: value}
+        if spec.intake:
+            values[spec.intake] = "whsec_" + base64.b64encode(secrets.token_bytes(24)).decode()
+        env = {**_clean_environment(), **_secret_files(tmp_path, name, values)}
         given = [a.replace("{target}", service_url) for a in spec.args]
         args = ["--target", service_url, *given] + (["--fault", fault] if fault else [])
         endpoint, log = _start_connector(started, tmp_path, module, args, env, name)
@@ -1377,7 +1406,7 @@ def start_business_connector(tmp_path: Path) -> Iterator[Callable[..., RunningCo
             f"{endpoint}/mcp",
             log,
             service_url,
-            {spec.credential: value},
+            values,
             started[-1],
             scenario=CONNECTORS / module / "scenario.json",
         )

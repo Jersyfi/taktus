@@ -5,7 +5,8 @@ Each connector runs as a process of its own against a fake of its product's API 
 of its own: cloud billing, a model provider's costs, error tracking, a payment provider, a
 document inbox and an accounting system (ADR-0169). Every one but the accounting connector only
 reads, so C-05 passes as not applicable; the accounting connector's two writes are marked, and
-C-05 runs on both. None has an intake, so C-07 and C-08 pass as not applicable. C-10 stays
+C-05 runs on both. One has an intake, signed webhooks under the open specification (ADR-0186),
+and C-07 and C-08 run on it; for every other they pass as not applicable. C-10 stays
 pending. Then, for every fault a connector can inject, the suite must fail on exactly the check
 the fault breaks (README §8).
 """
@@ -30,6 +31,7 @@ WRITERS = frozenset(
         "accounting",
         "appstores",
         "canny",
+        "cloudfunctions",
         "cloudrun",
         "firebase",
         "freshdesk",
@@ -38,6 +40,8 @@ WRITERS = frozenset(
         "kubernetes",
         "linear",
         "mailchimp",
+        "resend",
+        "sanity",
         "wordpress",
         "zendesk",
     }
@@ -74,10 +78,10 @@ async def test_a_business_connector_passes(module: str, start_business_connector
 def test_every_runtime_check_has_a_fault(module: str) -> None:
     unscoped = set() if module in SCOPED else {"C-11"}
     reading = set() if module in WRITERS else {"C-05"}
+    unsigned = set() if BUSINESS[module].intake else {"C-07", "C-08"}
     assert {check for _, check in open_standard_faults(module)} == set(CHECKS) - {
         *reading,
-        "C-07",
-        "C-08",
+        *unsigned,
         "C-10",
         *unscoped,
     }, (

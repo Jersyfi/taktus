@@ -1,0 +1,69 @@
+{
+  "credentials": {
+    "actions": "MAIL_PASSWORD",
+    "intake": "MAIL_INTAKE_SECRET"
+  },
+  "read": {
+    "operation": "mail.messages.read",
+    "input": {
+      "message_id": "4ef9a417-02e9-4d39-ad75-9611e0fcc33c"
+    }
+  },
+  "writes": [
+    {
+      "operation": "mail.messages.send",
+      "input": {
+        "to": "delivered@resend.dev",
+        "subject": "Conformance {{unique}}",
+        "text": "Sent by the conformance suite."
+      }
+    },
+    {
+      "operation": "channel.mail.reply",
+      "input": {
+        "address": "delivered@resend.dev",
+        "thread": "4ef9a417-02e9-4d39-ad75-9611e0fcc33c",
+        "text": "Reply {{unique}} from the conformance suite."
+      }
+    },
+    {
+      "operation": "newsletter.broadcasts.draft",
+      "input": {
+        "list": "78261eea-8f8b-4381-83c6-79fa7120f1cf",
+        "subject": "conformance {{unique}}",
+        "text": "A draft the conformance suite wrote. Nothing is sent.",
+        "from_name": "Conformance",
+        "reply_to": "news@example.org"
+      }
+    }
+  ],
+  "invalid": {
+    "operation": "mail.messages.read",
+    "input": {
+      "message_id": "not an identifier"
+    },
+    "expected_cause": "invalid"
+  },
+  "intake": {
+    "signature": {
+      "header": "svix-signature",
+      "prefix": "v1,",
+      "identified": {
+        "id": "svix-id",
+        "timestamp": "svix-timestamp"
+      }
+    },
+    "supported": {
+      "headers_file": "payloads/email-received.headers.json",
+      "body_file": "payloads/email-received.body.json"
+    },
+    "unsupported": {
+      "headers_file": "payloads/email-delivered.headers.json",
+      "body_file": "payloads/email-delivered.body.json"
+    },
+    "own_action": {
+      "headers_file": "payloads/own-action.headers.json",
+      "body_file": "payloads/own-action.body.json"
+    }
+  }
+}
