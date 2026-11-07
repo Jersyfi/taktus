@@ -73,6 +73,14 @@ KEY = "k-" + os.urandom(8).hex()
 ADAPTER = f"worker.{NAME}"
 
 
+def held(until: Path) -> str:
+    """A command of the worker's plan that runs until the test creates `until`. The step that
+    runs it is still running when the test acts on it, however loaded the machine: a plan of
+    steps of fixed seconds finished early under load, before the test's message, stop or
+    restart reached it (the flake register, #520)."""
+    return f"while [ ! -e '{until}' ]; do sleep 0.05; done"
+
+
 @pytest.fixture
 async def instances(postgres_url: str) -> AsyncIterator[tuple[Instance, Instance]]:
     a, b = Instance.open(postgres_url), Instance.open(postgres_url)
@@ -122,7 +130,9 @@ def runner(instance: Instance, engine: RunEngine, name: str) -> Runner:
     )
 
 
-async def submit(instance: Instance, objects: ObjectStore, worker: Worker) -> Run:
+async def submit(
+    instance: Instance, objects: ObjectStore, worker: Worker, commands: list[str]
+) -> Run:
     step = Step(
         id="w",
         method=Method.WORKER,
@@ -145,7 +155,9 @@ async def submit(instance: Instance, objects: ObjectStore, worker: Worker) -> Ru
     return await engine(instance, objects, worker).submit(
         StartRun(
             plan=plan,
-            work={"w": {"task": {"goal": "g", "acceptance": ["a"]}}},
+            work={
+                "w": {"task": {"goal": "g", "acceptance": ["a"], "inputs": {"commands": commands}}}
+            },
             budget=Limits(compute=ComputeLimit(seconds=60, resource_class="cpu.small")),
             process_version="p@1",
             actor="idn_t",
@@ -167,6 +179,11 @@ async def until(condition: Any, seconds: float = 60.0) -> None:
             await asyncio.sleep(0.05)
 
 
+async def kinds_of(instance: Instance, run_id: str) -> list[str]:
+    async with instance.persistence.transaction(TENANT):
+        return [e.kind for e in await instance.ledger.entries(TENANT, run_id)]
+
+
 async def verified(instance: Instance, run: Run) -> list[str]:
     async with instance.persistence.transaction(TENANT):
         entries = list(await instance.ledger.entries(TENANT, run.id))
@@ -183,8 +200,12 @@ async def test_a_restart_of_the_instance_the_worker_is_connected_to_resumes_the_
     objects = MemoryObjectStore()
     port = free_port()
     base = f"http://127.0.0.1:{port}/workers/{NAME}/relay"
+    steered, restarted = tmp_path / "steered", tmp_path / "restarted"
+    # The message is received at the boundary after the second step, which ends once the
+    # worker took the message; B restarts while the third runs, which ends once B is back.
+    commands = ["true", held(steered), held(restarted)]
     async with connected_worker(PostgresRelay(a.persistence), ADAPTER, idle_timeout=2.0) as w:
-        run = await submit(a, objects, w)
+        run = await submit(a, objects, w, commands)
         first = runner(a, engine(a, objects, w), "a")
         task = asyncio.create_task(first.run())
         try:
@@ -206,6 +227,12 @@ async def test_a_restart_of_the_instance_the_worker_is_connected_to_resumes_the_
                         )
                     )
 
+                    async def handed() -> bool:
+                        return "step.message_handed" in await kinds_of(a, run.id)
+
+                    await until(handed)
+                    steered.touch()
+
                     async def received() -> bool:
                         return bool((await stored(a, run.id)).step_run("w").messages)
 
@@ -215,6 +242,7 @@ async def test_a_restart_of_the_instance_the_worker_is_connected_to_resumes_the_
                 assert (await stored(a, run.id)).state is RunState.RUNNING
                 async with hosting(PostgresRelay(b.persistence), {NAME: KEY}, port):
                     # B is up again on the same address; the worker reconnects to it.
+                    restarted.touch()
 
                     async def finished() -> bool:
                         return (await stored(a, run.id)).state is RunState.FINISHED
@@ -239,12 +267,16 @@ async def test_a_restart_of_the_runner_s_instance_resumes_the_run_at_its_boundar
 ) -> None:
     a, b = instances
     objects = MemoryObjectStore()
+    stopping = tmp_path / "stopping"
+    # The second step runs until the worker was asked to stop: it stops at that step's end,
+    # with the third still to do.
+    commands = ["true", held(stopping), "true"]
     async with (
         hosting(PostgresRelay(b.persistence), {NAME: KEY}, free_port()) as base,
         connected_worker(PostgresRelay(a.persistence), ADAPTER) as w,
     ):
         with connected(base, tmp_path, KEY, "--step-seconds", "0.6"):
-            run = await submit(a, objects, w)
+            run = await submit(a, objects, w, commands)
             first = runner(a, engine(a, objects, w), "a")
             task = asyncio.create_task(first.run())
 
@@ -252,7 +284,17 @@ async def test_a_restart_of_the_runner_s_instance_resumes_the_run_at_its_boundar
                 return (await stored(a, run.id)).step_run("w").checkpoint is not None
 
             await until(bounded)
-            await first.stop()  # the instance is restarted: the step stops at its boundary
+            # The instance is restarted: the step stops at its boundary.
+            stopped = asyncio.create_task(first.stop())
+            assignment = (await stored(a, run.id)).step_run("w").assignment_id
+            assert assignment is not None
+
+            async def asked() -> bool:
+                return (await w.state(assignment)).status == "stopping"
+
+            await until(asked)
+            stopping.touch()
+            await asyncio.wait_for(stopped, 30)
             await asyncio.wait_for(task, 30)
             halted = await stored(a, run.id)
             assert halted.state is RunState.HALTED and halted.step_run("w").checkpoint is not None

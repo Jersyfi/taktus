@@ -70,8 +70,17 @@ async def hosting(relay: Relay, keys: dict[str, str], port: int) -> AsyncIterato
     finally:
         server.should_exit = True
         server.force_exit = True
+        # The instance goes down: its connections drop. uvicorn's shutdown waits until every
+        # connection is closed, and a worker's answer is a request whose body streams while
+        # the assignment runs; left open, the host stayed up until the worker's stream ended,
+        # or past the ten seconds below on a loaded machine (the flake register, #520).
+        async with asyncio.timeout(10):
+            while not task.done():
+                for connection in list(server.server_state.connections):
+                    connection.transport.close()
+                await asyncio.sleep(0.05)
         with contextlib.suppress(asyncio.CancelledError):
-            await asyncio.wait_for(task, 10)
+            task.result()
 
 
 @contextlib.contextmanager
