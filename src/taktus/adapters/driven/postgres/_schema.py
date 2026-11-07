@@ -105,6 +105,7 @@ process_version = Table(
     Column("heal_limit", Integer),  # the heals before a failure is said; null is three (ADR-0254)
     Column("frame", JSONB),  # what Taktus may change on its own (ADR-0255)
     Column("change_record", JSONB),  # what led Taktus to a version within the frame (ADR-0255)
+    Column("control", JSONB),  # where the control sits; null is Taktus's (ADR-0272)
     Column("inputs", JSONB, nullable=False),
     Column("author", Text),
     Column("reason", Text),

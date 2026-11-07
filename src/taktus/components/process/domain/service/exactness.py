@@ -181,6 +181,15 @@ def _applies(check: Check) -> str:
             return f"{row} — {check.count}, read through `{check.source}`"
         case CheckKind.SOURCE_SHAPE:
             return f"{row} — {_shape(check)}"
+        case CheckKind.DISTRIBUTION:
+            return f"{row} — {_band(check)}"
+
+
+def _band(check: Check) -> str:
+    return (
+        f"within {_number(round((check.band or 0) * 100, 4))} % of the median of the "
+        f"{check.window} results before it"
+    )
 
 
 def _shape(check: Check) -> str:
@@ -241,6 +250,11 @@ def _covers(step: Step, check: Check) -> str:
             )
         case CheckKind.SOURCE_SHAPE:
             return f"{subject} counts only where what the step read has {_shape(check)}."
+        case CheckKind.DISTRIBUTION:
+            return (
+                f"{subject} is marked suspect where it does not lie {_band(check)}, or has "
+                "another sign: an order of magnitude too much or too little is found."
+            )
 
 
 def _does_not_cover(step: Step, check: Check) -> str:
@@ -281,6 +295,11 @@ def _does_not_cover(step: Step, check: Check) -> str:
             )
         case CheckKind.SOURCE_SHAPE:
             return f"A wrong value of {subject} read from a source of the right shape passes."
+        case CheckKind.DISTRIBUTION:
+            return (
+                f"A wrong value of {subject} inside the band passes, and so does a series that "
+                "drifts a little each time; the result counts before the mark."
+            )
 
 
 def _slips(step: Step, check: Check) -> str:
@@ -304,3 +323,5 @@ def _slips(step: Step, check: Check) -> str:
             return f"a part present but wrong, or {check.count} itself wrong"
         case CheckKind.SOURCE_SHAPE:
             return "a wrong value in a source of the right shape"
+        case CheckKind.DISTRIBUTION:
+            return "a wrong value inside the band, or a slow drift"

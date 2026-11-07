@@ -104,6 +104,7 @@ async def test_a_crash_between_acceptance_and_start_adopts_the_accepted_assignme
         "run.recovered": {"asg_0001"},
         "step.adopted": {"asg_0001"},
         "step.finished": {"asg_0001"},
+        "result.unchecked": {"asg_0001"},
     }
     do = run.step_run("do")
     assert [a.id for a in do.artifacts] == ["out-1", "out-2", "out-3"]

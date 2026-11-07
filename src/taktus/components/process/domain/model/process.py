@@ -261,6 +261,43 @@ class ChangeRecord(Value):
     """Every change against the predecessor, in words."""
 
 
+class TaskState(Value):
+    """Where a decoupled process's task stands in the external tool that holds control
+    (UC-5.2, ADR-0272): the read that answers it, the part of the answer that is its state, and
+    the states that mean the tool withdrew it. Named by capability, never by product."""
+
+    operation: str = Field(pattern=r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
+    """A `read` operation of a connector: `<capability>.<operation>`."""
+    input: Mapping[str, Any] = Field(default_factory=dict)
+    """What the read is given: fixed values, or `{$input: <name>}` for an input of the run."""
+    select: str = Field(min_length=1)
+    """The dotted path to the task's state in the answer."""
+    withdrawn: tuple[str, ...] = Field(min_length=1)
+    """The states in which the tool withdrew the task."""
+
+    @property
+    def capability(self) -> str:
+        return self.operation.rsplit(".", 1)[0]
+
+
+class Control(Value):
+    """Where the control of the process sits (UC-5.2, ADR-0272). `coupled`: Taktus decides the
+    order and timing of the steps. `decoupled`: an external tool does, Taktus works the task and
+    writes back, and the tool's state of the task is the authority."""
+
+    mode: Literal["coupled", "decoupled"] = "coupled"
+    task: TaskState | None = None
+
+    @model_validator(mode="after")
+    def _task_where_decoupled(self) -> Control:
+        if (self.mode == "decoupled") != (self.task is not None):
+            raise ValueError(
+                "a decoupled process names `control.task`, where its task's state is read; a "
+                "coupled one names none"
+            )
+        return self
+
+
 class Expect(Value):
     """When a run of the process is expected (ADR-0107): at every slot of a `schedule`, or
     within a `gap` of the last run's start; and that a run ends within its `bound`. A run
@@ -429,6 +466,9 @@ class ProcessVersion(Value):
     """What Taktus may change in it on its own (ADR-0255 §1). None: nothing."""
     change: ChangeRecord | None = None
     """For a version Taktus registered within the frame: what led to it (ADR-0255 §3)."""
+    control: Control = Field(default_factory=Control)
+    """Where its control sits: Taktus (`coupled`, the default) or an external tool (ADR-0272).
+    A move between them is a new version; no run in progress changes mode."""
     author: str | None = None
     reason: str | None = None
 
@@ -475,6 +515,19 @@ class ProcessVersion(Value):
             "this process uses: the level would never apply (ADR-0039)"
             for action in sorted(set(self.autonomy.action_levels) - used)
         )
+        if self.control.task is not None:
+            unknown_inputs = sorted(
+                str(given["$input"])
+                for given in self.control.task.input.values()
+                if isinstance(given, Mapping)
+                and "$input" in given
+                and given["$input"] not in self.inputs
+            )
+            findings.extend(
+                f"`control.task` reads its input from {name!r}, which the process does not "
+                "declare under `inputs`"
+                for name in unknown_inputs
+            )
         if self.case is not None and self.case not in self.inputs:
             findings.append(
                 f"the case is named by the input {self.case!r}, which the process does not "

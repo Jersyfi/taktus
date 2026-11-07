@@ -83,6 +83,8 @@ def bundle_of(
         bundle["takeover"] = version.takeover.document()
     if version.heal_limit != 3:
         bundle["heal_limit"] = version.heal_limit
+    if version.control.task is not None:
+        bundle["control"] = version.control.document()
     if version.frame is not None:
         bundle["frame"] = {"changes": list(version.frame.changes)}
     if version.escalation is not None:

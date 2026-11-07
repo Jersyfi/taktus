@@ -1,5 +1,5 @@
 """What a process version declares beyond its graph, stored (ADR-0252, ADR-0254, ADR-0255,
-DEC-0233).
+ADR-0272, DEC-0233).
 
 Revision: 0104
 Revises: 0100
@@ -11,7 +11,9 @@ What this adds, on `process_version`:
   (ADR-0254). Both were declared by a version and not stored, so a version read back from the
   database lost them (DEC-0233);
 - `frame`, what Taktus may change in the process on its own, and `change_record`, what led
-  Taktus to a version it registered within the frame (ADR-0255).
+  Taktus to a version it registered within the frame (ADR-0255);
+- `control`, where the process's control sits, and for a decoupled one where its task's state
+  is read (ADR-0272).
 
 Null on every version stored before: no escalation declared, the default limit of three, no
 frame and no change. The previous release neither reads nor writes them; a null column changes
@@ -29,7 +31,7 @@ down_revision = "0100"
 branch_labels = None
 depends_on = None
 
-COLUMNS = ("escalation", "heal_limit", "frame", "change_record")
+COLUMNS = ("escalation", "heal_limit", "frame", "change_record", "control")
 
 
 def upgrade() -> None:
@@ -37,6 +39,7 @@ def upgrade() -> None:
     op.add_column("process_version", sa.Column("heal_limit", sa.Integer, nullable=True))
     op.add_column("process_version", sa.Column("frame", JSONB, nullable=True))
     op.add_column("process_version", sa.Column("change_record", JSONB, nullable=True))
+    op.add_column("process_version", sa.Column("control", JSONB, nullable=True))
 
 
 def downgrade() -> None:

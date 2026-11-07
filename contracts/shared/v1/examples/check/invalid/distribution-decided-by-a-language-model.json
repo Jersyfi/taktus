@@ -1,0 +1,6 @@
+{
+  "kind": "distribution",
+  "window": 11,
+  "band": 0.5,
+  "method": "llm"
+}

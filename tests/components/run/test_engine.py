@@ -207,6 +207,7 @@ async def test_a_run_completes_and_every_state_change_is_in_the_ledger() -> None
         "step.assigned:do",
         "step.started:do",
         "step.finished:do:succeeded",
+        "result.unchecked:do:unchecked",
         "step.admitted:pause",
         "step.started:pause",
         "step.waited:pause:waiting_on_clock",

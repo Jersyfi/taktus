@@ -291,6 +291,7 @@ from taktus.components.run.ports import (
     ConnectorPool,
     Decisions,
     Draft,
+    ExternalControl,
     Guidance,
     Levels,
     Maturities,
@@ -392,6 +393,7 @@ from taktus.shared.v1 import (
     Consumption,
     ConsumptionQuantities,
     Digest,
+    ExactnessClass,
     InputKind,
     LedgerEntry,
     LedgerRefs,
@@ -797,7 +799,11 @@ class RunEngine:
         statements: Statements | None = None,
         guidance: Guidance | None = None,
         org_units: OrgUnits | None = None,
+        control: ExternalControl | None = None,
     ) -> None:
+        self._control = control
+        """Where the control of a run's process sits (UC-5.2, ADR-0272). None: every run is
+        controlled by Taktus, and nothing outside it withdraws one."""
         self._org_units = org_units
         """The tenant's quotas per organisational unit and what each unit's runs committed
         (ADR-0166). None: no run commits to a unit's budget quota."""
@@ -2449,6 +2455,12 @@ class RunEngine:
         run = capped
         completed_now = 0
         while (step_run := run.runnable()) is not None:
+            withdrawn = await self._withdrawn(run)
+            if withdrawn is not None:
+                # Decoupled: the external tool withdrew the task, and its state is the
+                # authority; the run goes no further than this boundary (UC-5.2, ADR-0272).
+                run = await self._commit(run, WITHDRAWN, outcome="withdrawn")
+                return await self._end(run, RunState.HALTED, Cause.STOP, withdrawn, span)
             step = run.step(step_run.step_id)
             run, step_run = await self._step_or_failed(run, step, step_run)
             asked = self._taking_over.get(run.id)
@@ -2554,6 +2566,13 @@ class RunEngine:
                     run, aside, {"skipped": True, "because": "the run did not escalate"}, "skipped"
                 )
         return await self._end(run, RunState.FINISHED, None, None, span)
+
+    async def _withdrawn(self, run: Run) -> str | None:
+        """Why the run stops at this boundary because the external tool withdrew its task; None
+        where it goes on. A rehearsal acts on nothing outside, and is never withdrawn."""
+        if self._control is None or run.rehearsal:
+            return None
+        return await self._control.withdrawn(run)
 
     async def _healing(self, run: Run, step: Step, step_run: StepRun) -> healing.Healing:
         """Whether Taktus heals the step that failed: at level 4, a known failure inside the
@@ -4698,6 +4717,7 @@ class RunEngine:
         )
         if step.checks and not run.rehearsal:
             run = await self._sample(run, step, step_run)
+            run = await self._distributed(run, step, step_run)
         _measured(span, step_run)
         return run, step_run
 
@@ -4897,6 +4917,86 @@ class RunEngine:
             ]
 
         raise _ToApprove(drafts)
+
+    async def _distributed(self, run: Run, step: Step, step_run: StepRun) -> Run:
+        """After the result counts: each distribution check judges it against the moving median
+        of the step's earlier results in the same process (ADR-0271). One that fails marks the
+        result suspect — `check.suspect`, its family `distribution`, what it compared — and
+        stops nothing: the run goes on (UC-4.10)."""
+        checks = [
+            (position, check)
+            for position, check in enumerate(step.checks or (), start=1)
+            if check.kind is CheckKind.DISTRIBUTION
+        ]
+        checkpoint = step_run.checkpoint
+        if not checks or checkpoint is None or checkpoint.result_digest is None:
+            return run
+        given = control_of(step, run.work.get(step.id), run.inputs).checking
+        part = given.select if given is not None else None
+        judged = await self._recorded_value(checkpoint.result_digest, part)
+        if judged is _ABSENT:
+            return run
+        earlier = await self._earlier_values(
+            run, step.id, part, max(c.window or 0 for _, c in checks)
+        )
+        for position, check in checks:
+            finding = checking.distribution(position, check, judged, earlier)
+            if finding.passed:
+                continue
+            suspect = Suspect(
+                run_id=run.id,
+                step_id=step.id,
+                check=f"check_{position}",
+                family=str(check.kind),
+                compared=finding.describe(),
+            )
+            digest = await self._objects.put(_canonical(suspect.model_dump(mode="json")))
+            run = await self._commit(
+                run, SUSPECT, step=step_run, outcome=suspect.check, digest=digest
+            )
+        return run
+
+    async def _recorded_value(self, digest: Digest, part: str | None) -> Any:
+        """A step's result as it counted, read from the object store, or the part of it the
+        checks judge; `_ABSENT` where it cannot be read."""
+        content = await self._objects.get(digest)
+        if content is None:
+            return _ABSENT
+        try:
+            return select(json.loads(content), part)
+        except (KeyError, ValueError):
+            return _ABSENT
+
+    async def _earlier_values(
+        self, run: Run, step_id: StepId, part: str | None, window: int
+    ) -> list[Any]:
+        """The results of the step in the process's earlier runs, oldest first, at most
+        `window`: every version of the process counts, a rehearsal never (ADR-0271 §2)."""
+        process = run.process_version.rsplit("@", 1)[0]
+        async with self._work.transaction(run.tenant):
+            finished = await self._ledger.of_kinds(run.tenant, ("step.finished",))
+        runs = [
+            e.refs.run_id
+            for e in finished
+            if e.refs.step_id == step_id
+            and e.outcome == "succeeded"
+            and not e.rehearsal
+            and e.refs.run_id not in (None, run.id)
+            and (e.refs.process_version or "").rsplit("@", 1)[0] == process
+        ]
+        values: list[Any] = []
+        for run_id in list(dict.fromkeys(runs))[-window:]:
+            async with self._work.transaction(run.tenant):
+                earlier = await self._runs.get(run.tenant, run_id or "")
+            if earlier is None:
+                continue
+            done = earlier.step_run(step_id).checkpoint
+            if done is None or done.result_digest is None:
+                continue
+            value = await self._recorded_value(done.result_digest, part)
+            if value is not _ABSENT:
+                values.append(value)
+        return values
 
     async def _sample(self, run: Run, step: Step, step_run: StepRun) -> Run:
         """After the result counts: each sampling check that chooses it puts it to a person of
@@ -7117,6 +7217,17 @@ class RunEngine:
                             await self._record(
                                 run, messages.SENT, step=step, outcome="sent", digest=trace.message
                             )
+                if (
+                    kind == "step.finished"
+                    and outcome == "succeeded"
+                    and step
+                    and not run.rehearsal
+                ):
+                    declared = run.step(step.step_id)
+                    if declared.exactness in UNCHECKED_CLASSES and not declared.checks:
+                        # A result no check judged is recorded as unchecked, never as passed
+                        # (UC-4.10, ADR-0271 §3).
+                        await self._record(run, UNCHECKED, step=step, outcome="unchecked")
                 for extra in after:
                     await self._record(run, **extra)
         return run
@@ -7284,6 +7395,14 @@ class _ToApprove(Exception):
         self.drafts = drafts
 
 
+WITHDRAWN = "control.withdrawn"
+"""A decoupled run's task, withdrawn by the external tool that holds control: the run halts at
+the boundary (UC-5.2, ADR-0272)."""
+UNCHECKED = "result.unchecked"
+"""A result of a `tolerant` or `free` step that declares no check: recorded as unchecked, never
+as passed (UC-4.10, ADR-0271 §3)."""
+UNCHECKED_CLASSES = frozenset({ExactnessClass.TOLERANT, ExactnessClass.FREE})
+
 SUSPECT = "check.suspect"
 """A result a check that reads a source failed on when it was applied again after the result
 counted (ADR-0179 §1)."""
@@ -7293,15 +7412,21 @@ tenant's correction anchor names (ADR-0179 §3)."""
 
 
 class Suspect(Value):
-    """A result a check marked suspect when it was applied again (UC-4.10): the check by its
-    place, its family, what it compared, and the source as it was read now."""
+    """A result a check marked suspect (UC-4.10): the check by its place, its family, what it
+    compared, and the source as it was read now where it read one — a check applied again
+    (ADR-0179 §1); none for a distribution, which compares with the step's earlier results
+    (ADR-0271)."""
 
     run_id: str
     step_id: str
     check: str
     family: str
     compared: str
-    source: ProvenanceInput
+    source: ProvenanceInput | None = None
+
+
+_ABSENT = object()
+"""A recorded result that cannot be read."""
 
 
 def _carried(run: Run, carried: Sequence[StepRun]) -> Run:

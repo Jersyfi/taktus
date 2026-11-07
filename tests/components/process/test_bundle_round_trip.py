@@ -66,6 +66,15 @@ def every_field() -> dict[str, Any]:
     document["escalation"] = {"role": "support", "react_within": "30m", "path": "ledger"}
     document["heal_limit"] = 5
     document["frame"] = {"changes": ["work", "takeover"]}
+    document["control"] = {
+        "mode": "decoupled",
+        "task": {
+            "operation": "tasks.items.get",
+            "input": {"id": {"$input": "due"}},
+            "select": "state",
+            "withdrawn": ["withdrawn", "cancelled"],
+        },
+    }
     document["change"] = {
         "observed": "interface",
         "on": "repository.issues.list",

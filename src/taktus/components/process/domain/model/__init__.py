@@ -17,6 +17,7 @@ from taktus.components.process.domain.model.event import (
 )
 from taktus.components.process.domain.model.process import (
     ChangeRecord,
+    Control,
     DeadlineAction,
     DeadlineDeclaration,
     Each,
@@ -30,6 +31,7 @@ from taktus.components.process.domain.model.process import (
     Process,
     ProcessVersion,
     Slo,
+    TaskState,
     Trigger,
 )
 from taktus.components.process.domain.model.proposal import (
@@ -52,6 +54,7 @@ __all__ = [
     "CaseState",
     "ChangeRecord",
     "Condition",
+    "Control",
     "CorrectedCase",
     "CredentialPointer",
     "DeadlineAction",
@@ -85,6 +88,7 @@ __all__ = [
     "StreamKind",
     "TakeoverInstructions",
     "TakeoverTrial",
+    "TaskState",
     "Trigger",
     "TriggerState",
     "ValueStream",

@@ -179,6 +179,8 @@ from taktus.composition.case_spend import InstanceSpend
 from taktus.composition.catalogue_in_channel import CatalogueInChannel
 from taktus.composition.change_in_channel import ChangeInChannel
 from taktus.composition.conformance import InstanceSuites, worker_suites
+from taktus.composition.contents import StepContents
+from taktus.composition.control import TaskControl
 from taktus.composition.deadlines import Deadlines
 from taktus.composition.decisions import DecisionWiring, decision_wiring
 from taktus.composition.defects import (
@@ -708,6 +710,11 @@ async def wire(
                     ),
                     guidance=CatalogGuidance(skill_catalog, agent_catalog),
                     org_units=org_units,
+                    control=TaskControl(
+                        versions=PostgresRepository(persistence, ProcessVersion),
+                        connectors=connectors,
+                        work=persistence,
+                    ),
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -1084,6 +1091,13 @@ async def wire(
                 PostgresRepository(persistence, AnchorConfiguration),
                 persistence,
                 clock,
+                contents=StepContents(
+                    objects=objects,
+                    runs=runs,
+                    provenance=provenance_store,
+                    ledger=ledger,
+                    work=persistence,
+                ),
             )
             wired = Wired(
                 connected=connected_host(settings.workers, configuration, relay),

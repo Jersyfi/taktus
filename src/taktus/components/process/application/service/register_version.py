@@ -71,6 +71,7 @@ from pydantic import ValidationError
 
 from taktus.components.process.domain.model import (
     ChangeRecord,
+    Control,
     DeadlineDeclaration,
     Escalation,
     EvaluationSpec,
@@ -519,6 +520,7 @@ def read_bundle(bundle: Document) -> tuple[ProcessVersion, list[str]]:
             heal_limit=bundle.get("heal_limit", 3),
             frame=_frame(bundle.get("frame")),
             change=_change(bundle.get("change")),
+            control=_control(bundle.get("control")),
             author=bundle.get("author"),
             reason=bundle.get("reason"),
         )
@@ -780,6 +782,16 @@ def _frame(raw: Any) -> Frame | None:
         raise InvalidProcess(
             (*_describe("frame", error), f"`frame.changes` names any of {', '.join(FRAME_KINDS)}")
         ) from error
+
+
+def _control(raw: Any) -> Control:
+    """`control`: `coupled`, or `{mode: decoupled, task: {...}}` (ADR-0272)."""
+    if raw is None or raw == "coupled":
+        return Control()
+    try:
+        return Control.model_validate(raw)
+    except ValidationError as error:
+        raise InvalidProcess(tuple(_describe("control", error))) from error
 
 
 def _change(raw: Any) -> ChangeRecord | None:

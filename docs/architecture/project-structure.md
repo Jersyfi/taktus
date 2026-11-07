@@ -461,6 +461,17 @@ role it would tie the core to a model stack and the removal test would be lost.
   `ProcessProposals` reads from the ledger and the runs. Accepting one hands its words to
   `ProposalActs.ask` (`composition/proposals.py`); a decision is a ledger entry, and nothing is
   stored to make the list.
+- **A distribution and the window of a defect** (ADR-0271): the engine applies a check of kind
+  `distribution` after the result counted (`_distributed` in
+  `run/application/service/execute_run.py`, the statistic in `run/domain/service/checking.py`)
+  and records `result.unchecked` for a result no check judged. `composition/contents.py`'s
+  `StepContents` answers the governance port `RecordedContents`: the shape of what each result
+  read, and the runs a check run again marks; the daemon gives it to `ResultDefects`.
+- **Where a process's control sits** (ADR-0272): the version's `control`
+  (`process/domain/model/process.py`), the run's port `ExternalControl`
+  (`run/ports/control.py`) that the engine asks at every step boundary, and
+  `composition/control.py`'s `TaskControl`, which reads a decoupled task's state through the
+  connector that serves it; the daemon gives it to the engine.
 - **The load measurement** (S-04, ADR-0223) is `adapters/driving/cli/load_command.py`: it
   submits the probe `blueprints/self-operation/processes/S-04-load-probe.yaml`, which the control
   plane's image carries, through the same services as `taktusctl submit`, and reads each run's

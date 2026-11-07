@@ -146,6 +146,15 @@ def process_version(version: str = "1", tenant: str = "t") -> ProcessVersion:
     }
     document["case"] = "due"
     document["frame"] = {"changes": ["work", "takeover"]}
+    document["control"] = {
+        "mode": "decoupled",
+        "task": {
+            "operation": "tasks.items.get",
+            "input": {"id": {"$input": "due"}},
+            "select": "state",
+            "withdrawn": ["withdrawn", "cancelled"],
+        },
+    }
     document["change"] = {
         "observed": "interface",
         "on": "repository.issues.list",

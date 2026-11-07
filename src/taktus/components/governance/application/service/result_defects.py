@@ -13,7 +13,7 @@ affected result: to its process, and to the adapter and the capabilities its rec
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 
 from taktus.components.governance.domain.model.anchors import (
@@ -38,6 +38,7 @@ from taktus.components.governance.domain.model.incident import (
 )
 from taktus.components.governance.domain.service import defects
 from taktus.components.governance.domain.service.anchors import applies
+from taktus.components.governance.ports import RecordedContents
 from taktus.ports.clock import Clock
 from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.persistence import ProvenanceStore, Repository, Tenant, UnitOfWork
@@ -97,7 +98,11 @@ class ResultDefects:
         anchors: Repository[AnchorConfiguration],
         work: UnitOfWork,
         clock: Clock,
+        contents: RecordedContents | None = None,
     ) -> None:
+        self._contents = contents
+        """What the recorded results hold, for a cause in a source's content and a window found
+        by running the check again (ADR-0271). None: neither is looked for."""
         self._provenance = provenance
         self._ledger = ledger
         self._incidents = incidents
@@ -124,12 +129,37 @@ class ResultDefects:
         ]
         digest = produced[-1].result_digest if produced else None
         defect = ResultRef(run_id=command.run_id, step_id=command.step_id, digest=digest)
-        analysis = defects.analyse(defect, command.found, records, entries)
+        shapes, marked = await self._contented(tenant, defect, records)
+        analysis = defects.analyse(
+            defect, command.found, records, entries, shapes=shapes, marked=marked
+        )
         legal = _legal_downstream(analysis, records, anchors)
         facts = defects.facts_of(analysis, legal_downstream=legal, relevance=command.relevance)
         decision = defects.decide(facts, watch.defect_rules)
         systems = {e.seq: _system(e) for e in entries if e.kind.startswith("egress.")}
         return Assessment(analysis, decision, defects.plan(analysis, systems))
+
+    async def _contented(
+        self, tenant: Tenant, defect: ResultRef, records: Sequence[Provenance]
+    ) -> tuple[Mapping[tuple[str, str], str] | None, Collection[str] | None]:
+        """The shapes of what the step's series read, and the runs its check marks again."""
+        if self._contents is None:
+            return None, None
+        produced = [r for r in records if (r.run_id, r.step_id) == (defect.run_id, defect.step_id)]
+        if not produced:
+            return None, None
+        process = defects.process_of(produced[-1].process_version)
+        series = sorted(
+            (
+                r
+                for r in records
+                if r.step_id == defect.step_id and defects.process_of(r.process_version) == process
+            ),
+            key=lambda r: r.ledger_seq,
+        )
+        shapes = await self._contents.shapes(tenant, series)
+        marked = await self._contents.marked(tenant, defect.run_id, defect.step_id, series)
+        return shapes, marked
 
     async def by_hand(self, command: RecordByHand) -> Incident:
         """The step recorded on the incident with its role and time, and as `incident.by_hand`
