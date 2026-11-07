@@ -6,7 +6,9 @@ a YAML file; one that grants more than the core is refused. `evaluate` starts ea
 evaluation of a held core, and `advance` records the verdicts and prints what still holds it.
 `call` runs the agent as the identity `--identity` names, with the profile its roles resolve
 to. `usage` prints calls and cost per profile — a profile is a role, never a person. `diagram`
-prints the core and each profile's differences as a Mermaid flowchart.
+prints the core and each profile's differences as a Mermaid flowchart. `describe` prints, from
+the version alone, what the agent does, what it reads, which tools it may use and what it must
+not do (UC-8.7).
 """
 
 from __future__ import annotations
@@ -213,3 +215,21 @@ def diagram(
         return await agents.catalog.diagram(tenant, name)
 
     typer.echo(_run(ctx, state_dir, act))
+
+
+@agent.command("describe")
+def describe(
+    ctx: typer.Context,
+    name: Agent,
+    version: Annotated[
+        str | None, typer.Option("--version", help="The core version; the active one if absent.")
+    ] = None,
+    tenant: Tenant = DEFAULT_TENANT,
+    state_dir: StateDir = Path(DEFAULT_STATE_DIR),
+) -> None:
+    """What the agent does, reads, may use and must not do, in plain language (Markdown)."""
+
+    async def act(agents: AgentActs) -> str:
+        return await agents.catalog.describe(tenant, name, version)
+
+    typer.echo(_run(ctx, state_dir, act), nl=False)

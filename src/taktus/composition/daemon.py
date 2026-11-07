@@ -240,6 +240,7 @@ from taktus.composition.settings import (
 )
 from taktus.composition.shares import shares_of
 from taktus.composition.shipped import load as load_shipped
+from taktus.composition.shipped import product_names
 from taktus.composition.signals import CommandInterventions, signal_wiring, signals_tick
 from taktus.composition.skills import CatalogGuidance, SkillLifecycle, skills_tick
 from taktus.composition.spend_in_channel import SpendInChannel
@@ -648,6 +649,7 @@ async def wire(
                 persistence,
                 ledger,
                 clock,
+                products=product_names(load_shipped()),
             )
 
             # A real run reaches a model only after a trial found the quality held with it on
