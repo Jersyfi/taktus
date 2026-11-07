@@ -20,6 +20,7 @@ export type IconName =
 	| 'trials'
 	| 'acts'
 	| 'depends'
+	| 'privacy'
 	| 'incident'
 	| 'alert'
 	| 'backup'
@@ -57,6 +58,7 @@ export const DESTINATIONS: Destination[] = [
 	{ id: 'trials', label: 'Trials', href: '#/trials', band: 'steer', icon: 'trials', routes: ['/trials'] },
 	{ id: 'register', label: 'What acts', href: '#/register', band: 'steer', icon: 'acts', routes: ['/register'] },
 	{ id: 'dependencies', label: 'Dependencies', href: '#/dependencies', band: 'steer', icon: 'depends', routes: ['/dependencies'] },
+	{ id: 'subjects', label: 'Data protection', href: '#/subjects', band: 'steer', icon: 'privacy', routes: ['/subjects'] },
 	{ id: 'incidents', label: 'Incidents', href: '#/incidents', band: 'running', icon: 'incident', routes: ['/incidents'] },
 	{ id: 'alerts', label: 'Alerts', href: '#/alerts', band: 'running', icon: 'alert', routes: ['/alerts'] },
 	{ id: 'backup', label: 'Backup', href: '#/backup', band: 'running', icon: 'backup', routes: ['/backup'] },

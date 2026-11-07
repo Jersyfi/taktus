@@ -4,4 +4,4 @@ without breaking a process. An **integration** is anything outside Taktus that T
 worker that carries out work, a connector to another system, a language model.
 
 This page shows each of the three: the check of a restart, the report on the machine, and the
-removal test.
+removal test. Its last part shows how a tenant moves to another instance.

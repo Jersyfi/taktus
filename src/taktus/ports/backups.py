@@ -20,7 +20,7 @@ from taktus.shared.v1 import Value
 
 NAME_PATTERN = r"^taktus-\d{8}T\d{6}Z$"
 REASONS: frozenset[str] = frozenset(
-    {"configuration", "database", "encryption", "objects", "store", "retention"}
+    {"configuration", "database", "encryption", "objects", "store", "retention", "drill"}
 )
 """The steps a run can fail at, as the program names them (`deploy/backup/backup.py`)."""
 

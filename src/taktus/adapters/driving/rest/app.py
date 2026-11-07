@@ -57,6 +57,7 @@ from taktus.adapters.driving.rest import (
     agent_surface,
     autonomy,
     catalogue,
+    deprecation,
     evaluations,
     findings,
     gallery,
@@ -71,6 +72,7 @@ from taktus.adapters.driving.rest import (
     stages,
     steering,
     streams,
+    subjects,
     takeover,
     takeover_instructions,
     tenants,
@@ -163,6 +165,8 @@ def build_app(
     )
     app.add_exception_handler(HTTPException, on_http_exception)
     app.add_exception_handler(RequestValidationError, on_validation_error)
+    # A deprecated operation says so in every answer (ADR-0220 §4.1).
+    app.add_middleware(deprecation.Deprecations)
     app.include_router(_operations(services), prefix=base)
     if full:
         app.include_router(_intake(services), prefix=base)
@@ -193,6 +197,7 @@ def build_app(
         app.include_router(profiles.router(services, _authenticated), prefix=base)
         app.include_router(spend.router(services, _authenticated), prefix=base)
         app.include_router(trials.router(services, _authenticated), prefix=base)
+        app.include_router(subjects.router(services, _authenticated), prefix=base)
         # A person's own agent, over MCP, with a key of its own (ADR-0131).
         app.router.routes.append(
             Route(

@@ -96,6 +96,7 @@ from taktus.adapters.driving.cli import (
     incident_command,
     interfaces_command,
     ledger_command,
+    load_command,
     maturation_command,
     messages_command,
     owner_channel_command,
@@ -176,6 +177,7 @@ app.add_typer(owner_channel_command.owner_channel, name="owner-channel")
 app.add_typer(guides_command.guides, name="guides")
 app.add_typer(maturation_command.maturation, name="maturation")
 app.add_typer(ledger_command.ledger, name="ledger")
+app.add_typer(load_command.load, name="load")
 
 CONTRACTS = {"worker/v1", "connector/v1", "model/v1"}
 

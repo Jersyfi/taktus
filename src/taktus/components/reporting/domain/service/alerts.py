@@ -58,6 +58,7 @@ FAILED_STEP: dict[str, str] = {
     "objects": "the object store could not be archived",
     "store": "the backup store could not be written or listed",
     "retention": "older backups could not be deleted from the store",
+    "drill": "the restore drill of the newest backup did not verify its ledger chains",
 }
 """One phrase per step the backup program names when a run fails."""
 

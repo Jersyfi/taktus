@@ -451,6 +451,23 @@ role it would tie the core to a model stack and the removal test would be lost.
   into `OwnerAnswers` beside the change in dialogue). Where a served take-over stands is read
   from the step run alone (`StepRun.takeovers`) and handed to the run level by
   `composition/levels.py`.
+- **The load measurement** (S-04, ADR-0223) is `adapters/driving/cli/load_command.py`: it
+  submits the probe `blueprints/self-operation/processes/S-04-load-probe.yaml`, which the control
+  plane's image carries, through the same services as `taktusctl submit`, and reads each run's
+  latency from its record.
+- **A tenant's export and import** (ADR-0221): the port `TenantArchive` of
+  `ports/persistence.py`, implemented over every table with a `tenant` column by
+  `adapters/driven/postgres/archive.py`; `composition/tenant_export.py`'s `TenantExports`
+  writes and reads the document and checks the chains after an import. `taktusctl tenant
+  export` and `import` (`adapters/driving/cli/tenant_command.py`) and the administration routes
+  of `adapters/driving/rest/tenants.py` reach it; `composition/local.py` and the daemon's `Wired`
+  give it where the state is a database.
+- **Data-protection requests and the processing evidence** (ADR-0176) are served on the HTTP
+  surface by `adapters/driving/rest/subjects.py` through the ports `SubjectActs` and
+  `EvidenceReads` of `adapters/driving/rest/wiring.py`; the daemon's `Wired` builds the
+  governance component's `SubjectRequests` over `composition/subjects.py`'s `RunHoldings`, with
+  an uncached object store, and `ProcessingEvidence`, as `composition/local.py` does for
+  `taktusctl subject` and `evidence`. The web app's page is `web/src/routes/subjects/`.
 - **A process's takeover instructions and their trials** (ADR-0180) belong to the process
   component: `domain/model/takeover.py`, the rules registration holds them to in
   `domain/service/takeover.py`, and `application/service/takeover.py`'s `TakeoverTrials`, which

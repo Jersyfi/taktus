@@ -409,6 +409,65 @@ class TenantStore(Protocol):
         ...
 
 
+class ArchivedRows(Value):
+    """The rows of one store that hold a tenant's state, each without its tenant, its values
+    as JSON: what a tenant export carries per store (ADR-0221)."""
+
+    store: str = Field(min_length=1)
+    rows: tuple[dict[str, Any], ...] = ()
+
+
+class TenantNotEmpty(PersistenceError):
+    """A tenant is restored only where it holds nothing yet."""
+
+    def __init__(self, tenant: Tenant, held: int) -> None:
+        super().__init__(
+            f"tenant {tenant!r} already holds {held} row(s) here; an export is imported only "
+            "into a tenant that holds nothing"
+        )
+        self.tenant = tenant
+        self.held = held
+
+
+class TenantImported(Value):
+    """What an import wrote, and what the check of the chains found where it now lives."""
+
+    tenant: str
+    rows: int = Field(ge=0)
+    objects: int = Field(ge=0)
+    entries: int = Field(ge=0)
+    ledger_intact: bool
+    heads_match: bool
+    provenance_intact: bool
+    findings: tuple[str, ...] = ()
+
+    @property
+    def verified(self) -> bool:
+        return self.ledger_intact and self.heads_match and self.provenance_intact
+
+
+class TenantArchive(Protocol):
+    """A tenant's whole state, every store of it, read out and written back as rows
+    (ADR-0221). What is derived from other rows — the ledger's projections — and what belongs
+    to one instance's sessions is left out; the adapter names what."""
+
+    async def export(self, tenant: Tenant) -> Sequence[ArchivedRows]:
+        """Every store's rows of the tenant, in an order a restore can write them in. In one
+        consistent read, outside any open unit of work."""
+        ...
+
+    async def restore(self, entry: TenantEntry, archived: Sequence[ArchivedRows]) -> int:
+        """Write a tenant's rows back, in one transaction, and say how many. The tenant is
+        added to the registry where it is not there. Refused with `TenantNotEmpty`, writing
+        nothing, where the tenant holds a row already; refused for a store this schema does
+        not have."""
+        ...
+
+    async def held(self, tenant: Tenant) -> int:
+        """How many rows of the archived stores the tenant holds."""
+        ...
+
+
 class UnitOfWork(Protocol):
     def transaction(
         self, tenant: Tenant, *, consistent: bool = False

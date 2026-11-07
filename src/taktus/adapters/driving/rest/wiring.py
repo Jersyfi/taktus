@@ -25,8 +25,13 @@ from taktus.components.decision.application.service import (
     AnswerRequestHandler,
     ConfirmRequestHandler,
 )
-from taktus.components.governance.application.service import Corrections, Stages
-from taktus.components.governance.domain.model import Incident
+from taktus.components.governance.application.service import (
+    Confirmed,
+    Corrections,
+    PrepareRequest,
+    Stages,
+)
+from taktus.components.governance.domain.model import Incident, SubjectRequest
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.application.service.streams import DeclareStream
@@ -72,7 +77,7 @@ from taktus.ports.clock import Clock
 from taktus.ports.configuration import Secret
 from taktus.ports.identity import Resolution
 from taktus.ports.ledger import Ledger
-from taktus.ports.persistence import Queried, Tenant, UnitOfWork
+from taktus.ports.persistence import Queried, Tenant, TenantImported, UnitOfWork
 
 
 class StreamsFull(Exception):
@@ -367,6 +372,37 @@ class ProfileReads(Protocol):
         ...
 
 
+class SubjectActs(Protocol):
+    """Data-protection requests prepared, carried out by a person and withdrawn
+    (ADR-0176)."""
+
+    async def prepare(self, command: PrepareRequest, *, by: str) -> SubjectRequest: ...
+
+    async def get(self, tenant: Tenant, request_id: str) -> SubjectRequest | None: ...
+
+    async def list(self, tenant: Tenant) -> Sequence[SubjectRequest]: ...
+
+    async def confirm(
+        self, tenant: Tenant, request_id: str, *, by: str, identity_checked: bool
+    ) -> Confirmed: ...
+
+    async def withdraw(self, tenant: Tenant, request_id: str, *, by: str) -> SubjectRequest: ...
+
+
+class EvidenceReads(Protocol):
+    """The processing evidence, generated from configuration and the ledger (ADR-0176 §8)."""
+
+    async def evidence(self, tenant: Tenant) -> dict[str, Any]: ...
+
+
+class TenantExportActs(Protocol):
+    """A tenant exported, and an export imported and checked (ADR-0221)."""
+
+    async def export(self, tenant: Tenant, *, by: str) -> bytes: ...
+
+    async def import_(self, content: bytes, *, by: str) -> TenantImported: ...
+
+
 class RestServices(Protocol):
     @property
     def roles(self) -> Sequence[str]:
@@ -506,6 +542,22 @@ class RestServices(Protocol):
     @property
     def takeover_instructions(self) -> InstructionActs:
         """A process's takeover instructions and the trials of them (ADR-0180)."""
+        ...
+
+    @property
+    def tenant_exports(self) -> TenantExportActs | None:
+        """A tenant's export and import, for the administration key; None where the state is
+        not a database (ADR-0221)."""
+        ...
+
+    @property
+    def subject_requests(self) -> SubjectActs:
+        """Data-protection requests, prepared and carried out by a person (ADR-0176)."""
+        ...
+
+    @property
+    def processing_evidence(self) -> EvidenceReads:
+        """What is processed for a tenant, generated (ADR-0176 §8)."""
         ...
 
     @property

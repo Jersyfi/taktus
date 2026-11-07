@@ -52,6 +52,7 @@ from taktus.adapters.driven.postgres import (
     PostgresQueue,
     PostgresRelay,
     PostgresRepository,
+    PostgresTenantArchive,
     PostgresTenantStore,
     PostgresTraceStore,
     SchemaOutOfDate,
@@ -102,10 +103,12 @@ from taktus.components.governance.application.service import (
     ReportCapacityHandler,
     ResultDefects,
     Stages,
+    SubjectRequests,
 )
 from taktus.components.governance.domain.model import (
     AnchorConfiguration,
     Incident,
+    SubjectRequest,
     WatchConfiguration,
 )
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
@@ -239,7 +242,9 @@ from taktus.composition.spend_in_channel import SpendInChannel
 from taktus.composition.stages import stage_wiring, stages_tick
 from taktus.composition.stops import StopsConfirmed
 from taktus.composition.streams import StreamReads
+from taktus.composition.subjects import ProcessingEvidence, RunHoldings
 from taktus.composition.takeover_in_channel import TakeoverInChannel
+from taktus.composition.tenant_export import TenantExports
 from taktus.composition.traces import traces_tick
 from taktus.composition.trials import Trials, trials_tick
 from taktus.composition.triggers import Triggers
@@ -370,6 +375,12 @@ class Wired:
     """The skill lifecycle the scheduler looks at once a minute (ADR-0162)."""
     instructions: TakeoverTrials | None = None
     """A process's takeover instructions and the trials of them (ADR-0180)."""
+    subjects: SubjectRequests | None = None
+    """Data-protection requests, prepared and carried out by a person (ADR-0176)."""
+    evidence: ProcessingEvidence | None = None
+    """What is processed for a tenant, generated (ADR-0176 §8)."""
+    exports: TenantExports | None = None
+    """A tenant exported, and an export imported and checked (ADR-0221)."""
     agents: SharedAgents | None = None
     """Shared agents with role profiles (ADR-0163)."""
     connected: ConnectedHost | None = None
@@ -413,6 +424,25 @@ class Wired:
         if self.instructions is None:
             raise RuntimeError("the daemon wires the takeover instructions")
         return self.instructions
+
+    @property
+    def tenant_exports(self) -> TenantExports | None:
+        """A tenant's export and import on the HTTP surface (ADR-0221)."""
+        return self.exports
+
+    @property
+    def subject_requests(self) -> SubjectRequests:
+        """Data-protection requests on the HTTP surface (ADR-0176)."""
+        if self.subjects is None:
+            raise RuntimeError("the daemon wires the data-protection requests")
+        return self.subjects
+
+    @property
+    def processing_evidence(self) -> ProcessingEvidence:
+        """The processing evidence on the HTTP surface (ADR-0176 §8)."""
+        if self.evidence is None:
+            raise RuntimeError("the daemon wires the processing evidence")
+        return self.evidence
 
     @property
     def operation(self) -> OperationRecords:
@@ -551,6 +581,10 @@ async def wire(
                 state_dir=settings.state_dir,
                 cache_bytes=settings.object_cache_mb * 1024 * 1024,
             )
+            if settings.object_store.kind != "s3":
+                # The directory exists from the start, empty, so that a backup of a fresh
+                # instance finds the store it archives (ADR-0222).
+                (settings.state_dir / "objects").mkdir(parents=True, exist_ok=True)
             recordings = RecordedResponses(runs, persistence, objects)
             pools = Pools(
                 StaticWorkerPool(
@@ -1291,6 +1325,50 @@ async def wire(
                     clock=clock,
                     ids=ids,
                 ),
+            )
+            # Data-protection requests reach the store the artifacts live in (ADR-0165,
+            # ADR-0176), uncached: an erased object must not linger in a cache.
+            wired.evidence = ProcessingEvidence(
+                register=wired.acting.register,
+                processes=PostgresRepository(persistence, Process),
+                versions=PostgresRepository(persistence, ProcessVersion),
+                sources=decisions.sources,
+                residency=decisions.residency,
+                ledger=ledger,
+                work=persistence,
+                clock=clock,
+                traces=trace_store,
+            )
+            wired.exports = TenantExports(
+                archive=PostgresTenantArchive(persistence),
+                tenants=PostgresTenantStore(persistence),
+                objects=object_store_of(
+                    settings.object_store, state_dir=settings.state_dir, cache_bytes=0
+                ),
+                ledger=ledger,
+                provenance=provenance_store,
+                runs=runs,
+                work=persistence,
+                clock=clock,
+            )
+            wired.subjects = SubjectRequests(
+                PostgresRepository(persistence, SubjectRequest),
+                RunHoldings(
+                    runs=runs,
+                    provenance=provenance_store,
+                    ledger=ledger,
+                    objects=object_store_of(
+                        settings.object_store, state_dir=settings.state_dir, cache_bytes=0
+                    ),
+                    work=persistence,
+                    tenants=PostgresTenantStore(persistence),
+                    traces=trace_store,
+                    locations=wired.evidence.locations,
+                ),
+                ledger,
+                persistence,
+                clock,
+                ids,
             )
             if Role.RUNNER in settings.roles:
                 wired.runner = Runner(

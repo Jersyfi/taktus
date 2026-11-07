@@ -55,6 +55,7 @@ from taktus.adapters.driven.postgres import (
     PostgresQueue,
     PostgresRelay,
     PostgresRepository,
+    PostgresTenantArchive,
     PostgresTenantStore,
     PostgresTraceStore,
     SchemaOutOfDate,
@@ -189,6 +190,7 @@ from taktus.composition.signals import signal_wiring
 from taktus.composition.skills import CatalogGuidance, SkillLifecycle
 from taktus.composition.stages import stage_wiring
 from taktus.composition.subjects import ProcessingEvidence, RunHoldings
+from taktus.composition.tenant_export import TenantExports
 from taktus.ports.backups import BackupLog
 from taktus.ports.configuration import Configuration, ConfigurationError
 from taktus.ports.org_units import OrgUnitSpends
@@ -200,6 +202,7 @@ from taktus.ports.persistence import (
     Repository,
     StateSize,
     Stored,
+    TenantArchive,
     TenantStore,
     UnitOfWork,
     UnreadableState,
@@ -240,6 +243,9 @@ class Stores:
     relay: Relay | None = None
     """The outbound binding's relay, which lives in the database (ADR-0156); None where the
     state is files, which no connected worker reaches."""
+    archive: TenantArchive | None = None
+    """A tenant's whole state as rows, for its export and import (ADR-0221); None where the
+    state is files, which is development state and is not exported."""
 
 
 class LocalWiring:
@@ -777,6 +783,18 @@ class LocalWiring:
                 agents=shared_agents,
                 subjects=subjects,
                 evidence=evidence,
+                exports=None
+                if stores.archive is None
+                else TenantExports(
+                    archive=stores.archive,
+                    tenants=stores.tenants,
+                    objects=object_store_of(object_settings, state_dir=state_dir, cache_bytes=0),
+                    ledger=ledger,
+                    provenance=stores.provenance_store,
+                    runs=runs,
+                    work=stores.work,
+                    clock=clock,
+                ),
                 instructions=TakeoverTrials(
                     stores.of(Process),
                     stores.of(ProcessVersion),
@@ -903,6 +921,7 @@ class LocalWiring:
                 spends=PostgresOrgUnitSpends(postgres),
                 size=postgres,
                 relay=PostgresRelay(postgres),
+                archive=PostgresTenantArchive(postgres),
             )
         finally:
             await postgres.close()
