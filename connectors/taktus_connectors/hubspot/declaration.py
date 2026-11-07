@@ -25,16 +25,6 @@ ACTIONS_CREDENTIAL = "CRM_TOKEN"
 
 OPERATIONS: list[Json] = [
     {
-        "name": "crm.contacts.find",
-        "demand": {"quota_units": 2},
-        "capability": CAPABILITY,
-        "effect": "read",
-        "summary": "Every contact that carries `email` as its address or as an additional one, "
-        "oldest first: each its id, email, created_at, updated_at and lifecycle_stage, and "
-        "nothing else of the person. `count` is how many; two or more are duplicates. Scoped: "
-        "a call that serves a case answers only the case's subject.",
-    },
-    {
         "name": "crm.contacts.create",
         "demand": {"quota_units": 3},
         "capability": CAPABILITY,
@@ -44,6 +34,16 @@ OPERATIONS: list[Json] = [
         "The address is its own mark: a repeat that finds a contact carrying it creates none "
         "and reports replayed, with the oldest such contact. Weaker than a key, and stated so: "
         "a contact somebody else created for the address reports replayed too. Scoped.",
+    },
+    {
+        "name": "crm.contacts.find",
+        "demand": {"quota_units": 2},
+        "capability": CAPABILITY,
+        "effect": "read",
+        "summary": "Every contact that carries `email` as its address or as an additional one, "
+        "oldest first: each its id, email, created_at, updated_at and lifecycle_stage, and "
+        "nothing else of the person. `count` is how many; two or more are duplicates. Scoped: "
+        "a call that serves a case answers only the case's subject.",
     },
     {
         "name": "crm.contacts.note",
