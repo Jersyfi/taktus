@@ -310,6 +310,15 @@ forecast band, an anomaly and a limit that does harm are each decided by a rule 
 over the runs' records and the ledger, and reach the limit's role; a person's limit is shown to
 that person alone, and Taktus never changes a limit (ADR-0282).
 
+A tenant's residency rule says where its data may be processed — `own`, `eu` or `anywhere` —
+and is narrowed per process and per data class, the narrowest holding (ADR-0116, ADR-0258).
+Every model, worker, connector and host has a declared location; whatever nobody declared counts
+as `elsewhere` (`TAKTUS_CONNECTOR_LOCATIONS`, `TAKTUS_HOST_LOCATIONS`, ADR-0157, ADR-0281). A
+version whose step handling restricted data would be bound outside the permitted location does
+not register. At run time such a step fails at its boundary without sending, naming the rule,
+and every egress entry is followed by `residency.egress`, naming where the effect went
+(ADR-0281).
+
 Shared agents run strictly in the permission, credential and cost context of the *calling user*,
 never of their author. No user sees another's mailbox, data or secrets.
 
