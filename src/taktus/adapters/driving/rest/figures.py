@@ -7,7 +7,8 @@ HTTP surface (ADR-0241 to ADR-0245).
   `GET`/`PUT /views/configuration` — the tenant's views and entitlements, set by `owner`.
 - `GET /value/index`, `GET /value/proposals`, `GET /value/transformation` — the bus-factor
   index, the value proposals and the transformation (UC-6.7, UC-9.1, UC-9.3, UC-9.2);
-  `GET`/`PUT /value/basis` — the organisation's stated basis, set by `owner` (UC-9.3).
+  `GET`/`PUT /value/basis` — the organisation's stated basis, set by a role holding
+  `process.steer`, or by `owner` while no role of the tenant holds it (UC-9.1, ADR-0293).
 - `GET /reports/definitions`, `PUT /reports/definitions/{id}` and
   `GET /reports/definitions/{id}/now` — reports for a role (UC-6.2).
 - `GET /levels/runs/{run}/steps/{step}/explanation` and `GET /summary?days=` (UC-6.5).
@@ -33,6 +34,7 @@ from pydantic import ValidationError
 from taktus.adapters.driving.rest.acting import visible
 from taktus.adapters.driving.rest.problems import MEDIA_TYPE, problem
 from taktus.adapters.driving.rest.wiring import RestServices
+from taktus.components.identity.domain.model import Right
 from taktus.components.reporting.domain.model.live import Reader
 from taktus.components.reporting.domain.model.views import OWNER
 from taktus.components.reporting.domain.service import own
@@ -74,7 +76,24 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
     owner_only: dict[int | str, dict[str, Any]] = {
         403: {"description": "Only a person holding `owner` sets it.", **PROBLEM}
     }
+    steering: dict[int | str, dict[str, Any]] = {
+        403: {
+            "description": "Only a role holding `process.steer` sets it — `owner` while no role "
+            "of the tenant holds it.",
+            **PROBLEM,
+        }
+    }
     unknown: dict[int | str, dict[str, Any]] = {404: {"description": "No such record.", **PROBLEM}}
+
+    async def steers(a: Asked) -> str | None:
+        """None when the asker may steer: their roles hold `process.steer`, or no role of the
+        tenant holds it yet and they hold `owner` (ADR-0293 §2). Otherwise what they lack."""
+        identities = services.identities
+        if await identities.granting(a.who.tenant, frozenset({Right.PROCESS_STEER.value})):
+            if Right.PROCESS_STEER in await identities.rights(a.who):
+                return None
+            return f"the value basis needs a role holding {Right.PROCESS_STEER.value}"
+        return None if OWNER in a.who.roles else "only a person holding owner states the basis"
 
     async def asked(authorization: str | None) -> Asked | None:
         who = await authenticated(services, authorization)
@@ -267,14 +286,15 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
     @routes.get(
         "/value/basis",
         summary="The organisation's stated value basis, every version",
-        responses={200: {"description": "The versions."}, **owner_only, **common},
+        responses={200: {"description": "The versions."}, **steering, **common},
     )
     async def bases(authorization: str | None = Header(default=None)) -> Any:
         a = await asked(authorization)
         if a is None:
             return problem(401, NEEDS_KEY)
-        if OWNER not in a.who.roles:
-            return problem(403, "only a person holding owner reads the basis")
+        lacking = await steers(a)
+        if lacking is not None:
+            return problem(403, lacking)
         history = await services.reading.bases.history(a.who.tenant)
         return JSONResponse({"versions": [b.document() for b in history]})
 
@@ -284,7 +304,7 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         description="Personnel cost rates per role — never per person — and per process the "
         "minutes by hand, the roles, the time to learn, the response by hand, the relevance, "
         "the licence share and the investment; targets; the plan; entered potential.",
-        responses={200: {"description": "Stored."}, **owner_only, **common},
+        responses={200: {"description": "Stored."}, **steering, **common},
     )
     async def set_basis(
         body: dict[str, Any] = BODY, authorization: str | None = Header(default=None)
@@ -292,8 +312,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         a = await asked(authorization)
         if a is None:
             return problem(401, NEEDS_KEY)
-        if OWNER not in a.who.roles:
-            return problem(403, "only a person holding owner states the basis")
+        lacking = await steers(a)
+        if lacking is not None:
+            return problem(403, lacking)
         try:
             stored = await services.reading.bases.set(a.who.tenant, body, by=a.who.identity)
         except (ValueError, ValidationError) as error:

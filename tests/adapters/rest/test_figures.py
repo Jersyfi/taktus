@@ -18,6 +18,7 @@ import httpx
 from fakes.takeover import instructed
 
 from taktus.adapters.driven.memory import MemoryProvenanceStore, MemoryRepository
+from taktus.components.identity.domain.model import Right
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersion,
     RegisterProcessVersionHandler,
@@ -466,6 +467,43 @@ async def test_the_value_basis_is_set_by_owner_and_its_figures_say_who_set_it_wh
     index = (await http.get(f"{base}/value/index", headers=bearer(keys["idn_owner"]))).json()
     assert any(f["id"] == "value.bus_factor.without_taktus" for f in index["figures"])
     assert index["trend"]
+
+
+TARGETS = {
+    "processes": [{"process": "invoice", "minutes_by_hand": 30}],
+    "targets": [{"process": "invoice", "figure": "value.quality", "low": 0.9}],
+}
+
+
+async def test_once_a_role_holds_the_right_to_steer_only_its_holders_set_targets(
+    client: Client,
+) -> None:
+    """UC-9.1, ADR-0293: a target is set by a person with the right to steer. Until a role of
+    the tenant holds `process.steer`, the owner sets it and a role without it is refused; from
+    the first grant on, a role holding it sets it and every other role — the owner's too — is
+    refused with the right named."""
+    http, given, base = client
+    keys = await world(given)
+    owner, controller = bearer(keys["idn_owner"]), bearer(keys["idn_cy"])
+
+    before = await http.put(f"{base}/value/basis", headers=controller, json=TARGETS)
+    assert is_problem(before, 403) and "owner" in before.json()["detail"]
+    assert (await http.put(f"{base}/value/basis", headers=owner, json=TARGETS)).status_code == 200
+
+    await given.identities.grant(TENANT, "controlling", Right.PROCESS_STEER, by="idn_owner")
+
+    steered = await http.put(f"{base}/value/basis", headers=controller, json=TARGETS)
+    assert steered.status_code == 200, steered.text
+    history = (await http.get(f"{base}/value/basis", headers=controller)).json()
+    assert [v["set_by"] for v in history["versions"]] == ["idn_owner", "idn_cy"]
+    assert history["versions"][-1]["basis"]["targets"][0]["figure"] == "value.quality"
+    for refused in (
+        await http.put(f"{base}/value/basis", headers=owner, json=TARGETS),
+        await http.put(f"{base}/value/basis", headers=bearer(keys["idn_ada"]), json=TARGETS),
+        await http.get(f"{base}/value/basis", headers=owner),
+    ):
+        assert is_problem(refused, 403), refused.text
+        assert "process.steer" in refused.json()["detail"]
 
 
 async def test_a_discovered_process_passes_its_stages_in_order_and_a_person_decides(

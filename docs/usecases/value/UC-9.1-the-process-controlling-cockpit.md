@@ -6,8 +6,8 @@ epic: E9
 serves: [P7, P8]
 state: built
 version: 0.5.0
-tests: [tests/components/value/test_figures.py::test_the_cockpit_is_computed_from_the_ledger_and_recomputed_from_it_alone, tests/components/value/test_figures.py::test_a_rehearsal_is_no_work_and_a_result_corrected_twice_counts_once, tests/components/value/test_figures.py::test_a_simulation_is_marked_and_computed_from_the_decisions_people_took, tests/components/value/test_figures.py::test_a_figure_outside_its_target_is_a_proposal_naming_figure_target_and_runs]
-adrs: {ADR-0006: a5960785aee4, ADR-0010: e381de241d4a, ADR-0026: ccc4bd1f5423, ADR-0029: 37c061ef032a, ADR-0244: 0e3d5ef324fa}
+tests: [tests/components/value/test_figures.py::test_the_cockpit_is_computed_from_the_ledger_and_recomputed_from_it_alone, tests/components/value/test_figures.py::test_a_rehearsal_is_no_work_and_a_result_corrected_twice_counts_once, tests/components/value/test_figures.py::test_a_simulation_is_marked_and_computed_from_the_decisions_people_took, tests/components/value/test_figures.py::test_a_figure_outside_its_target_is_a_proposal_naming_figure_target_and_runs, tests/adapters/rest/test_figures.py::test_once_a_role_holds_the_right_to_steer_only_its_holders_set_targets]
+adrs: {ADR-0006: a5960785aee4, ADR-0010: e381de241d4a, ADR-0026: ccc4bd1f5423, ADR-0029: 37c061ef032a, ADR-0244: 0e3d5ef324fa, ADR-0293: fc2a083e6206}
 supersedes: null
 ---
 
@@ -59,5 +59,7 @@ with their owner). Definition `UC-9.1`. The roadmap's `0.5.0`.
 Built (ADR-0244). By the named tests: the five figures are computed from the ledger and found
 again when recomputed from it alone; cost is read from accounting in money and Takt; a figure
 outside its target is a proposal naming figure, target, period and runs; a simulation of the
-next level is marked and computed from the decisions people took. Targets are set by `owner`
-(NTC-0270) until a right to steer a process exists.
+next level is marked and computed from the decisions people took. Targets are set by a role
+holding the right `process.steer` (ADR-0293): a role without it is refused with the right named,
+one with it sets them; while no role of the tenant holds it, `owner` sets them, as NTC-0270
+recorded.

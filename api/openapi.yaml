@@ -6219,7 +6219,8 @@ paths:
               schema:
                 title: Response Bases Value Basis Get
         '403':
-          description: Only a person holding `owner` sets it.
+          description: Only a role holding `process.steer` sets it — `owner` while no role of the tenant
+            holds it.
           content:
             application/problem+json: {}
         '401':
@@ -6263,7 +6264,8 @@ paths:
               schema:
                 title: Response Set Basis Value Basis Put
         '403':
-          description: Only a person holding `owner` sets it.
+          description: Only a role holding `process.steer` sets it — `owner` while no role of the tenant
+            holds it.
           content:
             application/problem+json: {}
         '401':
