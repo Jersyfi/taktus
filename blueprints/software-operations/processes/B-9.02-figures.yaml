@@ -21,7 +21,7 @@
 # Switching it off (`taktusctl deactivate --process b-9-02`) changes nothing.
 
 id: b-9-02
-version: "2"
+version: "3"
 name: B-9.02 Questions about figures
 autonomy:
   level: 2
@@ -89,8 +89,8 @@ steps:
     rejected:
       - method: llm
         why: a figure may not come from a language model (CLAUDE.md §4)
-    exactness: sourced
-    checks:   # a sourced result declares its check (ADR-0233)
+    exactness: tolerant   # a model wrote the query: its figures feed only tolerant or free (ADR-0262 §4)
+    checks:   # the shape the answer must have, kept although a tolerant result needs none
       - { kind: source_shape, subject: "what warehouse.queries.run answered", columns: [complete, rows, total_rows] }
     fallback:
       when: the connector serving warehouse.queries is unavailable, or it refuses the query
@@ -101,6 +101,9 @@ steps:
       checking: { select: output }
       rule: connector
       operation: warehouse.queries.run
+      # Asked with the asker's own key, so that the warehouse limits rows and columns as it
+      # limits them for that person (UC-5.6, ADR-0264).
+      on_behalf: true
       input:
         query: { $from: query, $select: text }
         limit: 200
@@ -199,8 +202,8 @@ steps:
     rejected:
       - method: llm
         why: a fixed composition needs no model
-    exactness: sourced
-    checks:   # a sourced result declares its check (ADR-0233)
+    exactness: tolerant   # fed by the model-written query (ADR-0262 §4)
+    checks:   # kept: the reply is checked although a tolerant result needs none
       - { kind: bounds, subject: the composed text, pattern: "Answered by Taktus, process B-9\\.02 Questions about figures, from the copy without" }
     depends_on: [query, rows, reading]
     work:
@@ -228,8 +231,8 @@ steps:
     rejected:
       - method: worker
         why: nothing here needs a sandbox or tools
-    exactness: sourced
-    checks:   # a sourced result declares its check (ADR-0233)
+    exactness: tolerant   # fed by the model-written query (ADR-0262 §4)
+    checks:   # kept: the reply is checked although a tolerant result needs none
       - { kind: source_shape, subject: "what chat.threads.post answered", columns: [address, author, text, thread, ts] }
     fallback:
       when: the connector serving chat.threads is unavailable
