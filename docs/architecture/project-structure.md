@@ -307,6 +307,12 @@ role it would tie the core to a model stack and the removal test would be lost.
   Its `UnitLimits` answers the run's `UnitLimitsPort` through `UnitLimitsOfTheRun` in
   `composition/unit_limits.py`, which reads where an identity sits from the identity component's
   `IdentityDirectory`; `taktusctl units limit` sets the limits (ADR-0282).
+  The accounting component's `BottlenecksHandler` reads its three ports through
+  `composition/bottlenecks.py`: `RunAccounts` over the run's `BlockedTime`, which hands over the
+  limits and the work held back and the waits on people only grouped; `MethodsOfTheRun` over the
+  step measures; `RulesOfTheDecisions` over the decision component's rules. The run's
+  `Departments` is answered there from the identity directory, and `taktusctl bottlenecks`
+  prints the analysis (ADR-0283).
   `composition/acting.py`'s `ActingReads` gathers what acts for a tenant, what depends on it and
   how a process really runs from the catalog's maturity records, the pools, the process
   versions, the residency rule, the stops, the blocks, the provenance store and the identities'

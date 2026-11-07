@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from taktus.components.accounting.application.service import (
+    BottlenecksHandler,
     CostOfRunHandler,
     SpendHandler,
     TaktRateHandler,
@@ -182,6 +183,9 @@ class Services:
     takt_rate: TaktRateHandler | None = None
     """A tenant's Takt consumption and rate over the window of the table in force
     (`taktusctl cost` without a run)."""
+    bottlenecks: BottlenecksHandler | None = None
+    """What a higher limit would have bought, the recommendations, the waits on people by role
+    or department, and the ways to wait less on them (`taktusctl bottlenecks`, ADR-0283)."""
     configure_anchors: ConfigureAnchorsHandler | None = None
     """A tenant's anchors, configured (`taktusctl anchors set`, ADR-0042)."""
     anchors: AnchorsInForce | None = None

@@ -71,6 +71,7 @@ from taktus.adapters.driving.cli.wiring import (
     Services,
 )
 from taktus.components.accounting.application.service import (
+    BottlenecksHandler,
     CostOfRunHandler,
     SpendHandler,
     TaktRateHandler,
@@ -142,6 +143,12 @@ from taktus.components.value.application.query import CorrectionRates
 from taktus.composition.acting import ActingReads
 from taktus.composition.agents import SharedAgents
 from taktus.composition.alerts import alerts
+from taktus.composition.bottlenecks import (
+    DirectoryDepartments,
+    MethodsOfTheRun,
+    RulesOfTheDecisions,
+    RunAccounts,
+)
 from taktus.composition.capacity import capacity_report, rules_of
 from taktus.composition.case_spend import InstanceSpend
 from taktus.composition.catalogue import CatalogueAuthor, InstanceCatalogueIndex
@@ -718,6 +725,19 @@ class LocalWiring:
                 spend=SpendHandler(ledger, MemoryObjectStore(state_dir / "objects"), stores.work),
                 takt_rate=TaktRateHandler(
                     ledger, MemoryObjectStore(state_dir / "objects"), stores.work, clock, weights
+                ),
+                bottlenecks=BottlenecksHandler(
+                    RunAccounts(
+                        BlockedTime(
+                            ledger,
+                            objects,
+                            stores.work,
+                            runs,
+                            DirectoryDepartments(identities),
+                        )
+                    ),
+                    MethodsOfTheRun(maturation.measures, runs, stores.work),
+                    RulesOfTheDecisions(decisions.rules),
                 ),
                 identities=identities,
                 tenants=registry,

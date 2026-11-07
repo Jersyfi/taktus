@@ -1,3 +1,8 @@
+from taktus.components.accounting.application.service.bottlenecks import (
+    BottleneckAnalysis,
+    BottlenecksHandler,
+    BottlenecksOf,
+)
 from taktus.components.accounting.application.service.cost_of_run import (
     CostOfRun,
     CostOfRunHandler,
@@ -39,6 +44,9 @@ from taktus.components.accounting.application.service.trials import (
 
 __all__ = [
     "OCCASIONS",
+    "BottleneckAnalysis",
+    "BottlenecksHandler",
+    "BottlenecksOf",
     "CandidateReport",
     "CaseOutcome",
     "CaseSpend",
