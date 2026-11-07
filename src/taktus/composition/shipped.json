@@ -318,6 +318,7 @@
       "image": "taktus-connector-jira",
       "name": "jira",
       "operations": [
+        "tasks.items.create",
         "tasks.items.list",
         "tasks.items.read",
         "tasks.items.remind"
@@ -343,6 +344,7 @@
       "image": "taktus-connector-linear",
       "name": "linear",
       "operations": [
+        "tasks.items.create",
         "tasks.items.list",
         "tasks.items.read",
         "tasks.items.remind"

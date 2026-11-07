@@ -17,9 +17,10 @@ UC-4.10, UC-4.11, UC-4.12, UC-6.8).
   person. The ledger records `remediation.started`, naming the incident and the new run.
 - **Delivered.** `IncidentDelivery` writes the incident into the organisation's tracking system
   through the connector that serves `repository.issues`, as an issue with its situation
-  package and its plan, and every later change — the remediation started, the incident closed
-  — as a comment on the same issue (ADR-0179 §4). Each delivery is `egress.delivery`, naming the
-  incident.
+  package and its plan — or, where none does, through one that serves `tasks.items` and
+  declares `tasks.items.create`, as a work item (ADR-0227 §4) — and every later change — the
+  remediation started, the incident closed — as a comment on the same object (ADR-0179 §4).
+  Each delivery is `egress.delivery`, naming the incident.
 
 The incident is the tenant's; nothing here corrects anything outside without a person. This is
 wiring, because the correction, the sample and the run are the run component's records, the

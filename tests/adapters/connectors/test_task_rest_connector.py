@@ -65,6 +65,10 @@ def replace(url: str, issues: list[dict[str, Any]]) -> None:
     httpx.post(f"{url}/_fake/issues", content=json.dumps(issues), timeout=5.0)
 
 
+def lag(url: str) -> None:
+    httpx.post(f"{url}/_fake/lag", timeout=5.0)
+
+
 def state(url: str) -> dict[str, object]:
     found: dict[str, object] = httpx.get(f"{url}/_fake/state", timeout=5.0).json()
     return found
@@ -126,6 +130,33 @@ async def test_a_reminder_is_written_once_and_a_repeat_finds_its_mark(tracker: s
     assert other.effect.replayed is False, "another key is another reminder"
 
 
+async def test_an_issue_is_created_once_and_a_repeat_finds_its_mark(tracker: str) -> None:
+    connector = tasks(tracker)
+    given = {"title": "Result defect in billing", "description": "What happened."}
+    first = await connector.call("tasks.items.create", context(), given)
+    assert first.effect.kind.value == "write" and first.effect.replayed is False
+    assert first.output["id"] == first.output["key"] == "TSK-6"
+    assert first.output["url"].endswith("/browse/TSK-6")
+    again = await connector.call("tasks.items.create", context(), given)
+    assert again.effect.replayed is True and again.output == first.output
+    [made] = state(tracker)["created"]  # type: ignore[misc]
+    assert made["fields"]["summary"] == "Result defect in billing"
+    last = made["fields"]["description"]["content"][-1]["content"][0]["text"]
+    assert last == f"Taktus reference: {idempotency_key('run_tasks', 'remind', 1)}"
+    other = await connector.call("tasks.items.create", context(attempt=2), given)
+    assert other.output["key"] == "TSK-7", "another key is another issue"
+
+
+async def test_an_issue_the_search_does_not_show_yet_is_found_by_its_key(tracker: str) -> None:
+    lag(tracker)
+    connector = tasks(tracker)
+    given = {"title": "Result defect in billing"}
+    first = await connector.call("tasks.items.create", context(), given)
+    again = await connector.call("tasks.items.create", context(), given)
+    assert again.effect.replayed is True and again.output["key"] == first.output["key"]
+    assert len(state(tracker)["created"]) == 1  # type: ignore[arg-type]
+
+
 @pytest.mark.parametrize(
     ("operation", "input"),
     [
@@ -135,6 +166,9 @@ async def test_a_reminder_is_written_once_and_a_repeat_finds_its_mark(tracker: s
         ("tasks.items.list", {"limit": 0}),
         ("tasks.items.list", {"overdue_by_days": -1}),
         ("tasks.items.remind", {"id": "TSK-1", "text": ""}),
+        ("tasks.items.create", {"title": ""}),
+        ("tasks.items.create", {"title": "two\nlines"}),
+        ("tasks.items.create", {"title": "x" * 256}),
     ],
 )
 async def test_a_request_that_cannot_be_answered_is_invalid(

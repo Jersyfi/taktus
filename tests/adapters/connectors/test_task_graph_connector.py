@@ -58,7 +58,7 @@ def context(attempt: int = 1, run: str = "run_tasks") -> CallContext:
 
 
 def tasks(url: str) -> McpActionConnector:
-    return McpActionConnector(build_server(Config(url, timeout=5.0)))
+    return McpActionConnector(build_server(Config(url, timeout=5.0, team=task_graph_service.TEAM)))
 
 
 def replace(url: str, issues: list[dict[str, Any]]) -> None:
@@ -133,6 +133,35 @@ async def test_a_reminder_is_written_once_and_a_repeat_finds_its_mark(tracker: s
     assert other.effect.replayed is False, "another key is another reminder"
 
 
+async def test_a_task_is_created_once_and_a_repeat_finds_its_mark(tracker: str) -> None:
+    connector = tasks(tracker)
+    given = {"title": "Result defect in billing", "description": "What happened."}
+    first = await connector.call("tasks.items.create", context(), given)
+    assert first.effect.kind.value == "write" and first.effect.replayed is False
+    assert first.output["key"] == "TSK-6" and first.output["url"].endswith("/TSK-6")
+    again = await connector.call("tasks.items.create", context(), given)
+    assert again.effect.replayed is True and again.output == first.output
+    [made] = state(tracker)["created"]  # type: ignore[misc]
+    assert made["title"] == "Result defect in billing"
+    assert made["description"] == (
+        f"What happened.\n\nTaktus reference: {idempotency_key('run_tasks', 'remind', 1)}"
+    )
+    other = await connector.call("tasks.items.create", context(attempt=2), given)
+    assert other.output["key"] == "TSK-7", "another key is another task"
+    reminded = await connector.call(
+        "tasks.items.remind", context(attempt=3), {"id": first.output["id"], "text": "Later."}
+    )
+    assert reminded.output["task"] == first.output["id"], "its id names it for a comment"
+
+
+async def test_without_a_team_nothing_is_created(tracker: str) -> None:
+    connector = McpActionConnector(build_server(Config(tracker, timeout=5.0)))
+    with pytest.raises(CallFailed) as failed:
+        await connector.call("tasks.items.create", context(), {"title": "A task"})
+    assert failed.value.error.cause.value == "invalid"
+    assert state(tracker)["created"] == []
+
+
 @pytest.mark.parametrize(
     ("operation", "input"),
     [
@@ -141,6 +170,9 @@ async def test_a_reminder_is_written_once_and_a_repeat_finds_its_mark(tracker: s
         ("tasks.items.list", {"limit": 0}),
         ("tasks.items.list", {"overdue_by_days": -1}),
         ("tasks.items.remind", {"id": "TSK-1", "text": ""}),
+        ("tasks.items.create", {"title": ""}),
+        ("tasks.items.create", {"title": "two\nlines"}),
+        ("tasks.items.create", {"title": "x" * 256}),
     ],
 )
 async def test_a_request_that_cannot_be_answered_is_invalid(

@@ -16,6 +16,13 @@
         "id": "TSK-1",
         "text": "This task is past its due date. Conformance {{unique}}"
       }
+    },
+    {
+      "operation": "tasks.items.create",
+      "input": {
+        "title": "Conformance {{unique}}",
+        "description": "A work item the conformance suite creates."
+      }
     }
   ],
   "invalid": {

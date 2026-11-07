@@ -2,10 +2,12 @@
 """A fake task tracker: the issues and comments of the Linear GraphQL API, in memory.
 
 The task tracker connector under `connectors/taktus_connectors/linear/` posts GraphQL
-documents to `POST /graphql`. This fake answers the four root fields the connector asks —
-`issues`, `issue`, `issue { comments }` and `commentCreate` — in the API's shapes: Relay
+documents to `POST /graphql`. This fake answers the root fields the connector asks —
+`issues`, `issue`, `issue { comments }`, `commentCreate`, `team { issues }` and `issueCreate` —
+in the API's shapes: Relay
 connections with `nodes` and `pageInfo { hasNextPage endCursor }`, `first` defaulting to 50,
-the filter comparators `nin` on `state.type` and `lte`/`lt` on `dueDate`, and GraphQL errors
+the filter comparators `nin` on `state.type`, `lte`/`lt` on `dueDate` and `contains` on
+`description`, `issueCreate` answering `success` and the `issue`, and GraphQL errors
 in `errors` with `extensions.type` (https://linear.app/developers/graphql,
 https://linear.app/developers/pagination, https://linear.app/developers/filtering). It
 parses no GraphQL grammar: it recognises the root field of a document and reads its variables,
@@ -18,6 +20,8 @@ What it enforces, because the connector's checks depend on it:
   `authentication error` and no data.
 - **The filter.** A filter key other than `state` and `dueDate` is an `invalid input` error.
 - **One issue.** An identifier or key it does not hold is an `invalid input` error, data null.
+- **One team.** Its issues belong to the team `TEAM`; another team is `Entity not found`. A new
+  issue needs `teamId` and a `title`, and takes the next key, `TSK-6` first.
 - **Throttling.** After `POST /_fake/throttle`, every request is HTTP 429 with the code
   `RATELIMITED`, as the rate-limiting page states.
 
@@ -48,6 +52,10 @@ def _day(offset: int | None) -> str | None:
     return (datetime.now(UTC).date() + timedelta(days=offset)).isoformat()
 
 
+TEAM = "00000000-0000-4000-8000-0000000000aa"
+"""The one team the fake holds."""
+
+
 def default_issues() -> list[dict[str, Any]]:
     rows = [
         (1, -10, "In Progress", "started"),
@@ -65,6 +73,7 @@ def default_issues() -> list[dict[str, Any]]:
             "url": f"https://tracker.example/team/issue/TSK-{n}",
             "createdAt": "2026-10-01T09:00:00.000Z",
             "updatedAt": "2026-10-20T09:00:00.000Z",
+            "description": None,
             "state": {"name": name, "type": kind},
             "assignee": {"name": f"Person {n}", "email": f"person{n}@team.example"},
             "comments": [],
@@ -125,7 +134,15 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
                 comments = [
                     {"issue": i["identifier"], **c} for i in state.issues for c in i["comments"]
                 ]
-                self.answer(200, {"requests": state.requests, "comments": comments})
+                created = [
+                    {k: v for k, v in i.items() if k != "comments"}
+                    for i in state.issues
+                    if i.get("created")
+                ]
+                self.answer(
+                    200,
+                    {"requests": state.requests, "comments": comments, "created": created},
+                )
 
         def do_POST(self) -> None:
             path = urlparse(self.path).path
@@ -166,6 +183,10 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
         def _resolve(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
             if re.search(r"\bcommentCreate\s*\(", query):
                 return self._comment(variables.get("input") or {})
+            if re.search(r"\bissueCreate\s*\(", query):
+                return self._create(variables.get("input") or {})
+            if re.search(r"\bteam\s*\(", query):
+                return self._team(variables)
             if re.search(r"\bissues\s*\(", query):
                 return self._issues(variables)
             if re.search(r"\bissue\s*\(", query):
@@ -184,7 +205,8 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
             return {"data": None, "errors": [_error("invalid input", "unknown field")]}
 
         def _node(self, issue: dict[str, Any], query: str) -> dict[str, Any]:
-            node = {k: v for k, v in issue.items() if k not in ("assignee", "comments")}
+            hidden = ("assignee", "comments", "created")
+            node = {k: v for k, v in issue.items() if k not in hidden}
             if re.search(r"\bassignee\b", query):
                 node["assignee"] = issue["assignee"]
             return node
@@ -207,6 +229,47 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
                     }
                 }
             }
+
+        def _team(self, variables: dict[str, Any]) -> dict[str, Any]:
+            if variables.get("team") != TEAM:
+                return {"data": None, "errors": [_error("invalid input", "Entity not found")]}
+            given = variables.get("filter") or {}
+            if set(given) - {"description"}:
+                return {"data": None, "errors": [_error("invalid input", "unknown filter")]}
+            text = (given.get("description") or {}).get("contains")
+            chosen = [
+                i for i in state.issues if text is None or text in (i.get("description") or "")
+            ]
+            nodes, more = _page(chosen, variables)
+            end = nodes[-1]["id"] if nodes else None
+            page = {"hasNextPage": more, "endCursor": end}
+            issues = {"nodes": [self._node(i, "") for i in nodes], "pageInfo": page}
+            return {"data": {"team": {"issues": issues}}}
+
+        def _create(self, given: dict[str, Any]) -> dict[str, Any]:
+            if given.get("teamId") != TEAM:
+                return {"data": None, "errors": [_error("invalid input", "Entity not found")]}
+            if not isinstance(given.get("title"), str) or not given["title"]:
+                return {"data": None, "errors": [_error("invalid input", "title is required")]}
+            n = len(state.issues) + 1
+            now = datetime.now(UTC).isoformat()
+            issue = {
+                "id": f"00000000-0000-4000-8000-{n:012d}",
+                "identifier": f"TSK-{n}",
+                "title": given["title"],
+                "dueDate": None,
+                "url": f"https://tracker.example/team/issue/TSK-{n}",
+                "createdAt": now,
+                "updatedAt": now,
+                "description": given.get("description"),
+                "state": {"name": "Todo", "type": "unstarted"},
+                "assignee": None,
+                "comments": [],
+                "created": True,
+            }
+            state.issues.append(issue)
+            node = self._node(issue, "")
+            return {"data": {"issueCreate": {"success": True, "issue": node}}}
 
         def _comment(self, given: dict[str, Any]) -> dict[str, Any]:
             found = [i for i in state.issues if given.get("issueId") in (i["id"], i["identifier"])]

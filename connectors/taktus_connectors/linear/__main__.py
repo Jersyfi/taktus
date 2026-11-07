@@ -21,8 +21,10 @@ from taktus_connectors.linear.server import served
 def main(argv: list[str] | None = None) -> int:
     parser = serving.arguments("The task tracker connector.", 9154)
     parser.add_argument("--target", default=TARGET, help="the API's address")
+    parser.add_argument("--team", default="", help="the team a new task is created in")
     args = parser.parse_args(argv)
-    return serving.serve(served(Config(args.target, args.timeout), args.fault), args)
+    config = Config(args.target, args.timeout, args.team)
+    return serving.serve(served(config, args.fault), args)
 
 
 if __name__ == "__main__":

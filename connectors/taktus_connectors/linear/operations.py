@@ -11,6 +11,9 @@ connector sends four fixed documents, each with its variables:
 - `issue(id:)` for one task, by its identifier or its key (`ENG-123`).
 - `issue(id:) { comments }` for the reminders written already.
 - `commentCreate(input: {issueId, body})` for a reminder.
+- `issueCreate(input: {teamId, title, description})` for a new task in the team `--team` names,
+  and, before it, `team(id:) { issues(filter: {description: {contains: <mark>}}) }` for the one
+  a repeat finds (https://linear.app/developers/graphql, https://linear.app/developers/filtering).
 
 Each task is reduced to `{id, key, title, due, days_overdue, state, created_at, updated_at,
 url}`. Its assignee, its creator and its description are never asked: a reminder reaches the
@@ -20,7 +23,9 @@ by the connector's clock; null without a due date, never negative.
 
 **The mark.** A reminder's last line is `Taktus reference: <idempotency key>`. Before writing,
 the connector reads the task's comments; one whose body carries the line is the original, and
-nothing is written again.
+nothing is written again. A new task's description ends in the same line; before creating, the
+connector asks the team's issues for a description that contains it. The API answers from its
+own records, not a search index that lags, so a task created a moment ago is found.
 
 How the API's answers map to the contract's causes. The API answers a GraphQL error in the body
 with `errors`, each with `extensions`, often under HTTP 200 with partial data; its documentation
@@ -74,6 +79,16 @@ COMMENTS = (
     " comments(first: 50, after: $after) { nodes { id body }"
     " pageInfo { hasNextPage endCursor } } } }"
 )
+LOOKUP = (
+    "query Created($team: String!, $filter: IssueFilter) { team(id: $team) {"
+    " issues(filter: $filter, first: 1) { nodes { id identifier title url } } } }"
+)
+CREATE = (
+    "mutation Create($input: IssueCreateInput!) {"
+    " issueCreate(input: $input) { success issue { id identifier title url } } }"
+)
+MAX_TITLE = 255
+MAX_DESCRIPTION = 30000
 REMIND = (
     "mutation Remind($input: CommentCreateInput!) {"
     " commentCreate(input: $input) { success comment { id } } }"
@@ -85,6 +100,8 @@ class Config:
     target: str = TARGET
     """The API's address; the product's own, or a fake's."""
     timeout: float = 30.0
+    team: str = ""
+    """The identifier of the team a new task is created in; none, and nothing is created."""
 
 
 def _obj(value: Any) -> Json:
@@ -307,7 +324,66 @@ def _written(task_id: str, comment: str, *, replayed: bool) -> Outcome:
     )
 
 
+def item(input: Json) -> tuple[str, str]:
+    """The title and the description of a new task, as the caller gave them."""
+    title = input.get("title")
+    if not isinstance(title, str) or not title.strip() or len(title) > MAX_TITLE or "\n" in title:
+        raise invalid(f"title must be one line of 1 to {MAX_TITLE} characters")
+    description = input.get("description", "")
+    if not isinstance(description, str) or len(description) > MAX_DESCRIPTION:
+        raise invalid(f"description must be a text of at most {MAX_DESCRIPTION} characters")
+    return title.strip(), description
+
+
+async def create(config: Config, call: Call, input: Json) -> Outcome:
+    title, description = item(input)
+    if not config.team:
+        raise invalid("the connector is configured with no team to create a task in")
+    mark = f"{MARK}{call.key}"
+    data = await _graphql(
+        config,
+        call,
+        LOOKUP,
+        {"team": config.team, "filter": {"description": {"contains": mark}}},
+    )
+    team = data.get("team")
+    if not isinstance(team, dict):
+        raise invalid("the tracker knows no such team")
+    nodes = _obj(team.get("issues")).get("nodes")
+    if not isinstance(nodes, list):
+        raise _unexpected("the answer is not a connection of tasks")
+    if nodes:
+        return _created(nodes[0], replayed=True)
+    body = f"{description.rstrip()}\n\n{mark}" if description.strip() else mark
+    data = await _graphql(
+        config,
+        call,
+        CREATE,
+        {"input": {"teamId": config.team, "title": title, "description": body}},
+        writing=True,
+    )
+    made = data.get("issueCreate")
+    issue = made.get("issue") if isinstance(made, dict) else None
+    if not isinstance(made, dict) or not made.get("success") or not isinstance(issue, dict):
+        raise TargetError("unknown", "unknown", False, "the tracker did not confirm the task")
+    return _created(issue, replayed=False)
+
+
+def _created(issue: Any, *, replayed: bool) -> Outcome:
+    if not isinstance(issue, dict) or not isinstance(issue.get("id"), str):
+        raise TargetError("unknown", "unknown", False, "the tracker did not name the task")
+    return Outcome(
+        output={"id": issue["id"], "key": issue.get("identifier"), "url": issue.get("url")},
+        effect={
+            "kind": "write",
+            "replayed": replayed,
+            "records": [{"kind": "task", "id": issue["id"]}],
+        },
+    )
+
+
 OPERATIONS = {
+    "tasks.items.create": create,
     "tasks.items.list": list_,
     "tasks.items.read": read,
     "tasks.items.remind": remind,

@@ -24,10 +24,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = serving.arguments("The work tracker connector.", 9155)
     parser.add_argument("--target", default="", help="the site's address (required)")
     parser.add_argument("--project", default="", help="the project's key (required)")
+    parser.add_argument("--issue-type", default="Task", help="the type a new issue is created as")
     args = parser.parse_args(argv)
     if not args.list_faults and not (args.target and args.project):
         parser.error("--target and --project are required")
-    config = Config(args.target, args.project, args.timeout)
+    config = Config(args.target, args.project, args.timeout, args.issue_type)
     return serving.serve(served(config, args.fault), args)
 
 

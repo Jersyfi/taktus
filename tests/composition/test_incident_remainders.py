@@ -7,15 +7,22 @@ The world and the issue tracker are `composition.test_defect_watch`'s: five dail
 
 from __future__ import annotations
 
+import json
+import secrets
+import threading
 from collections.abc import Mapping
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import httpx
 import pytest
+from fakes import task_graph_service, task_rest_service
 from fakes.model import FakeModel
 from governance.test_result_defects import TENANT
 
 from composition.test_defect_watch import Tracker, World
+from taktus.adapters.driven.connectors.mcp import McpActionConnector
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.adapters.driven.memory import MemoryRepository
 from taktus.adapters.driven.models import StaticModelPool
@@ -211,6 +218,57 @@ async def test_without_a_repository_s_issues_the_incident_goes_to_a_board_of_wor
     await w.watch._defects.by_hand(by_hand(incident))
     assert await delivery.deliver(TENANT) == [incident]
     assert [i for i, _ in board.comments] == [item], "an update goes to the same item"
+
+
+def _shipped_tracker(kind: str, url: str) -> Any:
+    """A task tracker connector this repository ships, in-process, against its fake."""
+    if kind == "graph":
+        from taktus_connectors.linear.operations import Config as GraphConfig
+        from taktus_connectors.linear.server import build_server as graph_server
+
+        return McpActionConnector(graph_server(GraphConfig(url, 5.0, task_graph_service.TEAM)))
+    from taktus_connectors.jira.operations import Config as RestConfig
+    from taktus_connectors.jira.server import build_server as rest_server
+
+    return McpActionConnector(rest_server(RestConfig(url, "TSK", 5.0)))
+
+
+@pytest.mark.parametrize("kind", ["graph", "rest"])
+async def test_an_incident_reaches_a_shipped_task_tracker_once_and_its_update_the_same_item(
+    kind: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    token = "user@example.org:tok-" + secrets.token_hex(8) if kind == "rest" else "lin-x1"
+    fake = task_graph_service if kind == "graph" else task_rest_service
+    server = fake.make_server("127.0.0.1", 0, {token})
+    threading.Thread(target=server.serve_forever, args=(0.05,), daemon=True).start()
+    url = f"http://127.0.0.1:{server.server_address[1]}"
+    secret = tmp_path / "tasks"
+    secret.write_text(token, encoding="utf-8")
+    monkeypatch.setenv("TAKTUS_CREDENTIAL_TASKS_TOKEN_FILE", str(secret))
+    try:
+        w = World()
+        delivery = IncidentDelivery(
+            StaticConnectorPool([("tracker.tasks", _shipped_tracker(kind, url))]),
+            w.incidents,
+            w.watch._defects,
+            w.ledger,
+            w.objects,
+            w.persistence,
+        )
+        incident = await raised(w)
+        assert await delivery.deliver(TENANT) == [incident]
+        assert await delivery.deliver(TENANT) == [], "delivered once"
+        await w.watch._defects.by_hand(by_hand(incident))
+        assert await delivery.deliver(TENANT) == [incident]
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            seen = (await client.get(f"{url}/_fake/state")).json()
+    finally:
+        server.shutdown()
+        server.server_close()
+    ((created),) = seen["created"]
+    text = json.dumps(created)
+    assert "What happened" in text and incident in text
+    assert [c["issue"] for c in seen["comments"]] == [created.get("identifier") or created["key"]]
 
 
 # --- the report a model may write ---------------------------------------------------------------

@@ -14,6 +14,9 @@ authentication, as the API states for a script.
 - `GET /rest/api/3/issue/<KEY>/comment` for the reminders written already, `startAt` and
   `maxResults`, and `POST` to the same path for a reminder, its body a document in the
   Atlassian Document Format, one paragraph per block of text.
+- `POST /rest/api/3/issue` for a new issue: `fields` with `project` by its key, `summary`,
+  `description` as a document, and `issuetype` by the name or the identifier `--issue-type`
+  gives (default `Task`). The answer, 201, names its `id`, `key` and `self`.
 
 Each issue is reduced to the shape of the `linear` connector: `{id, key, title, due,
 days_overdue, state, created_at, updated_at, url}`, `id` and `key` both the issue's key, `url`
@@ -23,7 +26,14 @@ connector's clock.
 
 **The mark.** A reminder's last paragraph is `Taktus reference: <idempotency key>`. Before
 writing, the connector reads the issue's comments and the text of each; one that carries the
-line is the original, and nothing is written again.
+line is the original, and nothing is written again. A new issue's description ends in the same
+paragraph. Before creating, the connector looks in two parts, as the repository connector does:
+the project's RECENT newest issues by `ORDER BY created DESC`, and then — because the search is
+eventually consistent and can lag behind an issue created a moment ago — every key above the
+newest one the search shows, read on its own, upwards, until the site answers that it does not
+exist. Bounded, and stated so: a repeat is not recognised after RECENT other issues were
+created in the project in between, nor when more than PROBES were created while the search
+lagged.
 
 | Answer | Cause |
 |---|---|
@@ -60,6 +70,11 @@ FIELDS = "summary,duedate,status,created,updated"
 PROJECT = re.compile(r"^[A-Z][A-Z0-9_]{1,9}$")
 KEY = re.compile(r"^[A-Z][A-Z0-9_]{1,9}-[0-9]{1,9}$")
 MARK = "Taktus reference: "
+RECENT = 50
+PROBES = 20
+MAX_TITLE = 255
+MAX_DESCRIPTION = 30000
+CREATED_FIELDS = "summary,description"
 
 
 @dataclass(frozen=True)
@@ -69,6 +84,8 @@ class Config:
     project: str
     """The key of the one project the connector reads."""
     timeout: float = 30.0
+    issue_type: str = "Task"
+    """The type a new issue is created as: its name, or its numeric identifier."""
 
 
 def _obj(value: Any) -> Json:
@@ -311,7 +328,104 @@ def _written(key: str, comment: str, *, replayed: bool) -> Outcome:
     )
 
 
+def item(input: Json) -> tuple[str, str]:
+    """The summary and the description of a new issue, as the caller gave them."""
+    title = input.get("title")
+    if not isinstance(title, str) or not title.strip() or len(title) > MAX_TITLE or "\n" in title:
+        raise invalid(f"title must be one line of 1 to {MAX_TITLE} characters")
+    description = input.get("description", "")
+    if not isinstance(description, str) or len(description) > MAX_DESCRIPTION:
+        raise invalid(f"description must be a text of at most {MAX_DESCRIPTION} characters")
+    return title.strip(), description
+
+
+def _carries(issue: Any, mark: str) -> bool:
+    fields = _obj(issue.get("fields")) if isinstance(issue, dict) else {}
+    return mark in text_of(fields.get("description"))
+
+
+async def _created(config: Config, call: Call, project: str, mark: str) -> Json | None:
+    """The issue whose description carries the mark, among the newest and those the search
+    does not show yet; None when there is none."""
+    page = await _request(
+        config,
+        call,
+        "GET",
+        "/rest/api/3/search/jql",
+        params={
+            "jql": f'project = "{project}" ORDER BY created DESC',
+            "fields": CREATED_FIELDS,
+            "maxResults": RECENT,
+        },
+    )
+    issues = page.get("issues")
+    if not isinstance(issues, list):
+        raise _unexpected("the answer is not a page of issues")
+    for issue in issues:
+        if _carries(issue, mark):
+            return dict(issue)
+    numbers = [
+        int(str(i["key"]).rsplit("-", 1)[1])
+        for i in issues
+        if isinstance(i, dict) and isinstance(i.get("key"), str) and KEY.match(i["key"])
+    ]
+    number = max(numbers, default=0)
+    for _ in range(PROBES):
+        number += 1
+        try:
+            read = await _request(
+                config,
+                call,
+                "GET",
+                f"/rest/api/3/issue/{project}-{number}",
+                params={"fields": CREATED_FIELDS},
+            )
+        except TargetError as error:
+            if error.cause == "invalid":  # 404: no issue has this key yet
+                return None
+            raise
+        if _carries(read, mark):
+            return read
+    return None
+
+
+async def create(config: Config, call: Call, input: Json) -> Outcome:
+    title, description = item(input)
+    project = _project(config)
+    mark = f"{MARK}{call.key}"
+    found = await _created(config, call, project, mark)
+    if found is not None:
+        return _issue(config, found, replayed=True)
+    kind = config.issue_type
+    made = await _request(
+        config,
+        call,
+        "POST",
+        "/rest/api/3/issue",
+        body={
+            "fields": {
+                "project": {"key": project},
+                "summary": title,
+                "description": document(f"{description.rstrip()}\n\n{mark}"),
+                "issuetype": {"id": kind} if kind.isdigit() else {"name": kind},
+            }
+        },
+    )
+    return _issue(config, made, replayed=False)
+
+
+def _issue(config: Config, issue: Json, *, replayed: bool) -> Outcome:
+    key = issue.get("key")
+    if not isinstance(key, str) or KEY.match(key) is None:
+        raise TargetError("unknown", "unknown", False, "the site did not name the issue")
+    return Outcome(
+        output={"id": key, "key": key, "url": f"{config.target.rstrip('/')}/browse/{key}"},
+        effect={"kind": "write", "replayed": replayed, "records": [{"kind": "task", "id": key}]},
+    )
+
+
 OPERATIONS = {
+    "tasks.items.create": create,
     "tasks.items.list": list_,
     "tasks.items.read": read,
     "tasks.items.remind": remind,

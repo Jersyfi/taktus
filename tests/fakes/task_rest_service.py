@@ -4,9 +4,10 @@ in memory.
 
 The work tracker connector under `connectors/taktus_connectors/jira/` asks
 `GET /rest/api/3/search/jql`, `GET /rest/api/3/issue/<key>` and
-`GET`/`POST /rest/api/3/issue/<key>/comment`. This fake answers them in the shapes of the
-API's published OpenAPI document (https://developer.atlassian.com/cloud/jira/platform/rest/v3/,
-`SearchAndReconcileResults`, `IssueBean`, `PageOfComments`, `Comment`, `ErrorCollection`):
+`GET`/`POST /rest/api/3/issue/<key>/comment` and `POST /rest/api/3/issue`. This fake
+answers them in the shapes of the API's published OpenAPI document
+(https://developer.atlassian.com/cloud/jira/platform/rest/v3/, `SearchAndReconcileResults`,
+`IssueBean`, `PageOfComments`, `Comment`, `CreatedIssue`, `ErrorCollection`):
 a search page with `issues`, `isLast` and `nextPageToken` only while more follow; the fields
 the request names under `fields`; comments whose body is a document in the Atlassian Document
 Format.
@@ -16,11 +17,16 @@ What it enforces, because the connector's checks depend on it:
 - **Authentication.** HTTP Basic with `<e-mail>:<token>` equal to a value of `FAKE_TOKENS`
   (comma separated). Otherwise 401.
 - **A bounded query.** The JQL is the connector's form — `project = "<KEY>" AND
-  statusCategory != Done`, optionally `AND duedate <= "<date>"`, and an `ORDER BY` — and
+  statusCategory != Done`, optionally `AND duedate <= "<date>"`, and an `ORDER BY`; or
+  `project = "<KEY>" ORDER BY created DESC`, every issue of the project, newest first — and
   anything else is 400 with `errorMessages`, as an unbounded or unparsed query is.
 - **Paging.** `maxResults` 1 to 5000, default 50; `nextPageToken` one the fake gave.
 - **One issue.** A key it does not hold is 404.
 - **A comment.** A body that is not a document is 400.
+- **A new issue.** `fields` with `project.key` of `TSK`, a `summary`, an `issuetype` by `name`
+  or `id`, and a `description` that is a document, else 400; it takes the next key, `TSK-6`
+  first, and answers 201 with `id`, `key` and `self`. Test-only: `POST /_fake/lag` keeps every
+  issue created afterwards out of the search, as an index that has not caught up does.
 
 The issues of project `TSK`: five, `TSK-1` to `TSK-5`, due ten days ago, yesterday, in five
 days, without a due date, and three days ago but done. Each has an assignee, answered only when
@@ -43,6 +49,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+NEWEST = re.compile(r'^project = "(?P<project>[A-Z][A-Z0-9_]*)" ORDER BY created DESC$')
 JQL = re.compile(
     r'^project = "(?P<project>[A-Z][A-Z0-9_]*)" AND statusCategory != Done'
     r'(?: AND duedate <= "(?P<due>\d{4}-\d{2}-\d{2})")?'
@@ -68,6 +75,7 @@ def issue(number: int, offset: int | None = -10, done: bool = False) -> dict[str
                 "name": "Done" if done else "In Progress",
                 "statusCategory": {"key": "done" if done else "indeterminate"},
             },
+            "description": None,
             "created": "2026-10-01T09:00:00.000+0000",
             "updated": "2026-10-20T09:00:00.000+0000",
             "assignee": {
@@ -88,6 +96,8 @@ class State:
         self.issues = default_issues()
         self.comments: dict[str, list[dict[str, Any]]] = {}
         self.requests = 0
+        self.lagging = False
+        self.unindexed: set[str] = set()
         self.lock = threading.Lock()
 
 
@@ -136,7 +146,11 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
             if url.path == "/_fake/state":
                 with state.lock:
                     written = [{"issue": k, **c} for k, cs in state.comments.items() for c in cs]
-                    self.answer(200, {"requests": state.requests, "comments": written})
+                    created = [i for i in state.issues if int(i["id"]) > 10005]
+                    self.answer(
+                        200,
+                        {"requests": state.requests, "comments": written, "created": created},
+                    )
                 return
             if not self.admitted():
                 return
@@ -158,11 +172,25 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
             self.answer(200, self._fields(found, query))
 
         def _search(self, query: dict[str, list[str]]) -> None:
-            parsed = JQL.match(query.get("jql", [""])[0])
+            jql = query.get("jql", [""])[0]
+            parsed = JQL.match(jql)
             try:
                 size = int(query.get("maxResults", ["50"])[0])
             except ValueError:
                 size = 0
+            newest = NEWEST.match(jql)
+            if newest is not None and 1 <= size <= 5000:
+                with state.lock:
+                    chosen = [
+                        i
+                        for i in state.issues
+                        if i["key"].startswith(newest.group("project") + "-")
+                        and i["key"] not in state.unindexed
+                    ]
+                chosen.sort(key=lambda i: -int(i["id"]))
+                page = [self._fields(i, query) for i in chosen[:size]]
+                self.answer(200, {"issues": page, "isLast": size >= len(chosen)})
+                return
             if parsed is None or not 1 <= size <= 5000:
                 self.refuse(400, "the query could not be parsed or is unbounded")
                 return
@@ -203,7 +231,14 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
                     state.issues = json.loads(raw)
                 self.answer(200, {"ok": True})
                 return
+            if url.path == "/_fake/lag":
+                state.lagging = True
+                self.answer(200, {"ok": True})
+                return
             if not self.admitted():
+                return
+            if url.path == "/rest/api/3/issue":
+                self._create(raw)
                 return
             match = re.fullmatch(r"/rest/api/3/issue/([^/]+)/comment", url.path)
             found = self._issue(match.group(1)) if match else None
@@ -227,6 +262,37 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
                 }
                 comments.append(comment)
             self.answer(201, comment)
+
+        def _create(self, raw: bytes) -> None:
+            try:
+                fields = json.loads(raw)["fields"]
+            except (ValueError, KeyError, TypeError):
+                fields = None
+            if not isinstance(fields, dict):
+                self.refuse(400, "fields are required")
+                return
+            kind = fields.get("issuetype") or {}
+            description = fields.get("description")
+            if (
+                (fields.get("project") or {}).get("key") != "TSK"
+                or not isinstance(fields.get("summary"), str)
+                or not fields["summary"]
+                or not (kind.get("name") or kind.get("id"))
+                or not isinstance(description, dict)
+                or description.get("type") != "doc"
+            ):
+                self.refuse(400, "the issue's fields are refused")
+                return
+            with state.lock:
+                number = max(int(i["key"].rsplit("-", 1)[1]) for i in state.issues) + 1
+                made = issue(number, None)
+                made["fields"]["summary"] = fields["summary"]
+                made["fields"]["description"] = description
+                made["fields"]["status"] = {"name": "To Do", "statusCategory": {"key": "new"}}
+                state.issues.append(made)
+                if state.lagging:
+                    state.unindexed.add(made["key"])
+            self.answer(201, {"id": made["id"], "key": made["key"], "self": made["self"]})
 
     return Handler
 

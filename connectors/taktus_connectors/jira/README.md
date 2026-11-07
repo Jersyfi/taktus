@@ -15,7 +15,9 @@ uv run python -m taktus_connectors.jira --target https://<site>.atlassian.net --
 serves MCP over streamable HTTP at `/mcp` and readiness at `GET /health`. `--target` is the
 site's address; point it at the fake under `tests/fakes/task_rest_service.py` to run without a
 network. `--project` is the key of the one project it reads: the API answers a search only for
-a bounded query, and an issue of another project is refused before the site is asked. Added to
+a bounded query, and an issue of another project is refused before the site is asked.
+`--issue-type` is the type a new issue is created as, by name or numeric identifier, `Task` by
+default. Added to
 an instance by one entry of `TAKTUS_CONNECTORS`: `tasks.items=http://tasks-connector:9155/mcp`.
 
 ## The documentation it follows
@@ -29,7 +31,9 @@ The API's published OpenAPI document,
   `maxResults` (default 50), `nextPageToken`, absent on the last page, and `isLast`. The older
   `GET /rest/api/3/search` is not used.
 - [Issues](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issues/):
-  `GET /rest/api/3/issue/{issueIdOrKey}` with `fields`.
+  `GET /rest/api/3/issue/{issueIdOrKey}` with `fields`; `POST /rest/api/3/issue` with `fields`
+  (`project`, `summary`, `description` as a document, `issuetype`), answering 201 with `id`,
+  `key` and `self` (`CreatedIssue`).
 - [Issue comments](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issue-comments/):
   `GET` with `startAt`, `maxResults`, `total`; `POST` with a body in the
   [Atlassian Document Format](https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/).
@@ -43,6 +47,7 @@ The API's published OpenAPI document,
 | `tasks.items.list` | `read` | `overdue_by_days` (optional, 0 to 3650), `limit` (1 to 5000, default 500) | `items`, `complete` |
 | `tasks.items.read` | `read` | `id`, an issue's key such as `OPS-123` | one item, with `open` |
 | `tasks.items.remind` | `write`, `marked` | `id`, `text` (1 to 4000 characters) | `task`, `comment` |
+| `tasks.items.create` | `write`, `marked` | `title` (one line, 1 to 255 characters), `description` (optional, at most 30000) | `id`, `key` (both the issue's key), `url` |
 
 The search is `project = "<KEY>" AND statusCategory != Done`, with `AND duedate <= "<date>"`
 for `overdue_by_days`, ordered by due date and key, in pages of 100.
@@ -50,14 +55,22 @@ for `overdue_by_days`, ordered by due date and key, in pages of 100.
 Each issue is reduced to `id` and `key` (both the issue's key), `title` (its summary), `due`,
 `days_overdue` (whole days from the due date to today in UTC, by the connector's clock; never
 negative, null without a due date), `state` (its status's name), `created_at`, `updated_at`
-and `url` (its page under `/browse/`). **The assignee is never asked**, nor the reporter or the
-description. A reminder reaches the assignee through the site's own notification of a comment,
+and `url` (its page under `/browse/`). **The assignee is never asked**, nor the reporter; a
+description is read only to find the mark of an issue the connector created, and never
+answered. A reminder reaches the assignee through the site's own notification of a comment,
 and no figure is ever counted per person (principle 14, ADR-0015).
 
 A reminder is a comment whose last paragraph is `Taktus reference: <idempotency key>`. Before
 writing, the connector reads the issue's comments as text; one that carries the line is the
 original, and the repeat reports `replayed` without writing. A write that timed out is
 `unknown`; its repeat finds the mark.
+
+A new issue is created in the project, its description's last paragraph the same line. Before
+creating, the connector reads the project's 50 newest issues (`ORDER BY created DESC`) and then,
+because the search is eventually consistent, every key above the newest it shows, one by one,
+until the site answers 404. Bounded, and stated so: a repeat is not recognised after 50 other
+issues were created in the project in between, nor when more than 20 were created while the
+search lagged. The key it answers is what `tasks.items.remind` takes (ADR-0227 §4).
 
 400 and 404 are `invalid`, 401 `unauthenticated`, 403 `forbidden`, 429 and 5xx `unavailable`
 and retryable. The site's own messages are never copied into an error.

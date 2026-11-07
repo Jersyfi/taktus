@@ -1,10 +1,12 @@
 """What the work tracker connector declares about itself: the document served as the resource
 `taktus://connector/v1/capabilities`, in the shape of `Connector.json#/$defs/Capabilities`.
 
-Two reads and one write of the capability `tasks.items` (ADR-0209). Reading the open tasks, or
+Two reads and two writes of the capability `tasks.items` (ADR-0209). Reading the open tasks, or
 one task, changes nothing. A reminder is a comment on the task, `marked`: the comment carries
 the idempotency key in its last line, and a repeat finds it among the task's comments before
-writing. The tracker notifies the task's assignee itself; the connector never reads who that is
+writing. A new issue is `marked` the same way: its description's last paragraph carries the
+key, and a repeat finds it among the project's newest issues before creating. The tracker
+notifies the task's assignee itself; the connector never reads who that is
 (principle 14).
 """
 
@@ -47,6 +49,18 @@ OPERATIONS: list[Json] = [
         "summary": "Write `text` as a comment on the task `id`; the tracker notifies whoever "
         "the task is assigned to. The comment's last line carries the idempotency key, and a "
         "repeat that finds it among the task's comments writes nothing and reports replayed.",
+    },
+    {
+        "name": "tasks.items.create",
+        "demand": {"quota_units": 3},
+        "capability": CAPABILITY,
+        "effect": "write",
+        "idempotency": "marked",
+        "summary": "Create an issue with `title` (one line, at most 255 characters) and "
+        "`description` in the project the connector reads; answers its `id` and `key` (both "
+        "the issue's key) and `url`. The description's last paragraph carries the idempotency "
+        "key, and a repeat that finds it among the project's newest issues creates nothing and "
+        "reports replayed.",
     },
 ]
 

@@ -1249,6 +1249,8 @@ def _stores_key(service_url: str) -> str:
 
 
 FAKES = ROOT / "tests" / "fakes"
+LINEAR_TEAM = "00000000-0000-4000-8000-0000000000aa"
+"""The one team the fake task tracker holds (`tests/fakes/task_graph_service.py`)."""
 BUSINESS: dict[str, BusinessConnector] = {
     "accounting": BusinessConnector(
         "accounting", FAKES / "accounting_service.py", "ACCOUNTING_TOKEN"
@@ -1312,7 +1314,9 @@ BUSINESS: dict[str, BusinessConnector] = {
         "jira", FAKES / "task_rest_service.py", "TASKS_TOKEN", ("--project", "TSK"), pair=True
     ),
     "kubernetes": BusinessConnector("kubernetes", FAKES / "workload_cluster.py", "WORKLOADS_TOKEN"),
-    "linear": BusinessConnector("linear", FAKES / "task_graph_service.py", "TASKS_TOKEN"),
+    "linear": BusinessConnector(
+        "linear", FAKES / "task_graph_service.py", "TASKS_TOKEN", ("--team", LINEAR_TEAM)
+    ),
     "loki": BusinessConnector("loki", FAKES / "log_store_service.py", "LOGS_TOKEN"),
     "mailchimp": BusinessConnector(
         "mailchimp", FAKES / "newsletter_service.py", "NEWSLETTER_TOKEN"
