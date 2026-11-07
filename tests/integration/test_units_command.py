@@ -58,3 +58,46 @@ def test_a_quota_on_an_identity_is_refused(tmp_path: Path) -> None:
     assert created.returncode == 0, created.stderr
     refused = ctl(state, "units", "set", "idn_ada", "--concurrent", "1")
     assert refused.returncode == 2 and "principle 14" in refused.stderr
+
+
+def test_an_operator_sets_a_unit_limit_watches_it_and_sees_its_consumption(
+    tmp_path: Path,
+) -> None:
+    """ADR-0282: a limit per unit of the structure, kept, watched and shown with its band."""
+    state = tmp_path / "state"
+    configured = ctl(
+        state,
+        "units",
+        "limit",
+        "set",
+        "field_month",
+        "--role",
+        "finance-lead",
+        "--unit",
+        "sales/field",
+        "--budget",
+        "250eur",
+        "--alert-at",
+        "0.5",
+        "--policy",
+        "wait",
+    )
+    assert configured.returncode == 0, configured.stderr
+    (shown,) = json.loads(ctl(state, "units", "limit", "show").stdout)
+    assert shown["unit"] == ["sales", "field"] and shown["amounts"]["money"] == {"eur": 250.0}
+    assert shown["policy"] == "wait" and shown["alert_at"] == [0.5]
+
+    watched = ctl(state, "units", "watch", "--held-runs", "3")
+    assert watched.returncode == 0, watched.stderr
+    assert json.loads(watched.stdout)["held_runs"] == 3
+
+    (standing,) = json.loads(ctl(state, "units", "consumption").stdout)
+    assert standing["unit"] == "sales/field" and standing["spent"] == {}
+    (band,) = standing["forecasts"]
+    assert band["low"] <= band["high"] and "not counted" in band["basis"]
+
+    wrong = ctl(state, "units", "limit", "set", "x", "--role", "r", "--period", "year")
+    assert wrong.returncode == 2
+    cleared = ctl(state, "units", "limit", "clear", "field_month")
+    assert cleared.returncode == 0, cleared.stderr
+    assert json.loads(ctl(state, "units", "limit", "show").stdout) == []
