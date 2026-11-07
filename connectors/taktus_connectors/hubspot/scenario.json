@@ -1,0 +1,37 @@
+{
+  "credentials": {
+    "actions": "CRM_TOKEN"
+  },
+  "read": {
+    "operation": "crm.contacts.find",
+    "input": {
+      "email": "person1@customer.example"
+    }
+  },
+  "writes": [
+    {
+      "operation": "crm.contacts.note",
+      "input": {
+        "email": "person1@customer.example",
+        "text": "A touchpoint: the customer wrote to support. Conformance {{unique}}"
+      }
+    }
+  ],
+  "invalid": {
+    "operation": "crm.contacts.find",
+    "input": {
+      "email": "not an address"
+    },
+    "expected_cause": "invalid"
+  },
+  "scoped": {
+    "operation": "crm.contacts.find",
+    "subject": "person1@customer.example",
+    "own": {
+      "email": "person1@customer.example"
+    },
+    "other": {
+      "email": "person2@customer.example"
+    }
+  }
+}
