@@ -120,7 +120,18 @@ def bundle(name, level, steps, limits=None):
             "autonomy": {"level": level, "reason": "the upgrade test", "toward_next": "none"},
             "author": "the upgrade test", "reason": "a run in one state, across an upgrade",
             "limits": limits or {"compute": {"seconds": 60, "resource_class": "cpu.small"}},
-            "steps": steps}
+            "steps": steps, "takeover": takeover(steps)}
+
+# A release since ADR-0180 registers a bundle only with takeover instructions; one before it
+# reads none. The previous release is the tag before this one, which already asks for them.
+def takeover(steps):
+    return {"sequence": "the steps in the order the bundle gives them",
+            "steps": {step["id"]: {"system": "the upgrade test's own instance",
+                                   "do": f"do by hand what the step {step['id']} does",
+                                   "expertise": "none beyond the step's own",
+                                   "credentials": [],
+                                   "done": "its result is written down"}
+                      for step in steps}}
 
 pause = {"id": "pause", "method": "wait", "reason": "a long pause", "rejected": [],
          "depends_on": ["first"], "work": {"seconds": 200}}
@@ -143,7 +154,8 @@ for name in finished waiting parked halted escalated; do
     previous cp "$work/${name}.yaml" "taktus:/tmp/upgrade-${name}.yaml" >/dev/null 2>&1
 done
 
-submit() { previous exec -T taktus taktusctl submit --process "/tmp/upgrade-$1.yaml" --identity "$identity" "${@:2}" 2>/dev/null | tail -1; }
+# Its refusal, if any, stays in the log.
+submit() { previous exec -T taktus taktusctl submit --process "/tmp/upgrade-$1.yaml" --identity "$identity" "${@:2}" | tail -1; }
 run_of() { curl -fsS "${reader[@]}" "${api}/runs/$1"; }
 state_of() { run_of "$1" | python3 -c 'import json,sys; r=json.load(sys.stdin); print(r["state"], r.get("cause") or "-")'; }
 step_state() { run_of "$1" | python3 -c 'import json,sys; r=json.load(sys.stdin); print(next(s["state"] for s in r["step_runs"] if s["step_id"]==sys.argv[1]))' "$2"; }
