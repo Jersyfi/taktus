@@ -1773,6 +1773,119 @@ class SourceDeclarationMapper:
         return [dict(row.declaration) for row in rows]
 
 
+class RunSteeringMapper:
+    """One row per run a person asked to pause or cancel (ADR-0236): the request as a
+    document, and beside it its kind and state. A later request replaces the row; the ledger
+    keeps every one."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.run_steering, tenant, id)
+        return None if row is None else dict(row.steering)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.run_steering,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "kind": document["kind"],
+                "state": document["state"],
+                "requested_at": _at(document["requested_at"]),
+                "steering": document,
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(
+            connection, s.run_steering, tenant, s.run_steering.c.requested_at, s.run_steering.c.id
+        )
+        return [dict(row.steering) for row in rows]
+
+
+class PlanDraftMapper:
+    """One row per plan worked out in dialogue (ADR-0237), the draft at its current version."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.plan_draft, tenant, id)
+        return None if row is None else dict(row.draft)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.plan_draft,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "version": document["version"],
+                "changed_at": _at(document["changed_at"]),
+                "draft": document,
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(
+            connection, s.plan_draft, tenant, s.plan_draft.c.changed_at, s.plan_draft.c.id
+        )
+        return [dict(row.draft) for row in rows]
+
+
+class _DocumentMapper:
+    """One row per document keyed by tenant and id, the document in one column."""
+
+    table_name: str
+    column: str
+
+    def _table(self) -> Any:
+        return getattr(s, self.table_name)
+
+    def _row(self, tenant: Tenant, document: Document) -> dict[str, Any]:
+        return {"tenant": tenant, "id": document["id"], self.column: document}
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, self._table(), tenant, id)
+        return None if row is None else dict(getattr(row, self.column))
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(connection, self._table(), ("tenant", "id"), self._row(tenant, document))
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        table = self._table()
+        rows = await _all(connection, table, tenant, table.c.id)
+        return [dict(getattr(row, self.column)) for row in rows]
+
+
+class CoachSettingsMapper(_DocumentMapper):
+    """One row per person who has a coach (ADR-0240)."""
+
+    table_name = "coach_settings"
+    column = "settings"
+
+
+class CoachHintMapper(_DocumentMapper):
+    """One row per hint offered to a person (ADR-0240), with its identity and state beside it."""
+
+    table_name = "coach_hint"
+    column = "hint"
+
+    def _row(self, tenant: Tenant, document: Document) -> dict[str, Any]:
+        return {
+            **super()._row(tenant, document),
+            "identity": document["identity"],
+            "state": document["state"],
+            "offered_at": _at(document["offered_at"]),
+        }
+
+
+class CoachPolicyMapper(_DocumentMapper):
+    """One row per tenant that configured the coach's period (ADR-0240)."""
+
+    table_name = "coach_policy"
+    column = "policy"
+
+
 class SubjectRequestMapper:
     """One row per data-protection request (ADR-0176): the request as a document, and beside
     it its kind and state. A row is never deleted: its state moves on."""
@@ -2105,6 +2218,11 @@ MAPPERS: dict[str, Mapper] = {
     "residency_rule": ResidencyRuleMapper(),
     "source_declaration": SourceDeclarationMapper(),
     "subject_request": SubjectRequestMapper(),
+    "run_steering": RunSteeringMapper(),
+    "plan_draft": PlanDraftMapper(),
+    "coach_settings": CoachSettingsMapper(),
+    "coach_hint": CoachHintMapper(),
+    "coach_policy": CoachPolicyMapper(),
     "takeover_trial": TakeoverTrialMapper(),
     "message_rules": MessageRulesMapper(),
     "org_unit_quota": OrgUnitQuotaMapper(),

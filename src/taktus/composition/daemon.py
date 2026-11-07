@@ -166,7 +166,7 @@ from taktus.components.run.application.service import (
     RunnerOptions,
 )
 from taktus.components.run.application.service.stops import Stops
-from taktus.components.run.domain.model import AdapterStop, Run
+from taktus.components.run.domain.model import AdapterStop, Run, RunSteering
 from taktus.components.value.application.query import CorrectionRates
 from taktus.composition import roles
 from taktus.composition.acting import ActingReads
@@ -233,6 +233,7 @@ from taktus.composition.profiles import RoleProfiles
 from taktus.composition.proposals import InstanceChanges, ProposalActs
 from taktus.composition.reactions import Reactions, capacity_condition
 from taktus.composition.replies import ConnectorReplies
+from taktus.composition.run_answers import RunAnswers
 from taktus.composition.settings import (
     CONNECT_KEY,
     ExecutionKind,
@@ -246,6 +247,7 @@ from taktus.composition.signals import CommandInterventions, signal_wiring, sign
 from taktus.composition.skills import CatalogGuidance, SkillLifecycle, skills_tick
 from taktus.composition.spend_in_channel import SpendInChannel
 from taktus.composition.stages import stage_wiring, stages_tick
+from taktus.composition.steering import Steering, SteeringConfirmed, SteeringInChannel
 from taktus.composition.stops import StopsConfirmed
 from taktus.composition.streams import StreamReads
 from taktus.composition.subjects import ProcessingEvidence, RunHoldings
@@ -311,6 +313,12 @@ class Wired:
     stops: StopsConfirmed
     """The stops of adapters the scheduler confirms on every tick while it leads, once each
     holds (ADR-0138)."""
+    steering: SteeringConfirmed
+    answers: RunAnswers
+    """Every run of a channel's command that ended or waits, answered in that channel's thread
+    once (ADR-0239)."""
+    """The pauses and cancellations of runs said, in the channel they were asked in, once each
+    took effect (ADR-0236)."""
     defects: DefectWatch
     """Every result found wrong nobody assessed, raised as a result defect and its plan started
     by the scheduler (ADR-0184, ADR-0179)."""
@@ -622,6 +630,8 @@ async def wire(
             weights = settings.budget.weights()
             seeds = settings.budget.seeds()
             shape = settings.findings.form()
+            # A person's pause or cancellation of a run, read at its boundary (ADR-0236).
+            steering_store = PostgresRepository(persistence, RunSteering)
             stops = Stops(
                 PostgresRepository(persistence, AdapterStop),
                 runs,
@@ -708,6 +718,7 @@ async def wire(
                     ),
                     guidance=CatalogGuidance(skill_catalog, agent_catalog),
                     org_units=org_units,
+                    steering=steering_store,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -1109,7 +1120,23 @@ async def wire(
                     # An outside participant's answer in its thread, before the owner-facing
                     # channel reads the message (ADR-0155).
                     ParticipantAnswers(
-                        runs, persistence, engine, ConnectorReplies(pools.connectors), owner.answers
+                        runs,
+                        persistence,
+                        engine,
+                        ConnectorReplies(pools.connectors),
+                        # Status, pause and cancellation, on every channel (ADR-0236).
+                        SteeringInChannel(
+                            Steering(
+                                engine=engine,
+                                runs=runs,
+                                rights=PostgresRepository(persistence, RoleRights),
+                                ledger=ledger,
+                                work=persistence,
+                                ceiling_seconds=settings.shutdown_ceiling_seconds,
+                            ),
+                            ConnectorReplies(pools.connectors),
+                            owner.answers,
+                        ),
                     ),
                     outbox,
                     clock=clock,
@@ -1306,6 +1333,19 @@ async def wire(
                     clock,
                 ),
                 stops=StopsConfirmed(tenants, stops),
+                steering=SteeringConfirmed(
+                    tenants, steering_store, persistence, ConnectorReplies(pools.connectors)
+                ),
+                answers=RunAnswers(
+                    tenants,
+                    ledger,
+                    runs,
+                    PostgresRepository(persistence, Plan),
+                    PostgresRepository(persistence, Command),
+                    persistence,
+                    ConnectorReplies(pools.connectors),
+                    clock,
+                ),
                 defects=DefectWatch(
                     ledger,
                     result_defects,
@@ -1683,6 +1723,10 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
             await wired.deadlines.tick()
             # And it confirms every stop of an adapter that holds now (ADR-0138).
             await wired.stops.tick()
+            # And it says every pause or cancellation of a run that took effect (ADR-0236).
+            await wired.steering.tick()
+            # And every run of a channel's command answers there once it ends or waits (ADR-0239).
+            await wired.answers.tick()
             await watch_expected()
             await watch_escalations()
             await measure_objectives()

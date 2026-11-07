@@ -121,6 +121,14 @@ slides into execution through approval fatigue.
 The plan is also the authoring tool for processes: it ends either in a one-off run or in a new
 process version.
 
+A plan worked out in dialogue is a **plan draft** (ADR-0237): its goal, its steps with their
+methods and capabilities, the date it is due, the autonomy level with its reason, and an
+estimate per step that names its basis — one without a basis is shown as a guess. Every change
+is a new version. Commissioning takes one version into a plan `<draft>@v<version>` and records
+`plan.commissioned` with the identity that commissioned it; it is refused, naming what is
+missing, for a draft without one of the four parts, and for a step that cannot be estimated.
+The engine runs only a commissioned plan.
+
 ---
 
 ## 4. Process
@@ -375,6 +383,12 @@ level (ADR-0042), and a person's own `human` step for a person of its role to pe
 every level (ADR-0167). Such a step is in the step state `waiting_human`; the steps that do not depend
 on it run on before the run waits. A person's answer continues the run; a stop halts it at once.
 A declined anchored act halts the run with cause `declined`, and a resume asks again.
+
+A person pauses or cancels one run through any channel (ADR-0236). The request is kept per run
+and read at every step boundary, by whichever instance holds the run: the run halts there with
+cause `paused` or `cancelled`, and the step it was inside finishes first. A waiting run halts at
+once. A paused run resumes at its boundary; a cancelled run never resumes. "What are you working
+on?" is answered from the ledger's projection `run.current_work.v1`, never from the run store.
 
 There are no open loops. Every execution produces a measurable result that flows back into
 monitoring and reports. Repeated self-healing of the same fault raises an improvement proposal or a

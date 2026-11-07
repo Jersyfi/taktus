@@ -56,6 +56,12 @@ from taktus.components.run.domain.model.run import (
     TakeoverOfStep,
     TakeoverStanding,
 )
+from taktus.components.run.domain.model.steering import (
+    RunSteering,
+    SteeringKind,
+    SteeringReply,
+    SteeringState,
+)
 from taktus.components.run.domain.model.stop import HELD, AdapterStop, StopState
 from taktus.components.run.domain.model.work import (
     Ask,
@@ -177,9 +183,13 @@ __all__ = [
     "RunError",
     "RunExists",
     "RunState",
+    "RunSteering",
     "ScreenRule",
     "SpamRule",
     "Start",
+    "SteeringKind",
+    "SteeringReply",
+    "SteeringState",
     "StepRun",
     "StepState",
     "StopState",

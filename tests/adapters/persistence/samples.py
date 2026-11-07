@@ -37,7 +37,8 @@ from taktus.components.catalog.domain.model import (
     StepFinding,
     Verdict,
 )
-from taktus.components.command.domain.model import IntakeEvent
+from taktus.components.command.domain.model import Estimate, IntakeEvent, PlanDraft
+from taktus.components.command.domain.model.coach import CoachHint, CoachPolicy, CoachSettings
 from taktus.components.decision.domain.model import DecisionRule, RegisterEntry, Request
 from taktus.components.governance.domain.model import (
     AnchorConfiguration,
@@ -97,7 +98,10 @@ from taktus.components.run.domain.model import (
     ReceivedMessage,
     Run,
     RunState,
+    RunSteering,
     Start,
+    SteeringKind,
+    SteeringReply,
     StepState,
     StopState,
     WorkingTime,
@@ -110,12 +114,14 @@ from taktus.shared.v1 import (
     Commissioned,
     Consumption,
     ConsumptionQuantities,
+    ExactnessClass,
     Intent,
     Method,
     Plan,
     PlanResult,
     PlanStatus,
     ReplyTo,
+    Step,
 )
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -1135,3 +1141,57 @@ def role_profile(tenant: str = "t") -> RoleProfile:
 
 def skill_ownership(tenant: str = "t") -> SkillOwnership:
     return SkillOwnership(id="mine@1", tenant=tenant, owner="idn_t")
+
+
+def run_steering(tenant: str = "t") -> RunSteering:
+    """A pause asked of a run, with the thread its confirmation is said in (ADR-0236)."""
+    return RunSteering(
+        id="run_1",
+        tenant=tenant,
+        kind=SteeringKind.PAUSE,
+        requested_by="idn_p",
+        requested_at=AT,
+        reply=SteeringReply(channel="channel.chat", address="C1", thread="1.1"),
+    )
+
+
+def plan_draft(tenant: str = "t") -> PlanDraft:
+    """A plan draft at its second version, with an estimate and its basis (ADR-0237)."""
+    return PlanDraft(
+        id="pld_1",
+        tenant=tenant,
+        command_id="cmd_1",
+        version=2,
+        goal="answer supplier invoices",
+        steps=(
+            Step(
+                id="a", method=Method.RULE, reason="r", rejected=(), exactness=ExactnessClass.EXACT
+            ),
+        ),
+        due=AT,
+        autonomy_level=2,
+        autonomy_reason="a person confirms every reply",
+        estimates=(Estimate(step_id="a", figure=0.5, basis="the last 30 runs"),),
+        changed_by="idn_p",
+        changed_at=AT,
+    )
+
+
+def coach_settings(tenant: str = "t") -> CoachSettings:
+    return CoachSettings(id="idn_p", tenant=tenant, hints_per_week=3, observed_since=AT)
+
+
+def coach_hint(tenant: str = "t") -> CoachHint:
+    return CoachHint(
+        id="idn_p:abc",
+        tenant=tenant,
+        identity="idn_p",
+        pattern="abc",
+        says="You ask this every Monday.",
+        procedure='every Monday: "summarise"',
+        offered_at=AT,
+    )
+
+
+def coach_policy(tenant: str = "t") -> CoachPolicy:
+    return CoachPolicy(id=tenant, lasting_days=14)

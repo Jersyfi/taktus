@@ -17,7 +17,8 @@ from taktus.components.catalog.domain.model import (
     SkillPolicy,
     SkillVersion,
 )
-from taktus.components.command.domain.model import IntakeEvent
+from taktus.components.command.domain.model import IntakeEvent, PlanDraft
+from taktus.components.command.domain.model.coach import CoachHint, CoachPolicy, CoachSettings
 from taktus.components.decision.domain.model import DecisionRule, RegisterEntry, Request
 from taktus.components.governance.domain.model import (
     AnchorConfiguration,
@@ -53,6 +54,7 @@ from taktus.components.run.domain.model import (
     Deadline,
     Run,
     RunState,
+    RunSteering,
     StepState,
     WorkingTime,
 )
@@ -104,6 +106,11 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (SkillPolicy, samples.skill_policy),
     (AgentCore, samples.agent_core),
     (RoleProfile, samples.role_profile),
+    (RunSteering, samples.run_steering),
+    (PlanDraft, samples.plan_draft),
+    (CoachSettings, samples.coach_settings),
+    (CoachHint, samples.coach_hint),
+    (CoachPolicy, samples.coach_policy),
 ]
 
 

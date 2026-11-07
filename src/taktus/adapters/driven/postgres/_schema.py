@@ -530,6 +530,65 @@ takeover_trial = Table(
 """One row per trial of a version's takeover instructions (ADR-0180 §3); a role, never a
 person; never changed."""
 
+run_steering = Table(
+    "run_steering",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),  # the run's identifier
+    Column("kind", Text, nullable=False),  # pause, cancel
+    Column("state", Text, nullable=False),  # asked, took_effect, confirmed
+    _at("requested_at"),
+    Column("steering", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per run a person asked to pause or cancel: the request asked last (ADR-0236)."""
+
+plan_draft = Table(
+    "plan_draft",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("version", Integer, nullable=False),
+    _at("changed_at"),
+    Column("draft", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per plan worked out in dialogue, at its current version (ADR-0237); the versions
+before it are named by the ledger's `plan.revised` and, once commissioned, kept as plans."""
+
+coach_settings = Table(
+    "coach_settings",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),  # the identity the settings belong to
+    Column("settings", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per person who has a coach (ADR-0240); read and changed only by that person."""
+
+coach_hint = Table(
+    "coach_hint",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("identity", Text, nullable=False),
+    Column("state", Text, nullable=False),  # offered, dismissed, accepted
+    _at("offered_at"),
+    Column("hint", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per hint offered to a person (ADR-0240); never deleted, its state moves on."""
+
+coach_policy = Table(
+    "coach_policy",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("policy", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per tenant that configured the coach's period (ADR-0240)."""
+
 subject_request = Table(
     "subject_request",
     metadata,
