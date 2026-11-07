@@ -57,6 +57,8 @@ def bundle_of(
             )
             if value is not None
         }
+        if version.slo.completion is not None:
+            slo["completion"] = version.slo.completion
         if slo:
             bundle["slo"] = slo
     if version.expect is not None:
@@ -79,6 +81,12 @@ def bundle_of(
         bundle["case"] = version.case
     if version.takeover is not None:
         bundle["takeover"] = version.takeover.document()
+    if version.escalation is not None:
+        bundle["escalation"] = {
+            "role": version.escalation.role,
+            "react_within": version.escalation.react_within.total_seconds(),
+            "path": version.escalation.path,
+        }
     return bundle
 
 

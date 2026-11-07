@@ -205,10 +205,32 @@ class Trigger(Value):
 
 
 class Slo(Value):
-    """The service level a process promises: how fresh its result is, how long a run may take."""
+    """The service level a process promises: how fresh its result is, how long a run may take,
+    and the share of its runs that complete (ADR-0252 §4)."""
 
     freshness: timedelta | None = None
     latency: timedelta | None = None
+    completion: float | None = Field(default=None, gt=0, le=1)
+    """The least share of its ended runs that finish, over the window of the last
+    `COMPLETION_WINDOW` ended runs. None: the share is not an objective."""
+
+
+class Escalation(Value):
+    """Who a failure's escalation reaches, by which path, and how soon a reaction is due
+    (UC-4.5, ADR-0252 §2). A role, never a person (principle 14)."""
+
+    role: str = Field(pattern=r"^[a-z][a-z0-9-]*$")
+    react_within: timedelta
+    """The time to react: an escalation still unanswered past it is recorded as overdue."""
+    path: Literal["channel", "ledger"] = "channel"
+    """`channel`: the situation package is a report in the tenant's owner-facing channel, to
+    the role. `ledger`: it is recorded only, and read where the run is read."""
+
+    @model_validator(mode="after")
+    def _a_time(self) -> Escalation:
+        if self.react_within <= timedelta(0):
+            raise ValueError("`escalation.react_within` is a time longer than nothing")
+        return self
 
 
 class Expect(Value):
@@ -369,6 +391,9 @@ class ProcessVersion(Value):
     takeover: TakeoverInstructions | None = None
     """How a person runs this version without Taktus (UC-6.3, ADR-0180). Registration requires
     it; None only on a version stored before it was required, which is read as it is."""
+    escalation: Escalation | None = None
+    """Who a failure's escalation reaches, by which path, and the time to react (ADR-0252).
+    None: the tenant's owner, through the owner-facing channel, without a time to react."""
     author: str | None = None
     reason: str | None = None
 

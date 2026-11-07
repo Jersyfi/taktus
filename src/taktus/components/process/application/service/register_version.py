@@ -71,6 +71,7 @@ from pydantic import ValidationError
 
 from taktus.components.process.domain.model import (
     DeadlineDeclaration,
+    Escalation,
     EvaluationSpec,
     Expect,
     InputDeclaration,
@@ -500,6 +501,7 @@ def parse_bundle(bundle: Document) -> ProcessVersion:
             evaluation=_evaluation(bundle.get("evaluation")),
             case=bundle.get("case"),
             takeover=_takeover(bundle.get("takeover")),
+            escalation=_escalation(bundle.get("escalation")),
             author=bundle.get("author"),
             reason=bundle.get("reason"),
         )
@@ -714,10 +716,41 @@ def _slo(raw: Any) -> Slo | None:
         return None
     if not isinstance(raw, Mapping):
         raise InvalidProcess(("`slo` is not a mapping",))
-    return Slo(
-        freshness=_duration(raw.get("freshness")),
-        latency=_duration(raw.get("latency")),
-    )
+    try:
+        return Slo(
+            freshness=_duration(raw.get("freshness")),
+            latency=_duration(raw.get("latency")),
+            completion=raw.get("completion"),
+        )
+    except ValidationError as error:
+        raise InvalidProcess(tuple(_describe("slo", error))) from error
+
+
+def _escalation(raw: Any) -> Escalation | None:
+    """`escalation`: the `role` a failure reaches, the time to react `react_within`, and the
+    `path` (ADR-0252 §2)."""
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        raise InvalidProcess(("`escalation` is not a mapping",))
+    unknown = sorted(set(raw) - {"role", "react_within", "path"})
+    if unknown:
+        raise InvalidProcess(
+            (
+                f"`escalation` names {', '.join(map(str, unknown))}; it takes role, react_within "
+                "and path",
+            )
+        )
+    try:
+        return Escalation.model_validate(
+            {
+                "role": raw.get("role"),
+                "react_within": _duration(raw.get("react_within")),
+                "path": raw.get("path", "channel"),
+            }
+        )
+    except ValidationError as error:
+        raise InvalidProcess(tuple(_describe("escalation", error))) from error
 
 
 def _expect(raw: Any) -> Expect | None:

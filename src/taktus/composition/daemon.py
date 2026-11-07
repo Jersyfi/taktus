@@ -189,6 +189,7 @@ from taktus.composition.defects import (
     Remedies,
     defects_tick,
 )
+from taktus.composition.escalations import EscalationWatch, escalations_tick
 from taktus.composition.evaluations import Evaluations, evaluations_tick, outward_by
 from taktus.composition.execution import (
     connector_pool,
@@ -319,6 +320,9 @@ class Wired:
     stages: Stages
     """A tenant's introduction in stages, looked at by the scheduler once an hour while it
     leads (ADR-0137)."""
+    escalations: EscalationWatch
+    """Every failure's escalation delivered with its situation package, and watched against
+    its process's time to react, by the scheduler once a minute while it leads (ADR-0252)."""
     expected: ExpectedRunsWatch
     """The watch over expected runs the scheduler makes once a minute while it leads: a run
     that did not happen raises an incident (ADR-0107)."""
@@ -980,6 +984,7 @@ async def wire(
                 clock=clock,
                 ids=ids,
                 change_process=settings.change_process,
+                describe_process=settings.describe_process,
                 evaluations=evaluations,
             )
             # A change in dialogue read in the owner's conversation too (ADR-0091 §6).
@@ -1255,6 +1260,16 @@ async def wire(
                     raising=owner.raising,
                     clock=clock,
                     form=shape,
+                ),
+                escalations=EscalationWatch(
+                    ledger=ledger,
+                    runs=runs,
+                    versions=PostgresRepository(persistence, ProcessVersion),
+                    work=persistence,
+                    clock=clock,
+                    channels=owner.channel,
+                    raising=owner.raising,
+                    reports=owner.queries,
                 ),
                 expected=ExpectedRunsWatch(
                     ExpectationsHandler(
@@ -1597,6 +1612,9 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
         report_alerts = alerts_tick(wired.alerts, wired.tenants, wired.clock)
         # And it watches that every expected run happened, by rule (ADR-0107).
         watch_expected = expected_runs_tick(wired.expected, wired.tenants, wired.clock)
+        # And it delivers every failure's escalation with its situation package, and records
+        # one that passed its time to react (ADR-0252).
+        watch_escalations = escalations_tick(wired.escalations, wired.tenants, wired.clock)
         # And it judges every signal against its corridor, and raises the daily report
         # (ADR-0109).
         judge_signals = signals_tick(wired.signals, wired.tenants, wired.clock)
@@ -1643,6 +1661,7 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
             # And it confirms every stop of an adapter that holds now (ADR-0138).
             await wired.stops.tick()
             await watch_expected()
+            await watch_escalations()
             await tick()
             await send_findings()
             await report_interfaces()
