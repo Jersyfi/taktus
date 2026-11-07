@@ -316,18 +316,19 @@ follows (#447).
 |---|---|---|
 | repository service: issues, pull requests, pipelines | §4.7, §4.8, B-1.11, B-1.12 | yes (`github` connector): pull requests listed with their state, a base merged into a branch, a commit onto an existing branch, a pull request's paths, a merge at a head, pipeline runs by status (ADR-0193, ADR-0194) |
 | chat | the report, decision requests, steering | yes |
-| mail and helpdesk: receive, draft, send | §4.3, B-10.03 | mail received and sent over IMAP and SMTP (`mail` connector); drafts and a helpdesk: no |
+| mail and helpdesk: receive, draft, send | §4.3, B-10.03 | mail received and sent over IMAP and SMTP (`mail` connector); a helpdesk's tickets read, an internal note and a close with a tag (`helpdesk.tickets`, two helpdesks), a help centre's articles listed and a draft created unpublished (`helpcentre.articles`, ADR-0205) |
 | cloud billing export, monitoring and logs | §4.1 | metrics by query (`prometheus` connector), an HTTP check (`httpcheck` connector) and the daily cost by service (`billing.costs`); logs: no |
 | error tracking | B-1.04, B-1.05, B-7.01 | issues read (`errors.issues`) |
-| payment providers and the product's entitlements | B-3.04, §4.6 | subscriptions read (`payments.subscriptions`); the product's entitlements: no |
+| payment providers and the product's entitlements | B-3.04, §4.6 | subscriptions read (`payments.subscriptions`, `payments.customers`) from three providers in one shape (ADR-0206); the product's entitlements and accounts through manifests a tenant serves with the vendor connector (`entitlements.*`, `accounts.*`, ADR-0199, ADR-0208) |
 | model providers' credit and use | B-2.01 | the cost per day (`models.costs`); the credit left: no |
-| app stores: reviews, submission, beta, staged rollout | B-3.09, §4.8 | no |
+| app stores: reviews, submission, beta, staged rollout | B-3.09, §4.8 | reviews read and replied to on two stores (`stores.reviews`, ADR-0207); submission, beta and staged rollout: no |
 | deployment targets with rollback | B-8.04, B-8.05, B-8.06 | a workload of a cluster's API released, rolled back and scaled (`deployment.workloads`, ADR-0195); any other target: no |
-| customer system and feedback portal | B-5.05, B-3.07, B-9.04 | no |
+| customer system and feedback portal | B-5.05, B-3.07, B-9.04 | contacts found, created and noted (`crm.contacts`, ADR-0209); a feedback portal's posts read, created and voted for (`feedback.posts`, ADR-0207) |
 | an analytics copy without personal fields | B-9.02, B-9.06 | no |
 | accounting export | B-6.06, B-10.03 | incoming invoices read from an inbox in EN 16931 (`documents.invoices`), orders read, bookings proposed and released payments submitted through a generic accounting interface (`accounting.orders`, `accounting.bookings`, `payment.release`; UC-15.8, UC-04); an export of outgoing invoices: no |
 | a browser for synthetic flows | B-1.06, B-7.08, B-7.09 | a worker; not built |
-| social media and forum search | B-3.10 | no |
+| social media and forum search | B-3.10 | public posts searched on a social network or a forum (`mentions.search`, ADR-0207) |
+| tasks, an account directory, an audit log of privileged actions | B-5.01, B-5.03, B-5.04 | open tasks read and reminded through their tracker (`tasks.items`); accounts and groups over SCIM 2.0 (`directory.accounts`, `directory.groups`); privileged actions read (`audit.events`), counted per action, never per person (ADR-0209) |
 
 ---
 

@@ -46,7 +46,7 @@ from .test_software_operations import (
     Outside,
     World,
     outside,  # noqa: F401 — the fixture, requested by name
-    )
+)
 
 WISH = "You compare a customer's message"
 SORT = "You sort public posts"

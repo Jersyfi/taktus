@@ -272,7 +272,8 @@ role it would tie the core to a model stack and the removal test would be lost.
   identifier from the trigger and the item alone, so an item listed again by a later slot —
   a document still in an inbox — starts no second run; its read takes the trigger's fixed
   `arguments` (ADR-0188). The release's list of what it ships (`composition/shipped.json`)
-  names the operations every connector declares. The tick also makes the capacity
+  names the operations every connector declares, generated from the connectors' declarations
+  (`make generate`), so that a new connector reaches it without a hand edit. The tick also makes the capacity
   report, and once a minute it watches that every expected run happened: one that did not
   raises an incident (`composition/expected_runs.py`, ADR-0107,
   `tests/integration/test_expected_runs.py`), and judges every signal against its corridor,
