@@ -42,6 +42,9 @@
   "show_overview_words": [
     "show overview"
   ],
+  "show_origin_words": [
+    "show origin"
+  ],
   "live": "Live",
   "not_shown": "Nothing of that name can be shown to you here.",
   "change_words": [

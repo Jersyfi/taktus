@@ -3,7 +3,8 @@
 
 The owner-facing channel (ADR-0045) is a chat: it shows text and links, never a moving
 picture. A message there that asks for the overview — one of the phrasebook's words standing
-alone — or for a run or a process — one of its words and one identifier — is answered in the
+alone — or for a run, a process or the origin of a result — one of its words and one
+identifier, `<run>/<step>` for an origin — is answered in the
 same conversation with the level's text equivalent, exactly as the level hands it to the web
 app, and the link to the level live in the web app.
 
@@ -119,6 +120,8 @@ class ShowInChannelHandler:
                 level = await self._levels.overview(reader)
             elif asked.level == "run":
                 level = await self._levels.run(reader, asked.id)
+            elif asked.level == "origin" and asked.step is not None:
+                level = await self._levels.origin(reader, asked.id, asked.step)
             else:
                 level = await self._levels.process(reader, asked.id, asked.version)
             if level is not None:

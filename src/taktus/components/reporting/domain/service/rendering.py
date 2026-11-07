@@ -29,12 +29,13 @@ from taktus.components.reporting.domain.model import (
     ReportKind,
 )
 from taktus.components.reporting.domain.service.levels import (
+    OriginLevel,
     OverviewLevel,
     ProcessLevel,
     RunLevel,
 )
 
-type Level = OverviewLevel | ProcessLevel | RunLevel
+type Level = OverviewLevel | ProcessLevel | RunLevel | OriginLevel
 
 KIND_IN_THE_REPOSITORY: dict[ReportKind, str] = {
     ReportKind.DECISION: "Decision request",
@@ -190,6 +191,9 @@ def level_url(channel: OwnerChannel, level: Level) -> str | None:
         route = ""
     elif isinstance(level, RunLevel):
         route = f"runs/{quote(level.run.id, safe='')}"
+    elif isinstance(level, OriginLevel):
+        result = level.result
+        route = f"origins/{quote(result.run, safe='')}/{quote(result.step, safe='')}"
     else:
         process = level.process
         route = f"processes/{quote(process.id, safe='')}/{quote(process.version, safe='')}"
@@ -200,7 +204,9 @@ def shown(level: Level, channel: OwnerChannel) -> str:
     """A level for a channel that cannot draw it: its text equivalent, element by element, as
     the level hands it to the web app — never composed again — and the link to it live there
     (UC-6.10 *beyond the web app*, ADR-0069). The overview is written out in the order the web
-    app writes its text: each area, then each of its processes and the steps running in it."""
+    app writes its text: each area, then each of its processes and the steps running in it. The
+    origin of a result is written as the web app writes it: its summary, the result, each step
+    on its path and each source read."""
     if isinstance(level, OverviewLevel):
         lines: list[str] = []
         for area in level.areas:
@@ -210,6 +216,13 @@ def shown(level: Level, channel: OwnerChannel) -> str:
                 lines += [f"• {step.text}" for step in process.running]
     elif isinstance(level, RunLevel):
         lines = [level.run.text, *(f"• {step.text}" for step in level.steps)]
+    elif isinstance(level, OriginLevel):
+        lines = [
+            level.summary,
+            f"• {level.result.text}",
+            *(f"• {step.text}" for step in level.steps),
+            *(f"• {source.text}" for source in level.sources),
+        ]
     else:
         lines = [
             level.process.text,
