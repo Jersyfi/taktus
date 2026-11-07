@@ -7,7 +7,7 @@ serves: [P8]
 state: building
 version: 0.4.0
 tests: [tests/components/run/test_llm_steps.py::test_an_answer_that_fails_the_check_does_not_leave_the_step, tests/composition/test_method_move.py::test_a_version_without_the_models_evaluation_is_refused, tests/composition/test_method_move.py::test_the_same_case_on_the_moved_step_gives_the_same_result, tests/composition/test_evaluations.py::test_a_variable_step_declares_its_tolerance_within_what_its_class_admits, tests/composition/test_evaluations.py::test_a_step_is_held_to_its_own_tolerance_where_the_tenant_s_is_wider, tests/composition/test_evaluations.py::test_a_regression_is_not_commissioned_unless_a_person_overrides_it_with_a_reason, tests/composition/test_evaluations.py::test_drift_is_measured_on_the_schedule_and_raises_an_incident_where_it_speaks_out, tests/composition/test_skills.py::test_a_regressing_skill_is_not_evaluated_and_a_worse_one_falls_back_by_rule, tests/composition/test_model_validation.py::test_a_replacement_reaches_real_runs_only_after_its_validation_run_held]
-adrs: {ADR-0004: ffdb1f1537f5, ADR-0005: 0ea928e2016b, ADR-0011: f25413d512b9, ADR-0014: 6611f7833deb, ADR-0018: 17c99e0eaa3c, ADR-0114: 75a031083f19, ADR-0134: 49496fd840aa, ADR-0249: 96644d826d42, ADR-0250: 31261db30459}
+adrs: {ADR-0004: ffdb1f1537f5, ADR-0005: 0ea928e2016b, ADR-0011: f25413d512b9, ADR-0014: 6611f7833deb, ADR-0018: 17c99e0eaa3c, ADR-0114: 75a031083f19, ADR-0134: 49496fd840aa, ADR-0162: 543844829afb, ADR-0249: 96644d826d42, ADR-0250: 31261db30459}
 supersedes: null
 ---
 
