@@ -459,6 +459,23 @@ adapter_stop = Table(
 """One row per stop of an adapter a person requested (ADR-0138). A row is never deleted: its
 state moves on."""
 
+scoped_stop = Table(
+    "scoped_stop",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("scope", Text, nullable=False),  # process, tenant (ADR-0256)
+    Column("process", Text, nullable=True),
+    Column("state", Text, nullable=False),  # holding, confirmed, lifted
+    _at("requested_at"),
+    Column("stop", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+    Index("scoped_stop_state", "tenant", "state"),
+)
+"""One row per stop of a process or of a tenant, by a person or a rule (ADR-0256). A row is
+never deleted: its state moves on. Kept apart from `adapter_stop`, which the previous release
+reads (ADR-0093)."""
+
 working_time = Table(
     "working_time",
     metadata,

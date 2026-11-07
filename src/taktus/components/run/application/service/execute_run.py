@@ -188,6 +188,7 @@ from taktus.components.run.domain.model import (
     PROCEED,
     RESUMABLE,
     RUN_ENDED,
+    AdapterStop,
     Anchoring,
     Ask,
     BacklogRule,
@@ -252,6 +253,7 @@ from taktus.components.run.domain.model import (
 )
 from taktus.components.run.domain.model.block import Account, Awaited, OpenBlock
 from taktus.components.run.domain.model.run import IN_FLIGHT, TAKEOVER_RESULT, TAKEOVER_STATE
+from taktus.components.run.domain.model.stop import process_of
 from taktus.components.run.domain.model.work import PREDICT, SKILLS
 from taktus.components.run.domain.service import (
     anchoring,
@@ -889,6 +891,8 @@ class RunEngine:
         self._inflight_step: dict[str, StepId] = {}
         """The step each run in `_inflight` is inside."""
         self._inflight_adapter: dict[str, tuple[Tenant, str]] = {}
+        self._inflight_process: dict[str, str] = {}
+        """The process of each run inside a worker step, for a stop of the process (ADR-0256)."""
         """The tenant and the adapter of the step each run in `_inflight` is inside: a stop of
         that adapter stops the step at its boundary (ADR-0138)."""
         self._message_digests: dict[str, str] = {}
@@ -1944,13 +1948,20 @@ class RunEngine:
         if inside is None or run_id in self._stop_requested:
             return False
         tenant, adapter = inside
-        if adapter not in await self._held_stops(tenant):
+        process = self._inflight_process.get(run_id)
+        covered = process is not None and await self._covering(tenant, process) is not None
+        if not covered and adapter not in await self._held_stops(tenant):
             return False
         await self.request_stop(run_id)
         return True
 
     async def _held_stops(self, tenant: Tenant) -> frozenset[str]:
         return frozenset() if self._stops is None else await self._stops.held(tenant)
+
+    async def _covering(self, tenant: Tenant, process: str) -> AdapterStop | None:
+        """The held stop of the process or the tenant that halts a run of the process at its
+        next boundary (ADR-0256 §1); None while none does."""
+        return None if self._stops is None else await self._stops.covering(tenant, process)
 
     async def _not_stopped(
         self, run: Run, adapter: str, consumption: Consumption | None = None
@@ -2449,6 +2460,12 @@ class RunEngine:
         run = capped
         completed_now = 0
         while (step_run := run.runnable()) is not None:
+            covering = await self._covering(run.tenant, process_of(run.process_version))
+            if covering is not None:
+                # A stop of the process or the tenant: no step is handed on (ADR-0256 §1).
+                return await self._end(
+                    run, RunState.HALTED, Cause.STOP, _stopped_by(covering), span
+                )
             step = run.step(step_run.step_id)
             run, step_run = await self._step_or_failed(run, step, step_run)
             asked = self._taking_over.get(run.id)
@@ -6355,7 +6372,12 @@ class RunEngine:
         self._inflight_step[run.id] = step_run.step_id
         adapter = str(call["adapter"])
         self._inflight_adapter[run.id] = (run.tenant, adapter)
-        if run.id in self._stop_requested or adapter in await self._held_stops(run.tenant):
+        self._inflight_process[run.id] = process_of(run.process_version)
+        if (
+            run.id in self._stop_requested
+            or adapter in await self._held_stops(run.tenant)
+            or await self._covering(run.tenant, process_of(run.process_version)) is not None
+        ):
             # A stop of the adapter requested since the check before the handover, or held
             # while an assignment handed over earlier was adopted, lands at its boundary.
             await self.request_stop(run.id)
@@ -6374,6 +6396,7 @@ class RunEngine:
             self._inflight.pop(run.id, None)
             self._inflight_step.pop(run.id, None)
             self._inflight_adapter.pop(run.id, None)
+            self._inflight_process.pop(run.id, None)
         _measured(span, step_run)
         if (
             adopted
@@ -7569,3 +7592,11 @@ def _message_inputs(step_run: StepRun) -> tuple[ProvenanceInput, ...]:
         )
         for message in step_run.messages
     )
+
+
+def _stopped_by(stop: AdapterStop) -> str:
+    """The reason of a run a stop of its process or its tenant halted: it names the stop, so
+    that the stop's confirmation finds the run (ADR-0256 §1)."""
+    what = f"the process {stop.process}" if stop.process is not None else "the tenant"
+    by = f"the rule {stop.rule}" if stop.rule is not None else "a person"
+    return f"stop {stop.id} of {what}, by {by}, holds at the boundary"

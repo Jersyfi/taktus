@@ -313,7 +313,11 @@ role it would tie the core to a model stack and the removal test would be lost.
   which the engine reads before every handover to a worker, every connector call and every
   question to a model, and the runner at every renewal; the
   scheduler confirms them in `composition/stops.py`, and `taktusctl stop` requests, shows and
-  lifts them (ADR-0138). The run reaches a version's deadlines in the process component
+  lifts them (ADR-0138). The same `Stops` keep the stops of a process and of a tenant, in
+  `scoped_stop`; the engine reads them before it hands any step on, and `taktusctl stop
+  process`, `tenant` and `global` request them. The governance component's `ResultDefects`
+  stops a process where its rule decides `stop`, through `RuleStops` in `composition/stops.py`
+  (ADR-0256). The run reaches a version's deadlines in the process component
   through `DeadlinesOfTheVersion`, in the same module, and its `DeadlineKeeper` keeps them;
   the scheduler takes their actions in `composition/deadlines.py`, which starts a process
   through the command component as a trigger does, and `taktusctl deadline` lists them and sets

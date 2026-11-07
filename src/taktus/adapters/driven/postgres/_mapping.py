@@ -1623,9 +1623,30 @@ class AdapterStopMapper:
 
     async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
         row = await _one(connection, s.adapter_stop, tenant, id)
+        if row is None:
+            row = await _one(connection, s.scoped_stop, tenant, id)
         return None if row is None else dict(row.stop)
 
     async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        scope = document.get("scope", "adapter")
+        if scope != "adapter":
+            # A stop of a process or a tenant: a table the previous release does not read
+            # (ADR-0256, ADR-0093).
+            await _upsert(
+                connection,
+                s.scoped_stop,
+                ("tenant", "id"),
+                {
+                    "tenant": tenant,
+                    "id": document["id"],
+                    "scope": scope,
+                    "process": document.get("process"),
+                    "state": document.get("state", "holding"),
+                    "requested_at": _at(document["requested_at"]),
+                    "stop": document,
+                },
+            )
+            return
         await _upsert(
             connection,
             s.adapter_stop,
@@ -1644,7 +1665,10 @@ class AdapterStopMapper:
         rows = await _all(
             connection, s.adapter_stop, tenant, s.adapter_stop.c.requested_at, s.adapter_stop.c.id
         )
-        return [dict(row.stop) for row in rows]
+        scoped = await _all(
+            connection, s.scoped_stop, tenant, s.scoped_stop.c.requested_at, s.scoped_stop.c.id
+        )
+        return [dict(row.stop) for row in [*rows, *scoped]]
 
 
 class WorkingTimeMapper:
