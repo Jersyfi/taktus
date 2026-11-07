@@ -19,6 +19,8 @@ from taktus.components.process.application.service.register_version import (
 )
 from taktus.components.process.domain.model import Process, ProcessVersion
 from taktus.components.reporting.domain.service.drawing import Glyph, Step, check
+from taktus.components.run.domain.model import Run, RunState
+from taktus.ports.worker import ComputeLimit, Limits
 
 from .conftest import TENANT, Services
 
@@ -134,6 +136,52 @@ async def test_a_new_version_changes_the_graph_with_nothing_else_edited(client: 
         f"{base}/levels/processes/invoices", params={"version": "1"}, headers=bearer(key)
     )
     assert [s["id"] for s in earlier.json()["steps"]] == ["read", "draft"]
+
+
+async def test_a_run_shows_the_diagram_of_its_version_after_a_newer_one_registered(
+    client: Client,
+) -> None:
+    """UC-4.2: a second version registered while a run of the first is in progress leaves the
+    run's diagram as it was — the run level and its version's level both draw version 1."""
+    http, given, base = client
+    await register(given, bundle("1"))
+    async with given.persistence.transaction(TENANT):
+        version = await MemoryRepository(given.persistence, ProcessVersion).get(
+            TENANT, "invoices@1"
+        )
+    assert version is not None
+    run = Run(
+        id="run_v1",
+        plan_id="pln_v1",
+        process_version=version.ref,
+        tenant=TENANT,
+        identity="idn_ada",
+        autonomy_level=2,
+        budget=Limits(compute=ComputeLimit(seconds=10, resource_class="cpu.small")),
+        steps=version.ordered(),
+        work=version.work,
+        state=RunState.RUNNING,
+        created_at=given.clock.now(),
+        updated_at=given.clock.now(),
+    )
+    async with given.persistence.transaction(TENANT):
+        await given.runs.put(TENANT, run)
+    _, key = await given.identity.person(TENANT, "idn_ada")
+    before = (await http.get(f"{base}/levels/runs/run_v1", headers=bearer(key))).json()
+    await register(given, bundle("2", review=True))
+    during = (await http.get(f"{base}/levels/runs/run_v1", headers=bearer(key))).json()
+    assert [s["id"] for s in before["steps"]] == [s["id"] for s in during["steps"]]
+    assert [s["id"] for s in during["steps"]] == ["read", "draft"]
+    of_its_version = (
+        await http.get(
+            f"{base}/levels/processes/invoices", params={"version": "1"}, headers=bearer(key)
+        )
+    ).json()
+    assert [s["id"] for s in of_its_version["steps"]] == ["read", "draft"]
+    assert [r["id"] for r in of_its_version["runs"]] == ["run_v1"]
+    newest = (await http.get(f"{base}/levels/processes/invoices", headers=bearer(key))).json()
+    assert [s["id"] for s in newest["steps"]] == ["read", "draft", "review"]
+    assert newest.get("runs", []) == []
 
 
 async def test_a_process_the_reader_may_not_see_is_answered_as_one_that_does_not_exist(

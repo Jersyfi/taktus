@@ -4,9 +4,9 @@ title: Every process seen as a diagram
 component: process
 epic: E4
 serves: [P6, P7]
-state: building
+state: verified
 version: 0.4.0
-tests: [tests/components/process/test_bpmn.py::test_an_export_round_trips_the_graph_the_roles_and_the_gateways, tests/components/process/test_bpmn.py::test_an_export_carries_a_diagram_a_tool_can_show]
+tests: [tests/components/process/test_bpmn.py::test_an_export_round_trips_the_graph_the_roles_and_the_gateways, tests/components/process/test_bpmn.py::test_an_export_carries_a_diagram_a_tool_can_show, tests/components/process/test_bpmn.py::test_the_diagram_of_every_bundle_draws_each_step_exactly_once, tests/adapters/rest/test_process_level.py::test_a_new_version_changes_the_graph_with_nothing_else_edited, tests/adapters/rest/test_process_level.py::test_a_run_shows_the_diagram_of_its_version_after_a_newer_one_registered]
 adrs: {ADR-0011: f25413d512b9, ADR-0029: 37c061ef032a}
 supersedes: null
 ---
@@ -45,3 +45,11 @@ The process version and the bundle format (ADR-0011); the views of the `reportin
 which own no figure and draw from the component that owns it (ADR-0029); UC-6.10, which draws the
 process level of its live representation from this diagram. The roadmap's `0.3.0` names the
 process diagram. Definition `UC-4.2`.
+
+## 5. What is proven so far
+
+Every condition, by the named tests. The diagram of every example and blueprint bundle draws each
+step once, as a node and a shape, after the steps it depends on, and no step the version does not
+have. The diagram is drawn from the version on each request: a new version changes it with nothing
+else edited, and the earlier version is still drawn by name. A run in progress while a second
+version is registered keeps the diagram of the version it executes.
