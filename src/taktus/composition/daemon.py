@@ -705,14 +705,15 @@ async def wire(
                 stoppable=pools.identifiers(),
             )
 
-            # Who may use a shared model or connector, with whose credential (ADR-0246,
-            # ADR-0247).
+            # Who may use a shared model or connector, with whose credential, by the share and
+            # the structure's placement (ADR-0246, ADR-0247, ADR-0294).
             shares = shares_of(
                 lambda kind: PostgresRepository(persistence, kind),
                 persistence,
                 ledger,
                 clock,
                 identities,
+                structure,
             )
             # Skills and shared agents in the catalogue, handed to a run's steps (ADR-0162,
             # ADR-0163).

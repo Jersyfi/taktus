@@ -378,7 +378,7 @@ class LocalWiring:
 
             # Who may use a shared model or connector, with whose credential (ADR-0246,
             # ADR-0247).
-            shares = shares_of(stores.of, stores.work, ledger, clock, identities)
+            shares = shares_of(stores.of, stores.work, ledger, clock, identities, structure)
             # Skills and shared agents in the catalogue, handed to a run's steps (ADR-0162,
             # ADR-0163).
             skill_catalog = SkillCatalog(

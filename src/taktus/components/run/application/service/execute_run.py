@@ -6147,15 +6147,22 @@ class RunEngine:
         self, run: Run, adapter: str, credentials: tuple[Any, ...]
     ) -> tuple[Any, ...]:
         """The credentials a call names: for a shared connector the caller's own parameters,
-        or the call is refused before it is made (ADR-0247 §2); otherwise as the work names
-        them."""
+        or the call is refused before it is made — outside the share's circles or the units the
+        structure places it for (ADR-0247 §2, ADR-0294); otherwise as the work names them."""
         if self._shares is None:
             return credentials
         names = [c.name for c in credentials]
-        answer = await self._shares.connector_call(run.tenant, run.identity, adapter, names)
+        answer = await self._shares.connector_call(
+            run.tenant,
+            run.identity,
+            adapter,
+            names,
+            process=run.process_version.rsplit("@", 1)[0],
+        )
         if answer.refusal is not None:
             raise _StepFailed(
-                reason=f"{adapter} was not called: {answer.why or answer.refusal} (ADR-0247)",
+                reason=f"{adapter} was not called: {answer.why or answer.refusal} "
+                "(ADR-0247, ADR-0294)",
                 retryable=False,
                 consumption=None,
                 adapter=adapter,

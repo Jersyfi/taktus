@@ -6,8 +6,8 @@ epic: E1
 serves: [P1, P7, P14]
 state: built
 version: 0.6.0
-tests: [tests/components/identity/test_structure.py::test_an_identity_creates_a_project_for_each_circle_within_its_rights, tests/components/identity/test_structure.py::test_a_project_refers_to_what_it_brings_together_and_copies_nothing, tests/components/identity/test_structure.py::test_a_private_project_is_in_no_view_and_no_figure_of_the_company_context, tests/components/identity/test_structure.py::test_something_leaves_a_private_project_only_by_its_owner_s_act, tests/adapters/rest/test_structure_and_administration.py::test_a_project_is_created_referred_to_and_holds_one_session]
-adrs: {ADR-0020: aaf943a7f2e5, ADR-0275: d9ba1ed41368, ADR-0276: 4c5930aa672a}
+tests: [tests/components/identity/test_structure.py::test_an_identity_creates_a_project_for_each_circle_within_its_rights, tests/components/identity/test_structure.py::test_a_project_refers_to_what_it_brings_together_and_copies_nothing, tests/components/identity/test_structure.py::test_a_private_project_is_in_no_view_and_no_figure_of_the_company_context, tests/components/identity/test_structure.py::test_something_leaves_a_private_project_only_by_its_owner_s_act, tests/adapters/rest/test_structure_and_administration.py::test_a_project_is_created_referred_to_and_holds_one_session, tests/composition/test_connector_admission.py::test_a_process_of_a_unit_the_connector_is_not_placed_for_is_refused_before_the_call, tests/composition/test_connector_admission.py::test_a_process_of_the_unit_the_connector_is_placed_for_calls_it, tests/composition/test_connector_admission.py::test_a_moved_process_calls_what_its_new_unit_may_use_and_nothing_else_changes, tests/composition/test_connector_admission.py::test_the_share_and_the_placement_give_the_same_answer_through_the_one_rule]
+adrs: {ADR-0020: aaf943a7f2e5, ADR-0275: d9ba1ed41368, ADR-0276: 4c5930aa672a, ADR-0294: a59b526aea06}
 supersedes: null
 ---
 
@@ -60,5 +60,10 @@ copies nothing. One person's private project is in no context but its own: its p
 unseen in the company context, its sessions closed to others, its consumption in no figure above
 it. Only its owner moves anything across its edge, and only its owner shares it.
 
-Not yet: as for UC-1.4, the engine does not yet refuse a connector the project does not share;
-and a search in the organisation's own systems is those systems'. The state stays `built`.
+A connector placed in a project, or in a unit above it, is called by the project's processes
+and refused to every other before the call, by the one rule of ADR-0294 that also reads the
+catalogue's share — by the tests of `tests/composition/test_connector_admission.py`.
+
+Not yet: a model, an agent or a skill placed in a project is held in the run by the catalogue's
+share, not yet by its placement (ADR-0294); and a search in the organisation's own systems is
+those systems'. The state stays `built`.

@@ -600,8 +600,11 @@ role it would tie the core to a model stack and the removal test would be lost.
   `catalogue.share_refused` and `credential.bound`). `composition/shares.py` answers the run's
   port `Shares` (`run/ports/shares.py`) from it: the engine passes over a model the run's
   identity may not use (`not_shared`) and replaces a shared connector's credential names with
-  the caller's own, or refuses the call (`frame.refused`). `SharedAgents` refuses a caller
-  outside an agent's share (`agent.refused`), and `CatalogGuidance` hands a run only the skills
+  the caller's own, or refuses the call (`frame.refused`). Whether a connector call is
+  admitted is one rule, `SharesOfTheRun.connector_refused` (ADR-0294): the identity is inside
+  the share, and the run's process may use the connector by the placement the identity
+  component's `OrganisationStructure` holds, which `shares_of` is handed. `SharedAgents`
+  refuses a caller outside an agent's share (`agent.refused`), and `CatalogGuidance` hands a run only the skills
   shared with its identity. `CatalogueUse` reads an entry's use per unit and the viewer's own.
   `taktusctl catalogue share`, `withdraw`, `shares`, `use` and `bind-credential` reach it
   through `shares` and `catalogue_use` of the command line's wiring, and `taktusctl skill
