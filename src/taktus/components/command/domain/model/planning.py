@@ -138,6 +138,9 @@ class PlanDraft(Value):
     """The agent the draft works out, or None for a plan that is no agent (ADR-0292)."""
     domain: DomainPart | None = None
     """The domain the draft instantiates, or None for a plan that is no domain (ADR-0289)."""
+    describes: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9-]*$")
+    """The process the goal describes, which commissioning hands to the describe process; None
+    for a plan that describes none (ADR-0290)."""
     changed_by: str = Field(min_length=1)
     changed_at: datetime
     commissioned_version: int | None = Field(default=None, ge=1)
@@ -172,6 +175,8 @@ class PlanDraft(Value):
                 lacking.append(AGENT_PARTS[5])
         if self.domain is not None:
             lacking.extend(self.domain.open)
+        if self.describes is not None and self.results_in is not PlanResult.PROCESS_VERSION:
+            lacking.append("a new process version as its result, which a description makes")
         return tuple(lacking)
 
     def unestimable(self) -> tuple[str, ...]:

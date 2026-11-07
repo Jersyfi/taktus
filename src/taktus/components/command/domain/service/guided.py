@@ -183,6 +183,13 @@ def settings(draft: PlanDraft) -> tuple[Setting, ...]:
             "asked (ADR-0289)",
             asked=False,
         ),
+        Setting(
+            "describes",
+            "no process" if draft.describes is None else draft.describes,
+            "the process the goal describes, which the describe process proposes once the "
+            "plan is commissioned; set when the plan is opened, not asked (ADR-0290)",
+            asked=False,
+        ),
     )
 
 

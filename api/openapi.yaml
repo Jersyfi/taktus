@@ -2537,7 +2537,8 @@ paths:
       description: Commissioning is an act of its own, recorded `plan.commissioned` with the version and
         your identity. Refused, writing nothing, when a part is missing or a step cannot be estimated
         before it starts (ADR-0237, ADR-0005). An agent draft's agent is registered in the catalogue by
-        the same act, and named in the answer (ADR-0292).
+        the same act, and named in the answer (ADR-0292). A draft that describes a process hands its goal
+        to the describe process, and the answer names that run (ADR-0290).
       operationId: commission_plans__draft_id__commission_post
       parameters:
       - name: draft_id
@@ -7821,6 +7822,14 @@ components:
           title: Agent
           description: The draft works out an agent, whose role is what was said (ADR-0292).
           default: false
+        describes:
+          anyOf:
+          - type: string
+            pattern: ^[a-z][a-z0-9-]*$
+          - type: 'null'
+          title: Describes
+          description: 'The process what was said describes: commissioning the draft hands it to the describe
+            process, whose run proposes the process''s version (ADR-0290).'
       type: object
       title: OpenBody
     PlaceBody:

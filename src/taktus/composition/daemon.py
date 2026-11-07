@@ -1319,7 +1319,14 @@ async def wire(
                 spend=spend,
                 trials=trials,
                 workspace=workspace_of(
-                    stored, persistence, ledger, clock, ids, structure, agents=agent_catalog
+                    stored,
+                    persistence,
+                    ledger,
+                    clock,
+                    ids,
+                    structure,
+                    agents=agent_catalog,
+                    describe=None if settings.describe_process is None else proposal_acts,
                 ),
                 gallery=Gallery(
                     settings.gallery_directory,

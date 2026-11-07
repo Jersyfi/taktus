@@ -53,6 +53,7 @@ REVISABLE = frozenset(
         "results_in",
         "agent",
         "domain",
+        "describes",
     }
 )
 
@@ -101,6 +102,8 @@ class OpenDraft:
     """An agent draft's agent part, as far as it is known (ADR-0292)."""
     domain: DomainPart | None = None
     """A domain draft's instance and its open questions (ADR-0289)."""
+    describes: str | None = None
+    """The process the goal describes (ADR-0290)."""
 
 
 @dataclass(frozen=True)
@@ -155,6 +158,7 @@ class PlanDialogue:
             results_in=command.results_in,
             agent=command.agent,
             domain=command.domain,
+            describes=command.describes,
             changed_by=command.command.identity,
             changed_at=self._clock.now(),
         )

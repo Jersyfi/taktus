@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import datetime
-from typing import Any
+from typing import Any, Protocol
 
 from taktus.components.catalog.application.service import AgentCatalog
 from taktus.components.command.application.service import (
@@ -34,10 +34,17 @@ from taktus.components.command.domain.service.guided import (
     settings,
 )
 from taktus.components.process.domain.model import ProcessVersion
+from taktus.components.run.domain.model import Run
 from taktus.composition.agent_drafting import AgentDrafts
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 from taktus.shared.v1 import Capability, Command, Intent, Plan, PlanResult, ReplyTo, Step
+
+
+class Describing(Protocol):
+    """What turns words into a proposal for a process (ADR-0251): the proposal acts."""
+
+    async def ask(self, tenant: Tenant, process_id: str, request: str, by: str) -> Run: ...
 
 
 class PlanActs:
@@ -51,7 +58,11 @@ class PlanActs:
         clock: Clock,
         ids: Identifiers,
         agents: AgentCatalog | None = None,
+        describe: Describing | None = None,
     ) -> None:
+        self._describe = describe
+        """What turns a commissioned plan's goal into a proposal for the process it describes
+        (ADR-0290); None: a draft that describes a process is not commissioned here."""
         self._agents = None if agents is None else AgentDrafts(agents, dialogue, versions, work)
         """Where an agent draft is registered when commissioned (ADR-0292); None: an agent
         draft is not commissioned here."""
@@ -72,9 +83,12 @@ class PlanActs:
         channel: Capability = "channel.web",
         *,
         agent: bool = False,
+        describes: str | None = None,
     ) -> PlanDraft:
         """A new draft for what the person said; its goal is what they said, where they said
-        anything. `agent`: the draft works out an agent, whose role the goal is (ADR-0292)."""
+        anything. `agent`: the draft works out an agent, whose role the goal is (ADR-0292).
+        `describes`: the process the goal describes, and the draft results in its first or
+        next version (ADR-0290)."""
         now = self._clock.now()
         command = Command(
             id=self._ids.new("cmd"),
@@ -92,6 +106,8 @@ class PlanActs:
                 tenant=tenant,
                 goal=goal,
                 agent=AgentPart() if agent else None,
+                describes=describes,
+                results_in=PlanResult.RUN if describes is None else PlanResult.PROCESS_VERSION,
             )
         )
 
@@ -140,8 +156,30 @@ class PlanActs:
             ReviseDraft(draft_id=draft.id, tenant=tenant, by=identity, changes=changes)
         )
 
-    async def commission(self, tenant: Tenant, identity: str, draft_id: str) -> Plan:
+    async def commission_and_start(
+        self, tenant: Tenant, identity: str, draft_id: str
+    ) -> tuple[Plan, Run | None]:
+        """The draft commissioned, and for a draft that describes a process, the run of the
+        describe process its goal was handed to as the description (ADR-0290). A draft that
+        describes a process is refused, writing nothing, where no describe process is wired."""
         draft = await self.get(tenant, identity, draft_id)
+        if draft.describes is not None and self._describe is None:
+            raise PlanningError(
+                "a plan that describes a process is commissioned where a process turns a "
+                "description into a proposal (TAKTUS_DESCRIBE_PROCESS, ADR-0290)"
+            )
+        plan = await self._commissioned(tenant, identity, draft)
+        if draft.describes is None or self._describe is None or draft.goal is None:
+            return plan, None
+        run = await self._describe.ask(tenant, draft.describes, draft.goal, identity)
+        return plan, run
+
+    async def commission(self, tenant: Tenant, identity: str, draft_id: str) -> Plan:
+        plan, _ = await self.commission_and_start(tenant, identity, draft_id)
+        return plan
+
+    async def _commissioned(self, tenant: Tenant, identity: str, draft: PlanDraft) -> Plan:
+        draft_id = draft.id
         if draft.agent is not None:
             if self._agents is None:
                 raise PlanningError(
