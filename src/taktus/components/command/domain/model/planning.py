@@ -1,0 +1,115 @@
+"""A plan worked out in dialogue, before it is commissioned (ADR-0237, UC-1.2).
+
+A **plan draft** is the record a person and Taktus change back and forth. It names the four
+parts a commissioned plan must have — what is to be done, the processes, methods and
+capabilities it uses, the date it is due, and the autonomy level with its reason (ADR-0026) —
+and an estimate of effort for every step, each naming what it was computed from.
+
+Every change makes a new version of the draft. Commissioning is an act of its own: it takes one
+version, and only that version, into a `Plan` of the shared kernel, whose identifier names the
+draft and the version (`<draft>@v<version>`). A draft changed after it was commissioned is a
+new version that nobody commissioned: what runs is the version that was, until the new one is
+commissioned again.
+
+Pure: what the draft lacks is computed here; nothing reads a store.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Literal
+
+from pydantic import Field
+
+from taktus.shared.v1 import AutonomyLevel, Commissioned, PlanResult, Step, Value
+
+PARTS: tuple[str, ...] = (
+    "what is to be done",
+    "the processes, methods and capabilities it uses",
+    "the date it is due",
+    "the autonomy level with its reason",
+)
+"""The four parts of a plan, in the words a refusal names them by (ADR-0026)."""
+
+Unit = Literal["seconds", "tokens", "minor_units", "takte", "turns"]
+
+
+class Estimate(Value):
+    """The effort of one step as the plan states it. A figure without a basis is a guess and is
+    shown as one; a step without a figure cannot be estimated, and the plan is refused before
+    anything runs (ADR-0005)."""
+
+    step_id: str = Field(min_length=1)
+    figure: float | None = Field(default=None, ge=0)
+    """None: the step cannot be estimated before it starts."""
+    unit: Unit = "seconds"
+    basis: str | None = Field(default=None, min_length=1, max_length=300)
+    """What the figure was computed from: the median of a process's last runs, the worker's
+    own estimate, a price table. None: a guess."""
+
+    @property
+    def guess(self) -> bool:
+        return self.figure is not None and self.basis is None
+
+    def shown(self) -> str:
+        """The estimate as a person reads it: a figure with its basis, or a guess said as one."""
+        if self.figure is None:
+            return f"step {self.step_id}: cannot be estimated before it starts"
+        amount = f"{self.figure:g} {self.unit.replace('_', ' ')}"
+        if self.basis is None:
+            return f"step {self.step_id}: a guess of about {amount}, computed from nothing"
+        return f"step {self.step_id}: {amount}, computed from {self.basis}"
+
+
+class PlanDraft(Value):
+    id: str = Field(min_length=1)
+    tenant: str = Field(min_length=1)
+    command_id: str = Field(min_length=1)
+    """The command the dialogue answers."""
+    version: int = Field(ge=1)
+    goal: str | None = Field(default=None, min_length=1)
+    steps: tuple[Step, ...] = ()
+    """The steps in execution order: each carries its method, its reason and the capabilities
+    it needs. Long work is broken into steps here, each ending at a persisted boundary."""
+    process_version: str | None = Field(default=None, min_length=1)
+    """The process version the plan runs, or None for a plan that results in a new one."""
+    due: datetime | None = None
+    autonomy_level: AutonomyLevel | None = None
+    autonomy_reason: str | None = Field(default=None, min_length=1, max_length=500)
+    estimates: tuple[Estimate, ...] = ()
+    results_in: PlanResult = PlanResult.RUN
+    changed_by: str = Field(min_length=1)
+    changed_at: datetime
+    commissioned_version: int | None = Field(default=None, ge=1)
+    """The version commissioned last, if any. A later version is not commissioned."""
+    commissioned: Commissioned | None = None
+    """Who commissioned `commissioned_version`, and when."""
+
+    @property
+    def plan_id(self) -> str:
+        """The identifier of the shared kernel's plan this version becomes when commissioned."""
+        return f"{self.id}@v{self.version}"
+
+    @property
+    def is_commissioned(self) -> bool:
+        """Whether the current version is the one commissioned."""
+        return self.commissioned_version == self.version
+
+    def missing(self) -> tuple[str, ...]:
+        """The parts of the four the draft lacks, in their order; empty when it has them all."""
+        lacking: list[str] = []
+        if self.goal is None:
+            lacking.append(PARTS[0])
+        if not self.steps:
+            lacking.append(PARTS[1])
+        if self.due is None:
+            lacking.append(PARTS[2])
+        if self.autonomy_level is None or self.autonomy_reason is None:
+            lacking.append(PARTS[3])
+        return tuple(lacking)
+
+    def unestimable(self) -> tuple[str, ...]:
+        """The steps that cannot be estimated before they start: no estimate, or one without
+        a figure."""
+        figured = {e.step_id for e in self.estimates if e.figure is not None}
+        return tuple(s.id for s in self.steps if s.id not in figured)

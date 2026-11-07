@@ -4,10 +4,10 @@ title: Commands from any channel
 component: command
 epic: E1
 serves: [P1, P4]
-state: building
+state: verified
 version: 0.2.0
-tests: [tests/components/command/test_complete_intake.py::test_the_link_places_the_event_and_completes_it_as_the_linked_identity, tests/adapters/connectors/test_chat_channel.py::test_a_chat_message_becomes_an_intake_event_and_then_a_command, tests/adapters/connectors/test_chat_channel.py::test_the_chat_channel_is_added_by_configuration_and_a_connector_alone, tests/adapters/connectors/test_chat_channel.py::test_the_same_instruction_through_two_channels_is_the_same_command, tests/adapters/connectors/test_chat_channel.py::test_a_reply_is_delivered_into_the_thread_the_command_arrived_in]
-adrs: {ADR-0003: d0268914fed9, ADR-0024: 52ba89e4adec}
+tests: [tests/components/command/test_complete_intake.py::test_the_link_places_the_event_and_completes_it_as_the_linked_identity, tests/adapters/connectors/test_chat_channel.py::test_a_chat_message_becomes_an_intake_event_and_then_a_command, tests/adapters/connectors/test_chat_channel.py::test_the_chat_channel_is_added_by_configuration_and_a_connector_alone, tests/adapters/connectors/test_chat_channel.py::test_the_same_instruction_through_two_channels_is_the_same_command, tests/adapters/connectors/test_chat_channel.py::test_a_reply_is_delivered_into_the_thread_the_command_arrived_in, tests/composition/test_run_answers.py::test_a_finished_run_answers_once_in_the_thread_its_command_came_from, tests/composition/test_run_answers.py::test_a_run_that_waits_for_a_person_asks_back_and_is_asked_once_per_wait, tests/architecture/test_core_is_technology_free.py::test_no_product_name_in_the_core, tests/architecture/test_core_is_technology_free.py::test_the_core_imports_only_the_standard_library_pydantic_and_itself]
+adrs: {ADR-0003: d0268914fed9, ADR-0024: 52ba89e4adec, ADR-0239: 6dc59d03ecf0}
 supersedes: null
 ---
 
@@ -70,6 +70,10 @@ Two channels are built, the repository and the chat. By the named tests:
 - The chat channel is added by one entry of the connector configuration and its connector, and
   nothing under `src/taktus/components/` names it.
 
-That a run sends its answer or its question to the reply address by itself is not built. That the
-normalisation is Taktus's own is held only as far as the architecture tests see a foreign import in
-the core.
+- A run of a chat command that finishes says so once in the thread the command arrived in; one
+  that comes to wait for a person asks back there (ADR-0239).
+- No product name and no foreign import is in the core, by the architecture tests.
+
+That the normalisation is Taktus's own is held as far as the architecture tests see a foreign
+import in the core. What a run says by itself is its state; a process that answers with what it
+produced posts it with a step of its own (ADR-0239, *Where this promise ends*).

@@ -137,7 +137,7 @@ from taktus.components.run.application.query import (
 )
 from taktus.components.run.application.service import EngineOptions, RunEngine
 from taktus.components.run.application.service.stops import Stops
-from taktus.components.run.domain.model import AdapterStop, Run
+from taktus.components.run.domain.model import AdapterStop, Run, RunSteering
 from taktus.components.value.application.query import CorrectionRates
 from taktus.composition.acting import ActingReads
 from taktus.composition.agents import SharedAgents
@@ -423,6 +423,7 @@ class LocalWiring:
                         stores.work, stores.of(ProcessVersion), CorrectionRates(ledger, stores.work)
                     ),
                     org_units=org_units,
+                    steering=stores.of(RunSteering),
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)

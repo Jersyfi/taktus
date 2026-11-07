@@ -165,7 +165,8 @@ class BrowserSession(Value):
 
 
 class Right(StrEnum):
-    """What a role may let an agent do on the MCP surface beyond reading (ADR-0131 §3)."""
+    """What a role may let an agent do on the MCP surface beyond reading (ADR-0131 §3), and what
+    a role may do to runs beyond its own (ADR-0236)."""
 
     START = "agent.start"
     """Start a process's active version."""
@@ -175,6 +176,9 @@ class Right(StrEnum):
     """Take over a running step, and hand its result back."""
     STEER = "agent.steer"
     """Send a message to a running step (ADR-0156 §7)."""
+    STEER_RUN = "run.steer"
+    """Pause or cancel a run that does not act on the person's own behalf, through any channel
+    (ADR-0236). A run that acts on a person's behalf is theirs to steer without it."""
 
 
 class RoleRights(Value):

@@ -108,6 +108,13 @@ QUANTITY_COLUMNS = (sa.Integer, sa.Float, sa.Numeric, sa.Interval)
 ACT = "one act: who acts, as the audit requires, with that act's own quantities"
 
 ACTS: dict[str, str] = {
+    "taktus.components.command.domain.model.planning.PlanDraft": (
+        f"{ACT}: who changed and who commissioned one plan (ADR-0237), and that plan's "
+        "version and the estimates of its steps"
+    ),
+    "taktus.components.command.application.service.plan_dialogue.OpenDraft": (
+        f"{ACT}: the command that opens a plan, with who opens it and its estimates"
+    ),
     "taktus.components.governance.domain.model.subjects.SubjectRequest": (
         f"{ACT}: who prepared, carried out or withdrew one data-protection request "
         "(ADR-0176), and what that one request held and did"

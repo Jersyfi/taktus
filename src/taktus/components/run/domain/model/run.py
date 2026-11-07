@@ -91,6 +91,12 @@ class Cause(StrEnum):
     DECLINED = "declined"
     """The person an anchor names declined the act of a step: it was not performed, and the
     run halts at the step's boundary. A resume raises the request again (ADR-0042)."""
+    PAUSED = "paused"
+    """A person asked the run to pause: it halted at its next step boundary, and resumes there
+    when a person resumes it (ADR-0236, UC-1.5)."""
+    CANCELLED = "cancelled"
+    """A person cancelled the run: it halted at its next step boundary and never resumes
+    (ADR-0236, UC-1.5)."""
 
 
 # Every transition the run knows. Anything not listed is illegal. `self-healed` of §5.2 is a
@@ -109,6 +115,9 @@ RUN_TRANSITIONS: frozenset[tuple[RunState, RunState]] = frozenset(
         (RunState.RUNNING, RunState.FINISHED),
         (RunState.HALTED, RunState.RUNNING),
         (RunState.ESCALATED, RunState.RUNNING),
+        # A halted or escalated run is at its boundary: a cancellation lands at once (ADR-0236).
+        (RunState.HALTED, RunState.HALTED),
+        (RunState.ESCALATED, RunState.HALTED),
     }
 )
 

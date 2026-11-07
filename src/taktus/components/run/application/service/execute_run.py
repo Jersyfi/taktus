@@ -188,6 +188,7 @@ from taktus.components.run.domain.model import (
     PROCEED,
     RESUMABLE,
     RUN_ENDED,
+    WAITING,
     Anchoring,
     Ask,
     BacklogRule,
@@ -225,8 +226,12 @@ from taktus.components.run.domain.model import (
     RunError,
     RunExists,
     RunState,
+    RunSteering,
     ScreenRule,
     SpamRule,
+    SteeringKind,
+    SteeringReply,
+    SteeringState,
     StepRun,
     StepState,
     Takeover,
@@ -397,6 +402,7 @@ from taktus.shared.v1 import (
     LedgerRefs,
     Method,
     Plan,
+    PlanStatus,
     PriceKinds,
     ProvenanceInput,
     ProvenanceRoute,
@@ -586,6 +592,31 @@ class SteerStep:
     actor: str
     """The person who sends it; named as the actor of `step.message_asked`, for the audit."""
     tenant: Tenant
+
+
+@dataclass(frozen=True)
+class AskSteering:
+    """A person asks a run to pause or to be cancelled (ADR-0236, UC-1.5). Who may is decided
+    by the surface the person uses (`taktus.composition.steering`); the engine records the ask
+    and lands it at the run's boundary."""
+
+    run_id: str
+    tenant: Tenant
+    kind: SteeringKind
+    actor: str
+    """The identity that asked; named as the actor of the ledger entry."""
+    reply: SteeringReply | None = None
+    """Where the message that it took effect is said; None where the surface waits itself."""
+
+
+@dataclass(frozen=True)
+class SteeringAsked:
+    """What the ask found: the run as it is now, the request as recorded, and whether it took
+    effect at once because the run was at a boundary already."""
+
+    run: Run
+    steering: RunSteering
+    at_once: bool
 
 
 @dataclass(frozen=True)
@@ -797,7 +828,11 @@ class RunEngine:
         statements: Statements | None = None,
         guidance: Guidance | None = None,
         org_units: OrgUnits | None = None,
+        steering: Repository[RunSteering] | None = None,
     ) -> None:
+        self._steering = steering
+        """Where a person's pause or cancellation of a run waits for its next boundary
+        (ADR-0236). None: no run is paused or cancelled at a boundary."""
         self._org_units = org_units
         """The tenant's quotas per organisational unit and what each unit's runs committed
         (ADR-0166). None: no run commits to a unit's budget quota."""
@@ -994,6 +1029,8 @@ class RunEngine:
                 run, declined = await self._apply_decisions(run)
                 if declined is not None:
                     return await self._end(run, RunState.HALTED, Cause.DECLINED, declined, span)
+            if run.state is RunState.HALTED and run.cause is Cause.CANCELLED:
+                raise RunError(f"run {run.id!r} was cancelled and never resumes (ADR-0236)")
             if run.state in RESUMABLE:
                 run = await self._commit(
                     run.to(RunState.RUNNING), "run.resumed", actor=command.actor
@@ -1007,6 +1044,11 @@ class RunEngine:
             return await self._execute(run, command.stop_after, span)
 
     async def _create(self, command: StartRun, *, enqueue: bool = False) -> Run:
+        if command.plan.status is not PlanStatus.COMMISSIONED:
+            # Nothing runs from a plan nobody commissioned (UC-1.2, ADR-0237).
+            raise RunError(
+                f"plan {command.plan.id!r} is {command.plan.status}: only a commissioned plan runs"
+            )
         now = self._clock.now()
         run = Run(
             id=command.run_id or self._ids.new("run"),
@@ -1255,6 +1297,62 @@ class RunEngine:
                     reason="stop requested", ceiling_seconds=self._options.step_ceiling_seconds
                 ),
             )
+
+    async def ask_steering(self, command: AskSteering) -> SteeringAsked:
+        """Record a pause or a cancellation of a run (ADR-0236). A run that waits — for a
+        person, after a halt or an escalation — is at its boundary: it halts at once with the
+        request's cause, and a waiting run's pause is that halt. A run that executes, or is
+        about to, keeps the request until its next step boundary, where `_execute` reads it; the
+        step it is inside may finish up to its ceiling. Refused with `RunError`, writing
+        nothing, for a run that ended, was cancelled, or — for a pause — is halted already."""
+        if self._steering is None:
+            raise RunError("no steering store is wired: a run cannot be paused or cancelled")
+        now = self._clock.now()
+        asked = RunSteering(
+            id=command.run_id,
+            tenant=command.tenant,
+            kind=command.kind,
+            requested_by=command.actor,
+            requested_at=now,
+            reply=command.reply,
+        )
+        cause = Cause.CANCELLED if command.kind is SteeringKind.CANCEL else Cause.PAUSED
+        async with self._work.transaction(command.tenant):
+            run = await self._runs.get(command.tenant, command.run_id)
+        if run is None:
+            raise UnknownRun(command.run_id)
+        if run.state is RunState.FINISHED:
+            raise RunError(f"run {run.id!r} has finished: there is nothing to {command.kind}")
+        if run.state is RunState.HALTED and run.cause is Cause.CANCELLED:
+            raise RunError(f"run {run.id!r} was cancelled already")
+        at_boundary = run.state is RunState.WAITING_HUMAN or (
+            command.kind is SteeringKind.CANCEL and run.state in WAITING
+        )
+        if run.state in (RunState.HALTED, RunState.ESCALATED) and not at_boundary:
+            raise RunError(
+                f"run {run.id!r} is {run.state} already: it waits for a person to resume it"
+            )
+        kind = f"run.{command.kind}_asked"
+        if not at_boundary:
+            async with self._work.transaction(command.tenant):
+                await self._steering.put(command.tenant, asked)
+                await self._record(run, kind, outcome="asked", actor=command.actor)
+            return SteeringAsked(run=run, steering=asked, at_once=False)
+        took = asked.model_copy(update={"state": SteeringState.TOOK_EFFECT, "took_effect_at": now})
+        reason = f"{command.kind} asked by {command.actor}, while the run waited"
+        run = await self._commit(
+            run.to(RunState.HALTED, cause, reason),
+            "run.halted",
+            outcome=str(cause),
+            actor=command.actor,
+            before=({"kind": kind, "outcome": "asked", "actor": command.actor},),
+            inside=lambda: self._put_steering(command.tenant, took),
+        )
+        return SteeringAsked(run=run, steering=took, at_once=True)
+
+    async def _put_steering(self, tenant: Tenant, steering: RunSteering) -> None:
+        if self._steering is not None:
+            await self._steering.put(tenant, steering)
 
     async def confirm(self, command: ConfirmSteps) -> Run:
         """A person's answer to steps the run waits for, each recorded with the person as its
@@ -2449,6 +2547,10 @@ class RunEngine:
         run = capped
         completed_now = 0
         while (step_run := run.runnable()) is not None:
+            # The boundary before the next step: a pause or a cancellation lands here (ADR-0236).
+            steered = await self._steered(run)
+            if steered is not None:
+                return await self._halt_steered(run, steered, span)
             step = run.step(step_run.step_id)
             run, step_run = await self._step_or_failed(run, step, step_run)
             asked = self._taking_over.get(run.id)
@@ -2637,6 +2739,29 @@ class RunEngine:
         self._administering.discard(run.id)
         self._repeating.discard(run.id)
         return run
+
+    async def _steered(self, run: Run) -> RunSteering | None:
+        """The pause or cancellation a person asked of the run and that has not taken effect
+        yet, read at the boundary; None without one, or without a store to ask (ADR-0236)."""
+        if self._steering is None:
+            return None
+        async with self._work.transaction(run.tenant):
+            asked = await self._steering.get(run.tenant, run.id)
+        return asked if asked is not None and asked.pending else None
+
+    async def _halt_steered(self, run: Run, asked: RunSteering, span: Span) -> Run:
+        """The run halts at this boundary with the request's cause, and the request is marked
+        as having taken effect, so that a resume does not halt it again (ADR-0236)."""
+        cause = Cause.CANCELLED if asked.kind is SteeringKind.CANCEL else Cause.PAUSED
+        reason = f"{asked.kind} asked by {asked.requested_by}, at the step boundary"
+        ended = await self._end(run, RunState.HALTED, cause, reason, span)
+        if self._steering is not None:
+            took = asked.model_copy(
+                update={"state": SteeringState.TOOK_EFFECT, "took_effect_at": self._clock.now()}
+            )
+            async with self._work.transaction(run.tenant):
+                await self._steering.put(run.tenant, took)
+        return ended
 
     async def _end(
         self, run: Run, state: RunState, cause: Cause | None, reason: str | None, span: Span
