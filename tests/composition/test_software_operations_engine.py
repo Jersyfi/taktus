@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
+import pytest
 from fakes.owner_channel import OWNER, TENANT
 
 from taktus.adapters.driven.connectors.loopback import LoopbackConnector
@@ -143,3 +144,24 @@ async def test_b_4_05_a_dimension_answered_no_holds_the_reply_by_rule(outside: O
     assert states(run)["send"] is not StepState.SUCCEEDED
     assert "language" in (run.step_run("send").reason or ""), "the gate that held it is named"
     assert outside.submitted() == before
+
+
+@pytest.mark.parametrize(
+    ("name", "requires"),
+    [
+        ("B-7.06-technical-debt.yaml", {"code.edit"}),
+        ("B-7.07-friction.yaml", {"browser.check", "code.edit"}),
+        ("B-7.08-daily-acceptance.yaml", {"browser.check"}),
+        ("B-7.11-documentation.yaml", {"code.edit"}),
+    ],
+)
+async def test_b_7_a_coding_or_browser_goal_registers_and_its_merge_stays_with_a_person(
+    outside: Outside, name: str, requires: set[str]
+) -> None:
+    w = await World(outside).ready()
+    version = await w.registered(name)
+    used = {c for s in version.steps for c in s.required_capabilities}
+    assert requires <= used
+    assert version.autonomy.level == 2
+    operations = {str((version.work.get(s.id) or {}).get("operation")) for s in version.steps}
+    assert "repository.pullrequests.merge" not in operations, "a person merges"
