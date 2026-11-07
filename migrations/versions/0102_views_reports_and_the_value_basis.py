@@ -2,7 +2,7 @@
 ADR-0242, ADR-0244, ADR-0245).
 
 Revision: 0102
-Revises: 0103
+Revises: 0101
 
 What this adds, each one row per record as a document beside the tenant, its identifier and
 the moment it was set:
@@ -25,7 +25,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision = "0102"
-down_revision = "0103"
+down_revision = "0101"
 branch_labels = None
 depends_on = None
 

@@ -2,7 +2,7 @@
 a domain has an owner (ADR-0259, UC-15.5).
 
 Revision: 0105
-Revises: 0101
+Revises: 0104
 
 What this adds: `scoped_stop`, one row per stop of a process or of a tenant, requested by a
 person or by a rule, never deleted: its state moves from holding to confirmed to lifted. It
@@ -23,7 +23,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision = "0105"
-down_revision = "0101"
+down_revision = "0104"
 branch_labels = None
 depends_on = None
 

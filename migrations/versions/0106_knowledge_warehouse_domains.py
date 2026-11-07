@@ -2,7 +2,7 @@
 UC-5.5, UC-15.1).
 
 Revision: 0106
-Revises: 0107
+Revises: 0105
 
 What this adds, three tables of one shape — tenant, id, the moment the row was written, and the
 record as a document:
@@ -28,7 +28,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision = "0106"
-down_revision = "0107"
+down_revision = "0105"
 branch_labels = None
 depends_on = None
 

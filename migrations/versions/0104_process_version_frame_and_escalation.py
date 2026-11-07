@@ -2,7 +2,7 @@
 ADR-0272, ADR-0273, DEC-0233).
 
 Revision: 0104
-Revises: 0102
+Revises: 0103
 
 What this adds, on `process_version`:
 
@@ -28,7 +28,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision = "0104"
-down_revision = "0102"
+down_revision = "0103"
 branch_labels = None
 depends_on = None
 

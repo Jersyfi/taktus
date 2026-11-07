@@ -2,7 +2,7 @@
 plan calls for (ADR-0275, ADR-0276, ADR-0277, ADR-0278).
 
 Revision: 0107
-Revises: 0104
+Revises: 0106
 
 What this adds, one row per record, the record as a document beside its tenant and identifier:
 
@@ -25,7 +25,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision = "0107"
-down_revision = "0104"
+down_revision = "0106"
 branch_labels = None
 depends_on = None
 

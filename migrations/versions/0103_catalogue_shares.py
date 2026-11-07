@@ -2,7 +2,7 @@
 an identity (ADR-0246, ADR-0247).
 
 Revision: 0103
-Revises: 0105
+Revises: 0102
 
 What this adds:
 
@@ -28,7 +28,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision = "0103"
-down_revision = "0105"
+down_revision = "0102"
 branch_labels = None
 depends_on = None
 
