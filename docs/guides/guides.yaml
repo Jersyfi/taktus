@@ -102,6 +102,7 @@ guides:
         title: What Taktus never does with people
         parts:
           - file: docs/guides/use/people.md
+          - file: docs/guides/use/data-protection.md
           - file: docs/vision/principles.md
             section: 14 — People at the centre
             heading: People at the centre

@@ -25,8 +25,13 @@ from taktus.components.decision.application.service import (
     AnswerRequestHandler,
     ConfirmRequestHandler,
 )
-from taktus.components.governance.application.service import Corrections, Stages
-from taktus.components.governance.domain.model import Incident
+from taktus.components.governance.application.service import (
+    Confirmed,
+    Corrections,
+    PrepareRequest,
+    Stages,
+)
+from taktus.components.governance.domain.model import Incident, SubjectRequest
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.application.service.streams import DeclareStream
@@ -367,6 +372,29 @@ class ProfileReads(Protocol):
         ...
 
 
+class SubjectActs(Protocol):
+    """Data-protection requests prepared, carried out by a person and withdrawn
+    (ADR-0176)."""
+
+    async def prepare(self, command: PrepareRequest, *, by: str) -> SubjectRequest: ...
+
+    async def get(self, tenant: Tenant, request_id: str) -> SubjectRequest | None: ...
+
+    async def list(self, tenant: Tenant) -> Sequence[SubjectRequest]: ...
+
+    async def confirm(
+        self, tenant: Tenant, request_id: str, *, by: str, identity_checked: bool
+    ) -> Confirmed: ...
+
+    async def withdraw(self, tenant: Tenant, request_id: str, *, by: str) -> SubjectRequest: ...
+
+
+class EvidenceReads(Protocol):
+    """The processing evidence, generated from configuration and the ledger (ADR-0176 §8)."""
+
+    async def evidence(self, tenant: Tenant) -> dict[str, Any]: ...
+
+
 class RestServices(Protocol):
     @property
     def roles(self) -> Sequence[str]:
@@ -506,6 +534,16 @@ class RestServices(Protocol):
     @property
     def takeover_instructions(self) -> InstructionActs:
         """A process's takeover instructions and the trials of them (ADR-0180)."""
+        ...
+
+    @property
+    def subject_requests(self) -> SubjectActs:
+        """Data-protection requests, prepared and carried out by a person (ADR-0176)."""
+        ...
+
+    @property
+    def processing_evidence(self) -> EvidenceReads:
+        """What is processed for a tenant, generated (ADR-0176 §8)."""
         ...
 
     @property

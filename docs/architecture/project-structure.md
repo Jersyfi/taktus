@@ -446,6 +446,12 @@ role it would tie the core to a model stack and the removal test would be lost.
   into `OwnerAnswers` beside the change in dialogue). Where a served take-over stands is read
   from the step run alone (`StepRun.takeovers`) and handed to the run level by
   `composition/levels.py`.
+- **Data-protection requests and the processing evidence** (ADR-0176) are served on the HTTP
+  surface by `adapters/driving/rest/subjects.py` through the ports `SubjectActs` and
+  `EvidenceReads` of `adapters/driving/rest/wiring.py`; the daemon's `Wired` builds the
+  governance component's `SubjectRequests` over `composition/subjects.py`'s `RunHoldings`, with
+  an uncached object store, and `ProcessingEvidence`, as `composition/local.py` does for
+  `taktusctl subject` and `evidence`. The web app's page is `web/src/routes/subjects/`.
 - **A process's takeover instructions and their trials** (ADR-0180) belong to the process
   component: `domain/model/takeover.py`, the rules registration holds them to in
   `domain/service/takeover.py`, and `application/service/takeover.py`'s `TakeoverTrials`, which

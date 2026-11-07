@@ -102,10 +102,12 @@ from taktus.components.governance.application.service import (
     ReportCapacityHandler,
     ResultDefects,
     Stages,
+    SubjectRequests,
 )
 from taktus.components.governance.domain.model import (
     AnchorConfiguration,
     Incident,
+    SubjectRequest,
     WatchConfiguration,
 )
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
@@ -239,6 +241,7 @@ from taktus.composition.spend_in_channel import SpendInChannel
 from taktus.composition.stages import stage_wiring, stages_tick
 from taktus.composition.stops import StopsConfirmed
 from taktus.composition.streams import StreamReads
+from taktus.composition.subjects import ProcessingEvidence, RunHoldings
 from taktus.composition.takeover_in_channel import TakeoverInChannel
 from taktus.composition.traces import traces_tick
 from taktus.composition.trials import Trials, trials_tick
@@ -370,6 +373,10 @@ class Wired:
     """The skill lifecycle the scheduler looks at once a minute (ADR-0162)."""
     instructions: TakeoverTrials | None = None
     """A process's takeover instructions and the trials of them (ADR-0180)."""
+    subjects: SubjectRequests | None = None
+    """Data-protection requests, prepared and carried out by a person (ADR-0176)."""
+    evidence: ProcessingEvidence | None = None
+    """What is processed for a tenant, generated (ADR-0176 §8)."""
     agents: SharedAgents | None = None
     """Shared agents with role profiles (ADR-0163)."""
     connected: ConnectedHost | None = None
@@ -413,6 +420,20 @@ class Wired:
         if self.instructions is None:
             raise RuntimeError("the daemon wires the takeover instructions")
         return self.instructions
+
+    @property
+    def subject_requests(self) -> SubjectRequests:
+        """Data-protection requests on the HTTP surface (ADR-0176)."""
+        if self.subjects is None:
+            raise RuntimeError("the daemon wires the data-protection requests")
+        return self.subjects
+
+    @property
+    def processing_evidence(self) -> ProcessingEvidence:
+        """The processing evidence on the HTTP surface (ADR-0176 §8)."""
+        if self.evidence is None:
+            raise RuntimeError("the daemon wires the processing evidence")
+        return self.evidence
 
     @property
     def operation(self) -> OperationRecords:
@@ -1291,6 +1312,38 @@ async def wire(
                     clock=clock,
                     ids=ids,
                 ),
+            )
+            # Data-protection requests reach the store the artifacts live in (ADR-0165,
+            # ADR-0176), uncached: an erased object must not linger in a cache.
+            wired.evidence = ProcessingEvidence(
+                register=wired.acting.register,
+                processes=PostgresRepository(persistence, Process),
+                versions=PostgresRepository(persistence, ProcessVersion),
+                sources=decisions.sources,
+                residency=decisions.residency,
+                ledger=ledger,
+                work=persistence,
+                clock=clock,
+                traces=trace_store,
+            )
+            wired.subjects = SubjectRequests(
+                PostgresRepository(persistence, SubjectRequest),
+                RunHoldings(
+                    runs=runs,
+                    provenance=provenance_store,
+                    ledger=ledger,
+                    objects=object_store_of(
+                        settings.object_store, state_dir=settings.state_dir, cache_bytes=0
+                    ),
+                    work=persistence,
+                    tenants=PostgresTenantStore(persistence),
+                    traces=trace_store,
+                    locations=wired.evidence.locations,
+                ),
+                ledger,
+                persistence,
+                clock,
+                ids,
             )
             if Role.RUNNER in settings.roles:
                 wired.runner = Runner(
