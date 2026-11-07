@@ -69,6 +69,9 @@ ANNOTATIONS = frozenset(
         "examples",
         "default",
         "deprecated",
+        # A deprecation's removal and date (ADR-0220 §3): a deprecation is compatible.
+        "x-taktus-removal",
+        "x-taktus-deprecated",
         "readOnly",
         "writeOnly",
     }
@@ -327,7 +330,18 @@ def _file(path: str, before: bytes, after: bytes) -> list[Change]:
 
 
 OPENAPI_ANNOTATIONS = frozenset({"info", "tags", "externalDocs", "summary", "description"})
-OPERATION_ANNOTATIONS = frozenset({"summary", "description", "tags", "externalDocs"})
+OPERATION_ANNOTATIONS = frozenset(
+    {
+        "summary",
+        "description",
+        "tags",
+        "externalDocs",
+        # A deprecation, with its date and removal, is compatible (ADR-0220 §3).
+        "deprecated",
+        "x-taktus-deprecated",
+        "x-taktus-removal",
+    }
+)
 METHODS = frozenset({"get", "put", "post", "delete", "options", "head", "patch", "trace"})
 
 

@@ -57,6 +57,7 @@ from taktus.adapters.driving.rest import (
     agent_surface,
     autonomy,
     catalogue,
+    deprecation,
     evaluations,
     findings,
     gallery,
@@ -164,6 +165,8 @@ def build_app(
     )
     app.add_exception_handler(HTTPException, on_http_exception)
     app.add_exception_handler(RequestValidationError, on_validation_error)
+    # A deprecated operation says so in every answer (ADR-0220 §4.1).
+    app.add_middleware(deprecation.Deprecations)
     app.include_router(_operations(services), prefix=base)
     if full:
         app.include_router(_intake(services), prefix=base)

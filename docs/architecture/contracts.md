@@ -502,8 +502,14 @@ an adapter that sends the documents a contract describes or reads them:
 
 **A breaking change is a new major version under a new `$id`**:
 `contracts/<family>/v2/<Concept>.json` beside `v1`, which stays as it was. A `v1` schema may be
-retired once its successor exists. A breaking change of a published contract is the owner's
-decision (anchor M3.5).
+retired once its successor exists, and not before the later of the next product major and
+twelve months after the release that brought the successor (ADR-0220 §2). A breaking change of a
+published contract is the owner's decision (anchor M3.5).
+
+**A deprecation names its removal** (ADR-0220 §3). Whatever a schema or an `openapi.yaml`
+marks `deprecated: true` carries `x-taktus-removal: N.0.0`, the product major that removes it,
+and a deprecated operation `x-taktus-deprecated: YYYY-MM-DD` as well. `make gate-contracts`
+fails one without; the compatibility check counts a deprecation as compatible.
 
 `make gate-compat` (`tools/contract_compat.py`) holds the rule. It compares every schema with
 the same path at the last release tag and fails a breaking change. With no release yet, it
