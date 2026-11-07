@@ -197,13 +197,16 @@ COMPOSE := deploy/docker/compose.yml
 COMPOSE_WORKER := deploy/docker/compose.reference-worker.yml
 COMPOSE_CONNECTORS := deploy/docker/compose.connectors.yml
 WITH_CONNECTORS = $$(test -f $(COMPOSE_CONNECTORS) && echo -f $(COMPOSE_CONNECTORS))
+# With TAKTUS_IMAGE (and TAKTUS_BACKUP_IMAGE) naming published images, `up` pulls them and builds
+# nothing; without, it builds both from this checkout (ADR-0222).
+IMAGES_FROM = $(if $(TAKTUS_IMAGE),--pull always --no-build,--build)
 
 .PHONY: up
-up: need-docker ## Bring Taktus up: two containers, migrations applied, ready
+up: need-docker ## Bring Taktus up: the control plane, its database and the scheduled backup, migrations applied, ready
 	deploy/docker/secrets.sh
 	python3 deploy/docker/secret_store.py
 	python3 deploy/docker/connectors.py
-	docker compose -f $(COMPOSE) $(WITH_CONNECTORS) up --build --detach --wait
+	docker compose -f $(COMPOSE) $(WITH_CONNECTORS) up $(IMAGES_FROM) --detach --wait
 
 # The one command of a first install on one machine (UC-10.4, ADR-0136 §6): what `up` does,
 # then the first tenant and its administrator, then a clock that runs until the first rehearsal

@@ -49,6 +49,9 @@ RUN apk upgrade --no-cache && apk add --no-cache python3
 COPY --from=rclone /usr/local/bin/rclone /usr/local/bin/rclone
 COPY --from=age /usr/local/bin/age /usr/local/bin/age-keygen /usr/local/bin/
 COPY deploy/backup/backup.py /usr/local/bin/taktus-backup
+# Where the single server's compose file keeps its backups (`schedule`, ADR-0222): a volume
+# mounted here takes this owner, so that the program, which runs as the database's user, writes.
+RUN install -d -o 70 -g 70 -m 700 /backups
 # The postgres user of the Alpine image, as the database itself runs (chart: database.yaml).
 USER 70
 ENTRYPOINT ["python3", "/usr/local/bin/taktus-backup"]

@@ -581,6 +581,10 @@ async def wire(
                 state_dir=settings.state_dir,
                 cache_bytes=settings.object_cache_mb * 1024 * 1024,
             )
+            if settings.object_store.kind != "s3":
+                # The directory exists from the start, empty, so that a backup of a fresh
+                # instance finds the store it archives (ADR-0222).
+                (settings.state_dir / "objects").mkdir(parents=True, exist_ok=True)
             recordings = RecordedResponses(runs, persistence, objects)
             pools = Pools(
                 StaticWorkerPool(

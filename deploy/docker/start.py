@@ -126,7 +126,11 @@ def main() -> int:
     store = [sys.executable, str(ROOT / "deploy" / "docker" / "secret_store.py")]
     stage("reading the secret store", install.run(*store))
     fresh = ["--no-cache", "--pull"] if options.no_cache else []
-    stage("building the image", install.run(*install.compose, "build", *fresh, "taktus"))
+    if os.environ.get("TAKTUS_IMAGE"):
+        # Published images, a release's: pulled, nothing built (ADR-0222).
+        stage("pulling the images", install.run(*install.compose, "pull", "taktus", "backup"))
+    else:
+        stage("building the image", install.run(*install.compose, "build", *fresh, "taktus"))
     marks["image_built"] = now()
     stage("starting the containers", install.run(*install.compose, "up", "--detach", "--wait"))
     marks["ready"] = now()

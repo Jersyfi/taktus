@@ -59,6 +59,7 @@ def test_the_decision_to_report_is_a_rule_over_recorded_facts() -> None:
         "objects",
         "store",
         "retention",
+        "drill",
     }
 
 

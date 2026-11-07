@@ -8,7 +8,7 @@ first process is the check of the product's own central claim.
 |---|---|---|
 | **S-01 Removal test** — one integration is withheld, the processes that use it are exercised, the verdict is recorded | **runs** weekly | [`processes/S-01-removal-test.yaml`](processes/S-01-removal-test.yaml) |
 | S-02 Takeover test — a person runs a process by hand from its instructions | **a person's act**, recorded with `taktusctl takeover trial`; every bundle carries its instructions, and the automated test of the path is `tests/composition/test_takeover_test.py` (ADR-0180) | — by design: a trial is what a person did |
-| **S-03 Restore drill** — the newest backup restored without Taktus, into a server of its own, and every tenant's ledger chain verified against the heads taken before | **runs** weekly, from the chart (`backup.drill.enabled`), not from Taktus | — by design: see below |
+| **S-03 Restore drill** — the newest backup restored without Taktus, into a server of its own, and every tenant's ledger chain verified against the heads taken before | **runs** weekly, from the chart (`backup.drill.enabled`) on a cluster and from the compose file's service `backup` on one machine, not from Taktus | — by design: see below |
 | S-04 Load measurement — how many concurrent runs one instance carries | `1.0.0` | — |
 | **S-05 Guides** — the administration guide and the guide for users, rendered from the repository and put into the knowledge system; a hand edit is kept and reported | **runs** daily | [`processes/S-05-guides.yaml`](processes/S-05-guides.yaml) |
 | **S-06 Maturation** — every step measured, and a step on a language model proposed a trained model where the evidence holds; never applied | **runs** weekly | [`processes/S-06-maturation.yaml`](processes/S-06-maturation.yaml) |
@@ -199,7 +199,10 @@ ADR-0013 C asks that Taktus can be repaired without Taktus, and that the way to 
 exercised. The drill exercises it (ADR-0174 §3, UC-10.5). It is the one process of this blueprint
 that **Taktus does not run**: a drill that needs Taktus to run would show nothing about repairing
 Taktus without it. It has no bundle. The chart's scheduler starts it, from the backup image, which
-holds no code of Taktus (`deploy/backup/`, `backup.py drill`).
+holds no code of Taktus (`deploy/backup/`, `backup.py drill`). On one machine the compose file's
+service `backup` starts it after the backup of every seventh day (`backup.py schedule`,
+ADR-0222); a drill that fails there is recorded as a failed backup run at the step `drill`, and
+the instance tells the owner of it.
 
 **What one run does.** It restores the newest backup into a database server of its own pod — the
 dump, or with point-in-time recovery the newest base backup and the archived log up to the latest
