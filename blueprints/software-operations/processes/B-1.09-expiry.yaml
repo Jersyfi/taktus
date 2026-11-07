@@ -20,9 +20,14 @@
 # A certificate that no longer verifies stands in the reading as `trusted: false` with the
 # reason; one that expired has negative days and is red.
 #
-# Not built here: keys, signing certificates, provisioning profiles and secrets, whose expiry no
-# open standard publishes; and the renewal, which needs control of the server or a purchase. A
-# renewal that costs money stays with a person (UC-03 §4.1).
+# Where the run names `signing: yes`, the business's signing certificates and provisioning
+# profiles are read through `expiry.credentials` too (ADR-0203), and the one that expires first
+# is taken by the step `soonest-signing`, judged by the same corridor on its own step. A secret's
+# age is B-1.10's.
+#
+# Not built here: a key's expiry, which no store the business names publishes; and the renewal,
+# which needs control of the server, a new signing request or a purchase. A renewal that costs
+# money stays with a person (UC-03 §4.1).
 #
 # By hand:
 #
@@ -33,7 +38,7 @@
 # reads.
 
 id: b-1-09
-version: "1"
+version: "2"
 name: B-1.09 Things that expire
 autonomy:
   level: 1
@@ -66,9 +71,15 @@ inputs:
   domain:
     description: a domain of the business, in its ASCII form
     example: example.com
+  signing:
+    description: >
+      `yes` where the business's signing certificates and provisioning profiles are read too,
+      through `expiry.credentials`; left out, they are not
+    example: "yes"
+    required: false
 
 limits:
-  quota: { units: 3 }
+  quota: { units: 25 }
 
 steps:
   - id: read-certificate
@@ -132,6 +143,52 @@ steps:
       order: days_left
       limit: 1
 
+  - id: read-signing
+    method: rule
+    reason: the signing certificates and provisioning profiles are read as the app store lists them, never their content
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving expiry.credentials is unavailable
+      to: human
+      role: owner
+    depends_on: [soonest]
+    work:
+      when:
+        - { value: { $input: signing, $otherwise: "" }, matches: "^yes$" }
+      rule: connector
+      operation: expiry.credentials.list
+      input: {}
+      credentials:
+        - { name: STORE_API_KEY, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the store listed more than was read" }
+
+  - id: soonest-signing
+    method: rule
+    reason: >
+      the signing credential that expires first is a fixed ordering of the store's days left;
+      a profile already invalid is left out, never read as one about to expire
+    rejected:
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the signing credential that expires first }
+    depends_on: [read-signing]
+    work:
+      when:
+        - { value: { $input: signing, $otherwise: "" }, matches: "^yes$" }
+      rule: filter
+      items: { $from: read-signing, $select: output.credentials }
+      all:
+        - { field: days_left, at_least: -36500 }
+        - { field: state, not_matches: "^\"?INVALID" }
+      order: days_left
+      limit: 1
+
 # How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
 # every step the system to act in, what to do there, the expertise it needs, each credential by
 # its parameter and where an authorised person finds it, and how to tell that it is done.
@@ -140,7 +197,8 @@ takeover:
     The process runs every day at 06:15 UTC, for one endpoint and one domain of the business;
     whoever looks after the business's certificates and domains starts it. The steps run in
     order: read the certificate the endpoint presents, read the domain's registration, and
-    take the one that expires first. Fewer than 30 days left is yellow and fewer than 7 red, as
+    take the one that expires first; where the run asks for them, also list the signing
+    certificates and provisioning profiles and take the one that expires first. Fewer than 30 days left is yellow and fewer than 7 red, as
     the bundle proposes for the tenant's corridor; an expired one has negative days and is red.
     A renewal, above all one that costs money, stays with a person.
   steps:
@@ -182,3 +240,25 @@ takeover:
       expertise: the tenant's corridor for expiry
       credentials: []
       done: the thing that expires first and its days left are written down and judged
+    read-signing:
+      system: the app store's developer account, its certificates and profiles
+      do: >
+        only where the run asks for signing credentials: list every signing certificate and
+        provisioning profile with its type, platform, state and expiration date, and work out
+        the whole days left for each. Never download a certificate or a profile.
+      expertise: reading certificates and profiles in the app store's developer account
+      credentials:
+        - parameter: STORE_API_KEY
+          where: >
+            the operator's secret store, under the parameter App store API key of the requesting
+            identity described in CREDENTIALS.md; a person may instead sign in to the developer
+            account with their own account that may read certificates and profiles
+      done: every certificate and profile is noted with its days left, or the step is skipped
+    soonest-signing:
+      system: the noted certificates and profiles
+      do: >
+        leave out the profiles already invalid, take the one with the fewest days left, and
+        judge it as the thing that expires first is judged: 30 days for yellow, 7 for red.
+      expertise: the tenant's corridor for expiry
+      credentials: []
+      done: the signing credential that expires first is written down and judged, or the step is skipped

@@ -446,8 +446,10 @@ async def test_b_7_05_writes_the_review_with_the_repositorys_own_balance_and_nev
 async def test_b_7_10_and_b_1_12_count_nothing_that_lies_still_today(
     outside: Outside, cluster: str
 ) -> None:
-    """Both read and count by rule at level 1 and run without a person. The fake's pull
-    requests and runs are minutes old: nothing passes a threshold of hours."""
+    """Both read and count by rule. B-7.10 runs at level 1 without a person; B-1.12 is at
+    level 2, because it restarts a lost run, and runs once a person confirmed its steps. The
+    fake's pull requests and runs are minutes old: nothing passes a threshold of hours, and
+    nothing is cancelled or rerun."""
     w = await RepositoryWorld(outside, cluster).ready()
     branch(outside, "taktus/still", {"a": "a\n"})
     pull(outside, "taktus/still")
@@ -455,12 +457,13 @@ async def test_b_7_10_and_b_1_12_count_nothing_that_lies_still_today(
         ("B-7.10-abandoned-work.yaml", ("abandoned-pulls", "abandoned-issues")),
         ("B-1.12-pipeline-runs.yaml", ("queued-too-long", "running-too-long")),
     ):
-        run = await w.start(await w.registered(name))
+        run = await w.confirmed(await w.start(await w.registered(name)))
         assert run.state is RunState.FINISHED, [
             (s.step_id, s.state, s.reason) for s in run.step_runs if s.reason
         ]
         for step in steps:
             assert (await w.result(run, step))["count"] == 0
+    assert (await w.result(run, "rerun-lost"))["skipped"] is True
     read = await w.result(run, "read-running")
     assert read["output"]["status"] == "in_progress"
 

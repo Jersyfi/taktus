@@ -1,4 +1,4 @@
-"""How the costs are asked and their answer read.
+"""How the costs and the catalogue of models are asked and their answers read.
 
 The organisation costs API answers `GET /v1/organization/costs` with daily buckets, each
 holding one result per group. The connector asks for buckets of one day, grouped by line item
@@ -10,6 +10,16 @@ The answer is parsed with decimal numbers, never floating point. Every amount st
 decimal text the provider gave. A day's `total` is the exact sum of its groups: a figure a
 later step holds `exact` is built from it (CLAUDE.md §4). Amounts in more than one currency
 are not summed: the answer is `unexpected`, because no rule here converts.
+
+The catalogue is `GET /v1/models`: one answer, `data`, without pages, each model with its
+`id`, its `created` moment in Unix seconds and the organisation that owns it. The owner is not
+copied. The API gives no display name, so `name` is always null. A model may carry
+`shutdown_date`, the date it shuts down, or null while none is announced: it becomes
+`retires_at`, the moment that day begins in UTC. The API states no lifecycle stage and no
+deprecation moment, so `lifecycle` and `deprecated_at` are always null; neither is inferred
+from the shutdown date. The list API takes an ordinary
+API key of a project: an administration key is not admitted to it. The key is whichever
+credential the call references, so a process that reads both names two credentials.
 
 How the provider's answers map to the contract's causes:
 
@@ -52,6 +62,8 @@ MAX_DAYS = 92
 MAX_PAGES = 20
 GROUPS = {"line_item": "line_item", "project": "project_id"}
 NONE = "(none)"
+MODELS_PATH = "/v1/models"
+MAX_MODELS = 1000
 
 
 @dataclass(frozen=True)
@@ -102,6 +114,10 @@ def _amount(value: Any) -> Decimal:
 
 
 async def _page(config: Config, call: Call, params: Json) -> Json:
+    return await _get(config, call, PATH, params, "the costs")
+
+
+async def _get(config: Config, call: Call, path: str, params: Json, what: str) -> Json:
     call.count()
     try:
         async with httpx.AsyncClient(
@@ -109,7 +125,7 @@ async def _page(config: Config, call: Call, params: Json) -> Json:
             timeout=httpx.Timeout(config.timeout, connect=min(10.0, config.timeout)),
             headers={"Authorization": f"Bearer {call.token}"},
         ) as client:
-            response = await client.get(PATH, params=params)
+            response = await client.get(path, params=params)
     except httpx.TimeoutException as error:
         raise unavailable(f"the provider did not answer in time: {type(error).__name__}") from error
     except httpx.HTTPError as error:
@@ -119,7 +135,7 @@ async def _page(config: Config, call: Call, params: Json) -> Json:
     if status == 401:
         raise TargetError("unauthenticated", "none", False, "the provider does not admit the key")
     if status == 403:
-        raise TargetError("forbidden", "none", False, "the key may not read the costs")
+        raise TargetError("forbidden", "none", False, f"the key may not read {what}")
     if status == 429 or status >= 500:
         raise unavailable(f"the provider answered {status}")
     if status in (400, 404, 422):
@@ -200,4 +216,70 @@ async def daily(config: Config, call: Call, input: Json) -> Outcome:
     return Outcome(output=output, effect={"kind": "read"})
 
 
-OPERATIONS = {"models.costs.daily": daily}
+def _limit(input: Json) -> int:
+    limit = input.get("limit", MAX_MODELS)
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= MAX_MODELS:
+        raise invalid(f"limit must be a whole number from 1 to {MAX_MODELS}")
+    return limit
+
+
+def _model(entry: Any) -> Json:
+    if not isinstance(entry, dict) or not isinstance(entry.get("id"), str) or not entry["id"]:
+        raise TargetError("unexpected", "none", False, "a model names no identifier")
+    created = entry.get("created")
+    if created is None:
+        moment = None
+    elif isinstance(created, int) and not isinstance(created, bool):
+        moment = datetime.fromtimestamp(created, UTC).isoformat().replace("+00:00", "Z")
+    else:
+        raise TargetError("unexpected", "none", False, "a model's creation is not a moment")
+    return {
+        "id": entry["id"],
+        "name": None,
+        "created_at": moment,
+        "lifecycle": None,
+        "deprecated_at": None,
+        "retires_at": _shutdown(entry.get("shutdown_date")),
+    }
+
+
+def _shutdown(value: Any) -> str | None:
+    """The announced shutdown, a date, as the moment the day begins in UTC; None where none is
+    announced."""
+    if value is None:
+        return None
+    try:
+        day = date.fromisoformat(str(value)) if isinstance(value, str) else None
+    except ValueError:
+        day = None
+    if day is None:
+        raise TargetError("unexpected", "none", False, "a model's shutdown is not a date")
+    return f"{day.isoformat()}T00:00:00Z"
+
+
+def retiring(models: list[Json]) -> list[str]:
+    """The sorted identifiers of the models deprecated, retired or with a retirement set."""
+    return sorted(
+        m["id"]
+        for m in models
+        if m["lifecycle"] in ("deprecated", "retired") or m["retires_at"] is not None
+    )
+
+
+async def catalogue(config: Config, call: Call, input: Json) -> Outcome:
+    """The models the key may use, sorted by identifier. The list API answers in one page."""
+    limit = _limit(input)
+    answer = await _get(config, call, MODELS_PATH, {}, "the models")
+    models = sorted((_model(entry) for entry in answer["data"]), key=lambda m: m["id"])
+    kept = models[:limit]
+    output: Json = {
+        "models": kept,
+        "ids": [m["id"] for m in kept],
+        "retiring": retiring(kept),
+        "current": [m["id"] for m in kept if m["id"] not in retiring(kept)],
+        "complete": len(kept) == len(models),
+    }
+    return Outcome(output=output, effect={"kind": "read"})
+
+
+OPERATIONS = {"models.costs.daily": daily, "models.catalogue.list": catalogue}

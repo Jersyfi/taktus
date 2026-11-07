@@ -1,0 +1,265 @@
+# B-2.04 Retired models — UC-03 §4.2: every week the models the business's code calls are held
+# against the provider's own list, and a model the provider retires, deprecates, schedules for
+# retirement or no longer lists is filed as an issue whose goal is the switch (UC-4.18, UC-8.2).
+# Releasing the switch stays with a person.
+#
+# The provider's list is read through `models.catalogue` (ADR-0204), with each model's
+# lifecycle and retirement where the provider states them, and `current`: the models listed and
+# not retiring. The rule `extract` takes the identifiers the run names in `models`, the ones the
+# tenant's version lists for the code it runs, less every identifier in `current`: what remains
+# is retiring or gone. They are filed together in one issue, once: the issue carries their mark.
+# The issue's goal is P-03's coding worker's: switch each to a current model of the same line,
+# keep the pipeline green. Evaluating the old model against the new one is UC-4.18's trial, run
+# on the pull request.
+#
+# Not built here: finding the identifiers in the code. No capability searches a repository's
+# code for model identifiers; the tenant's version names them.
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-2.04-retired-models.yaml \
+#         --input 'models=["model-a", "model-b"]' --input label=ready
+#
+# Switching it off (`taktusctl deactivate --process b-2-04`) changes nothing in the repository.
+
+id: b-2-04
+version: "1"
+name: B-2.04 Retired models
+autonomy:
+  level: 2
+  reason: >
+    the models are found by a fixed rule over the provider's own list; filing the issue leaves
+    the system, so a person confirms it, as every process of UC-03 starts at level 1 or 2 when
+    its stage opens
+  toward_next: >
+    two switches a person confirmed without changing the issue, and stage 1 of the tenant's plan
+    open; then Taktus proposes level 3, its target in UC-03; releasing the switch stays with a
+    person at every level (UC-7.1, UC-9.6)
+author: the repository
+reason: a model the provider retires is found in time without a person reading release notes (UC-03 B-2.04)
+
+triggers:
+  - schedule: "0 6 * * 1"
+    inputs:
+      models: [model-a, model-b]
+      label: ready
+
+inputs:
+  models:
+    description: the model identifiers the business's code calls, a list
+    example: [model-a, model-b]
+  label:
+    description: the label under which the tenant's implementation process takes an issue
+    example: ready
+
+limits:
+  quota: { units: 30 }
+
+steps:
+  - id: read-catalogue
+    method: rule
+    reason: the provider's list of models is read verbatim, with the lifecycle it states
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving models.catalogue is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: models.catalogue.list
+      input: {}
+      credentials:
+        - { name: MODELS_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the provider listed more models than were read" }
+
+  - id: retiring
+    method: rule
+    reason: >
+      which models in use are retiring or gone is a difference of two lists, the run's and the
+      provider's current models; the same lists always give the same models
+    rejected:
+      - method: llm
+        why: a difference of two lists needs no judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the models in use that the provider does not list as current }
+    depends_on: [read-catalogue]
+    work:
+      rule: extract
+      values: { $input: models }
+      excluding: { $from: read-catalogue, $select: output.current }
+      pattern: "^\\s*(?P<id>[A-Za-z0-9][A-Za-z0-9._:@/-]*)\\s*$"
+      text: "${id}"
+
+  - id: read-filed
+    method: rule
+    reason: the open issues are read verbatim, so that a switch already filed is not filed twice
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.issues is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: repository.issues.list
+      input:
+        state: open
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the open issues were not all read" }
+
+  - id: unfiled
+    method: rule
+    reason: whether the switch is filed already is its mark in an open issue, a fixed rule
+    rejected:
+      - method: llm
+        why: finding a fixed text needs no judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: whether the switch is filed already }
+    depends_on: [retiring, read-filed]
+    work:
+      rule: filter
+      items:
+        - { models: { $from: retiring, $select: extracted } }
+      all:
+        - { field: models, matches: "\\[\"" }
+      excluding: { $from: read-filed, $select: output.issues }
+      within: body
+      marker: "models-retiring:${models}"
+
+  - id: compose
+    method: rule
+    reason: the issue's text is the models and the provider's statement between fixed words, the goal stated for the implementation process
+    rejected:
+      - method: llm
+        why: a fixed composition needs no model
+    exactness: sourced
+    depends_on: [unfiled, read-catalogue]
+    work:
+      when:
+        - { value: { $from: unfiled, $select: count }, not_matches: "^0$" }
+      rule: template
+      text: |
+        Switch the models the code calls that the provider retires: ${models}
+
+        The provider does not list them as current: each is deprecated, retired, scheduled for
+        retirement, or no longer listed. Its models that are current: ${current}. What it
+        states of every model it lists, with the lifecycle and retirement where it states
+        them, is in the run of B-2.04 that filed this issue.
+
+        Goal: switch each of them to a current model of the same line, change nothing else, and
+        keep the pipeline green. The old model is evaluated against the new one on the pull
+        request (UC-4.18). Releasing the switch stays with a person.
+
+        Filed by Taktus, process B-2.04 Retired models, once a person confirmed it.
+
+        models-retiring:${models}
+      values:
+        models: { $from: retiring, $select: extracted }
+        current: { $from: read-catalogue, $select: output.current }
+
+  - id: file
+    method: rule
+    reason: opening the issue is an API call; the effect leaves the system, so at level 2 a person confirms it first
+    rejected:
+      - method: worker
+        why: nothing here needs a sandbox or tools
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.issues is unavailable
+      to: human
+      role: owner
+    depends_on: [compose]
+    work:
+      when:
+        - { value: { $from: unfiled, $select: count }, not_matches: "^0$" }
+      rule: connector
+      operation: repository.issues.create
+      input:
+        title: Switch the models the provider retires
+        body: { $from: compose }
+        labels: [{ $input: label }]
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+# How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
+# every step the system to act in, what to do there, the expertise it needs, each credential by
+# its parameter and where an authorised person finds it, and how to tell that it is done.
+takeover:
+  sequence: >
+    The process runs every Monday morning; whoever looks after the business's use of models
+    starts it. The steps run in order: list the provider's models with their lifecycle, take the
+    models the code calls that the provider does not list as current, check the open issues for
+    a switch already filed, write the issue's text, and open the issue with the implementation
+    label once a person confirmed it. The switch is made on that issue; releasing it stays with
+    a person.
+  steps:
+    read-catalogue:
+      system: the model provider's models list, through its API or its console
+      do: >
+        list every model with its lifecycle, deprecation and retirement where the provider
+        states them, and note which are current: listed, and neither deprecated, retired nor
+        scheduled for retirement.
+      expertise: reading the provider's models list
+      credentials:
+        - parameter: MODELS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Model API key of the requesting
+            identity described in CREDENTIALS.md; a person may instead sign in to the
+            provider's console
+      done: the provider's current models are noted
+    retiring:
+      system: the list of models the code calls, and the noted current models
+      do: keep every model the code calls that is not among the current ones
+      expertise: none
+      credentials: []
+      done: the models in use that retire are listed, or none
+    read-filed:
+      system: the repository hosting service, in the repository's issue list
+      do: >
+        list every open issue and keep their texts at hand, so that a switch already filed is
+        recognised by its line models-retiring:<models>.
+      expertise: searching issues in the repository hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md
+      done: every open issue has been read
+    unfiled:
+      system: the open issues
+      do: look for the line models-retiring:<models> of the models just listed; where one carries it, stop here
+      expertise: none
+      credentials: []
+      done: it is known whether the switch is filed already, or none retires
+    compose:
+      system: a text editor
+      do: >
+        write the issue's text: the models that retire, the provider's current models, the goal
+        — switch each to a current model of its line, nothing else, the pipeline green — and the
+        line models-retiring:<models> at the end.
+      expertise: none
+      credentials: []
+      done: the text is written, or nothing is to file
+    file:
+      system: the repository hosting service
+      do: >
+        once the person responsible agreed, open the issue titled Switch the models the
+        provider retires, with the text and the label under which the implementation process
+        takes an issue.
+      expertise: opening an issue in the repository hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md
+      done: the issue is open, or nothing was to file

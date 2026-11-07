@@ -9,7 +9,10 @@
 # corridor on either count (`work.abandoned_pulls`, `work.abandoned_issues`) puts a deviation
 # into the daily report with a link to the run, whose result lists each item (UC-6.13).
 #
-# Branches without a pull request are not counted: the repository connector lists no branches.
+# Branches without a pull request are counted too (ADR-0201): the branches are read through
+# `repository.branches`, matched by name against the heads of every open pull request by the
+# rule `match`, and those left without a partner kept when they are not protected and not
+# `main` or `master`. The tenant's corridor on `work.branches_without_pull` judges the count.
 # The thresholds and the pattern of the started label are this version's; a tenant changes them
 # by a version of its own.
 #
@@ -20,7 +23,7 @@
 # Switching it off (`taktusctl deactivate --process b-7-10`) changes nothing in the repository.
 
 id: b-7-10
-version: "1"
+version: "2"
 name: B-7.10 Abandoned work
 autonomy:
   level: 1
@@ -38,7 +41,7 @@ triggers:
   - schedule: "0 5 * * *"
 
 limits:
-  quota: { units: 140 }
+  quota: { units: 150 }
 
 steps:
   - id: read-pulls
@@ -118,12 +121,71 @@ steps:
       order: idle_hours
       descending: true
 
+  - id: read-branches
+    method: rule
+    reason: the branches are read verbatim, each with its head and whether it is protected
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.branches is unavailable
+      to: human
+      role: owner
+    depends_on: [read-pulls]
+    work:
+      rule: connector
+      operation: repository.branches.list
+      input: {}
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the branches were not all read" }
+
+  - id: without-pull
+    method: rule
+    reason: a branch without an open pull request is a match of two readings by name
+    rejected:
+      - method: llm
+        why: a match by a key needs no judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the branches without an open pull request }
+    depends_on: [read-branches, read-pulls]
+    work:
+      rule: match
+      left:
+        items: { $from: read-branches, $select: output.branches }
+        key: [name]
+      right:
+        items: { $from: read-pulls, $select: output.pulls }
+        key: [head]
+
+  - id: abandoned-branches
+    method: rule
+    reason: of the branches without a pull request, the protected ones and the default branch are no work
+    rejected:
+      - method: llm
+        why: a selection by fields needs no judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the branches without a pull request that are work }
+    depends_on: [without-pull]
+    work:
+      rule: filter
+      items: { $from: without-pull, $select: left_only }
+      all:
+        - { field: protected, equals: false }
+        - { field: name, not_matches: "^(main|master)$" }
+      order: name
+
 takeover:
   sequence: >
     The process runs every morning at five UTC, on its own schedule; whoever looks after the
     repository's order of work takes it over. The steps run in order: list the open pull
     requests, list the open issues, keep the pull requests idle for two weeks, and keep the
-    started issues that did not move for a week. Both lists, the longest idle first, go into
+    started issues that did not move for a week; list the branches and keep those that are no
+    open pull request's head, not protected and not main or master. The lists, the longest idle first, go into
     the daily report when the tenant's corridor on either count says so. Closing or cleaning up
     the work stays with a person.
   steps:
@@ -169,3 +231,27 @@ takeover:
       expertise: none
       credentials: []
       done: the started issues without movement are listed, longest idle first, and counted
+    read-branches:
+      system: the repository hosting service, the repository's branches
+      do: list every branch with its head commit and whether it is protected
+      expertise: listing a repository's branches in its hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md
+      done: every branch is listed
+    without-pull:
+      system: the lists of branches and pull requests
+      do: keep every branch whose name is not the head branch of an open pull request
+      expertise: none
+      credentials: []
+      done: the branches without an open pull request are listed
+    abandoned-branches:
+      system: the list of branches without a pull request
+      do: >
+        leave out the protected branches and main or master, sort the rest by name and count
+        them
+      expertise: none
+      credentials: []
+      done: the branches without a pull request are listed and counted

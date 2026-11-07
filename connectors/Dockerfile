@@ -50,6 +50,11 @@ COPY --chown=connector:connector connectors/taktus_connectors/anthropic /app/tak
 ENTRYPOINT ["python", "-m", "taktus_connectors.anthropic"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
+FROM base AS appstore
+COPY --chown=connector:connector connectors/taktus_connectors/appstore /app/taktus_connectors/appstore
+ENTRYPOINT ["python", "-m", "taktus_connectors.appstore"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
 FROM base AS aws
 COPY --chown=connector:connector connectors/taktus_connectors/aws /app/taktus_connectors/aws
 ENTRYPOINT ["python", "-m", "taktus_connectors.aws"]
@@ -75,6 +80,11 @@ COPY --chown=connector:connector connectors/taktus_connectors/expiry /app/taktus
 ENTRYPOINT ["python", "-m", "taktus_connectors.expiry"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
+FROM base AS gcp
+COPY --chown=connector:connector connectors/taktus_connectors/gcp /app/taktus_connectors/gcp
+ENTRYPOINT ["python", "-m", "taktus_connectors.gcp"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
 FROM base AS github
 COPY --chown=connector:connector connectors/taktus_connectors/github /app/taktus_connectors/github
 ENTRYPOINT ["python", "-m", "taktus_connectors.github"]
@@ -88,6 +98,11 @@ CMD ["--host", "0.0.0.0", "--port", "9100"]
 FROM base AS kubernetes
 COPY --chown=connector:connector connectors/taktus_connectors/kubernetes /app/taktus_connectors/kubernetes
 ENTRYPOINT ["python", "-m", "taktus_connectors.kubernetes"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
+FROM base AS loki
+COPY --chown=connector:connector connectors/taktus_connectors/loki /app/taktus_connectors/loki
+ENTRYPOINT ["python", "-m", "taktus_connectors.loki"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
 FROM base AS mail
@@ -118,6 +133,11 @@ CMD ["--host", "0.0.0.0", "--port", "9100"]
 FROM base AS stripe
 COPY --chown=connector:connector connectors/taktus_connectors/stripe /app/taktus_connectors/stripe
 ENTRYPOINT ["python", "-m", "taktus_connectors.stripe"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
+FROM base AS vault
+COPY --chown=connector:connector connectors/taktus_connectors/vault /app/taktus_connectors/vault
+ENTRYPOINT ["python", "-m", "taktus_connectors.vault"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
 FROM base AS vendor

@@ -9,9 +9,15 @@
 # (`pipeline.queued_too_long`, `pipeline.running_too_long`) reports a deviation with a link to
 # the run, whose result lists each run with its address at the service.
 #
-# Restarting a lost job, cleaning up a runner and the pipeline's weekly cost are not built: the
-# repository connector restarts no run and reads neither the runners nor the billing of the
-# service. The thresholds are this version's.
+# A lost run is restarted (ADR-0201): the run in progress longest past two hours is cancelled
+# and, a minute later, its failed jobs are rerun, each once a person confirmed it at level 2.
+# The rerun names the attempt the cancel read, so a repeat reruns nothing. The self-hosted
+# runners are read through `repository.runners`, and those offline counted for the tenant's
+# corridor (`pipeline.runners_offline`).
+#
+# Not built: removing a runner — the pool's size stays with a person — and the pipeline's
+# weekly cost, which the service bills to the account and no capability reads. The thresholds
+# are this version's.
 #
 # By hand:
 #
@@ -20,18 +26,18 @@
 # Switching it off (`taktusctl deactivate --process b-1-12`) changes nothing at the service.
 
 id: b-1-12
-version: "1"
+version: "2"
 name: B-1.12 Pipeline infrastructure
 autonomy:
-  level: 1
+  level: 2
   reason: >
-    the process only reads and counts by a fixed rule; nothing leaves the system, so at level 1
-    every step runs and none acts; the judgement is the tenant's corridor, and a red value
-    reaches a person as an incident
+    the runs and runners are read and counted by a fixed rule; cancelling and rerunning a lost
+    run changes the service, so at level 2 a person confirms each; the judgement is the
+    tenant's corridor, and a red value reaches a person as an incident
   toward_next: >
-    four weeks of counts a person checked against the service and found right, and stage 1 of
-    the tenant's plan open; restarting a run waits for an operation that restarts one, before
-    any level above 1 (UC-7.1, UC-9.6)
+    four weeks of restarts a person confirmed without changing one, and stage 1 of the tenant's
+    plan open; then Taktus proposes level 3, and level 4 after it, its target in UC-03; pool
+    sizes and runner types stay with a person (UC-7.1, UC-9.6)
 author: the repository
 reason: a pipeline run that hangs is named without a person watching the pipeline (UC-03 B-1.12)
 
@@ -39,7 +45,7 @@ triggers:
   - schedule: hourly
 
 limits:
-  quota: { units: 4 }
+  quota: { units: 20 }
 
 steps:
   - id: read-queued
@@ -117,6 +123,97 @@ steps:
       order: age_minutes
       descending: true
 
+  - id: cancel-lost
+    method: rule
+    reason: cancelling the run in progress longest is one API call; it changes the service, so at level 2 a person confirms it first
+    rejected:
+      - method: worker
+        why: nothing here needs a sandbox or tools
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.pipelines is unavailable
+      to: human
+      role: owner
+    depends_on: [running-too-long]
+    work:
+      when:
+        - { value: { $from: running-too-long, $select: count }, not_matches: "^0$" }
+      rule: connector
+      operation: repository.pipelines.cancel
+      input:
+        run: { $from: running-too-long, $select: first.id }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: settle
+    method: wait
+    reason: the service completes a cancelled run after it accepted the cancel; a rerun before that is refused
+    rejected: []
+    depends_on: [cancel-lost, running-too-long]
+    work:
+      when:
+        - { value: { $from: running-too-long, $select: count }, not_matches: "^0$" }
+      seconds: 60
+
+  - id: rerun-lost
+    method: rule
+    reason: rerunning the cancelled run's failed jobs is one API call, once for the attempt the cancel read; at level 2 a person confirms it first
+    rejected:
+      - method: worker
+        why: nothing here needs a sandbox or tools
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.pipelines is unavailable, or the run was not completed in time
+      to: human
+      role: owner
+    depends_on: [settle, cancel-lost, running-too-long]
+    work:
+      when:
+        - { value: { $from: running-too-long, $select: count }, not_matches: "^0$" }
+      rule: connector
+      operation: repository.pipelines.rerun
+      input:
+        run: { $from: running-too-long, $select: first.id }
+        attempt: { $from: cancel-lost, $select: output.attempt }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: read-runners
+    method: rule
+    reason: the self-hosted runners are read verbatim, each with whether it is online
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.runners is unavailable
+      to: human
+      role: owner
+    depends_on: [read-queued]
+    work:
+      rule: connector
+      operation: repository.runners.list
+      input: {}
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: runners-offline
+    method: rule
+    reason: a runner that is not online is a field of the service's own reading
+    rejected:
+      - method: llm
+        why: a selection by a field needs no judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the runners offline }
+    depends_on: [read-runners]
+    work:
+      rule: filter
+      items: { $from: read-runners, $select: output.runners }
+      all:
+        - { field: status, not_matches: "^\"?online" }
+      order: name
+
 # How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
 # every step the system to act in, what to do there, the expertise it needs, each credential by
 # its parameter and where an authorised person finds it, and how to tell that it is done.
@@ -126,8 +223,9 @@ takeover:
     steps run in order: list the pipeline runs still queued, then the runs in progress; keep
     each queued run waiting for 30 minutes or more, because no runner took it, and each run in
     progress for 120 minutes or more. The counts are judged by the tenant's corridor and named
-    in the daily report, each run with its link. Restarting or cancelling a run, the pool sizes
-    and the runner types stay with a person.
+    in the daily report, each run with its link. Once a person agreed, cancel the run in
+    progress longest, wait a minute, and rerun its failed jobs. List the self-hosted runners and
+    count those offline. The pool sizes and the runner types stay with a person.
   steps:
     read-queued:
       system: the repository hosting service, in the repository's pipeline runs
@@ -172,3 +270,49 @@ takeover:
       expertise: none
       credentials: []
       done: the runs in progress too long and their count are written down and passed on
+    cancel-lost:
+      system: the repository hosting service, the run's page
+      do: >
+        only where a run is in progress too long, and once the person responsible agreed: cancel
+        the one in progress longest, and note its attempt number
+      expertise: cancelling a pipeline run in the repository hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md
+      done: the run is cancelled, or none was in progress too long
+    settle:
+      system: none
+      do: wait one minute, until the service shows the run as completed
+      expertise: none
+      credentials: []
+      done: the run shows as completed
+    rerun-lost:
+      system: the repository hosting service, the run's page
+      do: >
+        once the person responsible agreed: rerun the failed jobs of the cancelled run, unless
+        its attempt number is already higher than the one noted, which means it was rerun
+      expertise: rerunning a pipeline run's failed jobs in the repository hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md
+      done: the run's failed jobs run again, or none was in progress too long
+    read-runners:
+      system: the repository hosting service, the repository's self-hosted runners
+      do: list every runner with whether it is online and whether it is busy
+      expertise: reading the runners in the repository hosting service's settings
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md
+      done: every runner is listed
+    runners-offline:
+      system: the list of runners
+      do: keep the runners that are not online, sort them by name and count them
+      expertise: none
+      credentials: []
+      done: the runners offline are listed and counted

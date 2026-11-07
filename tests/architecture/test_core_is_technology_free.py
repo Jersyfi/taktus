@@ -66,6 +66,11 @@ PRODUCT_NAMES = (
     "prometheus",
     "aws",
     "amazon",
+    "cloudwatch",
+    "bigquery",
+    "loki",
+    "hashicorp",
+    "appstoreconnect",
     "stripe",
     "litellm",
 )

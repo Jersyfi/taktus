@@ -153,6 +153,17 @@ def _revision(resource: Json) -> int | None:
         return None
 
 
+def _progressed(status: Json) -> str | None:
+    """When the deployment's rollout last progressed: the `lastUpdateTime` of its `Progressing`
+    condition, which the controller sets as the newest replica set comes up — once complete,
+    the moment the last release finished rolling out (ADR-0201). None where it states none."""
+    for condition in status.get("conditions") or []:
+        if isinstance(condition, dict) and condition.get("type") == "Progressing":
+            moment = condition.get("lastUpdateTime")
+            return str(moment) if isinstance(moment, str) and moment else None
+    return None
+
+
 def deployment_output(made: Json) -> Json:
     """What a reading yields of a deployment, and whether its rollout is complete: the condition
     `kubectl rollout status` waits for."""
@@ -179,6 +190,7 @@ def deployment_output(made: Json) -> Json:
         "available": available,
         "revision": _revision(made),
         "key": _annotations(template).get(KEY_ANNOTATION),
+        "changed_at": _progressed(status),
         "rolled_out": observed
         and updated >= wanted
         and available >= wanted

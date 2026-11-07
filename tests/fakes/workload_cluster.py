@@ -24,7 +24,10 @@ What it enforces, because the connector's checks depend on it:
   otherwise a new one is made with it. The deployment's revision annotation follows.
 - **A rollout.** It completes at once — every wanted replica updated, ready and available —
   unless `POST /_fake/rollout` with `{"stalled": true}` holds it, as a rollout whose new pods
-  never become ready.
+  never become ready. Its `Progressing` condition carries the moment of the last change of the
+  pod template as `lastUpdateTime`, reason `NewReplicaSetAvailable` once complete and
+  `ReplicaSetUpdated` while held; `{"rolled_at": "<RFC 3339>"}` sets that moment, as a rollout
+  an hour ago would have left it (ADR-0201).
 
 The namespace `default` holds the deployments `web` (container `app`, image
 `registry.example/app:1.0.0`, three replicas) and `web-canary` (the same, no replicas), each
@@ -43,6 +46,7 @@ import re
 import sys
 import threading
 import uuid
+from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
@@ -78,6 +82,10 @@ def deployment(name: str, replicas: int) -> Json:
     }
 
 
+def _now() -> str:
+    return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
 class State:
     def __init__(self, tokens: set[str]) -> None:
         self.tokens = tokens
@@ -87,6 +95,7 @@ class State:
     def reset(self) -> None:
         self.requests = 0
         self.stalled = False
+        self.rolled_at: dict[str, str] = {}
         self.version = 1
         self.deployments: dict[str, Json] = {}
         self.replicasets: list[Json] = []
@@ -125,6 +134,15 @@ class State:
             "readyReplicas": ready,
             "availableReplicas": ready,
             "unavailableReplicas": replicas - ready,
+            "conditions": [
+                {
+                    "type": "Progressing",
+                    "status": "True",
+                    "reason": "ReplicaSetUpdated" if self.stalled else "NewReplicaSetAvailable",
+                    "lastUpdateTime": self.rolled_at.setdefault(made["metadata"]["name"], _now()),
+                    "lastTransitionTime": self.rolled_at[made["metadata"]["name"]],
+                }
+            ],
         }
 
     def owned(self, made: Json) -> list[Json]:
@@ -143,6 +161,7 @@ class State:
             return
         made["metadata"]["generation"] += 1
         if made["spec"]["template"] != before["spec"]["template"]:
+            self.rolled_at[made["metadata"]["name"]] = _now()
             owned = self.owned(made)
             newest = max(int(rs["metadata"]["annotations"][REVISION]) for rs in owned) + 1
             for rs in owned:
@@ -286,6 +305,8 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
                     return
                 if url.path == "/_fake/rollout":
                     state.stalled = bool(body.get("stalled"))
+                    if body.get("rolled_at"):
+                        state.rolled_at = dict.fromkeys(state.deployments, str(body["rolled_at"]))
                     for made in state.deployments.values():
                         state._status(made)
                     self.answer(200, {"stalled": state.stalled})

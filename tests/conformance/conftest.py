@@ -34,6 +34,7 @@ import httpx
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from fakes.app_store_service import test_value as app_store_value
 from fakes.ports import free_port
 
 from taktus.adapters.driven.clock import SystemClock
@@ -1109,8 +1110,12 @@ class BusinessConnector:
     args: tuple[str, ...] = ()
     pair: bool = False
     """The credential is a key pair, `<id>:<secret>`, as a provider that signs takes one."""
+    made: Callable[[], str] | None = None
+    """How a value is made where the provider needs one of its own shape, a signing key."""
 
     def value(self) -> str:
+        if self.made is not None:
+            return self.made()
         if self.pair:
             return f"key-{secrets.token_hex(6)}:sig-{secrets.token_hex(12)}"
         return "tok-" + secrets.token_hex(12)
@@ -1124,18 +1129,26 @@ BUSINESS: dict[str, BusinessConnector] = {
     "anthropic": BusinessConnector(
         "anthropic", FAKES / "cost_report_service.py", "MODEL_COSTS_TOKEN"
     ),
+    "appstore": BusinessConnector(
+        "appstore", FAKES / "app_store_service.py", "STORE_API_KEY", made=app_store_value
+    ),
     "aws": BusinessConnector("aws", FAKES / "cloud_billing_service.py", "BILLING_KEY", pair=True),
     "calendar": BusinessConnector("calendar", FAKES / "calendar_service.py", "CALENDAR_TOKEN"),
     "einvoice": BusinessConnector(
         "einvoice", FAKES / "document_inbox_service.py", "DOCUMENTS_TOKEN"
     ),
     "expiry": BusinessConnector("expiry", FAKES / "expiry_service.py", "EXPIRY_TOKEN"),
+    "gcp": BusinessConnector(
+        "gcp", FAKES / "cloud_service.py", "CLOUD_TOKEN", ("--project", "example")
+    ),
     "kubernetes": BusinessConnector("kubernetes", FAKES / "workload_cluster.py", "WORKLOADS_TOKEN"),
+    "loki": BusinessConnector("loki", FAKES / "log_store_service.py", "LOGS_TOKEN"),
     "openai": BusinessConnector("openai", FAKES / "model_costs_service.py", "MODEL_COSTS_TOKEN"),
     "sentry": BusinessConnector(
         "sentry", FAKES / "error_tracking_service.py", "ERRORS_TOKEN", ("--organization", "example")
     ),
     "stripe": BusinessConnector("stripe", FAKES / "payment_service.py", "PAYMENTS_TOKEN"),
+    "vault": BusinessConnector("vault", FAKES / "secret_store_service.py", "SECRETS_TOKEN"),
 }
 
 

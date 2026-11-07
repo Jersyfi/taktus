@@ -127,6 +127,9 @@ jobs:
           - name: taktus-connector-anthropic
             dockerfile: connectors/Dockerfile
             target: anthropic
+          - name: taktus-connector-appstore
+            dockerfile: connectors/Dockerfile
+            target: appstore
           - name: taktus-connector-aws
             dockerfile: connectors/Dockerfile
             target: aws
@@ -142,6 +145,9 @@ jobs:
           - name: taktus-connector-expiry
             dockerfile: connectors/Dockerfile
             target: expiry
+          - name: taktus-connector-gcp
+            dockerfile: connectors/Dockerfile
+            target: gcp
           - name: taktus-connector-github
             dockerfile: connectors/Dockerfile
             target: github
@@ -151,6 +157,9 @@ jobs:
           - name: taktus-connector-kubernetes
             dockerfile: connectors/Dockerfile
             target: kubernetes
+          - name: taktus-connector-loki
+            dockerfile: connectors/Dockerfile
+            target: loki
           - name: taktus-connector-mail
             dockerfile: connectors/Dockerfile
             target: mail
@@ -169,6 +178,9 @@ jobs:
           - name: taktus-connector-stripe
             dockerfile: connectors/Dockerfile
             target: stripe
+          - name: taktus-connector-vault
+            dockerfile: connectors/Dockerfile
+            target: vault
           - name: taktus-connector-vendor
             dockerfile: connectors/Dockerfile
             target: vendor

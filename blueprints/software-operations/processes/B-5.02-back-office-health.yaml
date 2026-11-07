@@ -4,8 +4,10 @@
 #
 # It is B-1.06's check, pointed at the back office: the tenant's connector serving
 # `check.http` for this process is configured with the back office's address, and `path` names
-# the part checked. Reading the back office's error log is not built: no connector serves a
-# log (UC-03 §8).
+# the part checked. Where the run names a `log_filter`, the back office's error log of the
+# last five minutes is read through `logs.query` too (ADR-0202), in the log store's own
+# language, and a rule counts its entries; the tenant's corridor on the step `log-errors` and
+# its `count` (`errors.back_office_log`) judges them. A run without it skips both steps.
 #
 # The judgement is the tenant's corridor on the step `failures` and its `count`: how many of the
 # two checks failed. A person of the tenant configures it once:
@@ -27,7 +29,7 @@
 # Switching it off (`taktusctl deactivate --process b-5-02`) changes nothing at the service: it only asks.
 
 id: b-5-02
-version: "1"
+version: "2"
 name: B-5.02 Back-office health
 autonomy:
   level: 1
@@ -57,9 +59,15 @@ inputs:
   max_duration_ms:
     description: the longest an answer may take, in milliseconds, before the check counts as failed
     example: 5000
+  log_filter:
+    description: >
+      the tenant's filter for an error entry of the back office, in its log store's own query
+      language; left out, the error log is not read
+    example: '{app="back-office"} |= "error"'
+    required: false
 
 limits:
-  quota: { units: 4 }
+  quota: { units: 6 }
 
 steps:
   - id: check-first
@@ -135,6 +143,50 @@ steps:
       all:
         - { field: outcome, equals: failed }
 
+  - id: read-error-log
+    method: rule
+    reason: the back office's error entries of the last five minutes are read verbatim, by the tenant's own filter
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving logs.query is unavailable
+      to: human
+      role: owner
+    depends_on: [check-first]
+    work:
+      when:
+        - { value: { $input: log_filter, $otherwise: "" }, matches: "." }
+      rule: connector
+      operation: logs.query.entries
+      input:
+        filter: { $input: log_filter, $otherwise: "" }
+        since_minutes: 5
+        limit: 1000
+      credentials:
+        - { name: LOGS_TOKEN, injected_as: env }
+
+  - id: log-errors
+    method: rule
+    reason: >
+      the errors the back office logged are a count of the store's own entries, which the
+      corridor judges; an answer the store cut short is said so by its `complete`
+    rejected:
+      - method: llm
+        why: a count needs no judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the error entries of the back office's log }
+    depends_on: [read-error-log]
+    work:
+      when:
+        - { value: { $input: log_filter, $otherwise: "" }, matches: "." }
+      rule: filter
+      items: { $from: read-error-log, $select: output.entries }
+      all:
+        - { field: timestamp, matches: "." }
+
 takeover:
   sequence: >
     The process runs every five minutes, on its own schedule; whoever watches the back office
@@ -143,7 +195,8 @@ takeover:
     answer is not status 200 or takes longer than the limit, 5000 milliseconds unless the run
     names another. One failure is yellow and waits for the daily report; two failures in a row
     are red, an outage, and are reported at once to the role the tenant named. Telling customers
-    about a long outage stays with a person.
+    about a long outage stays with a person. Where the run names a log filter, read the back
+    office's error log of the last five minutes with it and count its entries.
   steps:
     check-first:
       system: a shell or a browser, against the back office's address
@@ -187,3 +240,23 @@ takeover:
       expertise: none
       credentials: []
       done: the count is written down, and a count of two has been reported as an outage
+    read-error-log:
+      system: the business's log store, in its query view
+      do: >
+        only where the run names a log filter: search the log store with it over the last five
+        minutes, at most a thousand entries, and note whether the store said there are more.
+      expertise: querying the log store in its own query language
+      credentials:
+        - parameter: LOGS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Logs token of the requesting
+            identity described in CREDENTIALS.md
+      done: the back office's error entries are listed, or the step is skipped
+    log-errors:
+      system: the list of error entries
+      do: >
+        count the entries and compare the count with the tenant's corridor for the back
+        office's error log; a red count is reported at once to the role the tenant named
+      expertise: the usual error volume of the back office
+      credentials: []
+      done: the error entries are counted, or the step is skipped
