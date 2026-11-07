@@ -65,7 +65,9 @@ class Rule:
     def __init__(self, permitted: Permitted) -> None:
         self.own = permitted
 
-    async def permitted(self, tenant: str, data_class: str | None) -> Permitted:
+    async def permitted(
+        self, tenant: str, data_class: str | None, process: str | None = None
+    ) -> Permitted:
         return self.own
 
 
