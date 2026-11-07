@@ -17,7 +17,7 @@
 # hand, which is the takeover test of ADR-0013 B for this process.
 
 id: s01-removal-test
-version: "2"
+version: "3"
 name: S-01 Removal test
 autonomy:
   level: 3
@@ -197,6 +197,8 @@ steps:
         Processes exercised: ${processes}.
         Maturity now ${maturity}; still missing for verified: ${missing}.
         Ledger entry removal.tested seq ${seq}, digest ${digest}.
+
+        ${statement}
       values:
         integration: { $input: integration }
         family: { $from: exercise, $select: output.family }
@@ -207,6 +209,7 @@ steps:
         missing: { $from: record, $select: output.missing }
         seq: { $from: record, $select: output.ledger_seq }
         digest: { $from: record, $select: output.content_digest }
+        statement: { $run: exactness }
 
 # How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
 # every step the system to act in, what to do there, the expertise it needs, each credential by

@@ -5414,8 +5414,15 @@ class RunEngine:
                 outcome="answer failed the check",
             )
         trace = Trace(inputs=read, adapter_version=completion.model, route=routed.record())
+        answer: dict[str, Any] = {"text": completion.text, "model": completion.model}
+        if self._statements is not None and _names_exactness(work.values):
+            # A model may explain the statement; its explanation names the statement it
+            # explains, by a line the run writes, never the model (UC-6.9 §2, ADR-0226).
+            statement = await self._statements.rendered(run.tenant, run.process_version)
+            if statement is not None:
+                answer = explaining(answer, run.process_version, statement)
         return (
-            {"text": completion.text, "model": completion.model},
+            answer,
             trace,
             consumption,
             resolved.adapter,
@@ -7146,6 +7153,22 @@ class RunEngine:
 
 EXACTNESS = "exactness"
 """The part of a `$run` reference that is the exactness statement of the run's version."""
+
+
+def explaining(answer: dict[str, Any], process_version: str, rendered: str) -> dict[str, Any]:
+    """A model's answer that read the exactness statement, with the statement it explains named
+    by version and digest: in a closing line of its text and as `explains` (ADR-0226)."""
+    digest = hashlib.sha256(rendered.encode("utf-8")).hexdigest()
+    line = (
+        f"This explains the exactness statement of {process_version} (sha256:{digest[:16]}), "
+        "written by a model; the statement itself, generated from the process version, is "
+        "what holds."
+    )
+    return {
+        **answer,
+        "text": f"{str(answer['text']).rstrip()}\n\n{line}",
+        "explains": {"statement": process_version, "digest": f"sha256:{digest}"},
+    }
 
 
 def _names_exactness(value: Any) -> bool:

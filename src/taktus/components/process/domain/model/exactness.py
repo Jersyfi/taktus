@@ -100,6 +100,25 @@ NOT_YET_MEASURED = (
     "hundred — is not yet measured: the value ledger does not count it yet."
 )
 
+NONE_COUNTED = (
+    "The measured rate — how many results a person corrected after the checks passed, per "
+    "hundred — is not yet measured: no result of a checked step of this version has counted yet."
+)
+
+
+def measured_rate(corrected: int, counted: int) -> str:
+    """The residual risk's last line once the value ledger counts it (ADR-0226): the figure as
+    counted, never estimated."""
+    if counted <= 0:
+        return NONE_COUNTED
+    rate = 100 * corrected / counted
+    return (
+        f"The measured rate: a person corrected {corrected} of {counted} counted results of "
+        f"its checked steps after the checks passed, {rate:.1f} per hundred, as the value ledger "
+        "counts them."
+    )
+
+
 FORBIDDEN = re.compile(r"guarant", re.IGNORECASE)
 """A statement says what was checked against what. It never says "guaranteed" (UC-6.9 §2)."""
 

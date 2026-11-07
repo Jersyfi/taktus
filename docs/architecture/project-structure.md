@@ -466,7 +466,13 @@ role it would tie the core to a model stack and the removal test would be lost.
   component and handed over unchanged by `composition/levels.py`: `statement_of` gives it to
   the process level, every run level and the overview, and `VersionStatements` answers the run's
   port `Statements` for a report step's `{"$run": "exactness"}`; `composition/local.py`,
-  `composition/daemon.py` and `composition/replay.py` wire it into their engines.
+  `composition/daemon.py` and `composition/replay.py` wire it into their engines. Since
+  ADR-0226 the residual risk carries the measured correction rate: the `value` component folds
+  it into the projection `value.corrections.v1` (`components/value/domain/service/corrections.py`)
+  and answers it by `CorrectionRates` (`application/query/correction_rates.py`);
+  `composition/levels.py`'s `measured_of` reads it and hands it to the statement, for the levels
+  and `VersionStatements`. An `llm` step that reads the statement carries `explains` and a
+  closing line naming it (`explaining` in `run/application/service/execute_run.py`).
 - **An outside participant's answer** (ADR-0155) is taken from a channel's intake by
   `composition/participants.py`: `ParticipantAnswers` stands ahead of `OwnerAnswers` in the
   daemon's intake, finds the waiting `human` step of the tenant by the intake's channel and

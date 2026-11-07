@@ -62,6 +62,7 @@ from taktus.components.reporting.domain.model import ReportKind
 from taktus.components.run.application.service import RunEngine, StartRun
 from taktus.components.run.domain.model import Run, RunState, StepState
 from taktus.composition.guides import InstanceGuides
+from taktus.composition.levels import VersionStatements
 from taktus.ports.connector import ActionConnector
 from taktus.ports.worker import Limits
 from taktus.shared.v1 import Command, Intent, Plan, ReplyTo
@@ -199,6 +200,10 @@ class World:
             telemetry=NoTelemetry(),
             maturities=VERIFIED,
             connectors=connectors,
+            # Its report carries the exactness statement of its version (ADR-0226).
+            statements=VersionStatements(
+                persistence, MemoryRepository(persistence, ProcessVersion)
+            ),
         )
         processes = MemoryRepository(persistence, Process)
         self.processes = processes

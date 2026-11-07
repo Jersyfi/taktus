@@ -19,7 +19,7 @@
 # hand (README.md beside this directory).
 
 id: s06-maturation
-version: "2"
+version: "3"
 name: S-06 Maturation
 autonomy:
   level: 3
@@ -124,11 +124,14 @@ steps:
       text: |
         Maturation: ${steps} step(s) measured, ${unpriced} with a cost that could not be priced.
         ${looked_at} step(s) on a language model looked at, ${proposed} proposal(s) raised.
+
+        ${statement}
       values:
         steps: { $from: measure, $select: output.count }
         unpriced: { $from: measure, $select: output.unpriced }
         looked_at: { $from: propose, $select: output.looked_at }
         proposed: { $from: propose, $select: output.proposed }
+        statement: { $run: exactness }
 
 # How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
 # every step the system to act in, what to do there, the expertise it needs, each credential by

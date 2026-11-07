@@ -137,6 +137,7 @@ from taktus.components.run.application.query import (
 from taktus.components.run.application.service import EngineOptions, RunEngine
 from taktus.components.run.application.service.stops import Stops
 from taktus.components.run.domain.model import AdapterStop, Run
+from taktus.components.value.application.query import CorrectionRates
 from taktus.composition.acting import ActingReads
 from taktus.composition.agents import SharedAgents
 from taktus.composition.alerts import alerts
@@ -410,7 +411,9 @@ class LocalWiring:
                     masking=known_secrets(os.environ),
                     stops=stops,
                     messages=decisions.messages,
-                    statements=VersionStatements(stores.work, stores.of(ProcessVersion)),
+                    statements=VersionStatements(
+                        stores.work, stores.of(ProcessVersion), CorrectionRates(ledger, stores.work)
+                    ),
                     org_units=org_units,
                 )
 
@@ -767,6 +770,7 @@ class LocalWiring:
                         stores.of(Request),
                         stores.of(TakeoverTrial),
                         tenants=stores.tenants,
+                        rates=CorrectionRates(ledger, stores.work),
                     ),
                     traces=stores.traces,
                     work=stores.work,
