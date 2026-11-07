@@ -1,0 +1,28 @@
+{
+  "credentials": {
+    "actions": "WORKLOADS_TOKEN"
+  },
+  "read": {
+    "operation": "deployment.workloads.read",
+    "input": {
+      "name": "web"
+    }
+  },
+  "writes": [
+    {
+      "operation": "deployment.workloads.release",
+      "input": {
+        "name": "web",
+        "container": "app",
+        "image": "registry.example/app:conformance-{{unique}}"
+      }
+    }
+  ],
+  "invalid": {
+    "operation": "deployment.workloads.read",
+    "input": {
+      "name": "Not A Name"
+    },
+    "expected_cause": "invalid"
+  }
+}

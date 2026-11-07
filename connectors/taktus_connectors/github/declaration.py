@@ -93,7 +93,8 @@ OPERATIONS: list[Json] = [
         "effect": "read",
         "summary": "List the pull requests in one state, open unless `state` says closed or "
         "all, each with its head and the head's commit, its base, whether it is a draft, its "
-        "labels, and its whole hours idle and open at the moment of the reading. With "
+        "labels, its whole hours idle and open at the moment of the reading, and whether it "
+        "was merged with its whole hours since. With "
         "`with_state`, the first `limit` (at most 30) also carry `behind` and `ahead` of their "
         "base, the pipeline's word for their head and the key their head commit carries. At "
         "most twenty pages of 100; `complete` says whether every one was read.",

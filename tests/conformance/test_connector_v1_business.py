@@ -12,6 +12,7 @@ the fault breaks (README §8).
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 
 import pytest
@@ -24,7 +25,9 @@ from .conftest import BUSINESS, CONNECTORS, RunningConnector, open_standard_faul
 type Start = Callable[..., RunningConnector]
 SCOPED = frozenset({"stripe"})
 """The business connectors that declare a scoped capability (C-11)."""
-WRITERS = frozenset({"accounting", "kubernetes"})
+WRITERS = frozenset(
+    {"accounting", "appstores", "cloudrun", "firebase", "kubernetes", "mailchimp", "wordpress"}
+)
 """The business connectors with an operation that leaves the system (C-05)."""
 FAULTS = [
     (module, fault, check)
@@ -47,9 +50,10 @@ async def test_a_business_connector_passes(module: str, start_business_connector
     assert applicable is (module in WRITERS), report.render()
     text = report.to_json() + connector.log.read_text()
     for value in connector.credential_values.values():
-        assert value not in text
-        for part in value.split(":")[1:]:  # the secret half of a key pair never shows either
-            assert part not in text
+        assert value not in text and json.dumps(value)[1:-1] not in text
+        if BUSINESS[module].pair:
+            for part in value.split(":")[1:]:  # the secret half of a key pair never shows either
+                assert part not in text
 
 
 @pytest.mark.parametrize("module", sorted(BUSINESS))

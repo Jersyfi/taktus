@@ -1,0 +1,540 @@
+# B-8.04 Staged rollout, at an app store — UC-03 §4.8: a release published at its store is
+# raised in stages while its crash rate stays below a limit, and halted by itself on a rise
+# (UC-6.13, UC-7.2). Resuming after a halt stays with a person.
+#
+# The version of B-8.04 for a mobile app (ADR-0210). The release is the store's staged one,
+# raised through the capability `stores.releases` to the three fractions the inputs name. After
+# each stage the run waits a day and reads the release's crash rate through `metrics.series`,
+# with the tenant's query. A rate below the limit raises the next stage. A rate at or above it
+# halts the staged release: the halt is the process's own, by rule, and the stages after it do
+# not run. A person who resumes starts a new run. One store takes no fraction and follows its
+# own seven-day schedule: there a raise resumes that schedule, the last stage completes it, and
+# the halt pauses it.
+#
+# At level 2 every step waits for a person's confirmation, the halt among them; at level 3, its
+# target in UC-03, the stages and the halt run on their own. A tenant registers this version of
+# b-8-04 or the cluster's (`B-8.04-staged-rollout.yaml`), whichever its release runs on; the
+# stage counts either (ADR-0191).
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-8.04-store-rollout.yaml \
+#         --input platform=android --input app=com.example.app \
+#         --input first=0.05 --input second=0.2 --input third=1 \
+#         --input 'crash_rate_query=sum(rate(app_crashes_total[1d]))/sum(rate(app_sessions_total[1d]))' \
+#         --input max_crash_rate=0.01
+#
+# Switching it off (`taktusctl deactivate --process b-8-04`) changes nothing at the store.
+
+id: b-8-04
+version: "1"
+name: B-8.04 Staged rollout, at an app store
+autonomy:
+  level: 2
+  reason: >
+    raising the staged release leaves the system and reaches more users at each stage, so a
+    person confirms each step, as every process of UC-03 starts at level 1 or 2 when its stage
+    opens
+  toward_next: >
+    four weeks of rollouts a person confirmed with every rise halted, and stage 3 of the tenant's
+    plan open; then Taktus proposes level 3, its target in UC-03, at which the stages and the halt
+    run on their own (UC-7.1, UC-9.6)
+author: the repository
+reason: a release reaches all users only while its crash rate holds, and is halted without a person on a rise (UC-03 B-8.04)
+
+inputs:
+  platform:
+    description: the platform of the app, ios or android; it names the store
+    example: android
+  app:
+    description: the app at its store, the identifier or the package name the store gives it
+    example: com.example.app
+  first:
+    description: the share of users the release reaches at the first stage, above 0 and at most 1
+    example: 0.05
+  second:
+    description: the share of users at the second stage
+    example: 0.2
+  third:
+    description: the share of users at the third stage; 1 completes the rollout
+    example: 1
+  crash_rate_query:
+    description: the tenant's query that answers the release's crash rate over the last day, one number
+    example: sum(rate(app_crashes_total[1d]))/sum(rate(app_sessions_total[1d]))
+  max_crash_rate:
+    description: the rate at or above which the rollout halts, a decimal
+    example: "0.01"
+
+limits:
+  quota: { units: 60 }
+
+steps:
+  - id: raise-1
+    method: rule
+    reason: the staged release is raised to the stage's share by an API call; at level 2 a person confirms it
+    rejected:
+      - method: worker
+        why: the store rolls the release out itself; nothing here needs a sandbox
+    exactness: sourced
+    fallback:
+      when: the connector serving stores.releases is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: stores.releases.raise
+      input:
+        platform: { $input: platform }
+        app: { $input: app }
+        fraction: { $input: first }
+      credentials:
+        - { name: STORES_KEY, injected_as: env }
+
+  - id: pause-1
+    method: wait
+    reason: a day of use on the stage tells its crash rate; nothing is judged meanwhile
+    rejected: []
+    depends_on: [raise-1]
+    work:
+      seconds: 86400
+
+  - id: rate-1
+    method: rule
+    reason: the store's figure for the release is read verbatim, as the metrics store gave it
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving metrics.series is unavailable
+      to: human
+      role: owner
+    depends_on: [pause-1]
+    work:
+      rule: connector
+      operation: metrics.series.query
+      input:
+        query: { $input: crash_rate_query }
+      credentials:
+        - { name: METRICS_TOKEN, injected_as: env }
+
+  - id: rise-1
+    method: rule
+    reason: a rate at or above the limit is a threshold over the store's own figure; a value the store could not give as a number is left out, never read as zero
+    rejected:
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the release's crash rate at or above the limit after stage 1 }
+    depends_on: [rate-1]
+    work:
+      rule: filter
+      items: { $from: rate-1, $select: output.series }
+      all:
+        - { field: values.0.value, at_least: { $input: max_crash_rate } }
+
+  - id: halt-1
+    method: rule
+    reason: on a rise the staged release is halted by rule, so that no more users receive it; resuming stays with a person
+    rejected:
+      - method: human
+        why: a halt that waits for a person lets the rise reach users meanwhile; the rule is fixed (ADR-0023)
+    exactness: sourced
+    fallback:
+      when: the connector serving stores.releases is unavailable
+      to: human
+      role: owner
+    depends_on: [rise-1]
+    work:
+      when:
+        - { value: { $from: rise-1, $select: count }, matches: "^[1-9]" }
+      rule: connector
+      operation: stores.releases.halt
+      input:
+        platform: { $input: platform }
+        app: { $input: app }
+      credentials:
+        - { name: STORES_KEY, injected_as: env }
+
+  - id: raise-2
+    method: rule
+    reason: the staged release is raised to the stage's share by an API call; at level 2 a person confirms it
+    rejected:
+      - method: worker
+        why: the store rolls the release out itself; nothing here needs a sandbox
+    exactness: sourced
+    fallback:
+      when: the connector serving stores.releases is unavailable
+      to: human
+      role: owner
+    depends_on: [rise-1]
+    work:
+      when:
+        - { value: { $from: rise-1, $select: count }, matches: "^0$" }
+      rule: connector
+      operation: stores.releases.raise
+      input:
+        platform: { $input: platform }
+        app: { $input: app }
+        fraction: { $input: second }
+      credentials:
+        - { name: STORES_KEY, injected_as: env }
+
+  - id: pause-2
+    method: wait
+    reason: a day of use on the stage tells its crash rate; nothing is judged meanwhile
+    rejected: []
+    depends_on: [raise-2]
+    work:
+      when:
+        - { value: { $from: rise-1, $select: count }, matches: "^0$" }
+      seconds: 86400
+
+  - id: rate-2
+    method: rule
+    reason: the store's figure for the release is read verbatim, as the metrics store gave it
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving metrics.series is unavailable
+      to: human
+      role: owner
+    depends_on: [pause-2]
+    work:
+      when:
+        - { value: { $from: rise-1, $select: count }, matches: "^0$" }
+      rule: connector
+      operation: metrics.series.query
+      input:
+        query: { $input: crash_rate_query }
+      credentials:
+        - { name: METRICS_TOKEN, injected_as: env }
+
+  - id: rise-2
+    method: rule
+    reason: a rate at or above the limit is a threshold over the store's own figure; a value the store could not give as a number is left out, never read as zero
+    rejected:
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the release's crash rate at or above the limit after stage 2 }
+    depends_on: [rate-2]
+    work:
+      when:
+        - { value: { $from: rise-1, $select: count }, matches: "^0$" }
+      rule: filter
+      items: { $from: rate-2, $select: output.series }
+      all:
+        - { field: values.0.value, at_least: { $input: max_crash_rate } }
+
+  - id: halt-2
+    method: rule
+    reason: on a rise the staged release is halted by rule, so that no more users receive it; resuming stays with a person
+    rejected:
+      - method: human
+        why: a halt that waits for a person lets the rise reach users meanwhile; the rule is fixed (ADR-0023)
+    exactness: sourced
+    fallback:
+      when: the connector serving stores.releases is unavailable
+      to: human
+      role: owner
+    depends_on: [rise-2]
+    work:
+      when:
+        - { value: { $from: rise-2, $select: count }, matches: "^[1-9]" }
+      rule: connector
+      operation: stores.releases.halt
+      input:
+        platform: { $input: platform }
+        app: { $input: app }
+      credentials:
+        - { name: STORES_KEY, injected_as: env }
+
+  - id: raise-3
+    method: rule
+    reason: the staged release is raised to the stage's share by an API call; at level 2 a person confirms it
+    rejected:
+      - method: worker
+        why: the store rolls the release out itself; nothing here needs a sandbox
+    exactness: sourced
+    fallback:
+      when: the connector serving stores.releases is unavailable
+      to: human
+      role: owner
+    depends_on: [rise-2]
+    work:
+      when:
+        - { value: { $from: rise-2, $select: count }, matches: "^0$" }
+      rule: connector
+      operation: stores.releases.raise
+      input:
+        platform: { $input: platform }
+        app: { $input: app }
+        fraction: { $input: third }
+      credentials:
+        - { name: STORES_KEY, injected_as: env }
+
+  - id: pause-3
+    method: wait
+    reason: a day of use on the stage tells its crash rate; nothing is judged meanwhile
+    rejected: []
+    depends_on: [raise-3]
+    work:
+      when:
+        - { value: { $from: rise-2, $select: count }, matches: "^0$" }
+      seconds: 86400
+
+  - id: rate-3
+    method: rule
+    reason: the store's figure for the release is read verbatim, as the metrics store gave it
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving metrics.series is unavailable
+      to: human
+      role: owner
+    depends_on: [pause-3]
+    work:
+      when:
+        - { value: { $from: rise-2, $select: count }, matches: "^0$" }
+      rule: connector
+      operation: metrics.series.query
+      input:
+        query: { $input: crash_rate_query }
+      credentials:
+        - { name: METRICS_TOKEN, injected_as: env }
+
+  - id: rise-3
+    method: rule
+    reason: a rate at or above the limit is a threshold over the store's own figure; a value the store could not give as a number is left out, never read as zero
+    rejected:
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the release's crash rate at or above the limit after stage 3 }
+    depends_on: [rate-3]
+    work:
+      when:
+        - { value: { $from: rise-2, $select: count }, matches: "^0$" }
+      rule: filter
+      items: { $from: rate-3, $select: output.series }
+      all:
+        - { field: values.0.value, at_least: { $input: max_crash_rate } }
+
+  - id: halt-3
+    method: rule
+    reason: on a rise the staged release is halted by rule, so that no more users receive it; resuming stays with a person
+    rejected:
+      - method: human
+        why: a halt that waits for a person lets the rise reach users meanwhile; the rule is fixed (ADR-0023)
+    exactness: sourced
+    fallback:
+      when: the connector serving stores.releases is unavailable
+      to: human
+      role: owner
+    depends_on: [rise-3]
+    work:
+      when:
+        - { value: { $from: rise-3, $select: count }, matches: "^[1-9]" }
+      rule: connector
+      operation: stores.releases.halt
+      input:
+        platform: { $input: platform }
+        app: { $input: app }
+      credentials:
+        - { name: STORES_KEY, injected_as: env }
+
+takeover:
+  sequence: >
+    A person who releases the app starts the process once the store published the release as a
+    staged one. The release is raised in three stages, to the shares of users the run was started
+    with. After each stage, wait a day, then read the release's crash rate with the tenant's
+    query. A rate below the limit the run was started with raises the next stage. A rate at or
+    above it halts the staged release at once, and no later stage runs. Resuming after a halt is
+    a new start, by a person. On the store that takes no share, raising resumes its own schedule,
+    a share of 1 completes it, and halting pauses it.
+  steps:
+    raise-1:
+      system: the app's store, the staged release of the app the run was started with
+      do: >
+        set the staged release to the first stage's share of users, the one the run
+        was started with, in the store's console; on the store that takes no share, resume its
+        phased release, or complete it at a share of 1.
+      expertise: managing a staged release in the store's developer console
+      credentials:
+        - parameter: STORES_KEY
+          where: >
+            the operator's secret store, under the parameter App stores key of the requesting
+            identity described in CREDENTIALS.md; a person working by hand signs in to the store's
+            console with their own account, which may manage the app's releases
+      done: the release reaches the stage's share
+    pause-1:
+      system: none
+      do: >
+        wait a day, so that the stage carries real use. Judge nothing meanwhile.
+      expertise: none
+      credentials: []
+      done: a day has passed since the stage was raised
+    rate-1:
+      system: the metrics store
+      do: >
+        run the tenant's query for the release's crash rate over the last day, the query
+        the run was started with. Write down the number exactly as the store gives it.
+      expertise: running a query in the metrics store
+      credentials:
+        - parameter: METRICS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Metrics token of the requesting
+            identity described in CREDENTIALS.md; a person working by hand signs in to the metrics
+            store with their own account, which may run queries
+      done: >
+        the crash rate is written down, or it is written down that the store gave no number
+    rise-1:
+      system: the number written down
+      do: >
+        compare the crash rate with the limit the run was started with. It is a rise when the
+        rate is at or above the limit. A missing number is not a rise and is not read as zero;
+        write down that it is missing.
+      expertise: none
+      credentials: []
+      done: it is written down whether the rate is a rise
+    halt-1:
+      system: the app's store, the staged release
+      do: >
+        Only if the rate after stage 1 was a rise: halt the staged release at once, without
+        asking anyone first, so that no more users receive it; on the store with a phased
+        release, pause it. Run no later stage. Tell the people who release the app that the
+        rollout halted, with the rate and the limit.
+      expertise: halting a staged release in the store's developer console
+      credentials:
+        - parameter: STORES_KEY
+          where: >
+            the operator's secret store, under the parameter App stores key of the requesting
+            identity described in CREDENTIALS.md; a person working by hand signs in to the store's
+            console with their own account, which may manage the app's releases
+      done: the staged release is halted, or there was no rise
+    raise-2:
+      system: the app's store, the staged release of the app the run was started with
+      do: >
+        Only if the crash rate after stage 1 was below the limit: set the staged release to the second stage's share of users, the one the run
+        was started with, in the store's console; on the store that takes no share, resume its
+        phased release, or complete it at a share of 1.
+      expertise: managing a staged release in the store's developer console
+      credentials:
+        - parameter: STORES_KEY
+          where: >
+            the operator's secret store, under the parameter App stores key of the requesting
+            identity described in CREDENTIALS.md; a person working by hand signs in to the store's
+            console with their own account, which may manage the app's releases
+      done: the release reaches the stage's share, or the stage is skipped
+    pause-2:
+      system: none
+      do: >
+        Only if the crash rate after stage 1 was below the limit: wait a day, so that the stage carries real use. Judge nothing meanwhile.
+      expertise: none
+      credentials: []
+      done: a day has passed since the stage was raised, or the stage is skipped
+    rate-2:
+      system: the metrics store
+      do: >
+        Only if the crash rate after stage 1 was below the limit: run the tenant's query for the release's crash rate over the last day, the query
+        the run was started with. Write down the number exactly as the store gives it.
+      expertise: running a query in the metrics store
+      credentials:
+        - parameter: METRICS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Metrics token of the requesting
+            identity described in CREDENTIALS.md; a person working by hand signs in to the metrics
+            store with their own account, which may run queries
+      done: >
+        the crash rate is written down, or it is written down that the store gave no number, or the stage is skipped
+    rise-2:
+      system: the number written down
+      do: >
+        Only if the crash rate after stage 1 was below the limit: compare the crash rate with the limit the run was started with. It is a rise when the
+        rate is at or above the limit. A missing number is not a rise and is not read as zero;
+        write down that it is missing.
+      expertise: none
+      credentials: []
+      done: it is written down whether the rate is a rise, or the stage is skipped
+    halt-2:
+      system: the app's store, the staged release
+      do: >
+        Only if the rate after stage 2 was a rise: halt the staged release at once, without
+        asking anyone first, so that no more users receive it; on the store with a phased
+        release, pause it. Run no later stage. Tell the people who release the app that the
+        rollout halted, with the rate and the limit.
+      expertise: halting a staged release in the store's developer console
+      credentials:
+        - parameter: STORES_KEY
+          where: >
+            the operator's secret store, under the parameter App stores key of the requesting
+            identity described in CREDENTIALS.md; a person working by hand signs in to the store's
+            console with their own account, which may manage the app's releases
+      done: the staged release is halted, or there was no rise
+    raise-3:
+      system: the app's store, the staged release of the app the run was started with
+      do: >
+        Only if the crash rate after stage 2 was below the limit: set the staged release to the third stage's share of users, the one the run
+        was started with, in the store's console; on the store that takes no share, resume its
+        phased release, or complete it at a share of 1.
+      expertise: managing a staged release in the store's developer console
+      credentials:
+        - parameter: STORES_KEY
+          where: >
+            the operator's secret store, under the parameter App stores key of the requesting
+            identity described in CREDENTIALS.md; a person working by hand signs in to the store's
+            console with their own account, which may manage the app's releases
+      done: the release reaches the stage's share, or the stage is skipped
+    pause-3:
+      system: none
+      do: >
+        Only if the crash rate after stage 2 was below the limit: wait a day, so that the stage carries real use. Judge nothing meanwhile.
+      expertise: none
+      credentials: []
+      done: a day has passed since the stage was raised, or the stage is skipped
+    rate-3:
+      system: the metrics store
+      do: >
+        Only if the crash rate after stage 2 was below the limit: run the tenant's query for the release's crash rate over the last day, the query
+        the run was started with. Write down the number exactly as the store gives it.
+      expertise: running a query in the metrics store
+      credentials:
+        - parameter: METRICS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Metrics token of the requesting
+            identity described in CREDENTIALS.md; a person working by hand signs in to the metrics
+            store with their own account, which may run queries
+      done: >
+        the crash rate is written down, or it is written down that the store gave no number, or the stage is skipped
+    rise-3:
+      system: the number written down
+      do: >
+        Only if the crash rate after stage 2 was below the limit: compare the crash rate with the limit the run was started with. It is a rise when the
+        rate is at or above the limit. A missing number is not a rise and is not read as zero;
+        write down that it is missing.
+      expertise: none
+      credentials: []
+      done: it is written down whether the rate is a rise, or the stage is skipped
+    halt-3:
+      system: the app's store, the staged release
+      do: >
+        Only if the rate after stage 3 was a rise: halt the staged release at once, without
+        asking anyone first, so that no more users receive it; on the store with a phased
+        release, pause it. Run no later stage. Tell the people who release the app that the
+        rollout halted, with the rate and the limit.
+      expertise: halting a staged release in the store's developer console
+      credentials:
+        - parameter: STORES_KEY
+          where: >
+            the operator's secret store, under the parameter App stores key of the requesting
+            identity described in CREDENTIALS.md; a person working by hand signs in to the store's
+            console with their own account, which may manage the app's releases
+      done: the staged release is halted, or there was no rise

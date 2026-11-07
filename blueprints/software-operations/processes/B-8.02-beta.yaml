@@ -1,0 +1,333 @@
+# B-8.02 Distributing a beta — UC-03 §4.8: a finished build goes to the testers, and what the
+# testers report becomes an issue (UC-4.14).
+#
+# The builds of the app are read from its store through the capability `stores.beta`
+# (ADR-0210). A rule takes the newest build the store has finished processing, and it is given
+# to the tester group or test track the run names. Where the store publishes its testers'
+# feedback, the newest piece not yet filed is opened as an issue in the repository, with the
+# store's own identifier as its mark, so that it is filed once. Only the comment and the build
+# are taken over: never the tester, an address or the device (UC-7.7). One piece of feedback per
+# run; the next run takes the next.
+#
+# One store publishes no tester feedback through its API; for its platform the feedback steps
+# are skipped, and what testers report there reaches the business as it does today.
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-8.02-beta.yaml \
+#         --input platform=ios --input app=1000000001 --input group=g-1
+#
+# Switching it off (`taktusctl deactivate --process b-8-02`) changes nothing at the store.
+
+id: b-8-02
+version: "1"
+name: B-8.02 Distributing a beta
+autonomy:
+  level: 2
+  reason: >
+    giving a build to testers and opening an issue leave the system, so a person confirms both,
+    as every process of UC-03 starts at level 1 or 2 when its stage opens
+  toward_next: >
+    four weeks of betas a person confirmed unchanged, and stage 3 of the tenant's plan open; then
+    Taktus proposes level 3, and level 4 after it, its target in UC-03 (UC-7.1, UC-9.6)
+author: the repository
+reason: every finished build reaches the testers, and what they report reaches the repository, without a person carrying it (UC-03 B-8.02)
+
+inputs:
+  platform:
+    description: the platform of the app, ios or android; it names the store
+    example: ios
+  app:
+    description: the app at its store, the identifier or the package name the store gives it
+    example: "1000000001"
+  group:
+    description: the tester group or test track the build goes to, as the store names it
+    example: g-1
+
+limits:
+  quota: { units: 60 }
+
+steps:
+  - id: builds
+    method: rule
+    reason: the store's builds and their processing state are read verbatim
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving stores.beta is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: stores.beta.builds
+      input:
+        platform: { $input: platform }
+        app: { $input: app }
+        limit: 20
+      credentials:
+        - { name: STORES_KEY, injected_as: env }
+
+  - id: newest
+    method: rule
+    reason: the build to distribute is the newest one the store calls valid, a fixed rule over the store's own word
+    rejected:
+      - method: llm
+        why: a selection by a state and an order needs no judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the newest valid build }
+    depends_on: [builds]
+    work:
+      rule: filter
+      items: { $from: builds, $select: output.builds }
+      all:
+        - { field: state, matches: "(?i)^valid$" }
+      limit: 1
+
+  - id: distribute
+    method: rule
+    reason: giving the build to the testers is an API call; the effect leaves the system, so at level 2 a person confirms it
+    rejected:
+      - method: worker
+        why: the store distributes the build itself; nothing here needs a sandbox
+    exactness: sourced
+    fallback:
+      when: the connector serving stores.beta is unavailable
+      to: human
+      role: owner
+    depends_on: [newest]
+    work:
+      when:
+        - { value: { $from: newest, $select: count }, matches: "^[1-9]" }
+      rule: connector
+      operation: stores.beta.distribute
+      input:
+        platform: { $input: platform }
+        app: { $input: app }
+        build: { $from: newest, $select: first.id }
+        group: { $input: group }
+      credentials:
+        - { name: STORES_KEY, injected_as: env }
+
+  - id: feedback
+    method: rule
+    reason: the testers' feedback is read verbatim, without the tester, where the store publishes it
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving stores.beta is unavailable
+      to: human
+      role: owner
+    depends_on: [distribute]
+    work:
+      when:
+        - { value: { $input: platform }, matches: "^ios$" }
+      rule: connector
+      operation: stores.beta.feedback
+      input:
+        platform: { $input: platform }
+        app: { $input: app }
+        limit: 50
+      credentials:
+        - { name: STORES_KEY, injected_as: env }
+
+  - id: filed
+    method: rule
+    reason: the open issues are read verbatim, so that a piece of feedback already filed is not filed twice
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.issues is unavailable
+      to: human
+      role: owner
+    depends_on: [distribute]
+    work:
+      when:
+        - { value: { $input: platform }, matches: "^ios$" }
+      rule: connector
+      operation: repository.issues.list
+      input:
+        state: open
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the open issues were not all read" }
+
+  - id: unfiled
+    method: rule
+    reason: the newest piece of feedback that carries a comment and no open issue carries its mark, a fixed rule
+    rejected:
+      - method: llm
+        why: a selection by a mark needs no judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the feedback not yet filed }
+    depends_on: [feedback, filed]
+    work:
+      when:
+        - { value: { $input: platform }, matches: "^ios$" }
+      rule: filter
+      items: { $from: feedback, $select: output.feedback }
+      all:
+        - { field: comment, matches: "\\S" }
+      excluding: { $from: filed, $select: output.issues }
+      within: body
+      marker: "beta-feedback:${id}"
+      limit: 1
+
+  - id: compose
+    method: rule
+    reason: the issue's text is the store's own fields between fixed words, with the mark that keeps it from being filed twice
+    rejected:
+      - method: llm
+        why: a fixed composition needs no model
+    exactness: sourced
+    depends_on: [unfiled]
+    work:
+      when:
+        - { value: { $input: platform }, matches: "^ios$" }
+        - { value: { $from: unfiled, $select: count }, matches: "^[1-9]" }
+      rule: template
+      text: |
+        A tester reported on build ${build} (${kind}), ${created}:
+
+        > ${comment}
+
+        Filed by Taktus, process B-8.02 Distributing a beta, once a person confirmed it. The
+        tester is not named here.
+
+        beta-feedback:${id}
+      values:
+        build: { $from: unfiled, $select: first.build }
+        kind: { $from: unfiled, $select: first.kind }
+        created: { $from: unfiled, $select: first.created }
+        comment: { $from: unfiled, $select: first.comment }
+        id: { $from: unfiled, $select: first.id }
+
+  - id: file
+    method: rule
+    reason: opening the issue is an API call; the effect leaves the system, so at level 2 a person confirms it first
+    rejected:
+      - method: worker
+        why: nothing here needs a sandbox or tools
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.issues is unavailable
+      to: human
+      role: owner
+    depends_on: [unfiled, compose]
+    work:
+      when:
+        - { value: { $input: platform }, matches: "^ios$" }
+        - { value: { $from: unfiled, $select: count }, matches: "^[1-9]" }
+      rule: connector
+      operation: repository.issues.create
+      input:
+        title: "Beta feedback on a build"
+        body: { $from: compose }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+takeover:
+  sequence: >
+    Whoever looks after the app's betas starts the process when a build is finished; the run names
+    the platform, the app and the tester group or test track. The steps run in order: list the
+    app's builds at its store, take the newest one the store calls valid, and give it to the
+    tester group or track. Where the store shows the testers' feedback, list it, list the
+    repository's open issues, take the newest piece of feedback with a comment that no open issue
+    carries the mark of, write the issue's text without naming the tester, and open the issue.
+    One piece of feedback per run.
+  steps:
+    builds:
+      system: the app's store, the developer console of the app the run was started with
+      do: >
+        list the app's builds, newest first, with the state the store gives each.
+      expertise: reading an app's builds in its store's developer console
+      credentials:
+        - parameter: STORES_KEY
+          where: >
+            the operator's secret store, under the parameter App stores key of the requesting
+            identity described in CREDENTIALS.md; a person working by hand signs in to the store's
+            console with their own account, which may manage the app's testing
+      done: the builds are listed with their states
+    newest:
+      system: the list written down
+      do: >
+        take the newest build whose state is valid, that is, processed and usable. If there is
+        none, stop here.
+      expertise: none
+      credentials: []
+      done: one build is chosen, or it is written down that none is valid
+    distribute:
+      system: the app's store, its testing
+      do: >
+        only if a build was chosen: add it to the tester group, or release it on the test track,
+        the run names, with the store's own command.
+      expertise: distributing a build to testers in the store's developer console
+      credentials:
+        - parameter: STORES_KEY
+          where: >
+            the operator's secret store, under the parameter App stores key of the requesting
+            identity described in CREDENTIALS.md; a person working by hand uses their own account
+            at the store, which may manage the app's testing
+      done: the testers have the build, or no build was valid
+    feedback:
+      system: the app's store, the testers' feedback
+      do: >
+        only for a store that shows its testers' feedback: list the newest feedback with its
+        comment, its build and its kind, without the tester's name or address.
+      expertise: reading tester feedback in the store's developer console
+      credentials:
+        - parameter: STORES_KEY
+          where: >
+            the operator's secret store, under the parameter App stores key of the requesting
+            identity described in CREDENTIALS.md; a person working by hand uses their own account
+            at the store, which may read the app's testing
+      done: the feedback is listed, or the store shows none
+    filed:
+      system: the repository hosting service, the repository's issues
+      do: >
+        only for a store that shows its testers' feedback: list the open issues, so that a piece
+        already filed is recognised by its mark.
+      expertise: listing issues on the repository hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md; a person working by hand uses their
+            own account, which may read the repository's issues
+      done: the open issues are listed
+    unfiled:
+      system: the two lists written down
+      do: >
+        take the newest piece of feedback with a comment whose mark, beta-feedback and the
+        store's identifier of the feedback, no open issue carries. If there is none, stop here.
+      expertise: none
+      credentials: []
+      done: one piece of feedback is chosen, or none is new
+    compose:
+      system: the chosen feedback
+      do: >
+        write the issue's text: the build, the kind, when it came and the comment as the tester
+        wrote it, and the mark on its last line. Never name the tester.
+      expertise: none
+      credentials: []
+      done: the issue's text is written
+    file:
+      system: the repository hosting service, the repository's issues
+      do: >
+        open an issue with the title Beta feedback on a build and the text written.
+      expertise: opening an issue on the repository hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md; a person working by hand uses their
+            own account, which may open issues
+      done: the issue is open, or there was no new feedback

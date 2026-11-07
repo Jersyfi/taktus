@@ -143,7 +143,9 @@ connector is a driven adapter and the suite its client, and neither imports the 
 a stage of `connectors/Dockerfile`, and the control plane image copies nothing of it. The
 control plane keeps its side of the port under `adapters/driven/connectors/` — the MCP client,
 the pool, and the loopback and directory connectors, which reach the instance itself and run in
-its process.
+its process. A connector that reaches a cloud's API signs with its own copy of the key exchange
+(`auth.py` in its directory), because an image holds nothing of another connector; the release's
+list (`composition/shipped.json`, `make generate`) names each one with what it declares.
 
 `tests/architecture` fails on:
 

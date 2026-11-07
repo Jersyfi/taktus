@@ -130,27 +130,42 @@ jobs:
           - name: taktus-connector-appstore
             dockerfile: connectors/Dockerfile
             target: appstore
+          - name: taktus-connector-appstores
+            dockerfile: connectors/Dockerfile
+            target: appstores
           - name: taktus-connector-aws
             dockerfile: connectors/Dockerfile
             target: aws
+          - name: taktus-connector-bigquery
+            dockerfile: connectors/Dockerfile
+            target: bigquery
           - name: taktus-connector-bookstack
             dockerfile: connectors/Dockerfile
             target: bookstack
           - name: taktus-connector-calendar
             dockerfile: connectors/Dockerfile
             target: calendar
+          - name: taktus-connector-cloudrun
+            dockerfile: connectors/Dockerfile
+            target: cloudrun
           - name: taktus-connector-einvoice
             dockerfile: connectors/Dockerfile
             target: einvoice
           - name: taktus-connector-expiry
             dockerfile: connectors/Dockerfile
             target: expiry
+          - name: taktus-connector-firebase
+            dockerfile: connectors/Dockerfile
+            target: firebase
           - name: taktus-connector-gcp
             dockerfile: connectors/Dockerfile
             target: gcp
           - name: taktus-connector-github
             dockerfile: connectors/Dockerfile
             target: github
+          - name: taktus-connector-googleanalytics
+            dockerfile: connectors/Dockerfile
+            target: googleanalytics
           - name: taktus-connector-httpcheck
             dockerfile: connectors/Dockerfile
             target: httpcheck
@@ -163,6 +178,12 @@ jobs:
           - name: taktus-connector-mail
             dockerfile: connectors/Dockerfile
             target: mail
+          - name: taktus-connector-mailchimp
+            dockerfile: connectors/Dockerfile
+            target: mailchimp
+          - name: taktus-connector-netlify
+            dockerfile: connectors/Dockerfile
+            target: netlify
           - name: taktus-connector-openai
             dockerfile: connectors/Dockerfile
             target: openai
@@ -184,6 +205,12 @@ jobs:
           - name: taktus-connector-vendor
             dockerfile: connectors/Dockerfile
             target: vendor
+          - name: taktus-connector-vercel
+            dockerfile: connectors/Dockerfile
+            target: vercel
+          - name: taktus-connector-wordpress
+            dockerfile: connectors/Dockerfile
+            target: wordpress
     env:
       IMAGE: ${{ vars.IMAGE_REGISTRY }}/${{ matrix.name }}
       TAG: ${{ needs.registry.outputs.tag }}

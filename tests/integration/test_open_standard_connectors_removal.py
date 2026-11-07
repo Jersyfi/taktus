@@ -18,10 +18,20 @@ from taktus_connectors.anthropic.operations import Config as CostReportConfig
 from taktus_connectors.anthropic.server import build_server as cost_report_server
 from taktus_connectors.appstore.operations import Config as StoreConfig
 from taktus_connectors.appstore.server import build_server as store_server
+from taktus_connectors.appstores.operations import Config as StoresConfig
+from taktus_connectors.appstores.server import build_server as stores_server
 from taktus_connectors.aws.operations import Config as BillingConfig
 from taktus_connectors.aws.server import build_server as billing_server
+from taktus_connectors.bigquery.operations import Config as WarehouseConfig
+from taktus_connectors.bigquery.server import build_server as warehouse_server
+from taktus_connectors.cloudrun.operations import Config as ServerlessConfig
+from taktus_connectors.cloudrun.server import build_server as serverless_server
+from taktus_connectors.firebase.operations import Config as SiteReleasesConfig
+from taktus_connectors.firebase.server import build_server as site_releases_server
 from taktus_connectors.gcp.api import Config as CloudConfig
 from taktus_connectors.gcp.server import build_server as cloud_server
+from taktus_connectors.googleanalytics.operations import Config as AnalyticsConfig
+from taktus_connectors.googleanalytics.server import build_server as analytics_server
 from taktus_connectors.httpcheck.operations import Config as CheckConfig
 from taktus_connectors.httpcheck.server import build_server as check_server
 from taktus_connectors.kubernetes.operations import Config as WorkloadsConfig
@@ -30,6 +40,10 @@ from taktus_connectors.loki.operations import Config as LogsConfig
 from taktus_connectors.loki.server import build_server as logs_server
 from taktus_connectors.mail.protocol import Config as MailConfig
 from taktus_connectors.mail.server import build_server as mail_server
+from taktus_connectors.mailchimp.operations import Config as NewsletterConfig
+from taktus_connectors.mailchimp.server import build_server as newsletter_server
+from taktus_connectors.netlify.operations import Config as SiteDeploysConfig
+from taktus_connectors.netlify.server import build_server as site_deploys_server
 from taktus_connectors.openai.operations import Config as ModelCostsConfig
 from taktus_connectors.openai.server import build_server as model_costs_server
 from taktus_connectors.prometheus.operations import Config as MetricsConfig
@@ -40,6 +54,10 @@ from taktus_connectors.stripe.operations import Config as PaymentsConfig
 from taktus_connectors.stripe.server import build_server as payments_server
 from taktus_connectors.vault.operations import Config as SecretsConfig
 from taktus_connectors.vault.server import build_server as secrets_server
+from taktus_connectors.vercel.operations import Config as SiteDeploymentsConfig
+from taktus_connectors.vercel.server import build_server as site_deployments_server
+from taktus_connectors.wordpress.operations import Config as WebsiteConfig
+from taktus_connectors.wordpress.server import build_server as website_server
 
 from integration.test_removal_test import RECORDS, connector_services, result_of, run_removal
 from taktus.adapters.driven.connectors.mcp import McpActionConnector
@@ -68,6 +86,21 @@ SERVERS: dict[str, Any] = {
     "logs": lambda: logs_server(LogsConfig("http://127.0.0.1:9")),
     "secrets": lambda: secrets_server(SecretsConfig("http://127.0.0.1:9")),
     "store": lambda: store_server(StoreConfig("http://127.0.0.1:9")),
+    "stores": lambda: stores_server(StoresConfig("http://127.0.0.1:9", "http://127.0.0.1:9")),
+    "serverless": lambda: serverless_server(
+        ServerlessConfig("http://127.0.0.1:9", "example", "europe-west1")
+    ),
+    "site-releases": lambda: site_releases_server(SiteReleasesConfig("http://127.0.0.1:9")),
+    "site-deploys": lambda: site_deploys_server(SiteDeploysConfig("http://127.0.0.1:9")),
+    "site-deployments": lambda: site_deployments_server(
+        SiteDeploymentsConfig("http://127.0.0.1:9")
+    ),
+    "newsletter": lambda: newsletter_server(NewsletterConfig("http://127.0.0.1:9")),
+    "website": lambda: website_server(WebsiteConfig("http://127.0.0.1:9")),
+    "analytics": lambda: analytics_server(AnalyticsConfig("http://127.0.0.1:9", "123456789")),
+    "warehouse": lambda: warehouse_server(
+        WarehouseConfig("http://127.0.0.1:9", "example", "product_copy")
+    ),
 }
 SERVES = {
     "mail": ["channel.mail", "mail.messages"],
@@ -83,6 +116,15 @@ SERVES = {
     "logs": ["logs.query"],
     "secrets": ["secrets.metadata"],
     "store": ["expiry.credentials"],
+    "stores": ["stores.beta", "stores.releases"],
+    "serverless": ["deployment.workloads"],
+    "site-releases": ["deployment.sites"],
+    "site-deploys": ["deployment.sites"],
+    "site-deployments": ["deployment.sites"],
+    "newsletter": ["newsletter.broadcasts"],
+    "website": ["website.posts"],
+    "analytics": ["analytics.reports"],
+    "warehouse": ["warehouse.queries"],
 }
 
 

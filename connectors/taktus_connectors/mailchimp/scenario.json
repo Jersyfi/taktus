@@ -1,0 +1,30 @@
+{
+  "credentials": {
+    "actions": "NEWSLETTER_TOKEN"
+  },
+  "read": {
+    "operation": "newsletter.broadcasts.read",
+    "input": {
+      "id": "c-seeded"
+    }
+  },
+  "writes": [
+    {
+      "operation": "newsletter.broadcasts.draft",
+      "input": {
+        "list": "list-1",
+        "subject": "conformance {{unique}}",
+        "text": "A draft the conformance suite wrote. Nothing is sent.",
+        "from_name": "Conformance",
+        "reply_to": "news@example.org"
+      }
+    }
+  ],
+  "invalid": {
+    "operation": "newsletter.broadcasts.read",
+    "input": {
+      "id": "not an identifier"
+    },
+    "expected_cause": "invalid"
+  }
+}

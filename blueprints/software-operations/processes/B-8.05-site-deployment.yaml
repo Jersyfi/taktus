@@ -1,0 +1,282 @@
+# B-8.05 Web deployment, on a hosted site — UC-03 §4.8: a published release is deployed, a smoke
+# test is run on it, and a rollback is prepared when it fails (UC-6.13, UC-4.6). Confirming the
+# rollback stays with a person.
+#
+# The version of B-8.05 for a web front end a hosting service serves, not a cluster (ADR-0211).
+# The release is a version the site's own build already uploaded; it is published through the
+# capability `deployment.sites`. The run first reads which version is live, so that the rollback
+# can name it. It then publishes the release's version, waits until that version is ready and
+# live, and asks the site as a user would, one request through `check.http`. A failed check
+# counts as a failure by rule, and putting back the version that was live before is put to a
+# person as a decision request, at every level. A version that is not live within fifteen
+# minutes fails the run, and a person decides; no rollback starts for it.
+#
+# A tenant registers this version of b-8-05 or the cluster's (`B-8.05-web-deployment.yaml`),
+# whichever target serves its web front end; the stage counts either (ADR-0191).
+#
+# The site, the version and the smoke path are inputs: a release names them.
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-8.05-site-deployment.yaml \
+#         --input site=web --input build=a1b2c3d4e5f60718 --input smoke_path=/health
+#
+# Switching it off (`taktusctl deactivate --process b-8-05`) changes nothing on the site.
+
+id: b-8-05
+version: "1"
+name: B-8.05 Web deployment, on a hosted site
+autonomy:
+  level: 2
+  reason: >
+    the release leaves the system and reaches every user of the site, so a person confirms it,
+    as every process of UC-03 starts at level 1 or 2 when its stage opens; the rollback asks a
+    person at every level
+  toward_next: >
+    four weeks of releases a person confirmed with every failed smoke test followed by a
+    rollback, and stage 3 of the tenant's plan open; then Taktus proposes level 3, its target in
+    UC-03 (UC-7.1, UC-9.6)
+author: the repository
+reason: a release reaches the site checked, and a failed one is rolled back on a person's word (UC-03 B-8.05)
+
+inputs:
+  site:
+    description: the site the release goes to, as the hosting service names it
+    example: web
+  build:
+    description: the version of the site the release's build uploaded, as the hosting service names it
+    example: a1b2c3d4e5f60718
+  smoke_path:
+    description: the path under the site's address that answers when the release works
+    example: /health
+
+limits:
+  quota: { units: 200 }
+
+steps:
+  - id: before
+    method: rule
+    reason: which version is live before the release is read verbatim, so that a rollback can name it
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving deployment.sites is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: deployment.sites.read
+      input:
+        name: { $input: site }
+      credentials:
+        - { name: SITES_TOKEN, injected_as: env }
+
+  - id: release
+    method: rule
+    reason: publishing the version is an API call; the effect leaves the system, so at level 2 a person confirms it
+    rejected:
+      - method: worker
+        why: the hosting service publishes the version it already built; nothing here needs a sandbox
+    exactness: sourced
+    fallback:
+      when: the connector serving deployment.sites is unavailable
+      to: human
+      role: owner
+    depends_on: [before]
+    work:
+      rule: connector
+      operation: deployment.sites.release
+      input:
+        name: { $input: site }
+        version: { $input: build }
+      credentials:
+        - { name: SITES_TOKEN, injected_as: env }
+
+  - id: rolled-out
+    method: wait
+    reason: the hosting service puts the version live on its own time; the run waits until it is ready and live
+    rejected: []
+    fallback:
+      when: the connector serving deployment.sites is unavailable, or the version is not live in fifteen minutes
+      to: human
+      role: owner
+    depends_on: [release]
+    work:
+      until:
+        operation: deployment.sites.read
+        input:
+          name: { $input: site }
+          version: { $input: build }
+        credentials:
+          - { name: SITES_TOKEN, injected_as: env }
+        select: rolled_out
+        expect: [true]
+        poll_seconds: 15
+        timeout_seconds: 900
+
+  - id: smoke
+    method: rule
+    reason: the site is asked as a user would ask it, and its answer is recorded as it came
+    rejected:
+      - method: llm
+        why: a request and its status need no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving check.http is unavailable
+      to: human
+      role: owner
+    depends_on: [rolled-out]
+    work:
+      rule: connector
+      operation: check.http.run
+      input:
+        path: { $input: smoke_path }
+        expect:
+          status: 200
+          max_duration_ms: 5000
+      credentials:
+        - { name: CHECK_TOKEN, injected_as: env }
+
+  - id: failed
+    method: rule
+    reason: whether the smoke test failed is the check connector's own verdict, counted
+    rejected:
+      - method: llm
+        why: a count needs no judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the smoke tests that failed }
+    depends_on: [smoke]
+    work:
+      rule: filter
+      items:
+        - { $from: smoke, $select: output }
+      all:
+        - { field: outcome, equals: failed }
+
+  - id: rollback
+    method: rule
+    reason: >
+      a failed release is rolled back to the version live before it, by an API call; confirming
+      the rollback stays with a person, so the step asks at every level
+    rejected:
+      - method: worker
+        why: the hosting service keeps the earlier version itself; nothing here needs a sandbox
+    exactness: sourced
+    fallback:
+      when: the connector serving deployment.sites is unavailable
+      to: human
+      role: owner
+    depends_on: [before, failed]
+    work:
+      when:
+        - { value: { $from: failed, $select: count }, matches: "^[1-9]" }
+      ask:
+        question: "Put ${site} back on ${earlier}, the version live before ${version}?"
+        situation: >
+          The version ${version} of ${site} went live, and its smoke test on ${path} failed. The
+          hosting service keeps ${earlier}, the version live before it.
+        proposal: the site is put back on the version live before this release
+        values:
+          site: { $input: site }
+          version: { $input: build }
+          earlier: { $from: before, $select: output.live }
+          path: { $input: smoke_path }
+      rule: connector
+      operation: deployment.sites.rollback
+      input:
+        name: { $input: site }
+        version: { $from: before, $select: output.live }
+      credentials:
+        - { name: SITES_TOKEN, injected_as: env }
+
+takeover:
+  sequence: >
+    A person who releases the web front end starts the process when a release is published; the
+    release names the site, the version its build uploaded to the hosting service and the smoke
+    test's path. The steps run in order: write down which version of the site is live, publish
+    the release's version, wait until it is ready and live, ask the site the smoke test's path as
+    a user would, and count whether the check failed. A failed check makes the owner decide on
+    putting back the version that was live before. A version that is not live within fifteen
+    minutes goes to the owner, and no rollback starts for it.
+  steps:
+    before:
+      system: the hosting service, the site the run was started with
+      do: >
+        read which version of the site is live now, in the hosting service's console or with its
+        own command line, and write down its identifier.
+      expertise: reading a site's live version in the hosting service
+      credentials:
+        - parameter: SITES_TOKEN
+          where: >
+            the operator's secret store, under the parameter Sites token of the requesting
+            identity described in CREDENTIALS.md; a person working by hand signs in to the hosting
+            service with their own account, which may read the site
+      done: the identifier of the live version is written down
+    release:
+      system: the hosting service, the site
+      do: >
+        publish the version the release names, exactly as the release names it, with the hosting
+        service's own command for publishing or promoting a version that was already built.
+      expertise: publishing a built version of a site in the hosting service
+      credentials:
+        - parameter: SITES_TOKEN
+          where: >
+            the operator's secret store, under the parameter Sites token of the requesting
+            identity described in CREDENTIALS.md; a person working by hand uses their own account,
+            which may publish the site
+      done: the hosting service is putting the release's version live
+    rolled-out:
+      system: the hosting service, the site's live version
+      do: >
+        look every fifteen seconds or so until the release's version is ready and live. If it is
+        not after fifteen minutes, stop here and hand it to the owner; start no rollback.
+      expertise: reading a site's live version in the hosting service
+      credentials:
+        - parameter: SITES_TOKEN
+          where: >
+            the operator's secret store, under the parameter Sites token of the requesting
+            identity described in CREDENTIALS.md; a person working by hand uses their own account,
+            which may read the site
+      done: the release's version is live, or the owner has the stalled release
+    smoke:
+      system: the web front end, from outside, as a user reaches it
+      do: >
+        request the smoke test's path under the site's address once, the path the run was started
+        with. The check passes when the answer has status 200 and arrives within five seconds.
+        Write down the status and the time it took.
+      expertise: sending a request to a web address and reading its status and duration
+      credentials:
+        - parameter: CHECK_TOKEN
+          where: >
+            the operator's secret store, under the parameter Check token of the requesting
+            identity described in CREDENTIALS.md; it is needed only where the site asks for a
+            token on that path
+      done: the status and the duration of the request are written down
+    failed:
+      system: the result written down
+      do: >
+        decide by rule whether the smoke test failed: it failed when the status was not 200, or
+        the answer took longer than five seconds, or no answer came.
+      expertise: none
+      credentials: []
+      done: it is written down whether the smoke test failed
+    rollback:
+      system: the hosting service, the site
+      do: >
+        only if the smoke test failed: put to the owner whether to put the site back on the version
+        written down before the release, naming the site, the release's version and the path that
+        failed. Only if the owner agrees, publish that earlier version again with the hosting
+        service's own rollback or publish command, and watch it go live.
+      expertise: putting an earlier version of a site back live in the hosting service
+      credentials:
+        - parameter: SITES_TOKEN
+          where: >
+            the operator's secret store, under the parameter Sites token of the requesting
+            identity described in CREDENTIALS.md; a person working by hand uses their own account,
+            which may publish the site
+      done: >
+        the smoke test passed, or the owner's decision is recorded and, if the owner agreed, the
+        site runs the version that was live before the release

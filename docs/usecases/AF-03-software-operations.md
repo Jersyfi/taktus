@@ -321,10 +321,10 @@ follows (#447).
 | error tracking | B-1.04, B-1.05, B-7.01 | issues read (`errors.issues`) |
 | payment providers and the product's entitlements | B-3.04, §4.6 | subscriptions read (`payments.subscriptions`); the product's entitlements: no |
 | model providers' credit and use | B-2.01 | the cost per day (`models.costs`); the models listed with their lifecycle (`models.catalogue`, ADR-0204); the credit left: no |
-| app stores: reviews, submission, beta, staged rollout | B-3.09, §4.8 | no |
-| deployment targets with rollback | B-8.04, B-8.05, B-8.06 | a workload of a cluster's API released, rolled back and scaled (`deployment.workloads`, ADR-0195); any other target: no |
+| app stores: reviews, submission, beta, staged rollout | B-3.09, §4.8 | builds, a build given to testers, their feedback without the tester, a version read with its review, submitted, and its staged rollout raised or halted, over both stores (`stores.beta`, `stores.releases`, ADR-0210); reviews of the store: no |
+| deployment targets with rollback | B-8.04, B-8.05, B-8.06 | a workload of a cluster's API released, rolled back and scaled (`deployment.workloads`, ADR-0195); a serverless workload released and rolled back under the same capability, and a hosted site's built version put live and an earlier one put back (`deployment.sites`, ADR-0211) |
 | customer system and feedback portal | B-5.05, B-3.07, B-9.04 | no |
-| an analytics copy without personal fields | B-9.02, B-9.06 | no |
+| an analytics copy without personal fields | B-9.02, B-9.06 | aggregate reports of an analytics property, every user-scoped dimension refused (`analytics.reports`), and one read-only query over the business's copy in a warehouse (`warehouse.queries`, ADR-0213) |
 | accounting export | B-6.06, B-10.03 | incoming invoices read from an inbox in EN 16931 (`documents.invoices`), orders read, bookings proposed and released payments submitted through a generic accounting interface (`accounting.orders`, `accounting.bookings`, `payment.release`; UC-15.8, UC-04); an export of outgoing invoices: no |
 | a browser for synthetic flows | B-1.06, B-7.08, B-7.09 | a worker; not built |
 | social media and forum search | B-3.10 | no |

@@ -1,0 +1,28 @@
+{
+  "credentials": {
+    "actions": "SITES_TOKEN"
+  },
+  "read": {
+    "operation": "deployment.sites.read",
+    "input": {
+      "name": "web"
+    }
+  },
+  "writes": [
+    {
+      "operation": "deployment.sites.release",
+      "input": {
+        "name": "web",
+        "version": "a1b2c3d4e5f60718",
+        "message": "conformance {{unique}}"
+      }
+    }
+  ],
+  "invalid": {
+    "operation": "deployment.sites.read",
+    "input": {
+      "name": "Not A Site"
+    },
+    "expected_cause": "invalid"
+  }
+}

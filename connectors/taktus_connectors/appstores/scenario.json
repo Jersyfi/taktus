@@ -1,0 +1,31 @@
+{
+  "credentials": {
+    "actions": "STORES_KEY"
+  },
+  "read": {
+    "operation": "stores.beta.builds",
+    "input": {
+      "platform": "ios",
+      "app": "1000000001"
+    }
+  },
+  "writes": [
+    {
+      "operation": "stores.beta.distribute",
+      "input": {
+        "platform": "android",
+        "app": "com.example.app",
+        "build": "2",
+        "group": "internal"
+      }
+    }
+  ],
+  "invalid": {
+    "operation": "stores.beta.builds",
+    "input": {
+      "platform": "windows",
+      "app": "1000000001"
+    },
+    "expected_cause": "invalid"
+  }
+}

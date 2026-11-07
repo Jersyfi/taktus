@@ -283,6 +283,7 @@ class Store:
             "head": {"ref": head, "label": f"{repo.owner}:{head}"},
             "base": {"ref": base, "label": f"{repo.owner}:{base}"},
             "merged": False,
+            "merged_at": None,
             "draft": draft,
             "merge_commit_sha": None,
         }
@@ -787,6 +788,7 @@ class Handler(BaseHTTPRequestHandler):
             changes = {
                 "state": "closed",
                 "merged": True,
+                "merged_at": now(),
                 "merge_commit_sha": sha,
                 "updated_at": now(),
             }
