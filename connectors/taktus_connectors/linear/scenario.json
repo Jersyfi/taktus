@@ -1,0 +1,28 @@
+{
+  "credentials": {
+    "actions": "TASKS_TOKEN"
+  },
+  "read": {
+    "operation": "tasks.items.list",
+    "input": {
+      "overdue_by_days": 1,
+      "limit": 10
+    }
+  },
+  "writes": [
+    {
+      "operation": "tasks.items.remind",
+      "input": {
+        "id": "TSK-1",
+        "text": "This task is past its due date. Conformance {{unique}}"
+      }
+    }
+  ],
+  "invalid": {
+    "operation": "tasks.items.read",
+    "input": {
+      "id": "TSK-999"
+    },
+    "expected_cause": "invalid"
+  }
+}

@@ -102,6 +102,18 @@
     },
     {
       "capabilities": [
+        "feedback.posts"
+      ],
+      "image": "taktus-connector-canny",
+      "name": "canny",
+      "operations": [
+        "feedback.posts.create",
+        "feedback.posts.list",
+        "feedback.posts.vote"
+      ]
+    },
+    {
+      "capabilities": [
         "deployment.workloads"
       ],
       "image": "taktus-connector-cloudrun",
@@ -122,6 +134,16 @@
         "knowledge.pages.list",
         "knowledge.pages.read",
         "knowledge.pages.write"
+      ]
+    },
+    {
+      "capabilities": [
+        "mentions.search"
+      ],
+      "image": "taktus-connector-discourse",
+      "name": "discourse",
+      "operations": [
+        "mentions.search.query"
       ]
     },
     {
@@ -157,6 +179,19 @@
         "deployment.sites.read",
         "deployment.sites.release",
         "deployment.sites.rollback"
+      ]
+    },
+    {
+      "capabilities": [
+        "helpdesk.tickets"
+      ],
+      "image": "taktus-connector-freshdesk",
+      "name": "freshdesk",
+      "operations": [
+        "helpdesk.tickets.close",
+        "helpdesk.tickets.list",
+        "helpdesk.tickets.note",
+        "helpdesk.tickets.read"
       ]
     },
     {
@@ -230,12 +265,44 @@
     },
     {
       "capabilities": [
+        "audit.events"
+      ],
+      "image": "taktus-connector-githubaudit",
+      "name": "githubaudit",
+      "operations": [
+        "audit.events.list"
+      ]
+    },
+    {
+      "capabilities": [
         "analytics.reports"
       ],
       "image": "taktus-connector-googleanalytics",
       "name": "googleanalytics",
       "operations": [
         "analytics.reports.run"
+      ]
+    },
+    {
+      "capabilities": [
+        "stores.reviews"
+      ],
+      "image": "taktus-connector-googleplay",
+      "name": "googleplay",
+      "operations": [
+        "stores.reviews.list",
+        "stores.reviews.read",
+        "stores.reviews.reply"
+      ]
+    },
+    {
+      "capabilities": [
+        "audit.events"
+      ],
+      "image": "taktus-connector-googleworkspace",
+      "name": "googleworkspace",
+      "operations": [
+        "audit.events.list"
       ]
     },
     {
@@ -250,6 +317,30 @@
     },
     {
       "capabilities": [
+        "crm.contacts"
+      ],
+      "image": "taktus-connector-hubspot",
+      "name": "hubspot",
+      "operations": [
+        "crm.contacts.create",
+        "crm.contacts.find",
+        "crm.contacts.note"
+      ]
+    },
+    {
+      "capabilities": [
+        "tasks.items"
+      ],
+      "image": "taktus-connector-jira",
+      "name": "jira",
+      "operations": [
+        "tasks.items.list",
+        "tasks.items.read",
+        "tasks.items.remind"
+      ]
+    },
+    {
+      "capabilities": [
         "deployment.workloads"
       ],
       "image": "taktus-connector-kubernetes",
@@ -259,6 +350,18 @@
         "deployment.workloads.release",
         "deployment.workloads.rollback",
         "deployment.workloads.scale"
+      ]
+    },
+    {
+      "capabilities": [
+        "tasks.items"
+      ],
+      "image": "taktus-connector-linear",
+      "name": "linear",
+      "operations": [
+        "tasks.items.list",
+        "tasks.items.read",
+        "tasks.items.remind"
       ]
     },
     {
@@ -327,6 +430,16 @@
     },
     {
       "capabilities": [
+        "mentions.search"
+      ],
+      "image": "taktus-connector-mastodon",
+      "name": "mastodon",
+      "operations": [
+        "mentions.search.query"
+      ]
+    },
+    {
+      "capabilities": [
         "deployment.sites"
       ],
       "image": "taktus-connector-netlify",
@@ -351,6 +464,19 @@
     },
     {
       "capabilities": [
+        "payments.customers",
+        "payments.subscriptions"
+      ],
+      "image": "taktus-connector-paypal",
+      "name": "paypal",
+      "operations": [
+        "payments.customers.subscriptions",
+        "payments.subscriptions.list",
+        "payments.subscriptions.read"
+      ]
+    },
+    {
+      "capabilities": [
         "metrics.series"
       ],
       "image": "taktus-connector-prometheus",
@@ -358,6 +484,31 @@
       "operations": [
         "metrics.series.query",
         "metrics.series.range"
+      ]
+    },
+    {
+      "capabilities": [
+        "payments.customers",
+        "payments.subscriptions"
+      ],
+      "image": "taktus-connector-revenuecat",
+      "name": "revenuecat",
+      "operations": [
+        "payments.customers.subscriptions",
+        "payments.subscriptions.list",
+        "payments.subscriptions.read"
+      ]
+    },
+    {
+      "capabilities": [
+        "directory.accounts",
+        "directory.groups"
+      ],
+      "image": "taktus-connector-scim",
+      "name": "scim",
+      "operations": [
+        "directory.accounts.list",
+        "directory.groups.list"
       ]
     },
     {
@@ -431,6 +582,22 @@
         "website.posts.draft",
         "website.posts.publish",
         "website.posts.read"
+      ]
+    },
+    {
+      "capabilities": [
+        "helpcentre.articles",
+        "helpdesk.tickets"
+      ],
+      "image": "taktus-connector-zendesk",
+      "name": "zendesk",
+      "operations": [
+        "helpcentre.articles.draft",
+        "helpcentre.articles.list",
+        "helpdesk.tickets.close",
+        "helpdesk.tickets.list",
+        "helpdesk.tickets.note",
+        "helpdesk.tickets.read"
       ]
     }
   ],

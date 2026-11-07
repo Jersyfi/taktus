@@ -1,0 +1,20 @@
+{
+  "credentials": {
+    "actions": "AUDIT_TOKEN"
+  },
+  "read": {
+    "operation": "audit.events.list",
+    "input": {
+      "hours": 24,
+      "limit": 10
+    }
+  },
+  "writes": [],
+  "invalid": {
+    "operation": "audit.events.list",
+    "input": {
+      "hours": 0
+    },
+    "expected_cause": "invalid"
+  }
+}

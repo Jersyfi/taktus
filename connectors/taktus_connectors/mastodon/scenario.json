@@ -1,0 +1,21 @@
+{
+  "credentials": {
+    "actions": "MENTIONS_TOKEN"
+  },
+  "read": {
+    "operation": "mentions.search.query",
+    "input": {
+      "query": "product",
+      "limit": 10
+    }
+  },
+  "writes": [],
+  "invalid": {
+    "operation": "mentions.search.query",
+    "input": {
+      "query": "product",
+      "since": "yesterday"
+    },
+    "expected_cause": "invalid"
+  }
+}

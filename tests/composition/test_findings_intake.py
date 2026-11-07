@@ -226,13 +226,13 @@ async def test_only_a_lack_the_product_does_not_ship_reaches_the_intake() -> Non
         to,
         blocked("run_1", "no_connector", "repository.wiki"),
         blocked("run_2", "no_connector", "knowledge.pages"),
-        blocked("run_3", "operation_unsupported", "crm.contacts.merge"),
+        blocked("run_3", "operation_unsupported", "warehouse.stock.merge"),
     )
     kinds = {f.lack.lacking: c.kind for f, c in await sender.findings.classified(TENANT)}
     assert kinds == {
         "repository.wiki": "product",
         "knowledge.pages": "configuration",
-        "crm.contacts.merge": "own",
+        "warehouse.stock.merge": "own",
     }
 
     await admitted(to, sender)
@@ -240,7 +240,7 @@ async def test_only_a_lack_the_product_does_not_ship_reaches_the_intake() -> Non
     (issue,) = to.channel.issues.values()
     assert "repository.wiki" in issue.texts[0]
     text = to.channel.every_text()
-    assert "knowledge.pages" not in text and "crm.contacts" not in text
+    assert "knowledge.pages" not in text and "warehouse.stock" not in text
     assert await to.received() == ["opened"], "nothing local reached the intake"
 
     said = alerts(
@@ -258,7 +258,7 @@ async def test_only_a_lack_the_product_does_not_ship_reaches_the_intake() -> Non
     messages = [s.text for s in sender.given.deliveries.said]
     configuration = next(m for m in messages if "knowledge.pages" in m)
     assert "`bookstack`" in configuration and "TAKTUS_CONNECTORS" in configuration
-    own = next(m for m in messages if "crm.contacts.merge" in m)
+    own = next(m for m in messages if "warehouse.stock.merge" in m)
     assert "own development" in own and "taktusctl findings report" in own
     assert not any("repository.wiki" in m for m in messages), "a candidate is no alert"
 

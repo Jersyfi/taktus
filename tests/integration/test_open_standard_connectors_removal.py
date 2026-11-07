@@ -24,8 +24,12 @@ from taktus_connectors.aws.operations import Config as BillingConfig
 from taktus_connectors.aws.server import build_server as billing_server
 from taktus_connectors.bigquery.operations import Config as WarehouseConfig
 from taktus_connectors.bigquery.server import build_server as warehouse_server
+from taktus_connectors.canny.operations import Config as FeedbackConfig
+from taktus_connectors.canny.server import build_server as feedback_server
 from taktus_connectors.cloudrun.operations import Config as ServerlessConfig
 from taktus_connectors.cloudrun.server import build_server as serverless_server
+from taktus_connectors.discourse.operations import Config as ForumConfig
+from taktus_connectors.discourse.server import build_server as forum_server
 from taktus_connectors.firebase.operations import Config as SiteReleasesConfig
 from taktus_connectors.firebase.server import build_server as site_releases_server
 from taktus_connectors.gcp.api import Config as CloudConfig
@@ -34,14 +38,22 @@ from taktus_connectors.googleanalytics.operations import Config as AnalyticsConf
 from taktus_connectors.googleanalytics.server import build_server as analytics_server
 from taktus_connectors.httpcheck.operations import Config as CheckConfig
 from taktus_connectors.httpcheck.server import build_server as check_server
+from taktus_connectors.hubspot.operations import Config as CrmConfig
+from taktus_connectors.hubspot.server import build_server as crm_server
+from taktus_connectors.jira.operations import Config as RestTasksConfig
+from taktus_connectors.jira.server import build_server as rest_tasks_server
 from taktus_connectors.kubernetes.operations import Config as WorkloadsConfig
 from taktus_connectors.kubernetes.server import build_server as workloads_server
+from taktus_connectors.linear.operations import Config as GraphTasksConfig
+from taktus_connectors.linear.server import build_server as graph_tasks_server
 from taktus_connectors.loki.operations import Config as LogsConfig
 from taktus_connectors.loki.server import build_server as logs_server
 from taktus_connectors.mail.protocol import Config as MailConfig
 from taktus_connectors.mail.server import build_server as mail_server
 from taktus_connectors.mailchimp.operations import Config as NewsletterConfig
 from taktus_connectors.mailchimp.server import build_server as newsletter_server
+from taktus_connectors.mastodon.operations import Config as SocialConfig
+from taktus_connectors.mastodon.server import build_server as social_server
 from taktus_connectors.netlify.operations import Config as SiteDeploysConfig
 from taktus_connectors.netlify.server import build_server as site_deploys_server
 from taktus_connectors.openai.operations import Config as ModelCostsConfig
@@ -80,6 +92,9 @@ SERVERS: dict[str, Any] = {
     "model-costs": lambda: model_costs_server(ModelCostsConfig("http://127.0.0.1:9")),
     "cost-report": lambda: cost_report_server(CostReportConfig("http://127.0.0.1:9")),
     "errors": lambda: errors_server(ErrorsConfig("http://127.0.0.1:9", organization="example")),
+    "feedback": lambda: feedback_server(FeedbackConfig("http://127.0.0.1:9")),
+    "mentions-forum": lambda: forum_server(ForumConfig("http://127.0.0.1:9")),
+    "mentions-social": lambda: social_server(SocialConfig("http://127.0.0.1:9")),
     "payments": lambda: payments_server(PaymentsConfig("http://127.0.0.1:9")),
     "workloads": lambda: workloads_server(WorkloadsConfig("http://127.0.0.1:9")),
     "cloud": lambda: cloud_server(CloudConfig.at("example", target="http://127.0.0.1:9")),
@@ -101,6 +116,9 @@ SERVERS: dict[str, Any] = {
     "warehouse": lambda: warehouse_server(
         WarehouseConfig("http://127.0.0.1:9", "example", "product_copy")
     ),
+    "crm": lambda: crm_server(CrmConfig("http://127.0.0.1:9")),
+    "tasks-graph": lambda: graph_tasks_server(GraphTasksConfig("http://127.0.0.1:9")),
+    "tasks-rest": lambda: rest_tasks_server(RestTasksConfig("http://127.0.0.1:9", "TSK")),
 }
 SERVES = {
     "mail": ["channel.mail", "mail.messages"],
@@ -110,6 +128,9 @@ SERVES = {
     "model-costs": ["models.catalogue", "models.costs"],
     "cost-report": ["models.catalogue", "models.costs"],
     "errors": ["errors.issues"],
+    "feedback": ["feedback.posts"],
+    "mentions-forum": ["mentions.search"],
+    "mentions-social": ["mentions.search"],
     "payments": ["payments.customers", "payments.subscriptions"],
     "workloads": ["deployment.workloads"],
     "cloud": ["billing.costs", "logs.query", "secrets.metadata"],
@@ -125,6 +146,9 @@ SERVES = {
     "website": ["website.posts"],
     "analytics": ["analytics.reports"],
     "warehouse": ["warehouse.queries"],
+    "crm": ["crm.contacts"],
+    "tasks-graph": ["tasks.items"],
+    "tasks-rest": ["tasks.items"],
 }
 
 

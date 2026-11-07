@@ -34,7 +34,7 @@ import httpx
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from fakes import google_oauth
+from fakes import google_oauth, review_replies_service
 from fakes.app_store_service import test_value as app_store_value
 from fakes.ports import free_port
 
@@ -1112,11 +1112,15 @@ class BusinessConnector:
     pair: bool = False
     """The credential is a key pair, `<id>:<secret>`, as a provider that signs takes one."""
     made: Callable[[], str] | None = None
-    """How a value is made where the provider needs one of its own shape, a signing key."""
+    """How a value is made where the provider needs one of its own shape, a signing key the fake
+    verifies against: its maker, from the fake's module (ADR-0207)."""
     key: str | None = None
     """The credential is a signing key the connector exchanges or signs with, generated for the
     fake at its address: `google`, a service account key whose token endpoint is the fake's;
     `stores`, both app stores' keys in one document (ADR-0210)."""
+    service_account: bool = False
+    """The credential is a service account's key file, JSON with `client_email` and a private
+    key; the fake admits the account by its address."""
 
     def value(self, service_url: str = "") -> str:
         if self.made is not None:
@@ -1127,7 +1131,21 @@ class BusinessConnector:
             return _stores_key(service_url)
         if self.pair:
             return f"key-{secrets.token_hex(6)}:sig-{secrets.token_hex(12)}"
+        if self.service_account:
+            key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+            pem = key.private_bytes(
+                serialization.Encoding.PEM,
+                serialization.PrivateFormat.PKCS8,
+                serialization.NoEncryption(),
+            ).decode()
+            email = f"tok-{secrets.token_hex(8)}@project.iam.example"
+            document = {"type": "service_account", "client_email": email, "private_key": pem}
+            return json.dumps(document, separators=(",", ":"))
         return "tok-" + secrets.token_hex(12)
+
+    def admitted(self, value: str) -> str:
+        """What the fake is started with to admit the value: the value, or the account."""
+        return str(json.loads(value)["client_email"]) if self.service_account else value
 
 
 def _stores_key(service_url: str) -> str:
@@ -1175,6 +1193,7 @@ BUSINESS: dict[str, BusinessConnector] = {
         key="google",
     ),
     "calendar": BusinessConnector("calendar", FAKES / "calendar_service.py", "CALENDAR_TOKEN"),
+    "canny": BusinessConnector("canny", FAKES / "feedback_service.py", "FEEDBACK_TOKEN"),
     "cloudrun": BusinessConnector(
         "cloudrun",
         FAKES / "serverless_service.py",
@@ -1182,6 +1201,7 @@ BUSINESS: dict[str, BusinessConnector] = {
         ("--project", "example", "--location", "europe-west1"),
         key="google",
     ),
+    "discourse": BusinessConnector("discourse", FAKES / "forum_service.py", "MENTIONS_TOKEN"),
     "einvoice": BusinessConnector(
         "einvoice", FAKES / "document_inbox_service.py", "DOCUMENTS_TOKEN"
     ),
@@ -1189,8 +1209,14 @@ BUSINESS: dict[str, BusinessConnector] = {
     "firebase": BusinessConnector(
         "firebase", FAKES / "hosting_releases_service.py", "SITES_TOKEN", key="google"
     ),
+    "freshdesk": BusinessConnector(
+        "freshdesk", FAKES / "support_desk_service.py", "HELPDESK_TOKEN"
+    ),
     "gcp": BusinessConnector(
         "gcp", FAKES / "cloud_service.py", "CLOUD_TOKEN", ("--project", "example")
+    ),
+    "githubaudit": BusinessConnector(
+        "githubaudit", FAKES / "audit_log_service.py", "AUDIT_TOKEN", ("--organization", "example")
     ),
     "googleanalytics": BusinessConnector(
         "googleanalytics",
@@ -1199,13 +1225,43 @@ BUSINESS: dict[str, BusinessConnector] = {
         ("--property", "123456789"),
         key="google",
     ),
+    "googleplay": BusinessConnector(
+        "googleplay",
+        FAKES / "review_replies_service.py",
+        "STORE_REVIEWS_KEY",
+        ("--token-url", "/token"),
+        made=review_replies_service.credential,
+    ),
+    "googleworkspace": BusinessConnector(
+        "googleworkspace",
+        FAKES / "workspace_reports_service.py",
+        "AUDIT_TOKEN",
+        ("--subject", "admin@org.example", "--token-url", "{target}/token"),
+        service_account=True,
+    ),
+    "hubspot": BusinessConnector("hubspot", FAKES / "customer_system_service.py", "CRM_TOKEN"),
+    "jira": BusinessConnector(
+        "jira", FAKES / "task_rest_service.py", "TASKS_TOKEN", ("--project", "TSK"), pair=True
+    ),
     "kubernetes": BusinessConnector("kubernetes", FAKES / "workload_cluster.py", "WORKLOADS_TOKEN"),
+    "linear": BusinessConnector("linear", FAKES / "task_graph_service.py", "TASKS_TOKEN"),
     "loki": BusinessConnector("loki", FAKES / "log_store_service.py", "LOGS_TOKEN"),
     "mailchimp": BusinessConnector(
         "mailchimp", FAKES / "newsletter_service.py", "NEWSLETTER_TOKEN"
     ),
+    "mastodon": BusinessConnector("mastodon", FAKES / "social_service.py", "MENTIONS_TOKEN"),
     "netlify": BusinessConnector("netlify", FAKES / "site_deploys_service.py", "SITES_TOKEN"),
     "openai": BusinessConnector("openai", FAKES / "model_costs_service.py", "MODEL_COSTS_TOKEN"),
+    "paypal": BusinessConnector(
+        "paypal", FAKES / "billing_plans_service.py", "PAYMENTS_TOKEN", pair=True
+    ),
+    "revenuecat": BusinessConnector(
+        "revenuecat",
+        FAKES / "app_subscriptions_service.py",
+        "PAYMENTS_TOKEN",
+        ("--project", "proj_fake"),
+    ),
+    "scim": BusinessConnector("scim", FAKES / "directory_service.py", "DIRECTORY_TOKEN"),
     "sentry": BusinessConnector(
         "sentry", FAKES / "error_tracking_service.py", "ERRORS_TOKEN", ("--organization", "example")
     ),
@@ -1215,6 +1271,9 @@ BUSINESS: dict[str, BusinessConnector] = {
     # The credential is `<user>:<application password>`: a pair, as a provider that signs takes.
     "wordpress": BusinessConnector(
         "wordpress", FAKES / "website_service.py", "WEBSITE_TOKEN", pair=True
+    ),
+    "zendesk": BusinessConnector(
+        "zendesk", FAKES / "helpdesk_service.py", "HELPDESK_TOKEN", pair=True
     ),
 }
 
@@ -1230,13 +1289,14 @@ def start_business_connector(tmp_path: Path) -> Iterator[Callable[..., RunningCo
         port = free_port()
         service_url = f"http://127.0.0.1:{port}"
         value = spec.value(service_url)
-        fake_env = {**_clean_environment(), "FAKE_TOKENS": value}
+        fake_env = {**_clean_environment(), "FAKE_TOKENS": spec.admitted(value)}
         _start_fake(
             started, tmp_path, spec.fake, ["--port", str(port)], fake_env,
             f"{service_url}/_fake/state", name,
         )  # fmt: skip
         env = {**_clean_environment(), **_secret_files(tmp_path, name, {spec.credential: value})}
-        args = ["--target", service_url, *spec.args] + (["--fault", fault] if fault else [])
+        given = [a.replace("{target}", service_url) for a in spec.args]
+        args = ["--target", service_url, *given] + (["--fault", fault] if fault else [])
         endpoint, log = _start_connector(started, tmp_path, module, args, env, name)
         return RunningConnector(
             f"{endpoint}/mcp",

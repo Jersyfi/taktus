@@ -1,0 +1,35 @@
+{
+  "credentials": {
+    "actions": "HELPDESK_TOKEN"
+  },
+  "read": {
+    "operation": "helpdesk.tickets.list",
+    "input": {
+      "status": "all",
+      "limit": 10
+    }
+  },
+  "writes": [
+    {
+      "operation": "helpdesk.tickets.note",
+      "input": {
+        "id": "1",
+        "text": "Checked by the conformance suite {{unique}}."
+      }
+    },
+    {
+      "operation": "helpdesk.tickets.close",
+      "input": {
+        "id": "2",
+        "tag": "conformance-{{unique}}"
+      }
+    }
+  ],
+  "invalid": {
+    "operation": "helpdesk.tickets.read",
+    "input": {
+      "id": "not-a-number"
+    },
+    "expected_cause": "invalid"
+  }
+}

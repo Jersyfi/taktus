@@ -80,9 +80,19 @@ COPY --chown=connector:connector connectors/taktus_connectors/calendar /app/takt
 ENTRYPOINT ["python", "-m", "taktus_connectors.calendar"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
+FROM base AS canny
+COPY --chown=connector:connector connectors/taktus_connectors/canny /app/taktus_connectors/canny
+ENTRYPOINT ["python", "-m", "taktus_connectors.canny"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
 FROM base AS cloudrun
 COPY --chown=connector:connector connectors/taktus_connectors/cloudrun /app/taktus_connectors/cloudrun
 ENTRYPOINT ["python", "-m", "taktus_connectors.cloudrun"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
+FROM base AS discourse
+COPY --chown=connector:connector connectors/taktus_connectors/discourse /app/taktus_connectors/discourse
+ENTRYPOINT ["python", "-m", "taktus_connectors.discourse"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
 FROM base AS einvoice
@@ -100,6 +110,11 @@ COPY --chown=connector:connector connectors/taktus_connectors/firebase /app/takt
 ENTRYPOINT ["python", "-m", "taktus_connectors.firebase"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
+FROM base AS freshdesk
+COPY --chown=connector:connector connectors/taktus_connectors/freshdesk /app/taktus_connectors/freshdesk
+ENTRYPOINT ["python", "-m", "taktus_connectors.freshdesk"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
 FROM base AS gcp
 COPY --chown=connector:connector connectors/taktus_connectors/gcp /app/taktus_connectors/gcp
 ENTRYPOINT ["python", "-m", "taktus_connectors.gcp"]
@@ -110,9 +125,24 @@ COPY --chown=connector:connector connectors/taktus_connectors/github /app/taktus
 ENTRYPOINT ["python", "-m", "taktus_connectors.github"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
+FROM base AS githubaudit
+COPY --chown=connector:connector connectors/taktus_connectors/githubaudit /app/taktus_connectors/githubaudit
+ENTRYPOINT ["python", "-m", "taktus_connectors.githubaudit"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
 FROM base AS googleanalytics
 COPY --chown=connector:connector connectors/taktus_connectors/googleanalytics /app/taktus_connectors/googleanalytics
 ENTRYPOINT ["python", "-m", "taktus_connectors.googleanalytics"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
+FROM base AS googleplay
+COPY --chown=connector:connector connectors/taktus_connectors/googleplay /app/taktus_connectors/googleplay
+ENTRYPOINT ["python", "-m", "taktus_connectors.googleplay"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
+FROM base AS googleworkspace
+COPY --chown=connector:connector connectors/taktus_connectors/googleworkspace /app/taktus_connectors/googleworkspace
+ENTRYPOINT ["python", "-m", "taktus_connectors.googleworkspace"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
 FROM base AS httpcheck
@@ -120,9 +150,24 @@ COPY --chown=connector:connector connectors/taktus_connectors/httpcheck /app/tak
 ENTRYPOINT ["python", "-m", "taktus_connectors.httpcheck"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
+FROM base AS hubspot
+COPY --chown=connector:connector connectors/taktus_connectors/hubspot /app/taktus_connectors/hubspot
+ENTRYPOINT ["python", "-m", "taktus_connectors.hubspot"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
+FROM base AS jira
+COPY --chown=connector:connector connectors/taktus_connectors/jira /app/taktus_connectors/jira
+ENTRYPOINT ["python", "-m", "taktus_connectors.jira"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
 FROM base AS kubernetes
 COPY --chown=connector:connector connectors/taktus_connectors/kubernetes /app/taktus_connectors/kubernetes
 ENTRYPOINT ["python", "-m", "taktus_connectors.kubernetes"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
+FROM base AS linear
+COPY --chown=connector:connector connectors/taktus_connectors/linear /app/taktus_connectors/linear
+ENTRYPOINT ["python", "-m", "taktus_connectors.linear"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
 FROM base AS loki
@@ -140,6 +185,11 @@ COPY --chown=connector:connector connectors/taktus_connectors/mailchimp /app/tak
 ENTRYPOINT ["python", "-m", "taktus_connectors.mailchimp"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
+FROM base AS mastodon
+COPY --chown=connector:connector connectors/taktus_connectors/mastodon /app/taktus_connectors/mastodon
+ENTRYPOINT ["python", "-m", "taktus_connectors.mastodon"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
 FROM base AS netlify
 COPY --chown=connector:connector connectors/taktus_connectors/netlify /app/taktus_connectors/netlify
 ENTRYPOINT ["python", "-m", "taktus_connectors.netlify"]
@@ -150,9 +200,24 @@ COPY --chown=connector:connector connectors/taktus_connectors/openai /app/taktus
 ENTRYPOINT ["python", "-m", "taktus_connectors.openai"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
+FROM base AS paypal
+COPY --chown=connector:connector connectors/taktus_connectors/paypal /app/taktus_connectors/paypal
+ENTRYPOINT ["python", "-m", "taktus_connectors.paypal"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
 FROM base AS prometheus
 COPY --chown=connector:connector connectors/taktus_connectors/prometheus /app/taktus_connectors/prometheus
 ENTRYPOINT ["python", "-m", "taktus_connectors.prometheus"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
+FROM base AS revenuecat
+COPY --chown=connector:connector connectors/taktus_connectors/revenuecat /app/taktus_connectors/revenuecat
+ENTRYPOINT ["python", "-m", "taktus_connectors.revenuecat"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
+FROM base AS scim
+COPY --chown=connector:connector connectors/taktus_connectors/scim /app/taktus_connectors/scim
+ENTRYPOINT ["python", "-m", "taktus_connectors.scim"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
 FROM base AS sentry
@@ -188,4 +253,9 @@ CMD ["--host", "0.0.0.0", "--port", "9100"]
 FROM base AS wordpress
 COPY --chown=connector:connector connectors/taktus_connectors/wordpress /app/taktus_connectors/wordpress
 ENTRYPOINT ["python", "-m", "taktus_connectors.wordpress"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
+FROM base AS zendesk
+COPY --chown=connector:connector connectors/taktus_connectors/zendesk /app/taktus_connectors/zendesk
+ENTRYPOINT ["python", "-m", "taktus_connectors.zendesk"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]

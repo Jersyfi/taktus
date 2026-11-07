@@ -1,0 +1,19 @@
+{
+  "credentials": {
+    "actions": "DIRECTORY_TOKEN"
+  },
+  "read": {
+    "operation": "directory.accounts.list",
+    "input": {
+      "limit": 10
+    }
+  },
+  "writes": [],
+  "invalid": {
+    "operation": "directory.accounts.list",
+    "input": {
+      "group": "a group nobody holds"
+    },
+    "expected_cause": "invalid"
+  }
+}
