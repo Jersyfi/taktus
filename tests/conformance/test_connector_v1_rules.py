@@ -18,6 +18,7 @@ import pytest
 from taktus.conformance.catalogue import catalogue_of
 from taktus.conformance.connector import rules
 from taktus.conformance.connector.rules import CATALOGUE, CHECKS
+from taktus.conformance.connector.suite import needles_of
 
 EXAMPLES = Path(__file__).resolve().parents[2] / "contracts" / "connector" / "v1" / "examples"
 
@@ -160,3 +161,12 @@ def test_intake_results_are_judged_against_what_was_expected() -> None:
     ) == {"C-08"}
     undeclared = {"accepted": {**accepted["accepted"], "event": "star.created"}}
     assert checks(rules.intake_violations(CAPABILITIES, undeclared, expect="accepted")) == {"C-07"}
+
+
+def test_a_credential_of_json_is_looked_for_as_an_answer_of_json_writes_it() -> None:
+    """C-04: a key file of JSON copied into an answer is written escaped — its quotes and the
+    escaped line breaks of its key — and is found in that form too (ADR-0207)."""
+    value = json.dumps({"private_key": "-----BEGIN-----\nabc\n-----END-----\n", "id": "k"})
+    answer = json.dumps({"output": {"token": value}})
+    assert value not in answer
+    assert any(needle in answer for needle in needles_of(value).values())

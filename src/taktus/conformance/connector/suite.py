@@ -925,6 +925,11 @@ def needles_of(value: str) -> dict[str, str]:
     value of several lines that is long enough to be its own — a private key quoted in an error
     is found by its lines (issue #267)."""
     needles = {"in clear": value, "base64": base64.b64encode(value.encode()).decode()}
+    quoted = json.dumps(value)[1:-1]
+    if quoted != value:
+        # A value with a quote or a backslash — a key file of JSON — is written escaped by any
+        # JSON answer that copies it, and would not be found in clear.
+        needles["as a JSON string writes it"] = quoted
     if "\n" in value:
         needles["with its line breaks escaped"] = value.replace("\n", "\\n")
         for number, line in enumerate(value.splitlines(), start=1):
