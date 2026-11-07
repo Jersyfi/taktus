@@ -4,9 +4,9 @@ title: A software factory as a worker
 component: catalog
 epic: E8
 serves: [P1, P11, P13]
-state: built
+state: verified
 version: 0.6.0
-tests: [tests/conformance/test_worker_v1_factory.py::test_the_factory_worker_passes_the_suite, tests/conformance/test_worker_v1_factory.py::test_fault_fails_exactly_its_check, tests/conformance/test_worker_v1_factory.py::test_it_declares_where_the_factory_stores_and_one_capability, tests/conformance/test_worker_v1_factory.py::test_the_change_arrives_as_the_coding_workers_publish_it, tests/conformance/test_worker_v1_factory.py::test_a_frame_without_the_factory_s_host_sends_nothing, tests/components/run/test_worker_residency.py::test_only_workers_outside_the_rule_fail_the_step_naming_the_rule, tests/components/run/test_worker_residency.py::test_a_worker_that_declares_nothing_counts_as_elsewhere, tests/integration/test_factory_worker.py::test_an_eu_tenant_is_never_handed_to_a_factory_that_stores_elsewhere, tests/integration/test_factory_worker.py::test_withholding_the_factory_changes_the_step_to_the_other]
+tests: [tests/conformance/test_worker_v1_factory.py::test_the_factory_worker_passes_the_suite, tests/conformance/test_worker_v1_factory.py::test_fault_fails_exactly_its_check, tests/conformance/test_worker_v1_factory.py::test_it_declares_where_the_factory_stores_and_one_capability, tests/conformance/test_worker_v1_factory.py::test_the_change_arrives_as_the_coding_workers_publish_it, tests/conformance/test_worker_v1_factory.py::test_a_frame_without_the_factory_s_host_sends_nothing, tests/components/run/test_worker_residency.py::test_only_workers_outside_the_rule_fail_the_step_naming_the_rule, tests/components/run/test_worker_residency.py::test_a_worker_that_declares_nothing_counts_as_elsewhere, tests/integration/test_factory_worker.py::test_an_eu_tenant_is_never_handed_to_a_factory_that_stores_elsewhere, tests/integration/test_factory_worker.py::test_withholding_the_factory_changes_the_step_to_the_other, tests/architecture/test_core_is_technology_free.py::test_no_product_name_in_the_core]
 adrs: {ADR-0007: 26804369941b, ADR-0078: 5988b2bd75b6, ADR-0116: fdaf116b5e47, ADR-0157: 816baa22bb2c}
 supersedes: null
 ---

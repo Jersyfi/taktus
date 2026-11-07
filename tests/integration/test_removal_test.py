@@ -59,6 +59,7 @@ from taktus.components.process.domain.model import ProcessVersion
 from taktus.components.run.application.query import ProvenanceQuery, RecordedResponses
 from taktus.components.run.application.service import RunEngine, StartRun
 from taktus.components.run.domain.model import Run, RunState, StepState
+from taktus.composition.levels import VersionStatements
 from taktus.composition.local import LocalWiring
 from taktus.composition.loopback import Loopback, Pools
 from taktus.ports.worker import Limits
@@ -351,6 +352,10 @@ def connector_services(
             connectors=connectors,
             models=models,
             recordings=recordings,
+            # S-01's report carries the exactness statement of its version (ADR-0226).
+            statements=VersionStatements(
+                persistence, MemoryRepository(persistence, ProcessVersion)
+            ),
         )
 
     commission = CommissionPlanHandler(

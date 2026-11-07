@@ -4,7 +4,7 @@ title: A proposed version is rehearsed from the plan dialogue
 component: command
 epic: E1
 serves: [P2, P7, P10]
-state: building
+state: built
 version: 0.4.0
 tests: [tests/composition/test_proposals.py::test_a_rehearsal_runs_the_proposal_as_no_version_and_acts_on_nothing_outside, tests/composition/test_proposals.py::test_only_a_proposal_whose_rehearsal_finished_is_commissioned]
 adrs: {ADR-0030: 232318604b2d, ADR-0108: 5807c686953c, ADR-0091: ca83e9f5bb5f}

@@ -4,7 +4,7 @@ title: Recurring decisions become rules on proposal
 component: decision
 epic: E7
 serves: [P8, P10, P14]
-state: built
+state: verified
 version: 0.6.0
 tests: [tests/governance/test_rules_from_precedent.py::test_a_consistent_pattern_is_proposed_as_a_decision_request_naming_its_precedents, tests/governance/test_rules_from_precedent.py::test_nothing_changes_before_the_proposal_is_accepted, tests/governance/test_rules_from_precedent.py::test_an_accepted_rule_answers_its_kind_and_names_itself, tests/governance/test_rules_from_precedent.py::test_a_declined_proposal_changes_nothing_and_is_not_proposed_again_at_once, tests/governance/test_rules_from_precedent.py::test_one_decision_otherwise_or_with_a_modification_breaks_the_pattern, tests/governance/test_rules_from_precedent.py::test_a_rule_that_declines_halts_the_run_as_a_person_s_decline_would, tests/governance/test_rules_from_precedent.py::test_a_retired_rule_answers_nothing, tests/governance/test_rules_from_precedent.py::test_a_rule_is_no_person_s_confirmation_at_level_two, tests/governance/test_rules_from_precedent.py::test_no_rule_is_proposed_over_an_act_an_anchor_keeps_with_a_person, tests/governance/test_rules_from_precedent.py::test_only_a_tenant_s_strategic_anchor_may_ever_be_answered_by_a_rule, tests/governance/test_rules_from_precedent.py::test_the_pattern_is_found_by_count_and_no_language_model_reads_the_register, tests/governance/test_rules_from_precedent.py::test_a_decision_a_rule_took_is_nobody_s_response_time]
 adrs: {ADR-0008: e6a4e033abd4, ADR-0015: 3a42705e5561, ADR-0042: bfc76a4a3797, ADR-0088: 655238bb8152, ADR-0152: c193d1fbb4ed, ADR-0161: 80b8a7d53d72}
