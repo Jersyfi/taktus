@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
-import socket
 import subprocess
 import sys
 from collections.abc import AsyncIterator, Iterator
@@ -21,6 +20,7 @@ from pathlib import Path
 import httpx
 import pytest
 import uvicorn
+from fakes.ports import free_port
 from fastapi import FastAPI
 
 from taktus.adapters.driven.memory import MemoryRelay
@@ -43,12 +43,6 @@ from taktus.ports.worker import (
 
 WORKER = Path(__file__).resolve().parents[3] / "workers/script/worker.py"
 NAME = "site"
-
-
-def free_port() -> int:
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        return int(probe.getsockname()[1])
 
 
 @contextlib.asynccontextmanager

@@ -8,7 +8,6 @@ over MCP, as an instance reaches it.
 
 from __future__ import annotations
 
-import socket
 import threading
 from collections.abc import Iterator
 from pathlib import Path
@@ -18,6 +17,7 @@ import httpx
 import pytest
 from fakes import warehouse_service
 from fakes.google_oauth import service_account_key
+from fakes.ports import free_port
 from taktus_connectors.bigquery.operations import Config, leading_word
 from taktus_connectors.bigquery.server import build_server
 
@@ -26,12 +26,6 @@ from taktus.ports.connector import CallContext, CallFailed, idempotency_key
 from taktus.ports.worker import CredentialReference
 
 RUN = "warehouse.queries.run"
-
-
-def free_port() -> int:
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        return int(probe.getsockname()[1])
 
 
 @pytest.fixture

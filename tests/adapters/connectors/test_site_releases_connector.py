@@ -9,7 +9,6 @@ in-process over MCP, as an instance reaches it.
 from __future__ import annotations
 
 import json
-import socket
 import threading
 from collections.abc import Iterator
 from pathlib import Path
@@ -19,18 +18,13 @@ import httpx
 import pytest
 from fakes import hosting_releases_service as fake
 from fakes.google_oauth import service_account_key
+from fakes.ports import free_port
 from taktus_connectors.firebase.operations import Config
 from taktus_connectors.firebase.server import build_server
 
 from taktus.adapters.driven.connectors.mcp import McpActionConnector
 from taktus.ports.connector import CallContext, CallFailed, idempotency_key
 from taktus.ports.worker import CredentialReference
-
-
-def free_port() -> int:
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        return int(probe.getsockname()[1])
 
 
 @pytest.fixture
