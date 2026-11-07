@@ -1113,13 +1113,30 @@ class BusinessConnector:
     key: Callable[[], str] | None = None
     """The credential is a signing key the fake must verify against: its maker, from the fake's
     module, whose value the fake is started with (ADR-0207)."""
+    service_account: bool = False
+    """The credential is a service account's key file, JSON with `client_email` and a private
+    key; the fake admits the account by its address."""
 
     def value(self) -> str:
         if self.key is not None:
             return self.key()
         if self.pair:
             return f"key-{secrets.token_hex(6)}:sig-{secrets.token_hex(12)}"
+        if self.service_account:
+            key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+            pem = key.private_bytes(
+                serialization.Encoding.PEM,
+                serialization.PrivateFormat.PKCS8,
+                serialization.NoEncryption(),
+            ).decode()
+            email = f"tok-{secrets.token_hex(8)}@project.iam.example"
+            document = {"type": "service_account", "client_email": email, "private_key": pem}
+            return json.dumps(document, separators=(",", ":"))
         return "tok-" + secrets.token_hex(12)
+
+    def admitted(self, value: str) -> str:
+        """What the fake is started with to admit the value: the value, or the account."""
+        return str(json.loads(value)["client_email"]) if self.service_account else value
 
 
 FAKES = ROOT / "tests" / "fakes"
@@ -1147,12 +1164,22 @@ BUSINESS: dict[str, BusinessConnector] = {
     "freshdesk": BusinessConnector(
         "freshdesk", FAKES / "support_desk_service.py", "HELPDESK_TOKEN"
     ),
+    "githubaudit": BusinessConnector(
+        "githubaudit", FAKES / "audit_log_service.py", "AUDIT_TOKEN", ("--organization", "example")
+    ),
     "googleplay": BusinessConnector(
         "googleplay",
         FAKES / "review_replies_service.py",
         "STORE_REVIEWS_KEY",
         ("--token-url", "/token"),
         key=review_replies_service.credential,
+    ),
+    "googleworkspace": BusinessConnector(
+        "googleworkspace",
+        FAKES / "workspace_reports_service.py",
+        "AUDIT_TOKEN",
+        ("--subject", "admin@org.example", "--token-url", "{target}/token"),
+        service_account=True,
     ),
     "kubernetes": BusinessConnector("kubernetes", FAKES / "workload_cluster.py", "WORKLOADS_TOKEN"),
     "mastodon": BusinessConnector("mastodon", FAKES / "social_service.py", "MENTIONS_TOKEN"),
@@ -1166,6 +1193,7 @@ BUSINESS: dict[str, BusinessConnector] = {
         "PAYMENTS_TOKEN",
         ("--project", "proj_fake"),
     ),
+    "scim": BusinessConnector("scim", FAKES / "directory_service.py", "DIRECTORY_TOKEN"),
     "sentry": BusinessConnector(
         "sentry", FAKES / "error_tracking_service.py", "ERRORS_TOKEN", ("--organization", "example")
     ),
@@ -1187,13 +1215,14 @@ def start_business_connector(tmp_path: Path) -> Iterator[Callable[..., RunningCo
         name = f"{module}-{fault or 'honest'}"
         port = free_port()
         service_url = f"http://127.0.0.1:{port}"
-        fake_env = {**_clean_environment(), "FAKE_TOKENS": value}
+        fake_env = {**_clean_environment(), "FAKE_TOKENS": spec.admitted(value)}
         _start_fake(
             started, tmp_path, spec.fake, ["--port", str(port)], fake_env,
             f"{service_url}/_fake/state", name,
         )  # fmt: skip
         env = {**_clean_environment(), **_secret_files(tmp_path, name, {spec.credential: value})}
-        args = ["--target", service_url, *spec.args] + (["--fault", fault] if fault else [])
+        given = [a.replace("{target}", service_url) for a in spec.args]
+        args = ["--target", service_url, *given] + (["--fault", fault] if fault else [])
         endpoint, log = _start_connector(started, tmp_path, module, args, env, name)
         return RunningConnector(
             f"{endpoint}/mcp",
