@@ -1,3 +1,7 @@
+from taktus.components.knowledge.application.service.cite_answer import (
+    CiteAnswer,
+    CiteAnswerHandler,
+)
 from taktus.components.knowledge.application.service.publish_guides import (
     CAPABILITY,
     LIST,
@@ -14,6 +18,8 @@ __all__ = [
     "LIST",
     "READ",
     "WRITE",
+    "CiteAnswer",
+    "CiteAnswerHandler",
     "Publication",
     "PublishGuides",
     "PublishGuidesHandler",

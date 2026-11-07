@@ -38,6 +38,7 @@ from taktus.components.identity.domain.model import (
     LinkCode,
     RoleRights,
 )
+from taktus.components.knowledge.domain.model import KnowledgeEntry
 from taktus.components.process.domain.model import (
     CorrectedCase,
     Evaluation,
@@ -94,6 +95,7 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (Deadline, samples.deadline),
     (StagePlan, samples.stage_plan),
     (TakeoverTrial, samples.takeover_trial),
+    (KnowledgeEntry, samples.knowledge_entry),
     (ValueStream, samples.value_stream),
     (WorkingTime, samples.working_time),
     (AdapterStop, samples.adapter_stop),

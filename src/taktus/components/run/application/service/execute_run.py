@@ -195,6 +195,7 @@ from taktus.components.run.domain.model import (
     Checkpoint,
     CheckRead,
     CheckRule,
+    CitationRule,
     ClaimLost,
     ClassificationRule,
     CommitTitleRule,
@@ -288,6 +289,7 @@ from taktus.components.run.ports import (
     Anchors,
     Breach,
     Cap,
+    Citations,
     ConnectorPool,
     Decisions,
     Draft,
@@ -800,7 +802,11 @@ class RunEngine:
         guidance: Guidance | None = None,
         org_units: OrgUnits | None = None,
         personal: PersonalCredentials | None = None,
+        citations: Citations | None = None,
     ) -> None:
+        self._citations = citations
+        """Where an answer drawn from knowledge is cited and its readings indexed (ADR-0265).
+        None: a step of the rule `citation` fails, and its answer leaves it for nothing."""
         self._own = personal
         """Where a step on behalf of a person finds that person's own credential (ADR-0264).
         None: no identity has one, and every such step gets nothing from its source."""
@@ -5006,6 +5012,8 @@ class RunEngine:
             )
             counted = recurring.recurring(work, subscriptions, failures, as_of)
             return counted, Trace(inputs=read), None, None
+        if isinstance(work, CitationRule):
+            return await self._cited(run, work)
         if isinstance(work, DeviationStatistic):
             (days,), read = await self._resolved(run, [work.days])
             return statistics.deviation(work, days), Trace(inputs=read), None, None
@@ -5014,6 +5022,43 @@ class RunEngine:
         if isinstance(work, LlmWork):
             return await self._llm_step(run, step_run, work, span)
         raise UnsupportedWork(step_run.step_id, f"no evaluator for {type(work).__name__}")
+
+    async def _cited(self, run: Run, work: CitationRule) -> tuple[Any, Trace, None, None]:
+        """An answer drawn from knowledge, cited by the knowledge component (ADR-0265 §3). The
+        moment of each reading is when the step that read it finished: what the source held
+        then, not when the citation looked at it."""
+        (answer, documents, confirmed), read = await self._resolved(
+            run, [work.answer, work.documents, work.confirmed]
+        )
+        if self._citations is None:
+            raise RuleFailed(
+                "no knowledge index is wired: an answer drawn from knowledge cannot be cited, "
+                "and does not leave the step uncited"
+            )
+        read_at = self._finished(run, work.documents)
+        confirmed_at = None if work.confirmed is None else self._finished(run, work.confirmed)
+        try:
+            cited = await self._citations.cite(
+                run.tenant,
+                capability=work.capability,
+                answer=answer,
+                documents=documents,
+                confirmed=confirmed,
+                read_at=read_at,
+                confirmed_at=confirmed_at,
+            )
+        except ValueError as refused:
+            raise RuleFailed(str(refused)) from refused
+        return cited, Trace(inputs=read), None, None
+
+    def _finished(self, run: Run, value: Any) -> datetime:
+        """When the latest step a value refers to finished; now where none did."""
+        moments = [
+            finished
+            for step_id in references(value)
+            if (finished := run.step_run(step_id).finished_at) is not None
+        ]
+        return max(moments) if moments else self._clock.now()
 
     # --- estimate and admission -----------------------------------------------------------------
 

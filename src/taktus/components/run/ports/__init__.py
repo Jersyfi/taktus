@@ -8,6 +8,7 @@ from taktus.components.run.ports.anchors import (
     NotRaised,
     Verdict,
 )
+from taktus.components.run.ports.citations import Citations
 from taktus.components.run.ports.connectors import ConnectorPool
 from taktus.components.run.ports.deadlines import DeclaredDeadlines
 from taktus.components.run.ports.guidance import Guidance
@@ -34,6 +35,7 @@ __all__ = [
     "Anchors",
     "Breach",
     "Cap",
+    "Citations",
     "ConnectorPool",
     "CountReading",
     "Decisions",

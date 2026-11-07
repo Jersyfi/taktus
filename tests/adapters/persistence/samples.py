@@ -69,6 +69,7 @@ from taktus.components.identity.domain.model import (
     link_id,
     session_id,
 )
+from taktus.components.knowledge.domain.model import KnowledgeEntry, Observed, entry_id
 from taktus.components.process.application.service.register_version import parse_bundle
 from taktus.components.process.domain.model import (
     CorrectedCase,
@@ -870,6 +871,25 @@ def deadline(tenant: str = "t") -> Deadline:
         lead_at=AT + timedelta(hours=20),
         created_at=AT,
         lead_taken_at=AT + timedelta(hours=20, seconds=3),
+    )
+
+
+def knowledge_entry(tenant: str = "t") -> KnowledgeEntry:
+    """A document of a knowledge source read twice, its first version in the history and the
+    source no longer showing it at the last reading (ADR-0265 §4)."""
+    return KnowledgeEntry(
+        id=entry_id("knowledge.documents", "12"),
+        tenant=tenant,
+        created_at=AT,
+        capability="knowledge.documents",
+        identifier="12",
+        title="Holidays",
+        url="https://wiki.example/books/people/page/holidays",
+        version="2",
+        digest="sha256:" + "b" * 64,
+        observed_at=AT + timedelta(days=2),
+        held=False,
+        earlier=(Observed(version="1", digest="sha256:" + "a" * 64, at=AT),),
     )
 
 

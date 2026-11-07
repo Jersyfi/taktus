@@ -119,6 +119,7 @@ from taktus.components.identity.domain.model import (
     LinkCode,
     RoleRights,
 )
+from taktus.components.knowledge.domain.model import KnowledgeEntry
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.expectations import ExpectationsHandler
 from taktus.components.process.application.service.proposals import Proposals
@@ -210,6 +211,7 @@ from taktus.composition.findings import (
 from taktus.composition.gallery import Gallery
 from taktus.composition.guides import InstanceGuides, served_directory
 from taktus.composition.interfaces import broken_interfaces, interfaces_tick
+from taktus.composition.knowledge import IndexedCitations
 from taktus.composition.levels import RepositoryLevelRecords, VersionStatements
 from taktus.composition.live import LiveHub, LiveOptions, Records, run_listener, state_of
 from taktus.composition.logging import configure, log_effective_configuration
@@ -698,6 +700,9 @@ async def wire(
                     guidance=CatalogGuidance(skill_catalog, agent_catalog),
                     org_units=org_units,
                     personal=ConfiguredPersonalCredentials(settings.personal_credentials),
+                    citations=IndexedCitations(
+                        PostgresRepository(persistence, KnowledgeEntry), persistence
+                    ),
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)

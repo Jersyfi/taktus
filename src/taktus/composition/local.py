@@ -114,6 +114,7 @@ from taktus.components.identity.domain.model import (
     RoleRights,
 )
 from taktus.components.knowledge.application.service import PublishGuidesHandler
+from taktus.components.knowledge.domain.model import KnowledgeEntry
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.deactivate import DeactivateProcessHandler
 from taktus.components.process.application.service.proposals import Proposals
@@ -161,6 +162,7 @@ from taktus.composition.execution import (
 from taktus.composition.findings import RunBlocks, RunContent, sending_of
 from taktus.composition.guides import InstanceGuides, served_directory
 from taktus.composition.interfaces import broken_interfaces
+from taktus.composition.knowledge import IndexedCitations
 from taktus.composition.levels import RepositoryLevelRecords, VersionStatements
 from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.maturation import InstanceMaturation, RepositoryScores, maturation_wiring
@@ -428,6 +430,7 @@ class LocalWiring:
                     personal=ConfiguredPersonalCredentials(
                         load_personal_credentials(self._configuration)
                     ),
+                    citations=IndexedCitations(stores.of(KnowledgeEntry), stores.work),
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)

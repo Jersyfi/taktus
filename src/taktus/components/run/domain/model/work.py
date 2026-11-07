@@ -577,6 +577,23 @@ class RecurringRule(Value):
     days: int = Field(default=8, ge=2, le=366)
 
 
+class CitationRule(Value):
+    """An answer drawn from knowledge, cited (UC-5.5, ADR-0265 §3): every statement of `answer`
+    followed by the numbers of its sources, then the sources with their links and versions.
+    `answer` is a model's statements, each naming the documents it rests on; `documents` what a
+    search through `capability` read; `confirmed`, where given, what a later reading of versions
+    found the source to hold. A statement without a source, or naming a document the search did
+    not read, fails the step: an answer without a source does not leave it. A source whose
+    version the source no longer holds says so. The knowledge component cites, through the
+    port `Citations`, and records what was read into its index."""
+
+    rule: Literal["citation"]
+    capability: str = Field(pattern=r"^[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*)+$")
+    answer: Any
+    documents: Any
+    confirmed: Any = None
+
+
 class ConnectorRule(Value):
     """The result is what one connector operation answered: its output, the effect it reported
     and what it consumed (`contracts/connector/v1` §5). The operation's capability — every
@@ -623,6 +640,7 @@ type RuleWork = Annotated[
     | CommitTitleRule
     | InvoiceRule
     | RecurringRule
+    | CitationRule
     | ConnectorRule,
     Field(discriminator="rule"),
 ]
