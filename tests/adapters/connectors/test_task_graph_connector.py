@@ -203,3 +203,30 @@ async def test_a_throttled_or_absent_tracker_is_unavailable_and_retryable(tracke
     with pytest.raises(CallFailed) as absent:
         await tasks(f"http://127.0.0.1:{free_port()}").call("tasks.items.list", context(), {})
     assert absent.value.error.cause.value == "unavailable"
+
+
+# --- UC-5.3: a task that belongs with others --------------------------------------------------
+
+
+async def test_a_task_that_belongs_with_others_is_related_to_them_once(tracker: str) -> None:
+    connector = tasks(tracker)
+    given = {"title": "Second finding", "description": "Same cause.", "related": ["TSK-1", "TSK-2"]}
+    first = await connector.call("tasks.items.create", context(), given)
+    assert first.output["related"] == ["TSK-1", "TSK-2"] and first.output["linked"] is True
+    again = await connector.call("tasks.items.create", context(), given)
+    assert again.effect.replayed is True
+    relations: Any = state(tracker)["relations"]
+    assert len(relations) == 2, "a repeat relates nothing twice"
+    assert {r["type"] for r in relations} == {"related"}
+
+
+async def test_a_task_related_to_one_the_tracker_does_not_know_is_never_created(
+    tracker: str,
+) -> None:
+    with pytest.raises(CallFailed) as failed:
+        await tasks(tracker).call(
+            "tasks.items.create", context(), {"title": "Orphan", "related": ["TSK-999"]}
+        )
+    assert failed.value.error.cause.value == "invalid"
+    assert "TSK-999" in (failed.value.error.detail or "")
+    assert state(tracker)["created"] == []

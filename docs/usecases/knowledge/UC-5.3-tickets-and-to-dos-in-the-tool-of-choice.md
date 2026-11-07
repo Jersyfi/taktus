@@ -4,9 +4,9 @@ title: Tickets and to-dos in the tool of choice
 component: knowledge
 epic: E5
 serves: [P1, P4]
-state: specified
+state: verified
 version: 0.5.0
-tests: []
+tests: [tests/composition/test_tickets.py::test_the_same_ticket_is_created_in_either_tracker_by_configuration_alone, tests/composition/test_tickets.py::test_a_ticket_repeated_after_a_restart_is_created_once, tests/composition/test_tickets.py::test_a_ticket_the_tracker_refuses_for_a_missing_field_is_a_failed_step_with_the_reason, tests/composition/test_tickets.py::test_the_fields_the_tracker_requires_are_given_by_the_process, tests/adapters/connectors/test_task_rest_connector.py::test_an_issue_without_a_field_its_kind_requires_is_refused_and_not_created, tests/adapters/connectors/test_task_rest_connector.py::test_an_issue_that_belongs_with_others_is_linked_to_them_once, tests/adapters/connectors/test_task_rest_connector.py::test_an_issue_related_to_one_the_site_does_not_know_is_never_created, tests/adapters/connectors/test_task_graph_connector.py::test_a_task_that_belongs_with_others_is_related_to_them_once, tests/adapters/connectors/test_task_graph_connector.py::test_a_task_related_to_one_the_tracker_does_not_know_is_never_created]
 adrs: {ADR-0003: d0268914fed9, ADR-0022: 69572977f46b, ADR-0024: 52ba89e4adec}
 supersedes: null
 ---

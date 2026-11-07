@@ -34,6 +34,9 @@ The API's published OpenAPI document,
   `GET /rest/api/3/issue/{issueIdOrKey}` with `fields`; `POST /rest/api/3/issue` with `fields`
   (`project`, `summary`, `description` as a document, `issuetype`), answering 201 with `id`,
   `key` and `self` (`CreatedIssue`).
+- [Issue links](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issue-links/):
+  `POST /rest/api/3/issueLink` with `type.name`, `inwardIssue.key` and `outwardIssue.key`,
+  answering 201 with no body, and answering a link that exists already as created.
 - [Issue comments](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issue-comments/):
   `GET` with `startAt`, `maxResults`, `total`; `POST` with a body in the
   [Atlassian Document Format](https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/).
@@ -47,7 +50,7 @@ The API's published OpenAPI document,
 | `tasks.items.list` | `read` | `overdue_by_days` (optional, 0 to 3650), `limit` (1 to 5000, default 500) | `items`, `complete` |
 | `tasks.items.read` | `read` | `id`, an issue's key such as `OPS-123` | one item, with `open` |
 | `tasks.items.remind` | `write`, `marked` | `id`, `text` (1 to 4000 characters) | `task`, `comment` |
-| `tasks.items.create` | `write`, `marked` | `title` (one line, 1 to 255 characters), `description` (optional, at most 30000) | `id`, `key` (both the issue's key), `url` |
+| `tasks.items.create` | `write`, `marked` | `title` (one line, 1 to 255 characters), `description` (optional, at most 30000), `fields` (optional, further fields the issue type requires, by the site's field name), `related` (optional, up to 20 keys of the issues it belongs with) | `id`, `key` (both the issue's key), `url`, `related`, `linked` |
 
 The search is `project = "<KEY>" AND statusCategory != Done`, with `AND duedate <= "<date>"`
 for `overdue_by_days`, ordered by due date and key, in pages of 100.
@@ -72,8 +75,19 @@ until the site answers 404. Bounded, and stated so: a repeat is not recognised a
 issues were created in the project in between, nor when more than 20 were created while the
 search lagged. The key it answers is what `tasks.items.remind` takes (ADR-0227 §4).
 
-400 and 404 are `invalid`, 401 `unauthenticated`, 403 `forbidden`, 429 and 5xx `unavailable`
-and retryable. The site's own messages are never copied into an error.
+A new issue carries the fields its type requires (UC-5.3): `fields` names them by the site's
+field name, a custom field as `customfield_<number>`, and may not set the project, summary,
+description or issue type, which the connector sets itself. An issue the site refuses for a
+field left out is `invalid`, its error naming the fields the site refused, by name only; nothing
+is created. An issue that belongs with others is linked to each as `Relates`; each is read
+before anything is created, so one the site does not know refuses the call with no issue made.
+The site answers a link that exists already as created, so a repeat links again and changes
+nothing. A link not made after the issue exists is `unavailable` and retryable, so that the run
+keeps the key and its repeat finds the issue.
+
+400, 404 and 422 are `invalid`, 401 `unauthenticated`, 403 `forbidden`, 429 and 5xx
+`unavailable` and retryable. The site's own messages are never copied into an error; of a
+refused creation, only the names of the fields it refused.
 
 ## Credentials
 

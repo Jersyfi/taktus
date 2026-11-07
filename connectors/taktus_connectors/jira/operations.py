@@ -75,6 +75,10 @@ PROBES = 20
 MAX_TITLE = 255
 MAX_DESCRIPTION = 30000
 CREATED_FIELDS = "summary,description"
+MAX_RELATED = 20
+LINK_TYPE = "Relates"
+FIELD = re.compile(r"^([a-z][A-Za-z0-9]*|customfield_[0-9]{1,9})$")
+OWN_FIELDS = {"project", "summary", "description", "issuetype"}
 
 
 @dataclass(frozen=True)
@@ -122,6 +126,7 @@ async def _request(
     *,
     params: Json | None = None,
     body: Json | None = None,
+    fields_refused: bool = False,
 ) -> Json:
     writing = method != "GET"
     authorization = _authorization(call.token)
@@ -145,6 +150,8 @@ async def _request(
         # The type alone: an error's text can quote the request, the credential among it.
         raise unavailable(f"the site could not be reached: {type(error).__name__}") from error
     status = response.status_code
+    if status in (201, 204) and writing and not response.content:
+        return {}  # an issue link is created with no body (POST /rest/api/3/issueLink)
     if status in (200, 201):
         try:
             answer = response.json()
@@ -161,9 +168,29 @@ async def _request(
         raise TargetError("forbidden", "none", False, "the account may not do this")
     if status == 429 or status >= 500:
         raise unavailable(f"the site answered {status}")
-    if status in (400, 404):
-        raise invalid(f"the site refused the request: {status}")
+    if status in (400, 404, 422):
+        said = _refusal(response) if fields_refused else ""
+        raise invalid(f"the site refused the request: {status}{said}")
     raise _unexpected(f"the site answered {status}")
+
+
+REQUIRED = re.compile(r"Field '([A-Za-z0-9_]+)' is required")
+
+
+def _refusal(response: httpx.Response) -> str:
+    """Which fields the site refused, by name, from its error collection: never its text,
+    which could quote what the request carried."""
+    try:
+        body = response.json()
+    except ValueError:
+        return ""
+    if not isinstance(body, dict):
+        return ""
+    named = {str(k) for k in _obj(body.get("errors")) if FIELD.match(str(k))}
+    for message in body.get("errorMessages") or []:
+        if isinstance(message, str):
+            named.update(REQUIRED.findall(message))
+    return f"; the fields it refused: {', '.join(sorted(named))}" if named else ""
 
 
 def _due(value: Any) -> date | None:
@@ -389,13 +416,79 @@ async def _created(config: Config, call: Call, project: str, mark: str) -> Json 
     return None
 
 
+def related(input: Json) -> list[str]:
+    """The issues a new one belongs with, by key, as the caller gave them."""
+    value = input.get("related", [])
+    if not isinstance(value, list) or len(value) > MAX_RELATED:
+        raise invalid(f"related must be a list of at most {MAX_RELATED} issue keys")
+    keys: list[str] = []
+    for entry in value:
+        if not isinstance(entry, str) or KEY.match(entry) is None:
+            raise invalid(f"{entry!r} in related is not an issue key")
+        if entry not in keys:
+            keys.append(entry)
+    return keys
+
+
+def extra_fields(input: Json) -> Json:
+    """The further fields the site requires for the issue's kind, as the caller gave them:
+    by the site's field name, never one of the four the connector sets itself."""
+    value = input.get("fields", {})
+    if not isinstance(value, dict):
+        raise invalid("fields must be an object of the site's field names")
+    for name in value:
+        if not isinstance(name, str) or FIELD.match(name) is None or name in OWN_FIELDS:
+            raise invalid(f"{name!r} is not a field the caller may set")
+    return dict(value)
+
+
+async def _link(config: Config, call: Call, key: str, others: list[str]) -> None:
+    """Every issue of `others` linked to the issue as related. The site answers a link that
+    exists already as created, so a repeat links again and changes nothing. A link not made
+    is retryable, keeping the key: a repeat finds the issue by its mark and links again."""
+    for other in others:
+        try:
+            await _request(
+                config,
+                call,
+                "POST",
+                "/rest/api/3/issueLink",
+                body={
+                    "type": {"name": LINK_TYPE},
+                    "inwardIssue": {"key": key},
+                    "outwardIssue": {"key": other},
+                },
+            )
+        except TargetError as error:
+            raise TargetError(
+                "unavailable",
+                "unknown",
+                True,
+                f"the issue exists, its link did not: {error.detail}",
+            ) from error
+
+
 async def create(config: Config, call: Call, input: Json) -> Outcome:
     title, description = item(input)
+    others = related(input)
+    extra = extra_fields(input)
     project = _project(config)
+    # Every issue it belongs with must exist before anything is created: a refusal leaves no
+    # issue half made.
+    for other in others:
+        try:
+            await _request(
+                config, call, "GET", f"/rest/api/3/issue/{other}", params={"fields": "summary"}
+            )
+        except TargetError as error:
+            if error.cause == "invalid":
+                raise invalid(f"the site knows no issue {other}") from error
+            raise
     mark = f"{MARK}{call.key}"
     found = await _created(config, call, project, mark)
     if found is not None:
-        return _issue(config, found, replayed=True)
+        await _link(config, call, str(found.get("key")), others)
+        return _issue(config, found, others, replayed=True)
     kind = config.issue_type
     made = await _request(
         config,
@@ -404,22 +497,31 @@ async def create(config: Config, call: Call, input: Json) -> Outcome:
         "/rest/api/3/issue",
         body={
             "fields": {
+                **extra,
                 "project": {"key": project},
                 "summary": title,
                 "description": document(f"{description.rstrip()}\n\n{mark}"),
                 "issuetype": {"id": kind} if kind.isdigit() else {"name": kind},
             }
         },
+        fields_refused=True,
     )
-    return _issue(config, made, replayed=False)
+    await _link(config, call, str(made.get("key")), others)
+    return _issue(config, made, others, replayed=False)
 
 
-def _issue(config: Config, issue: Json, *, replayed: bool) -> Outcome:
+def _issue(config: Config, issue: Json, others: list[str], *, replayed: bool) -> Outcome:
     key = issue.get("key")
     if not isinstance(key, str) or KEY.match(key) is None:
         raise TargetError("unknown", "unknown", False, "the site did not name the issue")
     return Outcome(
-        output={"id": key, "key": key, "url": f"{config.target.rstrip('/')}/browse/{key}"},
+        output={
+            "id": key,
+            "key": key,
+            "url": f"{config.target.rstrip('/')}/browse/{key}",
+            "related": others,
+            "linked": True,
+        },
         effect={"kind": "write", "replayed": replayed, "records": [{"kind": "task", "id": key}]},
     )
 

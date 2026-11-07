@@ -195,3 +195,61 @@ async def test_an_absent_site_is_unavailable_and_retryable() -> None:
     with pytest.raises(CallFailed) as absent:
         await tasks(f"http://127.0.0.1:{free_port()}").call("tasks.items.list", context(), {})
     assert absent.value.error.cause.value == "unavailable"
+
+
+# --- UC-5.3: the fields an issue's kind requires, and the issues it belongs with -------------
+
+
+def require(url: str, fields: list[str]) -> None:
+    httpx.post(f"{url}/_fake/required", content=json.dumps(fields), timeout=5.0)
+
+
+async def test_an_issue_without_a_field_its_kind_requires_is_refused_and_not_created(
+    tracker: str,
+) -> None:
+    require(tracker, ["priority"])
+    with pytest.raises(CallFailed) as failed:
+        await tasks(tracker).call("tasks.items.create", context(), {"title": "Needs a priority"})
+    assert failed.value.error.cause.value == "invalid"
+    assert "the fields it refused: priority" in (failed.value.error.detail or "")
+    assert state(tracker)["created"] == []
+
+
+async def test_the_fields_the_kind_requires_are_carried_and_the_issue_is_created(
+    tracker: str,
+) -> None:
+    require(tracker, ["priority"])
+    given = {"title": "Has a priority", "fields": {"priority": {"name": "High"}}}
+    made = await tasks(tracker).call("tasks.items.create", context(), given)
+    assert made.output["key"] == "TSK-6"
+
+
+async def test_a_field_the_connector_sets_itself_cannot_be_given(tracker: str) -> None:
+    with pytest.raises(CallFailed) as failed:
+        await tasks(tracker).call(
+            "tasks.items.create", context(), {"title": "t", "fields": {"project": {"key": "OPS"}}}
+        )
+    assert failed.value.error.cause.value == "invalid"
+
+
+async def test_an_issue_that_belongs_with_others_is_linked_to_them_once(tracker: str) -> None:
+    connector = tasks(tracker)
+    given = {"title": "Second finding", "related": ["TSK-1", "TSK-2"]}
+    first = await connector.call("tasks.items.create", context(), given)
+    again = await connector.call("tasks.items.create", context(), given)
+    assert again.effect.replayed is True and again.output == first.output
+    assert state(tracker)["links"] == [
+        {"type": "Relates", "inward": "TSK-6", "outward": "TSK-1"},
+        {"type": "Relates", "inward": "TSK-6", "outward": "TSK-2"},
+    ]
+
+
+async def test_an_issue_related_to_one_the_site_does_not_know_is_never_created(
+    tracker: str,
+) -> None:
+    with pytest.raises(CallFailed) as failed:
+        await tasks(tracker).call(
+            "tasks.items.create", context(), {"title": "Orphan", "related": ["TSK-999"]}
+        )
+    assert failed.value.error.cause.value == "invalid"
+    assert state(tracker)["created"] == []
