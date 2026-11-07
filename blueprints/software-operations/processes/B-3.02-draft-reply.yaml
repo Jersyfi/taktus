@@ -145,6 +145,9 @@ deadlines:
 evaluation:
   cases: []
   schedule: weekly
+  # A reply is `free`: its words may differ from run to run. How far its score may fall
+  # before it no longer counts as an equivalent reply (ADR-0250).
+  tolerances: { draft: 0.2 }
   scorers:
     - step: draft
       method: rule

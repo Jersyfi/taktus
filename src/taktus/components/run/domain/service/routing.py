@@ -72,10 +72,12 @@ def route(
     cooling: Mapping[str, datetime],
     now: datetime,
     unshared: Collection[str] = (),
+    unevaluated: Collection[str] = (),
 ) -> Route:
     """The first member of the chain that fits, with every member before it that did not. A
     member whose cool-down ends at or before `now` is not cooling down. A member in `unshared`
-    is shared with no circle the run's identity is inside (ADR-0246 §3)."""
+    is shared with no circle the run's identity is inside (ADR-0246 §3). A member in
+    `unevaluated` has passed no trial on the cases of the step's process (ADR-0249 §2)."""
     skipped: list[RouteSkip] = []
     fitting: ResolvedModel | None = None
     for member in chain:
@@ -87,6 +89,9 @@ def route(
             continue
         if needs.exactness is not None and needs.exactness.value not in member.classes:
             skipped.append(RouteSkip(adapter=member.adapter, reason="exactness"))
+            continue
+        if member.adapter in unevaluated:
+            skipped.append(RouteSkip(adapter=member.adapter, reason="not_evaluated"))
             continue
         fitting = fitting or member
         until = cooling.get(member.adapter)
@@ -105,4 +110,9 @@ def _said(reason: str, needs: Needs) -> str:
         return f"may not produce a {needs.exactness} result"
     if reason == "not_shared":
         return "is not shared with a circle the run's identity is inside (ADR-0246)"
+    if reason == "not_evaluated":
+        return (
+            "has passed no trial on the cases of the step's process; a trial of the purpose "
+            "validates it (ADR-0249)"
+        )
     return "cooling down after a rate limit or a failure"

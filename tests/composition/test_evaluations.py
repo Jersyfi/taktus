@@ -74,6 +74,9 @@ from taktus.shared.v1 import Command, Intent, Plan, PriceKinds, ReplyTo
 TENANT = "t"
 WHO = "idn_ada"
 KIND = "Reply kindly to: ${message}"
+DRAFT_TOLERANCE = 0.05
+"""The tolerance the draft step declares (ADR-0250): the tenant's shipped one, so that a step and
+its side are held alike."""
 SHORT = "Reply in one line to: ${message}"
 SORRY = "We are sorry it came late. We refund the shipping costs."
 
@@ -143,6 +146,7 @@ def bundle(
     version: str,
     *,
     prompt: str = KIND,
+    tolerance: float = DRAFT_TOLERANCE,
     scorers: list[dict[str, Any]] | None = None,
     schedule: str | None = None,
     scoped: bool = False,
@@ -172,6 +176,7 @@ def bundle(
             }
         ],
         "scorers": scorers or [scorer()],
+        "tolerances": {"draft": tolerance},
     }
     if schedule is not None:
         evaluation["schedule"] = schedule
@@ -261,6 +266,7 @@ class World:
         async def sends(version: ProcessVersion) -> bool:
             return self.outward
 
+        self.configured = MemoryRepository(self.persistence, WatchConfiguration)
         self.evaluations = Evaluations(
             processes=self.processes,
             versions=self.versions,
@@ -272,7 +278,7 @@ class World:
             identities=self.identity.directory,
             drifts=Drifts(
                 self.incidents,
-                MemoryRepository(self.persistence, WatchConfiguration),
+                self.configured,
                 self.ledger,
                 self.persistence,
                 self.clock,
@@ -443,6 +449,48 @@ async def test_a_regression_is_not_commissioned_unless_a_person_overrides_it_wit
     (entry,) = [e for e in entries if e.kind == "evaluation.overridden"]
     assert entry.refs.actor == WHO and entry.content_digest is not None
     assert await world.objects.get(entry.content_digest) == reason.encode()
+
+
+async def test_a_step_is_held_to_its_own_tolerance_where_the_tenant_s_is_wider() -> None:
+    """UC-8.4: the step declares what counts as an equivalent result, and its class bounds it.
+    A tenant that tolerates any fall still sees a step that fell beyond its own (ADR-0250)."""
+    world = await World().setup()
+    async with world.persistence.transaction(TENANT):
+        await world.configured.put(
+            TENANT, WatchConfiguration(id=TENANT, tenant=TENANT, evaluation_tolerance=1.0)
+        )
+    proposal = await world.propose(SHORT)
+    _, evaluation = await world.evaluated(proposal)
+    assert evaluation.verdict is Verdict.REGRESSED
+    assert evaluation.regressed_steps == ("draft",)
+    assert evaluation.step_tolerances == {"draft": DRAFT_TOLERANCE}
+    assert evaluation.declared == {"draft": DRAFT_TOLERANCE}
+    assert evaluation.ceilings == {"draft": 0.25}  # the draft step is `tolerant`
+    with pytest.raises(ProposalError) as refused:
+        await world.acts.commission(TENANT, "replies", proposal.id, WHO)
+    assert "the step 'draft' fell beyond its own tolerance of 0.05" in str(refused.value)
+
+
+async def test_a_variable_step_declares_its_tolerance_within_what_its_class_admits() -> None:
+    world = World()
+    await world.identity.directory.add(TENANT, WHO, (TENANT, "support"))
+    for document, said in (
+        (bundle("1", tolerance=0.3), "admits a tolerance of at most 0.25, not 0.3"),
+        (
+            {**bundle("1"), "evaluation": {**bundle("1")["evaluation"], "tolerances": {}}},
+            "the llm step 'draft' varies and declares its tolerance",
+        ),
+        (
+            {
+                **bundle("1"),
+                "evaluation": {**bundle("1")["evaluation"], "tolerances": {"draft": 0.1, "x": 0}},
+            },
+            "names 'x', which no scorer scores",
+        ),
+    ):
+        with pytest.raises(InvalidProcess) as refused:
+            await world.register.execute(RegisterProcessVersion(document, tenant=TENANT, by=WHO))
+        assert said in str(refused.value)
 
 
 async def test_a_change_that_holds_its_score_is_commissioned() -> None:

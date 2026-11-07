@@ -4,10 +4,10 @@ title: Routing to a model by task
 component: catalog
 epic: E8
 serves: [P3, P8, P11]
-state: building
+state: built
 version: 0.4.0
-tests: [tests/components/run/test_model_routing.py::test_a_step_moves_to_the_second_member_after_a_429_of_the_first, tests/components/run/test_model_routing.py::test_a_step_moves_to_the_next_member_after_a_failure_and_books_no_block, tests/components/run/test_model_routing.py::test_a_member_outside_the_tenant_s_residency_rule_is_never_chosen, tests/components/run/test_model_routing.py::test_a_data_class_narrows_the_rule_and_none_fitting_fails_naming_the_rule, tests/components/run/test_model_routing.py::test_a_member_that_may_not_produce_the_step_s_class_is_passed_over, tests/components/run/test_model_routing.py::test_routing_changes_the_model_and_never_the_method, tests/components/run/test_model_routing.py::test_the_recorded_route_is_computed_again_from_the_chain_and_the_record, tests/composition/test_settings.py::test_models_named_in_order_form_each_purpose_s_chain]
-adrs: {ADR-0004: ffdb1f1537f5, ADR-0014: 6611f7833deb, ADR-0021: dc801ddd1c47, ADR-0116: fdaf116b5e47}
+tests: [tests/components/run/test_model_routing.py::test_a_step_moves_to_the_second_member_after_a_429_of_the_first, tests/components/run/test_model_routing.py::test_a_step_moves_to_the_next_member_after_a_failure_and_books_no_block, tests/components/run/test_model_routing.py::test_a_member_outside_the_tenant_s_residency_rule_is_never_chosen, tests/components/run/test_model_routing.py::test_a_data_class_narrows_the_rule_and_none_fitting_fails_naming_the_rule, tests/components/run/test_model_routing.py::test_a_member_that_may_not_produce_the_step_s_class_is_passed_over, tests/components/run/test_model_routing.py::test_routing_changes_the_model_and_never_the_method, tests/components/run/test_model_routing.py::test_the_recorded_route_is_computed_again_from_the_chain_and_the_record, tests/composition/test_settings.py::test_models_named_in_order_form_each_purpose_s_chain, tests/composition/test_model_validation.py::test_a_step_is_routed_past_a_model_whose_quality_fell_on_its_cases, tests/composition/test_model_validation.py::test_a_replacement_reaches_real_runs_only_after_its_validation_run_held, tests/composition/test_model_validation.py::test_a_rehearsal_is_not_held_to_validations]
+adrs: {ADR-0004: ffdb1f1537f5, ADR-0014: 6611f7833deb, ADR-0021: dc801ddd1c47, ADR-0116: fdaf116b5e47, ADR-0249: 96644d826d42}
 supersedes: null
 ---
 
@@ -52,7 +52,12 @@ the record. A model outside the tenant's residency rule, or narrowed by the step
 never chosen. A model that may not produce the step's exactness class passed over. No fitting
 model fails the step on its method. All by the named tests.
 
-Not built: a model eligible only after it passed the step's evaluation (UC-8.4). A residency
-rule narrowed per process (UC-11.1). The route is reproducible for the same needs and the same
-cool-downs; the cool-downs live in the memory of an engine, not in the ledger (ADR-0116, where
-the promise ends).
+A model is eligible for a step only after a trial found the quality held with it on the cases
+of the step's process (ADR-0249): in a real run the route passes over every other member as
+`not_evaluated`, and a member whose quality fell is passed over for the one that held, by the
+named tests. A rehearsal is not held to it. A step its process evaluates on no case has no
+evaluation to pass, and is not held (ADR-0249, where the promise ends).
+
+Not built: a residency rule narrowed per process (UC-11.1). The route is reproducible for the
+same needs and the same cool-downs; the cool-downs live in the memory of an engine, not in the
+ledger (ADR-0116, where the promise ends).

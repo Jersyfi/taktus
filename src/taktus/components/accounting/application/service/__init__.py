@@ -26,6 +26,7 @@ from taktus.components.accounting.application.service.trials import (
     OCCASIONS,
     CandidateReport,
     CaseOutcome,
+    Held,
     NamedCase,
     Offer,
     ReportTrial,
@@ -35,6 +36,7 @@ from taktus.components.accounting.application.service.trials import (
     TrialRead,
     TrialReport,
     TrialReports,
+    Validation,
 )
 
 __all__ = [
@@ -46,6 +48,7 @@ __all__ = [
     "CompareRuns",
     "CostOfRun",
     "CostOfRunHandler",
+    "Held",
     "NamedCase",
     "Offer",
     "ProcessSpend",
@@ -68,4 +71,5 @@ __all__ = [
     "TrialRead",
     "TrialReport",
     "TrialReports",
+    "Validation",
 ]

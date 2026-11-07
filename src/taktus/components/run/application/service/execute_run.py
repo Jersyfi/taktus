@@ -291,6 +291,7 @@ from taktus.components.run.ports import (
     ConnectorPool,
     Decisions,
     Draft,
+    Evaluated,
     Guidance,
     Levels,
     Maturities,
@@ -800,7 +801,11 @@ class RunEngine:
         guidance: Guidance | None = None,
         org_units: OrgUnits | None = None,
         shares: Shares | None = None,
+        evaluated: Evaluated | None = None,
     ) -> None:
+        self._evaluated = evaluated
+        """Which models passed a trial on the cases of a step's process (ADR-0249). None: every
+        member of a chain may serve every step, as before."""
         self._shares = shares
         """Who may use a shared model or connector, and with whose credential (ADR-0246,
         ADR-0247). None: nothing is shared, and a call names what its work names."""
@@ -5529,7 +5534,23 @@ class RunEngine:
             unshared = await self._shares.unshared_models(
                 run.tenant, run.identity, [m.adapter for m in chain]
             )
-        return routing.route(chain, needs, self._cooling, self._clock.now(), unshared)
+        # A real run reaches only a model a trial passed on its process's cases; a rehearsal
+        # acts on nothing, and a bound purpose is a trial's own case run (ADR-0249 §2).
+        unevaluated: frozenset[str] = frozenset()
+        if (
+            self._evaluated is not None
+            and chain
+            and not run.rehearsal
+            and work.purpose not in run.bindings
+        ):
+            unevaluated = await self._evaluated.unevaluated(
+                run.tenant,
+                run.process_version,
+                step.id,
+                work.purpose,
+                [m.adapter for m in chain],
+            )
+        return routing.route(chain, needs, self._cooling, self._clock.now(), unshared, unevaluated)
 
     async def _cool(
         self, run: Run, step_run: StepRun, work: LlmWork, adapter: str, delay: float | None

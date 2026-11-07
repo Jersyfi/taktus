@@ -162,6 +162,13 @@ async def test_a_trial_is_offered_when_taktus_proposes_another_model() -> None:
 async def test_a_trial_is_offered_when_the_model_a_member_answers_as_changes_version() -> None:
     t = await trying()
     await t.world.real_run({"message": "late"})
+    # A model that answered and that no trial included is offered for one (ADR-0249 §3).
+    (introduced,) = await t.trials.offers(TENANT)
+    assert (introduced.occasion, introduced.reason) == (
+        "introduced",
+        "model.fake serves drafting and no trial has validated it",
+    )
+    await t.trials.start(TENANT, "drafting", ["model.fake"], WHO)
     assert await t.trials.offers(TENANT) == []
     t.world.model.name = "draft-model-20261201"
     t.world.clock.current = t.world.clock.current.replace(hour=11)
