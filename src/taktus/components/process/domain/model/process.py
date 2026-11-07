@@ -25,6 +25,7 @@ from taktus.components.process.domain.service import schedule
 from taktus.components.process.domain.service.autonomy import actions_used
 from taktus.components.process.domain.service.validation import topological_order, validate_graph
 from taktus.shared.v1 import Autonomy, AutonomyLevel, ExactnessClass, Step, StepId, Value
+from taktus.shared.v1.autonomy import depending_on
 
 # What a step does when it runs — the task for a worker, the rule to evaluate, what to wait for.
 # Its shape belongs to the process bundle format, which arrives at 0.3.0 (ADR-0011,
@@ -411,6 +412,17 @@ class ProcessVersion(Value):
             "this process uses: the level would never apply (ADR-0039)"
             for action in sorted(set(self.autonomy.action_levels) - used)
         )
+        classes = self.autonomy.classes
+        if classes is not None and classes.step not in ids:
+            findings.append(
+                f"the autonomy statement reads the class of request from {classes.step!r}, "
+                "which is not a step of this process (ADR-0215)"
+            )
+        elif classes is not None and not depending_on(self.steps, classes.step):
+            findings.append(
+                f"no step depends on {classes.step!r}, whose result names the class of request: "
+                "the levels per class would never apply (ADR-0215)"
+            )
         for trigger in self.triggers:
             findings.extend(trigger.findings())
             if trigger.schedule is not None:

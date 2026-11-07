@@ -344,7 +344,9 @@ class RegisterProcessVersionHandler:
         lowered = lowerings.get(version.ref)
         if lowered is None:
             return version.autonomy
-        return autonomy.lowered_to(version.autonomy, lowered.level, lowered.actions)
+        return autonomy.lowered_to(
+            version.autonomy, lowered.level, lowered.actions, lowered.classes
+        )
 
     async def _replaced(self, tenant: Tenant, version: ProcessVersion) -> list[ProcessVersion]:
         """The version the new one replaces: the process's active version where it is known;

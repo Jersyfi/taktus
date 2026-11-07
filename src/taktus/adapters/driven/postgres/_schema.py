@@ -776,6 +776,8 @@ run = Table(
     Column("profile", Text),  # the role profile of a shared agent it serves (ADR-0163)
     Column("org_unit", Text),  # the unit it runs for (ADR-0166)
     Column("org_unit_month", Text),  # the month it committed its budget to its unit's quota
+    Column("classes", JSONB),  # the levels per class of request it took on (ADR-0215)
+    Column("case_class", Text),  # the class its class step named (ADR-0215)
     Column("state", Text, nullable=False),
     Column("cause", Text),
     Column("reason", Text),

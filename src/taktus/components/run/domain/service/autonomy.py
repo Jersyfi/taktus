@@ -33,7 +33,8 @@ from typing import Literal
 from pydantic import Field
 
 from taktus.components.run.domain.model.work import ConnectorRule, WaitWork, Work, WorkerWork
-from taktus.shared.v1 import AutonomyLevel, Step, Value
+from taktus.shared.v1 import AutonomyLevel, ClassAutonomy, Step, Value
+from taktus.shared.v1.autonomy import depending_on
 
 type Awaits = Literal["confirmation", "performance"]
 
@@ -50,9 +51,14 @@ class Held(Value):
     level: AutonomyLevel
     action: str | None = Field(default=None, min_length=1)
     """The tool action whose level holds; None when the process's own level does."""
+    case_class: str | None = Field(default=None, min_length=1)
+    """The class of request whose level holds (ADR-0215); None when none does."""
 
     def describe(self) -> str:
-        held = "the process" if self.action is None else f"the action {self.action}"
+        if self.case_class is not None:
+            held = f"the class {self.case_class}"
+        else:
+            held = "the process" if self.action is None else f"the action {self.action}"
         return f"level {self.level}, held by {held}"
 
 
@@ -67,15 +73,61 @@ def actions_of(step: Step, work: Work) -> tuple[str, ...]:
     return tuple(dict.fromkeys(found))
 
 
-def held(process: AutonomyLevel, actions: Mapping[str, AutonomyLevel], used: Sequence[str]) -> Held:
+def held(
+    process: AutonomyLevel,
+    actions: Mapping[str, AutonomyLevel],
+    used: Sequence[str],
+    klass: tuple[str | None, AutonomyLevel] | None = None,
+) -> Held:
     """The lowest level that applies to a step: the process's, or a lower one of an action the
-    step uses. Between two actions at the same level, the first named holds."""
+    step uses, or of the class of request it depends on (`klass`: the class named, None for one
+    the statement does not name, and its level). Between two actions at the same level, the
+    first named holds. A class named holds where its level equals the process's, so that its
+    decisions count for the class (ADR-0215 §3); an action lower than the class holds over it."""
     verdict = Held(level=process)
     for action in used:
         level = actions.get(action)
         if level is not None and level < verdict.level:
             verdict = Held(level=level, action=action)
+    if klass is not None:
+        name, level = klass
+        if level < verdict.level or (
+            level == verdict.level and verdict.action is None and name is not None
+        ):
+            verdict = Held(level=level, case_class=name)
     return verdict
+
+
+def class_of(
+    classes: ClassAutonomy | None, steps: Sequence[Step], step_id: str, named: str | None
+) -> tuple[str | None, AutonomyLevel] | None:
+    """The class of request that holds a step, with its level: None where the step does not
+    depend on the class's step (ADR-0215 §2). `named` is the class the run's class step named,
+    None before it did and where it named none the statement knows."""
+    if classes is None or step_id not in depending_on(steps, classes.step):
+        return None
+    return named, classes.level_of(named)
+
+
+def class_named(classes: ClassAutonomy, value: object) -> str | None:
+    """The class a result names, as the statement knows it: the text, or the value at
+    `select`, stripped of space and closing punctuation and in lower case. None where it names
+    no class the statement lists (ADR-0215 §2)."""
+    found = value
+    if classes.select is not None:
+        for part in classes.select.split("."):
+            if isinstance(found, Mapping):
+                found = found.get(part)
+            elif isinstance(found, list) and part.isdigit() and int(part) < len(found):
+                found = found[int(part)]
+            else:
+                return None
+    elif isinstance(found, Mapping):
+        found = found.get("text")
+    if not isinstance(found, str):
+        return None
+    word = found.strip().strip(".!:;,'\"`").strip().lower()
+    return word if word in classes.levels else None
 
 
 def acts(work: Work, outward: bool | None) -> bool:

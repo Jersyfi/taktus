@@ -40,6 +40,7 @@ from taktus.ports.worker import ComputeLimit, Limits, QuotaLimit
 from taktus.shared.v1 import (
     Autonomy,
     AutonomyLevel,
+    ClassAutonomy,
     Commissioned,
     ExactnessClass,
     Fallback,
@@ -558,7 +559,15 @@ def test_no_field_of_the_statement_reaches_the_stop_the_reports_or_the_escalatio
     """The statement is closed: what a level can be configured with is these fields, and none
     of them names the stop, a report or the escalation. A new field fails here and is looked at
     against UC-7.1 before it passes."""
-    assert set(Autonomy.model_fields) == {"level", "reason", "toward_next", "actions", "history"}
+    assert set(Autonomy.model_fields) == {
+        "level",
+        "reason",
+        "toward_next",
+        "actions",
+        "history",
+        "classes",  # a level per class of request (ADR-0215): a level, never the stop
+    }
+    assert set(ClassAutonomy.model_fields) == {"step", "select", "default", "levels", "limits"}
     with pytest.raises(ValueError):
         Autonomy.model_validate(
             {"level": 3, "reason": "r", "toward_next": "t", "emergency_stop": False}

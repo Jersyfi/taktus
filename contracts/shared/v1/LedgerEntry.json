@@ -46,6 +46,11 @@
           "type": "string",
           "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$"
         },
+        "case_class": {
+          "description": "The class of request whose level held the step the entry is about, as a step's result named it. Absent where no class held it (ADR-0215).",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
         "report_id": {
           "description": "The report to the owner the entry is about: the record its renderings are composed from (ADR-0045).",
           "type": "string",

@@ -39,6 +39,9 @@ class LedgerRefs(Value):
     action: str | None = Field(default=None, pattern=ACTION_PATTERN)
     """The tool action whose level held the step the entry is about; None where the process's
     own level held it (ADR-0110)."""
+    case_class: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_-]*$")
+    """The class of request whose level held the step the entry is about, as a step's result
+    named it (ADR-0215); None where no class held it."""
     report_id: str | None = Field(default=None, min_length=1)
     """The report to the owner the entry is about (ADR-0045)."""
     deadline_id: str | None = Field(default=None, min_length=1)

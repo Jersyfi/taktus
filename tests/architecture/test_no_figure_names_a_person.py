@@ -190,6 +190,10 @@ DECLARED: dict[str, str] = {
         "a signal's corridor: the thresholds, the window and the minimum a person of the tenant "
         "sets for one signal, which measures no named person (ADR-0109)"
     ),
+    "taktus.shared.v1.autonomy.ClassLimits": (
+        "a class of request's limits: the counts, weeks and rate a process version declares for "
+        "when a class rises and falls, which measure no named person (ADR-0215)"
+    ),
 }
 """Every type whose numbers are declared parameters of a process, not figures of anyone."""
 

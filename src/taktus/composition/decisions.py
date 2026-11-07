@@ -94,7 +94,7 @@ from taktus.components.run.ports import MessageRules as RunMessageRules
 from taktus.ports.clock import Clock
 from taktus.ports.ledger import Ledger
 from taktus.ports.persistence import Repository, Stored, Tenant, UnitOfWork
-from taktus.shared.v1 import DecisionStatus
+from taktus.shared.v1 import ClassAutonomy, DecisionStatus
 
 
 class RepositoryOf(Protocol):
@@ -192,14 +192,29 @@ class RequestsOfTheRun:
 
 class LevelsOfTheRun:
     """The run's port `Levels` and registration's `LoweredVersions`, answered from the
-    governance component's `Corrections` (ADR-0110)."""
+    governance component's `Corrections` (ADR-0110), and the classes of request a version's
+    statement names, read from the process component (ADR-0215)."""
 
-    def __init__(self, corrections: Corrections) -> None:
+    def __init__(
+        self,
+        corrections: Corrections,
+        versions: Repository[ProcessVersion] | None = None,
+        work: UnitOfWork | None = None,
+    ) -> None:
         self._corrections = corrections
+        self._versions = versions
+        self._work = work
 
     async def lowered(self, tenant: Tenant, process_version: str) -> LoweredLevels:
         found = await self._corrections.lowered(tenant, process_version)
-        return LoweredLevels(level=found.level, actions=found.actions)
+        return LoweredLevels(level=found.level, actions=found.actions, classes=found.classes)
+
+    async def classes(self, tenant: Tenant, process_version: str) -> ClassAutonomy | None:
+        if self._versions is None or self._work is None:
+            return None
+        async with self._work.transaction(tenant):
+            version = await self._versions.get(tenant, process_version)
+        return None if version is None else version.autonomy.classes
 
     async def decided(self, tenant: Tenant, decision: ProposalDecided) -> None:
         await self._corrections.decided(
@@ -210,6 +225,8 @@ class LevelsOfTheRun:
                 step_id=decision.step_id,
                 action=decision.action,
                 level=decision.level,
+                case_class=decision.case_class,
+                class_limits=decision.class_limits,
             ),
         )
 
@@ -234,7 +251,7 @@ class LoweredOfTheVersion:
 
     async def lowered(self, tenant: Tenant, process_version: str) -> VersionLowered:
         found = await self._corrections.lowered(tenant, process_version)
-        return VersionLowered(level=found.level, actions=found.actions)
+        return VersionLowered(level=found.level, actions=found.actions, classes=found.classes)
 
 
 class CapsOfTheVersion:
@@ -424,7 +441,7 @@ def decision_wiring(
         queries=DecisionQueries(requests, register, work, clock, deciders),
         rules=rules,
         corrections=corrections,
-        levels=LevelsOfTheRun(corrections),
+        levels=LevelsOfTheRun(corrections, of(ProcessVersion), work),
         lowered=LoweredOfTheVersion(corrections),
         residency=TenantResidency(of(ResidencyRule), ledger, work, clock),
         sources=TenantSources(of(SourceDeclaration), ledger, work, clock),
