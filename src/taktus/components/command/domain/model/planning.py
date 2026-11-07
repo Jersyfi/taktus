@@ -107,6 +107,16 @@ class AgentPart(Value):
         return tuple(lacking)
 
 
+class DomainPart(Value):
+    """The domain blueprint a draft instantiates (ADR-0289, UC-15.1). The questions are the
+    instance's, which the catalogue keeps; the draft carries the ones open, in the words they
+    ask, and each is a part it lacks."""
+
+    instance: str = Field(min_length=1)
+    blueprint: str = Field(min_length=1)
+    open: tuple[str, ...] = ()
+
+
 class PlanDraft(Value):
     id: str = Field(min_length=1)
     tenant: str = Field(min_length=1)
@@ -126,6 +136,8 @@ class PlanDraft(Value):
     results_in: PlanResult = PlanResult.RUN
     agent: AgentPart | None = None
     """The agent the draft works out, or None for a plan that is no agent (ADR-0292)."""
+    domain: DomainPart | None = None
+    """The domain the draft instantiates, or None for a plan that is no domain (ADR-0289)."""
     changed_by: str = Field(min_length=1)
     changed_at: datetime
     commissioned_version: int | None = Field(default=None, ge=1)
@@ -158,6 +170,8 @@ class PlanDraft(Value):
             lacking.extend(self.agent.missing())
             if self.process_version is None:
                 lacking.append(AGENT_PARTS[5])
+        if self.domain is not None:
+            lacking.extend(self.domain.open)
         return tuple(lacking)
 
     def unestimable(self) -> tuple[str, ...]:

@@ -8,9 +8,10 @@ adapter or the composition root (docs/architecture/project-structure.md §3).
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -37,6 +38,7 @@ from taktus.components.catalog.domain.model import (
 from taktus.components.catalog.domain.model.blueprint import DomainFigures
 from taktus.components.catalog.domain.service.shares import Use
 from taktus.components.command.application.service import CommissionPlanHandler
+from taktus.components.command.domain.model import PlanDraft
 from taktus.components.governance.application.service import (
     AnchorsInForce,
     ConfigureAnchorsHandler,
@@ -85,6 +87,7 @@ from taktus.components.run.domain.model import Run
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.ledger import Ledger
 from taktus.ports.persistence import Repository, Tenant, TenantImported, UnitOfWork
+from taktus.shared.v1 import Plan
 
 
 class NotOperable(Exception):
@@ -155,12 +158,60 @@ class CatalogueIndexActs(Protocol):
     ) -> Any: ...
 
 
+class DomainDialogueActs(Protocol):
+    """An instance worked out as a plan draft and instantiated by commissioning it
+    (ADR-0289). Each act answers the instance and the draft as it now stands."""
+
+    async def start(
+        self, tenant: Tenant, admitted: Admitted, by: str, org_path: tuple[str, ...]
+    ) -> tuple[DomainInstance, PlanDraft]: ...
+
+    async def answer(
+        self,
+        tenant: Tenant,
+        admitted: Admitted,
+        instance_id: str,
+        capability: str,
+        adapter: str | None,
+        by: str,
+    ) -> tuple[DomainInstance, PlanDraft]: ...
+
+    async def leave_out(
+        self,
+        tenant: Tenant,
+        admitted: Admitted,
+        instance_id: str,
+        processes: Iterable[str],
+        by: str,
+    ) -> tuple[DomainInstance, PlanDraft]: ...
+
+    async def name_owner(
+        self, tenant: Tenant, admitted: Admitted, instance_id: str, owner: str, by: str
+    ) -> tuple[DomainInstance, PlanDraft]: ...
+
+    async def name_jurisdiction(
+        self, tenant: Tenant, admitted: Admitted, instance_id: str, jurisdiction: str, by: str
+    ) -> tuple[DomainInstance, PlanDraft]: ...
+
+    async def due(self, tenant: Tenant, instance_id: str, due: datetime, by: str) -> PlanDraft: ...
+
+    async def draft(self, tenant: Tenant, instance: DomainInstance) -> PlanDraft: ...
+
+    async def commission(
+        self, tenant: Tenant, admitted: Admitted, instance_id: str, by: str
+    ) -> tuple[DomainInstance, Plan]: ...
+
+
 class DomainActs(Protocol):
     """What `taktusctl domain` asks of the domain blueprints the composition root wires
-    (ADR-0263): a blueprint's directory read and admitted, exported, and its instances."""
+    (ADR-0263): a blueprint's directory read and admitted, exported, and its instances, worked
+    out in a plan where the dialogue is wired (ADR-0289)."""
 
     @property
     def instances(self) -> DomainInstances: ...
+
+    @property
+    def dialogue(self) -> DomainDialogueActs | None: ...
 
     def read(self, directory: Path) -> Any: ...
 

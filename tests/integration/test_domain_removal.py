@@ -102,6 +102,7 @@ async def test_replacing_the_system_behind_an_instance_changes_its_process_and_b
     assert question.options == (RECORDS, SECOND), "both systems declare the capability"
     await domains.answer(TENANT, found, instance.id, "fake.records", RECORDS, by=WHO)
     await domains.name_owner(TENANT, instance.id, WHO)
+    await domains.name_jurisdiction(TENANT, instance.id, "DE")
     instance = await domains.propose(TENANT, found, instance.id, by=WHO)
     [made] = instance.proposed
     proposal = await proposals.find(TENANT, made.proposal)

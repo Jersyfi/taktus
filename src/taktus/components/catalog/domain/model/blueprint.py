@@ -132,12 +132,16 @@ class ProposedProcess(Value):
     blueprint_version: str = Field(min_length=1)
 
 
+JURISDICTION = r"^[A-Z]{2}(-[A-Z0-9]{1,3})?$"
+"""An ISO 3166 code, a country or a region, as the governance domain takes it (ADR-0259)."""
+
+
 class Question(Value):
     """One open question of an instance's dialogue."""
 
-    kind: Literal["capability", "choice", "owner"]
+    kind: Literal["capability", "choice", "owner", "jurisdiction"]
     subject: str
-    """The capability; the alternatives, comma-separated; or `owner`."""
+    """The capability; the alternatives, comma-separated; `owner`; or `jurisdiction`."""
     asks: str
     options: tuple[str, ...] = ()
 
@@ -156,7 +160,14 @@ class DomainInstance(Value):
     bindings: tuple[Binding, ...] = ()
     left_out: tuple[str, ...] = ()
     owner: str | None = Field(default=None, min_length=1)
+    jurisdiction: str | None = Field(default=None, pattern=JURISDICTION)
+    """The country or region whose law the domain's binding acts fall under, as ISO 3166: what
+    the governance domain needs (ADR-0259, ADR-0289)."""
     proposed: tuple[ProposedProcess, ...] = ()
+    plan: str | None = Field(default=None, min_length=1)
+    """The plan draft the instance is worked out in (ADR-0289); None for one made before."""
+    domain_record: str | None = Field(default=None, min_length=1)
+    """The governance domain its commissioning instantiated or joined; None until then."""
 
     def binding(self, capability: str) -> Binding | None:
         return next((b for b in self.bindings if b.capability == capability), None)

@@ -92,6 +92,13 @@ def next_question(draft: PlanDraft) -> Question | None:
     agent = _agent_question(draft)
     if agent is not None:
         return agent
+    if draft.domain is not None and draft.domain.open:
+        return Question(
+            "domain",
+            draft.domain.open[0],
+            "A capability is what a tool does, named without its product: the blueprint asks "
+            "which of your tools does it (ADR-0289).",
+        )
     if draft.due is None:
         return Question("due", "By when should it be done?", "")
     if draft.autonomy_level is None:
@@ -167,6 +174,15 @@ def settings(draft: PlanDraft) -> tuple[Setting, ...]:
             asked=False,
         ),
         *_agent_settings(draft),
+        Setting(
+            "domain",
+            "no domain"
+            if draft.domain is None
+            else f"{draft.domain.blueprint}, instance {draft.domain.instance}",
+            "the domain blueprint the plan instantiates; set by starting its instance, not "
+            "asked (ADR-0289)",
+            asked=False,
+        ),
     )
 
 

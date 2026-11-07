@@ -221,10 +221,11 @@ async def test_the_dialogue_asks_for_each_tool_and_the_owner_and_proposes_nothin
     assert [(q.kind, q.subject, q.options) for q in asked] == [
         ("capability", "accounting.bookings", ("connector.books",)),
         ("owner", "owner", ()),
+        ("jurisdiction", "jurisdiction", ()),
     ]
     with pytest.raises(DomainRefused) as refused:
         await domains.propose(TENANT, found, instance.id, by=WHO)
-    assert refused.value.kind == "open" and len(refused.value.questions) == 2
+    assert refused.value.kind == "open" and len(refused.value.questions) == 3
 
     instance = await domains.answer(
         TENANT, found, instance.id, "accounting.bookings", "connector.books", by=WHO
@@ -234,6 +235,11 @@ async def test_the_dialogue_asks_for_each_tool_and_the_owner_and_proposes_nothin
     assert proposed.made == [], "no process is proposed before the domain has its owner"
 
     instance = await domains.name_owner(TENANT, instance.id, WHO)
+    with pytest.raises(DomainRefused, match="country's law"):
+        await domains.propose(TENANT, found, instance.id, by=WHO)
+    with pytest.raises(DomainRefused, match="no ISO 3166 code"):
+        await domains.name_jurisdiction(TENANT, instance.id, "Germany")
+    instance = await domains.name_jurisdiction(TENANT, instance.id, "DE")
     instance = await domains.propose(TENANT, found, instance.id, by=WHO)
     assert domains.questions(found, instance) == ()
     [(process_id, bundle, request)] = proposed.made
@@ -269,6 +275,7 @@ async def test_a_process_left_out_is_not_proposed_and_a_refused_proposal_is_name
     instance = await domains.start(TENANT, found, by=WHO)
     await domains.answer(TENANT, found, instance.id, "accounting.bookings", None, by=WHO)
     await domains.name_owner(TENANT, instance.id, WHO)
+    await domains.name_jurisdiction(TENANT, instance.id, "DE")
     with pytest.raises(DomainRefused, match="no process F-09"):
         await domains.leave_out(TENANT, found, instance.id, ["F-09"])
     proposed.refuse = ("the version '1' is registered already",)
@@ -286,6 +293,7 @@ async def test_a_later_version_is_offered_as_proposals_and_never_applied() -> No
     instance = await domains.start(TENANT, first, by=WHO)
     await domains.answer(TENANT, first, instance.id, "accounting.bookings", None, by=WHO)
     await domains.name_owner(TENANT, instance.id, WHO)
+    await domains.name_jurisdiction(TENANT, instance.id, "DE")
     await domains.propose(TENANT, first, instance.id, by=WHO)
 
     unchanged = await domains.offer(TENANT, admitted(level=3, version="2"), instance.id, by=WHO)
