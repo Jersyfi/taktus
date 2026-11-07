@@ -70,7 +70,10 @@ def issue(number: int, offset: int | None = -10, done: bool = False) -> dict[str
             },
             "created": "2026-10-01T09:00:00.000+0000",
             "updated": "2026-10-20T09:00:00.000+0000",
-            "assignee": {"displayName": f"Person {number}", "emailAddress": f"p{number}@team.example"},
+            "assignee": {
+                "displayName": f"Person {number}",
+                "emailAddress": f"p{number}@team.example",
+            },
         },
     }
 
@@ -102,7 +105,9 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
             self.wfile.write(data)
 
         def refuse(self, status: int, message: str) -> None:
-            self.answer(status, {"errorMessages": [f"refused by the fake: {message}"], "errors": {}})
+            self.answer(
+                status, {"errorMessages": [f"refused by the fake: {message}"], "errors": {}}
+            )
 
         def admitted(self) -> bool:
             with state.lock:
@@ -170,7 +175,9 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
                 ]
             if parsed.group("due"):
                 due = parsed.group("due")
-                chosen = [i for i in chosen if i["fields"]["duedate"] and i["fields"]["duedate"] <= due]
+                chosen = [
+                    i for i in chosen if i["fields"]["duedate"] and i["fields"]["duedate"] <= due
+                ]
             chosen.sort(key=lambda i: (i["fields"]["duedate"] or "9999", int(i["id"])))
             token = query.get("nextPageToken", [None])[0]
             start = 0

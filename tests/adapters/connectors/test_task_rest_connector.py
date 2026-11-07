@@ -12,6 +12,7 @@ import secrets
 import threading
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -60,6 +61,10 @@ def tasks(url: str) -> McpActionConnector:
     return McpActionConnector(build_server(Config(url, "TSK", timeout=5.0)))
 
 
+def replace(url: str, issues: list[dict[str, Any]]) -> None:
+    httpx.post(f"{url}/_fake/issues", content=json.dumps(issues), timeout=5.0)
+
+
 def state(url: str) -> dict[str, object]:
     found: dict[str, object] = httpx.get(f"{url}/_fake/state", timeout=5.0).json()
     return found
@@ -90,7 +95,7 @@ async def test_overdue_by_days_keeps_the_tasks_due_that_long_ago(tracker: str) -
 
 async def test_pages_are_followed_and_the_limit_bounds_the_answer(tracker: str) -> None:
     many = [task_rest_service.issue(n) for n in range(1, 251)]
-    httpx.post(f"{tracker}/_fake/issues", content=json.dumps(many), timeout=5.0)
+    replace(tracker, many)
     connector = tasks(tracker)
     result = await connector.call("tasks.items.list", context(), {})
     assert len(result.output["items"]) == 250 and result.output["complete"] is True

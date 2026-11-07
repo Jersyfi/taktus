@@ -177,8 +177,9 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
                 if re.search(r"\bcomments\s*\(", query):
                     nodes, more = _page(found[0]["comments"], variables)
                     end = nodes[-1]["id"] if nodes else None
-                    return {"data": {"issue": {"id": found[0]["id"], "comments": {
-                        "nodes": nodes, "pageInfo": {"hasNextPage": more, "endCursor": end}}}}}  # fmt: skip
+                    page = {"hasNextPage": more, "endCursor": end}
+                    comments = {"nodes": nodes, "pageInfo": page}
+                    return {"data": {"issue": {"id": found[0]["id"], "comments": comments}}}
                 return {"data": {"issue": self._node(found[0], query)}}
             return {"data": None, "errors": [_error("invalid input", "unknown field")]}
 

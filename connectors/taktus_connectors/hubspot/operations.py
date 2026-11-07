@@ -34,7 +34,7 @@ address creates none and answers it as replayed. A note's last line is `Taktus r
 | 404: an object the system does not know | `not_found` |
 | 409: a contact with the address was created meanwhile | `conflict` |
 | 429, 5xx, a refused or timed-out connection | `unavailable`, retryable |
-| a timeout or an unreadable answer on a write | `unknown`, effect `unknown`: a repeat finds the mark |
+| a write timed out or answered unreadably | `unknown`, effect `unknown`; a repeat finds the mark |
 | any other status, a body that is not the API's | `unexpected` |
 
 Only the error's `category` is reported; its `message` stays out of `detail`.
@@ -75,6 +75,16 @@ class Config:
     target: str = TARGET
     """The API's address; the product's own, or a fake's."""
     timeout: float = 30.0
+
+
+def _obj(value: Any) -> Json:
+    """The value when it is an object, else an empty one."""
+    return value if isinstance(value, dict) else {}
+
+
+def _str(value: Any) -> str | None:
+    """The value when it is a text, else None."""
+    return value if isinstance(value, str) else None
 
 
 def _unexpected(detail: str) -> TargetError:
@@ -150,7 +160,7 @@ def _email(call: Call, input: Json) -> str:
 def _contact(record: Any) -> Json:
     if not isinstance(record, dict) or not isinstance(record.get("id"), str):
         raise _unexpected("a contact has no identifier")
-    properties = record.get("properties") if isinstance(record.get("properties"), dict) else {}
+    properties = _obj(record.get("properties"))
     email = properties.get("email")
     return {
         "id": record["id"],
@@ -180,9 +190,9 @@ async def _search(
         if not isinstance(results, list):
             raise _unexpected("the answer is not a page of results")
         found.extend(results)
-        paging = page.get("paging") if isinstance(page.get("paging"), dict) else {}
-        following = paging.get("next") if isinstance(paging.get("next"), dict) else {}
-        after = following.get("after") if isinstance(following.get("after"), str) else None
+        paging = _obj(page.get("paging"))
+        following = _obj(paging.get("next"))
+        after = _str(following.get("after"))
         if after is None or not results:
             return found
     return found

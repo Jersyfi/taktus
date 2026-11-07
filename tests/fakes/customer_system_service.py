@@ -42,7 +42,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import urlparse
 
-OPERATORS = {"EQ", "NEQ", "CONTAINS_TOKEN", "NOT_CONTAINS_TOKEN", "HAS_PROPERTY", "NOT_HAS_PROPERTY"}
+OPERATORS = {
+    "EQ",
+    "NEQ",
+    "CONTAINS_TOKEN",
+    "NOT_CONTAINS_TOKEN",
+    "HAS_PROPERTY",
+    "NOT_HAS_PROPERTY",
+}
 """The operators the fake evaluates; the guide lists more, which the connector never sends."""
 KNOWN = OPERATORS | {"LT", "LTE", "GT", "GTE", "BETWEEN", "IN", "NOT_IN"}
 
@@ -201,9 +208,7 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
                 answer["paging"] = {"next": {"after": str(start + limit)}}
             self.answer(200, answer)
 
-        def _create(
-            self, body: Any, records: list[dict[str, Any]], required: str | None
-        ) -> None:
+        def _create(self, body: Any, records: list[dict[str, Any]], required: str | None) -> None:
             properties = body.get("properties") if isinstance(body, dict) else None
             if not isinstance(properties, dict) or (required and not properties.get(required)):
                 self.refuse(400, "VALIDATION_ERROR")

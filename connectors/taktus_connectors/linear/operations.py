@@ -31,9 +31,9 @@ status:
 |---|---|
 | 401, or an error whose code or type names authentication | `unauthenticated` |
 | 403, or an error whose code names `FORBIDDEN` | `forbidden` |
-| 429, or the code `RATELIMITED`; 5xx; a refused or timed-out connection | `unavailable`, retryable |
-| any other GraphQL error: an unknown task, a filter refused | `invalid` |
-| a timeout or an unreadable answer on the write | `unknown`, effect `unknown`: a repeat finds the mark |
+| 429 or the code `RATELIMITED`, 5xx, a connection refused or timed out | `unavailable`, retryable |
+| another GraphQL error: an unknown task, a filter refused | `invalid` |
+| a write timed out or answered unreadably | `unknown`, effect `unknown`; a repeat finds the mark |
 | any other status, a body that is not the API's | `unexpected` |
 
 The API's own message stays out of `detail`: only its code is reported.
@@ -85,6 +85,16 @@ class Config:
     target: str = TARGET
     """The API's address; the product's own, or a fake's."""
     timeout: float = 30.0
+
+
+def _obj(value: Any) -> Json:
+    """The value when it is an object, else an empty one."""
+    return value if isinstance(value, dict) else {}
+
+
+def _str(value: Any) -> str | None:
+    """The value when it is a text, else None."""
+    return value if isinstance(value, str) else None
 
 
 def _unexpected(detail: str) -> TargetError:
@@ -174,7 +184,7 @@ def task(node: Any) -> Json:
     """One task in the contract's shape, from the API's node."""
     if not isinstance(node, dict) or not isinstance(node.get("id"), str):
         raise _unexpected("a task has no identifier")
-    state = node.get("state") if isinstance(node.get("state"), dict) else {}
+    state = _obj(node.get("state"))
     due = _due(node.get("dueDate"))
     overdue = max((today() - due).days, 0) if due is not None else None
     return {
@@ -223,7 +233,7 @@ async def list_(config: Config, call: Call, input: Json) -> Outcome:
             raise _unexpected("the answer is not a connection of tasks")
         read.extend(task(node) for node in nodes)
         more = bool(page.get("hasNextPage"))
-        after = page.get("endCursor") if isinstance(page.get("endCursor"), str) else None
+        after = _str(page.get("endCursor"))
         if not more or not nodes or after is None or len(read) >= limit:
             break
     items = [{k: v for k, v in t.items() if k != "open"} for t in read[:limit]]
@@ -248,7 +258,7 @@ async def _reminded(config: Config, call: Call, identifier: str, key: str) -> st
         issue = data.get("issue")
         if not isinstance(issue, dict):
             raise invalid("the tracker knows no such task")
-        comments = issue.get("comments") if isinstance(issue.get("comments"), dict) else {}
+        comments = _obj(issue.get("comments"))
         nodes = comments.get("nodes")
         if not isinstance(nodes, list):
             raise _unexpected("the answer is not a connection of comments")
@@ -256,8 +266,8 @@ async def _reminded(config: Config, call: Call, identifier: str, key: str) -> st
             body = node.get("body") if isinstance(node, dict) else None
             if isinstance(body, str) and f"{MARK}{key}" in body:
                 return str(node.get("id"))
-        page = comments.get("pageInfo") if isinstance(comments.get("pageInfo"), dict) else {}
-        after = page.get("endCursor") if isinstance(page.get("endCursor"), str) else None
+        page = _obj(comments.get("pageInfo"))
+        after = _str(page.get("endCursor"))
         if not page.get("hasNextPage") or after is None:
             return None
     return None

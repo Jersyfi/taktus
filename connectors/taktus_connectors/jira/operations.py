@@ -31,7 +31,7 @@ line is the original, and nothing is written again.
 | 401: the pair is not admitted | `unauthenticated` |
 | 403: the account may not do this | `forbidden` |
 | 429, 5xx, a refused or timed-out connection | `unavailable`, retryable |
-| a timeout or an unreadable answer on the write | `unknown`, effect `unknown`: a repeat finds the mark |
+| a write timed out or answered unreadably | `unknown`, effect `unknown`; a repeat finds the mark |
 | any other status, a body that is not the API's | `unexpected` |
 
 The site's own messages (`errorMessages`, `errors`) stay out of `detail`.
@@ -69,6 +69,16 @@ class Config:
     project: str
     """The key of the one project the connector reads."""
     timeout: float = 30.0
+
+
+def _obj(value: Any) -> Json:
+    """The value when it is an object, else an empty one."""
+    return value if isinstance(value, dict) else {}
+
+
+def _str(value: Any) -> str | None:
+    """The value when it is a text, else None."""
+    return value if isinstance(value, str) else None
 
 
 def _unexpected(detail: str) -> TargetError:
@@ -152,9 +162,9 @@ def task(config: Config, issue: Any) -> Json:
     """One issue in the contract's shape, from the API's issue."""
     if not isinstance(issue, dict) or not isinstance(issue.get("key"), str):
         raise _unexpected("an issue has no key")
-    fields = issue.get("fields") if isinstance(issue.get("fields"), dict) else {}
-    status = fields.get("status") if isinstance(fields.get("status"), dict) else {}
-    category = status.get("statusCategory") if isinstance(status.get("statusCategory"), dict) else {}
+    fields = _obj(issue.get("fields"))
+    status = _obj(fields.get("status"))
+    category = _obj(status.get("statusCategory"))
     due = _due(fields.get("duedate"))
     return {
         "id": issue["key"],
@@ -208,7 +218,7 @@ async def list_(config: Config, call: Call, input: Json) -> Outcome:
         if not isinstance(issues, list):
             raise _unexpected("the answer is not a page of issues")
         read.extend(task(config, issue) for issue in issues)
-        token = page.get("nextPageToken") if isinstance(page.get("nextPageToken"), str) else None
+        token = _str(page.get("nextPageToken"))
         more = token is not None and not page.get("isLast", False)
         if not more or not issues or len(read) >= limit:
             break
@@ -227,7 +237,7 @@ async def read(config: Config, call: Call, input: Json) -> Outcome:
 def text_of(node: Any) -> str:
     """The text of a document in the Atlassian Document Format: its text nodes, in order."""
     if isinstance(node, dict):
-        own = node.get("text") if isinstance(node.get("text"), str) else ""
+        own = _str(node.get("text")) or ""
         inner = "".join(text_of(child) for child in node.get("content") or [])
         return own + inner + ("\n" if node.get("type") == "paragraph" else "")
     if isinstance(node, list):

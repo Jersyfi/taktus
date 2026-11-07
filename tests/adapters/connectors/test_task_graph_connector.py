@@ -12,6 +12,7 @@ import secrets
 import threading
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -60,6 +61,14 @@ def tasks(url: str) -> McpActionConnector:
     return McpActionConnector(build_server(Config(url, timeout=5.0)))
 
 
+def replace(url: str, issues: list[dict[str, Any]]) -> None:
+    httpx.post(f"{url}/_fake/issues", content=json.dumps(issues), timeout=5.0)
+
+
+def throttle(url: str) -> None:
+    httpx.post(f"{url}/_fake/throttle", timeout=5.0)
+
+
 def state(url: str) -> dict[str, object]:
     found: dict[str, object] = httpx.get(f"{url}/_fake/state", timeout=5.0).json()
     return found
@@ -93,7 +102,7 @@ async def test_pages_are_followed_and_the_limit_bounds_the_answer(tracker: str) 
         {**task_graph_service.default_issues()[0], "id": f"id-{n:04d}", "identifier": f"TSK-{n}"}
         for n in range(1, 121)
     ]
-    httpx.post(f"{tracker}/_fake/issues", content=json.dumps(many), timeout=5.0)
+    replace(tracker, many)
     connector = tasks(tracker)
     result = await connector.call("tasks.items.list", context(), {})
     assert len(result.output["items"]) == 120 and result.output["complete"] is True
@@ -117,7 +126,9 @@ async def test_a_reminder_is_written_once_and_a_repeat_finds_its_mark(tracker: s
     assert again.output["comment"] == first.output["comment"]
     [written] = state(tracker)["comments"]  # type: ignore[misc]
     assert written["issue"] == "TSK-1"
-    assert written["body"].endswith(f"Taktus reference: {idempotency_key('run_tasks', 'remind', 1)}")
+    assert written["body"].endswith(
+        f"Taktus reference: {idempotency_key('run_tasks', 'remind', 1)}"
+    )
     other = await connector.call("tasks.items.remind", context(attempt=2), given)
     assert other.effect.replayed is False, "another key is another reminder"
 
@@ -153,7 +164,7 @@ async def test_a_key_the_tracker_does_not_admit_is_unauthenticated(
 
 
 async def test_a_throttled_or_absent_tracker_is_unavailable_and_retryable(tracker: str) -> None:
-    httpx.post(f"{tracker}/_fake/throttle", timeout=5.0)
+    throttle(tracker)
     with pytest.raises(CallFailed) as failed:
         await tasks(tracker).call("tasks.items.list", context(), {})
     assert failed.value.error.cause.value == "unavailable" and failed.value.error.retryable
