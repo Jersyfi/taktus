@@ -7,7 +7,7 @@ builds it with the release images, and `tests/deploy/` runs it.
 
 | File | What |
 |---|---|
-| `Dockerfile` | the image, built from the repository root: `docker build -f deploy/backup/Dockerfile .`. `rclone` and `age` come from their projects' releases, pinned by version and SHA-256 per platform; the distribution's builds carried fixed high and critical vulnerabilities, which the image scan of ADR-0173 (#347) refuses |
+| `Dockerfile` | the image, built from the repository root: `docker build -f deploy/backup/Dockerfile .`. `rclone` and `age` come from their projects' releases, pinned by version and SHA-256 per platform; the distribution's builds carried fixed high and critical vulnerabilities, which the image scan of ADR-0173 (#347) refuses. A release whose modules the scan refuses is replaced by the next one (rclone 1.76.0 for brotli, compress and x/net) |
 | `backup.py` | one run: the ledger heads and the schema revision read, `pg_dump`, with point-in-time recovery a base backup, the object store archived, optionally `age`, every object written and listed, then the retention kept, and last the run's outcome recorded in the database. Its configuration is in its docstring |
 
 `backup.py backup` (the default) waits up to a minute for the database to accept connections — a
