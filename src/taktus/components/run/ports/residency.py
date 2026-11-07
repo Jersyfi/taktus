@@ -9,8 +9,10 @@ from taktus.ports.persistence import Tenant
 
 
 class Residency(Protocol):
-    async def permitted(self, tenant: Tenant, data_class: str | None) -> Permitted:
-        """The location the tenant's rule permits for data of the class — the rule for the
-        class, or the tenant's own where the class has none or none is named. `anywhere` for
-        a tenant that set no rule."""
+    async def permitted(
+        self, tenant: Tenant, data_class: str | None, process: str | None = None
+    ) -> Permitted:
+        """The location the tenant's rule permits for data of the class in a run of the
+        process — the narrowest of the class's rule, the process's and the tenant's own.
+        `anywhere` for a tenant that set no rule (ADR-0258)."""
         ...

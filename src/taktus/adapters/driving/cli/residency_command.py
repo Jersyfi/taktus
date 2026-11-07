@@ -1,7 +1,8 @@
 """`taktusctl residency`: where a tenant's data may be processed (ADR-0116 §3, UC-11.1).
 
 `show` prints the tenant's rule as JSON: the location it permits — `own`, `eu` or `anywhere` —
-and the narrower location of each data class it names. `set` changes it and prints the rule in
+and the narrower location of each data class and each process it names (ADR-0258). `set`
+changes it and prints the rule in
 force. A step on a model is routed only to a model whose declared location the rule permits.
 
 The command line authenticates by holding the instance's state, as `corrections` does;
@@ -67,14 +68,15 @@ def _location(value: str, what: str) -> Permitted:
     return value
 
 
-def _classes(given: list[str]) -> dict[str, Permitted]:
-    """`personal=own` pairs: a data class and where its data may be processed."""
+def _classes(given: list[str], option: str = "--class") -> dict[str, Permitted]:
+    """`personal=own` pairs: a data class, or a process, and where its data may be processed."""
     classes: dict[str, Permitted] = {}
+    what = "class" if option == "--class" else "process"
     for pair in given:
         name, separator, location = pair.partition("=")
         if not separator or not name.strip():
-            raise ValueError(f"--class {pair!r} is not class=location")
-        classes[name.strip()] = _location(location.strip(), f"--class {name.strip()}")
+            raise ValueError(f"{option} {pair!r} is not {what}=location")
+        classes[name.strip()] = _location(location.strip(), f"{option} {name.strip()}")
     return classes
 
 
@@ -107,6 +109,14 @@ def set_(
         list[str] | None,
         typer.Option("--clear", help="A data class whose own rule is removed. Repeatable."),
     ] = None,
+    processes: Annotated[
+        list[str] | None,
+        typer.Option("--process", help="A process narrowed: payroll=own. Repeatable."),
+    ] = None,
+    cleared_processes: Annotated[
+        list[str] | None,
+        typer.Option("--clear-process", help="A process whose own rule is removed. Repeatable."),
+    ] = None,
     tenant: Tenant = DEFAULT_TENANT,
     by: By = "operator",
     state_dir: StateDir = Path(DEFAULT_STATE_DIR),
@@ -118,6 +128,8 @@ def set_(
             location=None if location is None else _location(location, "--location"),
             classes=_classes(classes or []),
             cleared=tuple(cleared or ()),
+            processes=_classes(processes or [], "--process"),
+            cleared_processes=tuple(cleared_processes or ()),
         )
     except ValueError as error:
         typer.echo(f"error: {error}", err=True)

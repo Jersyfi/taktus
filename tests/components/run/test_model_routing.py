@@ -63,7 +63,9 @@ class Rule:
         self.own = own
         self.classes = classes
 
-    async def permitted(self, tenant: str, data_class: str | None) -> Permitted:
+    async def permitted(
+        self, tenant: str, data_class: str | None, process: str | None = None
+    ) -> Permitted:
         if data_class is not None and data_class in self.classes:
             return self.classes[data_class]
         return self.own

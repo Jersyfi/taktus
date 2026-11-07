@@ -23,6 +23,8 @@ from taktus.adapters.driven.memory import (
 )
 from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
+from taktus.components.governance.application.service import ConfigureResidency, TenantResidency
+from taktus.components.governance.domain.model import ResidencyRule
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.run.application.service import RunEngine, StartRun
 from taktus.components.run.domain.model import Run, RunState, StepState
@@ -52,7 +54,9 @@ class Rule:
         self.own = own
         self.classes = classes
 
-    async def permitted(self, tenant: str, data_class: str | None) -> Permitted:
+    async def permitted(
+        self, tenant: str, data_class: str | None, process: str | None = None
+    ) -> Permitted:
         if data_class is not None and data_class in self.classes:
             return self.classes[data_class]
         return self.own
@@ -63,7 +67,9 @@ def worker(location: str | None) -> FakeWorker:
 
 
 async def run_once(
-    workers: list[tuple[str, FakeWorker]], rule: Rule | None, data_class: str | None = None
+    workers: list[tuple[str, FakeWorker]],
+    rule: Rule | TenantResidency | None,
+    data_class: str | None = None,
 ) -> Run:
     clock = FakeClock(AT)
     persistence = MemoryPersistence()
@@ -158,3 +164,21 @@ async def test_a_tenant_without_a_rule_takes_the_first_worker_as_before() -> Non
     run = await run_once([("worker.abroad", abroad), ("worker.inside", inside)], None)
     assert run.state is RunState.FINISHED, run.reason
     assert len(abroad.assignments) == 1 and inside.assignments == []
+
+
+async def test_a_rule_for_the_process_narrows_the_tenant_s_for_its_runs() -> None:
+    clock = FakeClock(AT)
+    persistence = MemoryPersistence()
+    tenant_rule = TenantResidency(
+        MemoryRepository(persistence, ResidencyRule),
+        ChainedLedger(MemoryLedgerStore(persistence), clock),
+        persistence,
+        clock,
+    )
+    await tenant_rule.configure(
+        ConfigureResidency(tenant=TENANT, location="eu", processes={"factory": "own"}), by="op"
+    )
+    inside, own = worker("eu"), worker("own")
+    run = await run_once([("worker.inside", inside), ("worker.own", own)], tenant_rule)
+    assert run.state is RunState.FINISHED, run.reason
+    assert inside.assignments == [] and len(own.assignments) == 1, "the run's process is `own`"
