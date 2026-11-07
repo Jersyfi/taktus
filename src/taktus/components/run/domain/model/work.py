@@ -1446,6 +1446,8 @@ def referenced_values(work: Work) -> list[Any]:
         return [work.text]
     if isinstance(work, ClassificationRule):
         return [work.answer, work.screened, work.versions]
+    if isinstance(work, CitationRule):
+        return [work.answer, work.documents, work.confirmed]
     if isinstance(work, TemplateRule | LlmWork):
         return [work.values]
     if isinstance(work, ExtractRule):
