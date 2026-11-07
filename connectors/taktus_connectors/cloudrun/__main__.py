@@ -16,19 +16,20 @@ from __future__ import annotations
 import sys
 
 from taktus_connectors import serving
-from taktus_connectors.cloudrun.operations import Config
+from taktus_connectors.cloudrun.operations import TARGET, Config
 from taktus_connectors.cloudrun.server import served
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = serving.arguments("The serverless connector.", 9131)
-    parser.add_argument("--target", default="https://run.googleapis.com", help="the API")
+    parser.add_argument("--target", default=TARGET, help="the API")
     parser.add_argument("--project", default="", help="the project (required)")
     parser.add_argument("--location", default="", help="the location (required)")
+    parser.add_argument("--token-endpoint", default="", help="where the key is exchanged")
     args = parser.parse_args(argv)
     if not (args.project and args.location) and not args.list_faults:
         parser.error("--project and --location are required")
-    config = Config(args.target, args.project, args.location, args.timeout)
+    config = Config(args.target, args.project, args.location, args.timeout, args.token_endpoint)
     return serving.serve(served(config, args.fault), args)
 
 

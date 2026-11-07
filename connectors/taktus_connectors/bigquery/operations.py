@@ -40,7 +40,7 @@ from typing import Any
 
 import httpx
 
-from taktus_connectors.bigquery.auth import access_token
+from taktus_connectors.bigquery.auth import access_token, token_endpoint
 from taktus_connectors.serving import Call, Outcome, TargetError, invalid, unavailable
 
 type Json = dict[str, Any]
@@ -70,6 +70,11 @@ class Config:
     location: str | None = None
     """Where the jobs run, where it is not a US or EU multi-region."""
     timeout: float = 30.0
+    token_endpoint: str = ""
+    """Where the key is exchanged, where it is neither Google's nor `<target>/token`."""
+
+    def token(self) -> str:
+        return token_endpoint(self.target, TARGET, self.token_endpoint)
 
 
 def _unexpected(detail: str) -> TargetError:
@@ -209,7 +214,7 @@ async def run(config: Config, call: Call, input: Json) -> Outcome:
     if config.location:
         request["location"] = config.location
     path = f"/bigquery/v2/projects/{config.project}/queries"
-    token = await access_token(call, SCOPE, config.timeout)
+    token = await access_token(call, SCOPE, config.timeout, config.token())
     dry = await _request(config, call, token, "POST", path, body={**request, "dryRun": True})
     statement = dry.get("statementType")
     if statement != "SELECT":

@@ -36,7 +36,7 @@ from typing import Any
 
 import httpx
 
-from taktus_connectors.googleanalytics.auth import access_token
+from taktus_connectors.googleanalytics.auth import access_token, token_endpoint
 from taktus_connectors.serving import Call, Outcome, TargetError, invalid, unavailable
 
 type Json = dict[str, Any]
@@ -63,6 +63,11 @@ class Config:
     property: str = ""
     """The numeric identifier of the one property whose figures are read."""
     timeout: float = 30.0
+    token_endpoint: str = ""
+    """Where the key is exchanged, where it is neither Google's nor `<target>/token`."""
+
+    def token(self) -> str:
+        return token_endpoint(self.target, TARGET, self.token_endpoint)
 
 
 def _unexpected(detail: str) -> TargetError:
@@ -181,7 +186,7 @@ async def run(config: Config, call: Call, input: Json) -> Outcome:
     if order:
         body["orderBys"] = order
     _property(config)
-    token = await access_token(call, SCOPE, config.timeout)
+    token = await access_token(call, SCOPE, config.timeout, config.token())
     found = await _report(config, call, token, body)
     rows = found.get("rows") or []
     if not isinstance(rows, list):

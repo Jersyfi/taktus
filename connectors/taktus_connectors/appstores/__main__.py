@@ -24,9 +24,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--app-store-target", default=APP_STORE, help="the iOS store's API")
     parser.add_argument("--play-target", default=PLAY, help="the Android store's API")
     parser.add_argument("--target", default="", help="one address for both stores' APIs")
+    parser.add_argument("--token-endpoint", default="", help="where the Android key is exchanged")
     args = parser.parse_args(argv)
     config = Config(
-        args.target or args.app_store_target, args.target or args.play_target, args.timeout
+        args.target or args.app_store_target,
+        args.target or args.play_target,
+        args.timeout,
+        token_endpoint=args.token_endpoint,
     )
     return serving.serve(served(config, args.fault), args)
 

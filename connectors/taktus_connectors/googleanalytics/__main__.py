@@ -23,10 +23,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = serving.arguments("The analytics connector.", 9137)
     parser.add_argument("--target", default=TARGET, help="the API's address")
     parser.add_argument("--property", default="", help="the property's numeric id (required)")
+    parser.add_argument("--token-endpoint", default="", help="where the key is exchanged")
     args = parser.parse_args(argv)
     if not args.property and not args.list_faults:
         parser.error("--property is required")
-    config = Config(args.target, args.property, args.timeout)
+    config = Config(args.target, args.property, args.timeout, args.token_endpoint)
     return serving.serve(served(config, args.fault), args)
 
 

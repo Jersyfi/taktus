@@ -48,8 +48,10 @@ One, `WORKLOADS_TOKEN`, the same parameter as the cluster connector's, so that t
 processes run unchanged: here the key of a service account, as JSON as Google issues it. The
 account needs the role Cloud Run Developer on the project, and Service Account User on the
 service account the services run as — nothing else (`CREDENTIALS.md`). For every call the
-connector signs a statement with the key and exchanges it at the key's own `token_uri` for an
-access token of the scope `https://www.googleapis.com/auth/cloud-platform`; nothing is kept
+connector signs a statement with the key and exchanges it for an access token of the scope
+`https://www.googleapis.com/auth/cloud-platform` at the token endpoint (`--token-endpoint`; by default Google's
+`https://oauth2.googleapis.com/token`, or `<target>/token` where `--target` names another
+address) — never the key's own `token_uri`, which could send a signed statement elsewhere; nothing is kept
 between calls. The key is referenced by name in the context of every call and read at the moment
 of the call from the file `TAKTUS_CREDENTIAL_WORKLOADS_TOKEN_FILE` names. The connector has no
 key of its own.

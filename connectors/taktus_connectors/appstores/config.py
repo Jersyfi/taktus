@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 APP_STORE = "https://api.appstoreconnect.apple.com"
 PLAY = "https://androidpublisher.googleapis.com"
+GOOGLE_TOKEN = "https://oauth2.googleapis.com/token"  # noqa: S105 — an address, not a secret
 
 
 @dataclass(frozen=True)
@@ -17,3 +18,13 @@ class Config:
     timeout: float = 30.0
     blind: bool = False
     """Fault C-05 only: a reply to a review is written without reading the response in place."""
+    token_endpoint: str = ""
+    """Where the Android key is exchanged, where neither Google's nor `<play_target>/token`."""
+
+    def token(self) -> str:
+        """Google's token endpoint while the Play API is Google's own; else `<play_target>/token`,
+        where a stand-in serves both; or the endpoint configured."""
+        if self.token_endpoint:
+            return self.token_endpoint.rstrip("/")
+        base = self.play_target.rstrip("/")
+        return GOOGLE_TOKEN if base == PLAY else f"{base}/token"

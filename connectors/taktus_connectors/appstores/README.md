@@ -91,7 +91,9 @@ identity at one store (`CREDENTIALS.md`).
 - `android`: a Google service account key as Google issues it, of an account invited to the
   app in the Play Console with *Release to testing tracks*, *Release to production, exclude
   devices, and use Play App Signing*, *View app information* and *Reply to reviews*. Every call exchanges a signed
-  assertion at the key's `token_uri` for an access token of the scope `androidpublisher`.
+  assertion for an access token of the scope `androidpublisher` at the token endpoint
+  (`--token-endpoint`; by default Google's, or `<play target>/token` where the Play target is
+  another address) — never the key's own `token_uri`.
 
 A call for a platform whose member is absent is `unauthenticated`. The value is read at the
 moment of the call from the file `TAKTUS_CREDENTIAL_STORES_KEY_FILE` names, and neither key nor

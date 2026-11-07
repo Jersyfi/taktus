@@ -39,11 +39,12 @@ from typing import Any
 
 import httpx
 
-from taktus_connectors.firebase.auth import access_token
+from taktus_connectors.firebase.auth import access_token, token_endpoint
 from taktus_connectors.serving import Call, Outcome, TargetError, invalid, unavailable
 
 type Json = dict[str, Any]
 
+TARGET = "https://firebasehosting.googleapis.com"
 SCOPE = "https://www.googleapis.com/auth/firebase.hosting"
 SITE = re.compile(r"^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$")
 VERSION = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -58,6 +59,11 @@ class Config:
     target: str
     """The API's address: `https://firebasehosting.googleapis.com`, or a fake's."""
     timeout: float = 30.0
+    token_endpoint: str = ""
+    """Where the key is exchanged, where it is neither Google's nor `<target>/token`."""
+
+    def token(self) -> str:
+        return token_endpoint(self.target, TARGET, self.token_endpoint)
 
 
 def _unexpected(detail: str) -> TargetError:
@@ -192,7 +198,7 @@ async def _marked(config: Config, call: Call, token: str, site: str, mark: str) 
 async def read_site(config: Config, call: Call, input: Json) -> Outcome:
     site = _site(input)
     version = _version(input, required=False)
-    token = await access_token(call, SCOPE, config.timeout)
+    token = await access_token(call, SCOPE, config.timeout, config.token())
     live = await _live(config, call, token, site)
     found = await _read_version(config, call, token, site, version) if version else None
     return Outcome(
@@ -212,7 +218,7 @@ async def _publish(config: Config, call: Call, input: Json, *, kind: str) -> Out
     message = input.get("message", "")
     if not isinstance(message, str) or len(message) > MESSAGE:
         raise invalid(f"message is text of at most {MESSAGE} characters")
-    token = await access_token(call, SCOPE, config.timeout)
+    token = await access_token(call, SCOPE, config.timeout, config.token())
     mark = _mark(call.key)
     found = await _marked(config, call, token, site, mark)
     if found is not None:

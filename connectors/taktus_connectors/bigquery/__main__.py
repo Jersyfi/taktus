@@ -28,10 +28,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--project", default="", help="the project the queries run in (required)")
     parser.add_argument("--dataset", default="", help="the dataset of the copy (required)")
     parser.add_argument("--location", default=None, help="where the jobs run")
+    parser.add_argument("--token-endpoint", default="", help="where the key is exchanged")
     args = parser.parse_args(argv)
     if not (args.project and args.dataset) and not args.list_faults:
         parser.error("--project and --dataset are required")
-    config = Config(args.target, args.project, args.dataset, args.location, args.timeout)
+    config = Config(
+        args.target, args.project, args.dataset, args.location, args.timeout, args.token_endpoint
+    )
     return serving.serve(served(config, args.fault), args)
 
 

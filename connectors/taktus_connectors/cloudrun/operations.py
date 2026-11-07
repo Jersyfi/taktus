@@ -47,11 +47,12 @@ from typing import Any
 
 import httpx
 
-from taktus_connectors.cloudrun.auth import access_token
+from taktus_connectors.cloudrun.auth import access_token, token_endpoint
 from taktus_connectors.serving import Call, Outcome, TargetError, invalid, unavailable
 
 type Json = dict[str, Any]
 
+TARGET = "https://run.googleapis.com"
 SCOPE = "https://www.googleapis.com/auth/cloud-platform"
 KEY_ANNOTATION = "taktus.eu/idempotency-key"
 LATEST = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
@@ -70,6 +71,11 @@ class Config:
     project: str
     location: str
     timeout: float = 30.0
+    token_endpoint: str = ""
+    """Where the key is exchanged, where it is neither Google's nor `<target>/token`."""
+
+    def token(self) -> str:
+        return token_endpoint(self.target, TARGET, self.token_endpoint)
 
     def services(self) -> str:
         return f"/v2/projects/{self.project}/locations/{self.location}/services"
@@ -258,7 +264,7 @@ def _write(output: Json, config: Config, name: str, key: str, *, replayed: bool)
 
 async def read_service(config: Config, call: Call, input: Json) -> Outcome:
     name = _name(input)
-    token = await access_token(call, SCOPE, config.timeout)
+    token = await access_token(call, SCOPE, config.timeout, config.token())
     found = await _service(config, call, token, name)
     return Outcome(service_output(found, config), {"kind": "read"})
 
@@ -271,7 +277,7 @@ async def release(config: Config, call: Call, input: Json) -> Outcome:
     image = input.get("image")
     if not isinstance(image, str) or IMAGE.match(image) is None:
         raise invalid("image must be an image reference: registry, name and tag or digest")
-    token = await access_token(call, SCOPE, config.timeout)
+    token = await access_token(call, SCOPE, config.timeout, config.token())
     found = await _service(config, call, token, name)
     if _annotations(found["template"]).get(KEY_ANNOTATION) == call.key or any(
         _annotations(r).get(KEY_ANNOTATION) == call.key
@@ -296,7 +302,7 @@ async def rollback(config: Config, call: Call, input: Json) -> Outcome:
     wanted = input.get("revision")
     if wanted is not None and (not isinstance(wanted, str) or not wanted):
         raise invalid("revision must be a revision's name")
-    token = await access_token(call, SCOPE, config.timeout)
+    token = await access_token(call, SCOPE, config.timeout, config.token())
     found = await _service(config, call, token, name)
     if _annotations(found).get(KEY_ANNOTATION) == call.key:
         output = {**service_output(found, config), "to_revision": _serving(found)}

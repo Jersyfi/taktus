@@ -256,7 +256,7 @@ def _limit(input: Json, default: int = 20) -> int:
 async def _store(config: Config, call: Call, platform: str) -> _Store:
     if platform == "ios":
         return _Store(config, call, config.app_store_target, auth.app_store_token(call))
-    token = await auth.play_token(call, config.timeout)
+    token = await auth.play_token(call, config.timeout, config.token())
     return _Store(config, call, config.play_target, token)
 
 

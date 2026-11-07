@@ -12,8 +12,11 @@ key's identifier, claims `iss` the issuer, `iat`, `exp` twenty minutes later at 
 
 **Google Play** ("Using OAuth 2.0 for Server to Server Applications"): an RS256 JWT, header
 `kid` the key's identifier, claims `iss` the service account, `scope` the Play Developer API's,
-`aud` the key's `token_uri`, `iat`, `exp` an hour later, exchanged at `token_uri` for an access
-token. The exchange counts as one request. Nothing is cached between calls.
+`aud` the token endpoint, `iat`, `exp` an hour later, exchanged there for an access token. The
+token endpoint is the connector's configured one (`Config.token`), never the key's `token_uri`:
+a key is data, and a key that named another address would otherwise receive a signed statement
+(the rule of the cloud connector, `gcp`). The exchange counts as one request. Nothing is cached
+between calls.
 
 Neither key nor token is ever logged or put into an error's text.
 """
@@ -23,7 +26,6 @@ from __future__ import annotations
 import json
 import time
 from typing import Any
-from urllib.parse import urlparse
 
 import httpx
 import jwt
@@ -33,7 +35,6 @@ from taktus_connectors.serving import Call, TargetError, unavailable
 type Json = dict[str, Any]
 
 PLAY_SCOPE = "https://www.googleapis.com/auth/androidpublisher"
-GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"  # noqa: S105 — an address, not a secret
 APP_STORE_AUDIENCE = "appstoreconnect-v1"
 APP_STORE_LIFETIME = 1200
 """Twenty minutes: the longest App Store Connect admits."""
@@ -70,17 +71,8 @@ def app_store_token(call: Call, now: int | None = None) -> str:
         raise _refused("the App Store Connect private key cannot sign") from None
 
 
-def _token_uri(key: Json) -> str:
-    uri = key.get("token_uri") or GOOGLE_TOKEN_URI
-    parsed = urlparse(str(uri))
-    local = parsed.hostname in ("127.0.0.1", "localhost")
-    if parsed.scheme != "https" and not (parsed.scheme == "http" and local):
-        raise _refused("the service account key names a token address that is not https")
-    return str(uri)
-
-
-async def play_token(call: Call, seconds: float) -> str:
-    """An access token for the Play Developer API, exchanged now."""
+async def play_token(call: Call, seconds: float, uri: str) -> str:
+    """An access token for the Play Developer API, exchanged now at `uri`."""
     key = _member(call, "android")
     email, key_id, private = (
         key.get("client_email"),
@@ -89,7 +81,6 @@ async def play_token(call: Call, seconds: float) -> str:
     )
     if not all(isinstance(v, str) and v for v in (email, private)):
         raise _refused("the service account key lacks its account or private key")
-    uri = _token_uri(key)
     now = int(time.time())
     claims = {"iss": email, "scope": PLAY_SCOPE, "aud": uri, "iat": now, "exp": now + 3600}
     headers = {"kid": key_id} if isinstance(key_id, str) and key_id else None

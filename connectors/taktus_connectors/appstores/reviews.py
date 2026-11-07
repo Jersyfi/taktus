@@ -357,7 +357,7 @@ async def _play(
     params: Json | None = None,
     body: Json | None = None,
 ) -> Json:
-    bearer = await auth.play_token(call, config.timeout)
+    bearer = await auth.play_token(call, config.timeout, config.token())
     call.count()
     response = await _send(config, config.play_target, bearer, method, path, params, body)
     status = response.status_code

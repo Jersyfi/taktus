@@ -169,6 +169,29 @@ async def test_another_property_is_forbidden(api: tuple[str, str]) -> None:
     assert failed.value.error.cause.value == "forbidden"
 
 
+async def test_the_key_s_own_token_uri_is_never_followed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    port = free_port()
+    url = f"http://127.0.0.1:{port}"
+    key = service_account_key("http://elsewhere.invalid/token")
+    server = analytics_service.make_server("127.0.0.1", port, {key})
+    path = tmp_path / "ANALYTICS_KEY"
+    path.write_text(key, encoding="utf-8")
+    monkeypatch.setenv("TAKTUS_CREDENTIAL_ANALYTICS_KEY_FILE", str(path))
+    threading.Thread(target=server.serve_forever, args=(0.05,), daemon=True).start()
+    try:
+        result = await connector(url).call(
+            "analytics.reports.run",
+            context(),
+            {"metrics": ["activeUsers"], "start": "today", "end": "today"},
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert result.effect.kind.value == "read", "exchanged at <target>/token, not the key's address"
+
+
 async def test_a_key_the_token_endpoint_does_not_know_is_unauthenticated(
     api: tuple[str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

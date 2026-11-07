@@ -75,9 +75,10 @@ outward.
 
 Each call signs a statement with the key (RS256) for the scope
 `https://www.googleapis.com/auth/bigquery.readonly`, the narrowest that `jobs.query` and
-`jobs.getQueryResults` list, and exchanges it at the key's own `token_uri` for an access token
-([`auth.py`](auth.py)); a `token_uri` that is not `https` is refused unless it names this
-machine. Nothing is kept between calls. `CREDENTIALS.md` describes it.
+`jobs.getQueryResults` list, and exchanges it for an access token at the token endpoint (`--token-endpoint`; by default Google's
+`https://oauth2.googleapis.com/token`, or `<target>/token` where `--target` names another
+address) — never the key's own `token_uri`, which could send a signed statement elsewhere
+([`auth.py`](auth.py)). Nothing is kept between calls. `CREDENTIALS.md` describes it.
 
 ## Conformance
 

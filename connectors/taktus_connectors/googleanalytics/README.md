@@ -74,9 +74,11 @@ in any other custom dimension or event parameter; that is the business's to keep
 | `ANALYTICS_KEY` | actions: the **requesting identity's** service account key, JSON as Google issues it, added to the property with the role *Viewer* and no other | the file `TAKTUS_CREDENTIAL_ANALYTICS_KEY_FILE` names, read at the moment of each call, never stored |
 
 Each call signs a statement with the key (RS256) for the scope
-`https://www.googleapis.com/auth/analytics.readonly` and exchanges it at the key's own
-`token_uri` for an access token ([`auth.py`](auth.py)); a `token_uri` that is not `https` is
-refused unless it names this machine. Nothing is kept between calls. `CREDENTIALS.md` describes
+`https://www.googleapis.com/auth/analytics.readonly` and exchanges it for an access token at
+the token endpoint (`--token-endpoint`; by default Google's
+`https://oauth2.googleapis.com/token`, or `<target>/token` where `--target` names another
+address) — never the key's own `token_uri`, which could send a signed statement elsewhere
+([`auth.py`](auth.py)). Nothing is kept between calls. `CREDENTIALS.md` describes
 it.
 
 ## Conformance
