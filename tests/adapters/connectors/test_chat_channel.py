@@ -47,7 +47,11 @@ from taktus.components.command.application.service import (
     ReceiveIntakeHandler,
 )
 from taktus.components.command.domain.model import IntakeEvent
+from taktus.components.reporting.domain.model.views import ReportDefinition
+from taktus.components.reporting.domain.service import reports
+from taktus.components.reporting.ports import Sent
 from taktus.composition.execution import connector_pool
+from taktus.composition.owner_channel import ConnectorDeliveries
 from taktus.composition.settings import load_connectors
 from taktus.ports.connector import CallContext, Delivery, Effect, idempotency_key
 from taktus.ports.worker import CredentialReference
@@ -156,12 +160,24 @@ def connectors(chat_service: ChatService, service: Service, tmp_path: Path) -> I
 # --- deliveries ---------------------------------------------------------------------------------
 
 
-def say(chat: ChatService, name: str, secret: str, text: str = INSTRUCTION) -> Delivery:
-    """A person writes the recorded message into the chat; the service delivers it, signed."""
+def say(
+    chat: ChatService,
+    name: str,
+    secret: str,
+    text: str = INSTRUCTION,
+    *,
+    thread: str | None = None,
+) -> Delivery:
+    """A person writes the recorded message into the chat — into `thread` where one is given —
+    and the service delivers it, signed."""
     headers = json.loads((CHAT_PAYLOADS / f"{name}.headers.json").read_text())
     payload = json.loads((CHAT_PAYLOADS / f"{name}.body.json").read_text())
     event = payload["event"]
     event["text"] = text
+    if thread is not None:
+        event["thread_ts"] = thread
+        event["ts"] = "1700000100.000300"
+        payload["event_id"] = "Ev0000000REPLY"
     written = {k: event[k] for k in ("channel", "user", "text", "ts", "thread_ts") if k in event}
     chat.control("/_fake/messages", written)
     body = json.dumps(payload)
@@ -362,3 +378,56 @@ async def test_a_reply_is_delivered_into_the_thread_the_command_arrived_in(
     assert {k: v for k, v in after.items() if k != address} == {
         k: v for k, v in before.items() if k != address
     }, "no other conversation received anything"
+
+
+async def test_a_reply_to_a_report_arrives_as_a_command(
+    connectors: Running, chat_service: ChatService
+) -> None:
+    """UC-6.2: a report is said in the channel its reader chose by the carrier the daemon wires
+    (`ConnectorDeliveries`, through the connector's reply operation), and the reader's reply in
+    its thread is a message of that channel like any other: it becomes an intake event and then
+    a command through the `command` component's own handlers (UC-1.1), addressed back into the
+    report's thread."""
+    definition = ReportDefinition(
+        id="daily",
+        tenant=TENANT,
+        reader_role="owner",
+        trigger="schedule",
+        every="day",
+        hour=7,
+        channel=CHAT,
+        address="D0000000001",
+        set_at=RECEIVED,
+    )
+    composed = reports.compose(
+        definition,
+        reports.ReportFacts(
+            reader="owner",
+            since=RECEIVED,
+            until=RECEIVED,
+            decisions=("req_1",),
+        ),
+    )
+    carrier = ConnectorDeliveries(connector_pool(load_connectors(connectors.configuration)))
+    sent = await carrier.say(
+        TENANT,
+        definition.channel,
+        definition.address,
+        "\n".join(composed.lines),
+        key=f"report:{definition.id}:2026-09-16",
+    )
+    assert isinstance(sent, Sent) and sent.thread, sent
+    delivered = [m for m in chat_service.messages(definition.address) if "req_1" in m["text"]]
+    assert len(delivered) == 1, "the report is in its reader's channel, once"
+
+    reply = "Approve req_1 and send me the run"
+    given = CommandComponent(connectors)
+    event, command = await given.command(
+        CHAT, say(chat_service, "message-posted", connectors.chat_secret, reply, thread=sent.thread)
+    )
+    assert event.channel == CHAT and event.context["thread"] == sent.thread
+    assert command.channel == CHAT
+    assert command.identity == OWNER, "the reply is placed as any message of the linked account"
+    assert command.intent.raw == reply
+    assert command.reply_to.address == definition.address
+    assert command.reply_to.thread == sent.thread, "an answer to it goes into the report's thread"
