@@ -7,19 +7,33 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from taktus.components.governance.application.service import TenantOrgUnits
+from taktus.components.identity.application.service.structure import OrganisationStructure
+from taktus.components.identity.domain.model.structure import PlacedKind
 from taktus.components.run.ports import OrgUnitBudget
 from taktus.ports.org_units import OrgUnitSpends
 from taktus.ports.persistence import Tenant
 
 
 class OrgUnitsOfTheRun:
-    def __init__(self, units: TenantOrgUnits, spends: OrgUnitSpends) -> None:
+    def __init__(
+        self,
+        units: TenantOrgUnits,
+        spends: OrgUnitSpends,
+        structure: OrganisationStructure | None = None,
+    ) -> None:
+        self.structure = structure
+        """The organisation's structure, which places a process's runs (ADR-0275 §2)."""
         self.units = units
         """The use case itself, for the command line that shows and sets the quotas."""
         self.spends = spends
 
     async def concurrent(self, tenant: Tenant) -> Mapping[str, int]:
         return await self.units.concurrent(tenant)
+
+    async def placed(self, tenant: Tenant, process: str) -> str | None:
+        if self.structure is None:
+            return None
+        return await self.structure.placed(tenant, PlacedKind.PROCESS, process)
 
     async def budget(self, tenant: Tenant, org_unit: str) -> OrgUnitBudget | None:
         quota = await self.units.quota(tenant, org_unit)

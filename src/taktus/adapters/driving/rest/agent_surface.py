@@ -84,7 +84,12 @@ class Call:
         return value
 
     async def visible_run(self, run_id: str) -> Any:
-        reader = Reader(tenant=self.who.tenant, identity=self.who.identity, roles=self.who.roles)
+        reader = Reader(
+            tenant=self.who.tenant,
+            identity=self.who.identity,
+            roles=self.who.roles,
+            unseen=self.who.unseen,
+        )
         async with self.services.work.transaction(self.who.tenant):
             run = await self.services.runs.get(self.who.tenant, run_id)
         if run is None or not visibility.may_see(
@@ -153,7 +158,7 @@ async def _list_runs(call: Call) -> Json:
     if not isinstance(limit, int) or not 1 <= limit <= LIST_MAXIMUM:
         raise Refused(f"`limit` is a whole number from 1 to {LIST_MAXIMUM}")
     who = call.who
-    reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+    reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles, unseen=who.unseen)
     async with call.services.work.transaction(who.tenant):
         read = await call.services.runs.newest(who.tenant, limit=limit)
     return {

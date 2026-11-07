@@ -1886,6 +1886,55 @@ class CoachPolicyMapper(_DocumentMapper):
     column = "policy"
 
 
+class OrgStructureMapper(_DocumentMapper):
+    """A tenant's named levels (ADR-0275)."""
+
+    table_name = "org_structure"
+    column = "structure"
+
+
+class StructureUnitMapper(_DocumentMapper):
+    """One unit of a tenant's structure, a project among them (ADR-0275, ADR-0276)."""
+
+    table_name = "structure_unit"
+    column = "unit"
+
+
+class PlacementMapper(_DocumentMapper):
+    """One object in one unit (ADR-0275)."""
+
+    table_name = "placement"
+    column = "placement"
+
+
+class FilingMapper(_DocumentMapper):
+    """Where something Taktus set up is documented (ADR-0275 §7)."""
+
+    table_name = "filing"
+    column = "filing"
+
+
+class KnowledgeHomeMapper(_DocumentMapper):
+    """A unit's knowledge system, the record of its documentation (ADR-0275 §7)."""
+
+    table_name = "knowledge_home"
+    column = "home"
+
+
+class ProjectSessionMapper(_DocumentMapper):
+    """One participant's session in one project (ADR-0277)."""
+
+    table_name = "project_session"
+    column = "session"
+
+
+class ConfigurationChangeMapper(_DocumentMapper):
+    """One change a commissioned plan makes in a target system (ADR-0278)."""
+
+    table_name = "configuration_change"
+    column = "change"
+
+
 class SubjectRequestMapper:
     """One row per data-protection request (ADR-0176): the request as a document, and beside
     it its kind and state. A row is never deleted: its state moves on."""
@@ -2223,6 +2272,13 @@ MAPPERS: dict[str, Mapper] = {
     "coach_settings": CoachSettingsMapper(),
     "coach_hint": CoachHintMapper(),
     "coach_policy": CoachPolicyMapper(),
+    "org_structure": OrgStructureMapper(),
+    "structure_unit": StructureUnitMapper(),
+    "placement": PlacementMapper(),
+    "filing": FilingMapper(),
+    "knowledge_home": KnowledgeHomeMapper(),
+    "project_session": ProjectSessionMapper(),
+    "configuration_change": ConfigurationChangeMapper(),
     "takeover_trial": TakeoverTrialMapper(),
     "message_rules": MessageRulesMapper(),
     "org_unit_quota": OrgUnitQuotaMapper(),

@@ -39,6 +39,19 @@ from taktus.components.catalog.domain.model import (
 )
 from taktus.components.command.domain.model import Estimate, IntakeEvent, PlanDraft
 from taktus.components.command.domain.model.coach import CoachHint, CoachPolicy, CoachSettings
+from taktus.components.command.domain.model.configuration import (
+    Action,
+    ConfigurationChange,
+    Undo,
+)
+from taktus.components.command.domain.model.session import (
+    Outcome,
+    OutcomeKind,
+    ProjectSession,
+    Source,
+    Statement,
+    Turn,
+)
 from taktus.components.decision.domain.model import DecisionRule, RegisterEntry, Request
 from taktus.components.governance.domain.model import (
     AnchorConfiguration,
@@ -69,6 +82,18 @@ from taktus.components.identity.domain.model import (
     digest,
     link_id,
     session_id,
+)
+from taktus.components.identity.domain.model.structure import (
+    Circle,
+    Filing,
+    KnowledgeHome,
+    OrgStructure,
+    Place,
+    PlacedKind,
+    PlaceKind,
+    Placement,
+    Reference,
+    StructureUnit,
 )
 from taktus.components.process.application.service.register_version import parse_bundle
 from taktus.components.process.domain.model import (
@@ -1195,3 +1220,91 @@ def coach_hint(tenant: str = "t") -> CoachHint:
 
 def coach_policy(tenant: str = "t") -> CoachPolicy:
     return CoachPolicy(id=tenant, lasting_days=14)
+
+
+def org_structure(tenant: str = "t") -> OrgStructure:
+    return OrgStructure(id=tenant, tenant=tenant, levels=("company", "area", "team", "project"))
+
+
+def structure_unit(tenant: str = "t") -> StructureUnit:
+    """A private project with a reference (ADR-0276)."""
+    return StructureUnit(
+        id="notes",
+        tenant=tenant,
+        name="My notes",
+        level=3,
+        parent=tenant,
+        members=("idn_p",),
+        private=True,
+        owner="idn_p",
+        circle=Circle.ALONE,
+        references=(Reference(kind="ticket", link="https://tickets.example.org/1"),),
+        created_by="idn_p",
+        created_at=AT,
+    )
+
+
+def placement(tenant: str = "t") -> Placement:
+    return Placement(
+        id="process:invoices",
+        tenant=tenant,
+        kind=PlacedKind.PROCESS,
+        object="invoices",
+        unit="notes",
+        placed_by="idn_p",
+        placed_at=AT,
+    )
+
+
+def filing(tenant: str = "t") -> Filing:
+    return Filing(
+        id="process:invoices",
+        tenant=tenant,
+        kind=PlacedKind.PROCESS,
+        object="invoices",
+        unit="notes",
+        places=(Place(kind=PlaceKind.KNOWLEDGE, link="https://wiki.example.org/x"),),
+        set_up_by="idn_p",
+        filed_at=AT,
+    )
+
+
+def knowledge_home(tenant: str = "t") -> KnowledgeHome:
+    return KnowledgeHome(id=tenant, tenant=tenant, base="https://wiki.example.org")
+
+
+def project_session(tenant: str = "t") -> ProjectSession:
+    source = Source(title="Handbook", link="https://wiki.example.org/handbook")
+    return ProjectSession(
+        id="ses_1",
+        tenant=tenant,
+        project="notes",
+        participant="idn_p",
+        opened_at=AT,
+        turns=(
+            Turn(at=AT, channel="channel.web", speaker="participant", text="When?"),
+            Turn(
+                at=AT,
+                channel="channel.web",
+                speaker="taktus",
+                statements=(Statement(text="Thursdays.", source=source),),
+            ),
+        ),
+        outcomes=(Outcome(kind=OutcomeKind.PLAN, ref="pld_1", summary="release", at=AT),),
+    )
+
+
+def configuration_change(tenant: str = "t") -> ConfigurationChange:
+    return ConfigurationChange(
+        id="pld_1@v1#1",
+        tenant=tenant,
+        plan_id="pld_1@v1",
+        position=1,
+        identity="idn_p",
+        capability="tickets.projects",
+        action=Action(operation="tickets.projects.create", input={"key": "WEB"}),
+        reverse=Action(operation="tickets.projects.delete", input={"key": "WEB"}),
+        instruction="Create the project WEB.",
+        undo=Undo(before={"exists": False}),
+        changed_at=AT,
+    )

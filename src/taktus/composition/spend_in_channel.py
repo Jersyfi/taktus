@@ -45,6 +45,7 @@ from taktus.components.reporting.domain.service import visibility
 from taktus.components.reporting.ports import Deliveries, SecretValues, Sent
 from taktus.components.run.domain.model import Run
 from taktus.ports.clock import Clock
+from taktus.ports.identity import Sight
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 from taktus.shared.v1 import Capability
 
@@ -104,7 +105,9 @@ class SpendInChannel:
         deliveries: Deliveries,
         secrets: SecretValues,
         clock: Clock,
+        sight: Sight | None = None,
     ) -> None:
+        self._sight = sight
         self._channels = channels
         self._runs = runs
         self._work = work
@@ -138,7 +141,12 @@ class SpendInChannel:
             return None
         said: str | None = None
         if found.may_answer(identity):
-            reader = Reader(tenant=tenant, identity=identity, roles=roles)
+            reader = Reader(
+                tenant=tenant,
+                identity=identity,
+                roles=roles,
+                unseen=() if self._sight is None else await self._sight.unseen(tenant, identity),
+            )
             said = await self._said(found, reader, request)
         outcome = SHOWN
         if said is None or self._secrets.carried_by(said):

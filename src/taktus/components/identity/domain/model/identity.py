@@ -179,6 +179,12 @@ class Right(StrEnum):
     STEER_RUN = "run.steer"
     """Pause or cancel a run that does not act on the person's own behalf, through any channel
     (ADR-0236). A run that acts on a person's behalf is theirs to steer without it."""
+    SHAPE_STRUCTURE = "structure.shape"
+    """Name the structure's levels, add a unit, place an object in one, configure a unit's
+    knowledge system (ADR-0275). An administrative act (UC-10.2)."""
+    COMPANY_PROJECT = "project.company"
+    """Create a project for the whole company (ADR-0276). A project alone, with one's own team
+    or with a project team needs no right beyond belonging to the unit it is created in."""
 
 
 class RoleRights(Value):

@@ -44,7 +44,7 @@ DAYS_MAXIMUM = 366
 
 
 def _reader(who: Resolution) -> Reader:
-    return Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+    return Reader(tenant=who.tenant, identity=who.identity, roles=who.roles, unseen=who.unseen)
 
 
 def router(services: RestServices, authenticated: Authenticated) -> APIRouter:

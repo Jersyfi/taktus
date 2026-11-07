@@ -48,6 +48,9 @@ class Reader(Value):
     tenant: str = Field(min_length=1)
     identity: str = Field(min_length=1)
     roles: tuple[str, ...] = ()
+    unseen: tuple[str, ...] = ()
+    """The processes the organisation's structure places where the reader does not see, in
+    the context it reads in (ADR-0275 §4); empty where nothing is placed."""
 
 
 class RunRef(Value):

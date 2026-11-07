@@ -34,6 +34,12 @@ class OrgUnits(Protocol):
         absent. Opens its own unit of work."""
         ...
 
+    async def placed(self, tenant: Tenant, process: str) -> str | None:
+        """The unit the organisation's structure places the process in, which its run is
+        attributed to (ADR-0275 §2); None where nobody placed it. Opens its own unit of
+        work."""
+        ...
+
     async def budget(self, tenant: Tenant, org_unit: str) -> OrgUnitBudget | None:
         """The unit's monthly budget quota, or None. Opens its own unit of work."""
         ...

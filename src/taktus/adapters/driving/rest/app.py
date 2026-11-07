@@ -994,7 +994,7 @@ def _mark(cursor: str) -> Mark | None:
 
 
 def _reader(who: Resolution) -> Reader:
-    return Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+    return Reader(tenant=who.tenant, identity=who.identity, roles=who.roles, unseen=who.unseen)
 
 
 def _sse(event: Snapshot | Change | None) -> str:

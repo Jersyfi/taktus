@@ -18,12 +18,20 @@ from taktus.adapters.driven.memory import (
 )
 from taktus.adapters.driven.memory.tenant_store import BEGINNING
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
+from taktus.components.identity.application.service.structure import OrganisationStructure
 from taktus.components.identity.domain.model import (
     BrowserSession,
     ChannelLink,
     Identity,
     LinkCode,
     RoleRights,
+)
+from taktus.components.identity.domain.model.structure import (
+    Filing,
+    KnowledgeHome,
+    OrgStructure,
+    Placement,
+    StructureUnit,
 )
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.ports.clock import Clock
@@ -113,6 +121,8 @@ class Directory:
     directory: IdentityDirectory
     tenants: TenantRegistry
     """The registry the directory asks which tenants the instance serves."""
+    structure: OrganisationStructure | None = None
+    """The organisation's structure the directory reads what a person does not see from."""
 
     async def kinds(self, tenant: str) -> list[str]:
         async with self.persistence.transaction(tenant):
@@ -139,18 +149,22 @@ def directory(
     persistence: MemoryPersistence | None = None,
     clock: Clock | None = None,
     source: IdentitySource | None = None,
+    structured: bool = False,
+    ledger: ChainedLedger | None = None,
 ) -> Directory:
     persistence = persistence or MemoryPersistence()
     clock = clock or FakeClock()
-    ledger = ChainedLedger(MemoryLedgerStore(persistence), clock)
+    ledger = ledger or ChainedLedger(MemoryLedgerStore(persistence), clock)
     links = MemoryRepository(persistence, ChannelLink)
     served = registry(persistence, tenants, clock=clock, ledger=ledger)
+    structure = structure_over(persistence, ledger, clock) if structured else None
     return Directory(
         persistence=persistence,
         clock=clock,
         ledger=ledger,
         links=links,
         tenants=served,
+        structure=structure,
         directory=IdentityDirectory(
             tenants=served,
             identities=MemoryRepository(persistence, Identity),
@@ -163,7 +177,26 @@ def directory(
             clock=clock,
             randomness=FakeRandomness(),
             source=source,
+            structure=structure,
         ),
+    )
+
+
+def structure_over(
+    persistence: MemoryPersistence, ledger: ChainedLedger, clock: Clock
+) -> OrganisationStructure:
+    """The organisation's structure over memory stores (ADR-0275)."""
+    return OrganisationStructure(
+        structures=MemoryRepository(persistence, OrgStructure),
+        units=MemoryRepository(persistence, StructureUnit),
+        placements=MemoryRepository(persistence, Placement),
+        filings=MemoryRepository(persistence, Filing),
+        homes=MemoryRepository(persistence, KnowledgeHome),
+        identities=MemoryRepository(persistence, Identity),
+        rights=MemoryRepository(persistence, RoleRights),
+        work=persistence,
+        ledger=ledger,
+        clock=clock,
     )
 
 

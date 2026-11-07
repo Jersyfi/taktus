@@ -213,7 +213,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         who = await authenticated(services, authorization)
         if who is None:
             return problem(401, NEEDS_KEY)
-        reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+        reader = Reader(
+            tenant=who.tenant, identity=who.identity, roles=who.roles, unseen=who.unseen
+        )
         corrections = services.corrections
         overview = await services.levels.overview(reader)
         figures = await corrections.figures(who.tenant)

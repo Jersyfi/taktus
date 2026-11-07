@@ -52,7 +52,7 @@ from taktus.components.run.domain.service.current_work import (
 )
 from taktus.composition.tenancy import this_round
 from taktus.ports.connector import ChannelAnswers, ChannelReplies, Intake, IntakeReplyTo, Taken
-from taktus.ports.identity import ServedTenants
+from taktus.ports.identity import ServedTenants, Sight
 from taktus.ports.ledger import Ledger
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 
@@ -121,13 +121,20 @@ class Steering:
         ledger: Ledger,
         work: UnitOfWork,
         ceiling_seconds: float,
+        sight: Sight | None = None,
     ) -> None:
+        self._sight = sight
         self._engine = engine
         self._runs = runs
         self._rights = rights
         self._ledger = ledger
         self._work = work
         self._ceiling = ceiling_seconds
+
+    async def reader(self, tenant: str, identity: str, roles: tuple[str, ...]) -> Reader:
+        """The reader as the structure lets it see (ADR-0275 §4)."""
+        unseen = () if self._sight is None else await self._sight.unseen(tenant, identity)
+        return Reader(tenant=tenant, identity=identity, roles=roles, unseen=unseen)
 
     async def current_work(self, reader: Reader) -> list[Working]:
         """Every run that has not ended and that the reader may see, from the ledger alone."""
@@ -221,7 +228,7 @@ class SteeringInChannel:
             if self._then is None:
                 return None
             return await self._then.take(tenant, intake, identity, roles)
-        reader = Reader(tenant=tenant, identity=identity, roles=roles)
+        reader = await self._steering.reader(tenant, identity, roles)
         to = intake.reply_to
         said = await self._steering.answer(
             reader,

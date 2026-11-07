@@ -589,6 +589,76 @@ coach_policy = Table(
 )
 """One row per tenant that configured the coach's period (ADR-0240)."""
 
+org_structure = Table(
+    "org_structure",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("structure", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""A tenant's named levels (ADR-0275)."""
+
+structure_unit = Table(
+    "structure_unit",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("unit", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One unit of a tenant's structure, a project among them (ADR-0275, ADR-0276)."""
+
+placement = Table(
+    "placement",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("placement", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One object in one unit (ADR-0275)."""
+
+filing = Table(
+    "filing",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("filing", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""Where something Taktus set up is documented (ADR-0275 §7)."""
+
+knowledge_home = Table(
+    "knowledge_home",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("home", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""A unit's knowledge system, the record of its documentation (ADR-0275 §7)."""
+
+project_session = Table(
+    "project_session",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("session", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One participant's session in one project (ADR-0277)."""
+
+configuration_change = Table(
+    "configuration_change",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("change", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One change a commissioned plan makes in a target system (ADR-0278)."""
+
 subject_request = Table(
     "subject_request",
     metadata,
