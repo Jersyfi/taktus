@@ -24,7 +24,7 @@
 # Switching it off (`taktusctl deactivate --process b-8-05`) changes nothing on the site.
 
 id: b-8-05
-version: "1"
+version: "2"
 name: B-8.05 Web deployment, on a hosted site
 autonomy:
   level: 2
@@ -61,11 +61,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what deployment.sites.read answered", columns: [live] }
     fallback:
       when: the connector serving deployment.sites is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: deployment.sites.read
       input:
@@ -80,12 +83,15 @@ steps:
       - method: worker
         why: the hosting service publishes the version it already built; nothing here needs a sandbox
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what deployment.sites.release answered", columns: [name] }
     fallback:
       when: the connector serving deployment.sites is unavailable
       to: human
       role: owner
     depends_on: [before]
     work:
+      checking: { select: output }
       rule: connector
       operation: deployment.sites.release
       input:
@@ -123,12 +129,15 @@ steps:
       - method: llm
         why: a request and its status need no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what check.http.run answered", columns: [duration_ms, expectation, failures, method, outcome, path, status] }
     fallback:
       when: the connector serving check.http is unavailable
       to: human
       role: owner
     depends_on: [rolled-out]
     work:
+      checking: { select: output }
       rule: connector
       operation: check.http.run
       input:
@@ -165,12 +174,15 @@ steps:
       - method: worker
         why: the hosting service keeps the earlier version itself; nothing here needs a sandbox
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what deployment.sites.rollback answered", columns: [name] }
     fallback:
       when: the connector serving deployment.sites is unavailable
       to: human
       role: owner
     depends_on: [before, failed]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: failed, $select: count }, matches: "^[1-9]" }
       ask:

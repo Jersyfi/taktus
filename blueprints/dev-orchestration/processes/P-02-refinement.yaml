@@ -25,7 +25,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p02-refinement
-version: "7"
+version: "8"
 name: P-02 Refinement
 autonomy:
   level: 3
@@ -66,11 +66,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.read answered", columns: [body, number, title] }
     fallback:
       when: the connector serving repository.issues is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.issues.read
       input:
@@ -85,12 +88,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.comments.list answered", columns: [comments] }
     fallback:
       when: the connector serving repository.comments is unavailable
       to: human
       role: owner
     depends_on: [read-issue]
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.comments.list
       input:
@@ -149,12 +155,15 @@ steps:
       - method: ml
         why: no labelled corpus of such sections exists yet; a classifier cannot write them
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233): the answer's own pattern, as a rule
+      - { kind: bounds, subject: the sections written, pattern: "^### (What must be achieved|How it is verified|Where the boundary lies)[ \\t]*\\n+\\s*\\S" }
     fallback:
       when: the answer fails the check, or the model serving the purpose reasoning is unavailable
       to: human
       role: owner
     depends_on: [missing]
     work:
+      checking: { select: text }
       when:
         - value: { $from: missing, $select: missing }
           not_matches: '^\[\]$'
@@ -194,6 +203,8 @@ steps:
       - method: llm
         why: a fixed composition needs no model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "Once they are in the issue, a person adds the label `ready`; P-03 Implementation reads" }
     depends_on: [refine]
     work:
       when:
@@ -218,12 +229,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.comments.create answered", columns: [author, body, created_at, id, url] }
     fallback:
       when: the connector serving repository.comments is unavailable
       to: human
       role: owner
     depends_on: [compose-comment]
     work:
+      checking: { select: output }
       when:
         - value: { $from: missing, $select: missing }
           not_matches: '^\[\]$'

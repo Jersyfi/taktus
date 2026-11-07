@@ -33,7 +33,7 @@
 # only asks.
 
 id: b-1-07
-version: "1"
+version: "2"
 name: B-1.07 Database rules
 autonomy:
   level: 1
@@ -74,11 +74,14 @@ steps:
       - method: llm
         why: a fixed request and its status need no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what check.http.run answered", columns: [duration_ms, expectation, failures, method, outcome, path, status] }
     fallback:
       when: the connector serving check.http is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: check.http.run
       input:
@@ -95,11 +98,14 @@ steps:
       - method: llm
         why: a fixed request and its status need no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what check.http.run answered", columns: [duration_ms, expectation, failures, method, outcome, path, status] }
     fallback:
       when: the connector serving check.http is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: check.http.run
       input:

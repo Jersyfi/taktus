@@ -16,7 +16,7 @@
 # Switching it off (`taktusctl deactivate --process b-7-08`) changes nothing else.
 
 id: b-7-08
-version: "1"
+version: "2"
 name: B-7.08 Daily acceptance
 autonomy:
   level: 2
@@ -84,11 +84,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.list answered", columns: [complete, issues] }
     fallback:
       when: the connector serving repository.issues is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.issues.list
       input:
@@ -127,6 +130,8 @@ steps:
       - method: llm
         why: a fixed composition needs no model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "Filed by Taktus, process B-7\\.08 Daily acceptance, once a person confirmed it\\. A fix is" }
     depends_on: [broken]
     work:
       when:
@@ -162,12 +167,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.create answered", columns: [author, body, created_at, is_pull_request, labels, milestone, number, state, title, updated_at, url] }
     fallback:
       when: the connector serving repository.issues is unavailable
       to: human
       role: owner
     depends_on: [broken, compose]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: broken, $select: count }, not_matches: "^0$" }
       rule: connector

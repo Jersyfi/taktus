@@ -20,7 +20,7 @@
 # Switching it off (`taktusctl deactivate --process b-8-02`) changes nothing at the store.
 
 id: b-8-02
-version: "1"
+version: "2"
 name: B-8.02 Distributing a beta
 autonomy:
   level: 2
@@ -55,11 +55,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what stores.beta.builds answered", columns: [builds] }
     fallback:
       when: the connector serving stores.beta is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: stores.beta.builds
       input:
@@ -93,12 +96,15 @@ steps:
       - method: worker
         why: the store distributes the build itself; nothing here needs a sandbox
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what stores.beta.distribute answered", columns: [app, build, group, platform] }
     fallback:
       when: the connector serving stores.beta is unavailable
       to: human
       role: owner
     depends_on: [newest]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: newest, $select: count }, matches: "^[1-9]" }
       rule: connector
@@ -118,12 +124,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what stores.beta.feedback answered", columns: [feedback] }
     fallback:
       when: the connector serving stores.beta is unavailable
       to: human
       role: owner
     depends_on: [distribute]
     work:
+      checking: { select: output }
       when:
         - { value: { $input: platform }, matches: "^ios$" }
       rule: connector
@@ -142,12 +151,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.list answered", columns: [complete, issues] }
     fallback:
       when: the connector serving repository.issues is unavailable
       to: human
       role: owner
     depends_on: [distribute]
     work:
+      checking: { select: output }
       when:
         - { value: { $input: platform }, matches: "^ios$" }
       rule: connector
@@ -188,6 +200,8 @@ steps:
       - method: llm
         why: a fixed composition needs no model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "Filed by Taktus, process B-8\\.02 Distributing a beta, once a person confirmed it\\. The" }
     depends_on: [unfiled]
     work:
       when:
@@ -217,12 +231,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.create answered", columns: [author, body, created_at, is_pull_request, labels, milestone, number, state, title, updated_at, url] }
     fallback:
       when: the connector serving repository.issues is unavailable
       to: human
       role: owner
     depends_on: [unfiled, compose]
     work:
+      checking: { select: output }
       when:
         - { value: { $input: platform }, matches: "^ios$" }
         - { value: { $from: unfiled, $select: count }, matches: "^[1-9]" }

@@ -32,7 +32,7 @@
 # system: what it wrote stays written.
 
 id: b-5-05
-version: "1"
+version: "2"
 name: B-5.05 Customer system upkeep
 autonomy:
   level: 2
@@ -66,11 +66,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what mail.messages.read answered", columns: [date, subject, text] }
     fallback:
       when: the connector serving mail.messages is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: mail.messages.read
       input:
@@ -85,11 +88,14 @@ steps:
       - method: llm
         why: a search by address is exact
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what crm.contacts.find answered", columns: [count] }
     fallback:
       when: the connector serving crm.contacts is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       scope: { subject: { $input: sender } }
       rule: connector
       operation: crm.contacts.find
@@ -154,6 +160,8 @@ steps:
       - method: llm
         why: a fixed composition needs no model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "Written by Taktus, process B-5\\.05 Customer system upkeep, once a person confirmed it" }
     depends_on: [read-message, propose]
     work:
       rule: template
@@ -177,12 +185,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what crm.contacts.create answered", columns: [created_at, email, id, lifecycle_stage, updated_at] }
     fallback:
       when: the connector serving crm.contacts is unavailable
       to: human
       role: owner
     depends_on: [find]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: find, $select: output.count }, matches: "^0$" }
       scope: { subject: { $input: sender } }
@@ -200,12 +211,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what crm.contacts.note answered", columns: [contact, note] }
     fallback:
       when: the connector serving crm.contacts is unavailable
       to: human
       role: owner
     depends_on: [create, compose]
     work:
+      checking: { select: output }
       scope: { subject: { $input: sender } }
       rule: connector
       operation: crm.contacts.note

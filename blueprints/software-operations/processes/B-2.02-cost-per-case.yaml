@@ -16,7 +16,7 @@
 # Switching it off (`taktusctl deactivate --process b-2-02`) changes nothing else.
 
 id: b-2-02
-version: "1"
+version: "2"
 name: B-2.02 Cost per case
 autonomy:
   level: 1
@@ -56,11 +56,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what orchestrator.spend.cases answered", columns: [cases] }
     fallback:
       when: the connector serving orchestrator.spend is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: orchestrator.spend.cases
       input:

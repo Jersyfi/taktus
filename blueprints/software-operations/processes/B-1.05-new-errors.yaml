@@ -26,7 +26,7 @@
 # tracker or the repository: what it filed stays filed.
 
 id: b-1-05
-version: "1"
+version: "2"
 name: B-1.05 New errors
 autonomy:
   level: 2
@@ -62,11 +62,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what errors.issues.list answered", columns: [issues] }
     fallback:
       when: the connector serving errors.issues is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: errors.issues.list
       input:
@@ -84,11 +87,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.list answered", columns: [complete, issues] }
     fallback:
       when: the connector serving repository.issues is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.issues.list
       input:
@@ -133,6 +139,8 @@ steps:
       - method: llm
         why: a fixed composition needs no model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "Filed by Taktus, process B-1\\.05 New errors, once a person confirmed it\\. A fix is worked" }
     depends_on: [select]
     work:
       when:
@@ -169,12 +177,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.create answered", columns: [author, body, created_at, is_pull_request, labels, milestone, number, state, title, updated_at, url] }
     fallback:
       when: the connector serving repository.issues is unavailable
       to: human
       role: owner
     depends_on: [select, compose]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: select, $select: count }, not_matches: "^0$" }
       rule: connector

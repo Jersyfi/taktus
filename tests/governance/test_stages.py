@@ -110,6 +110,7 @@ def bundle(process: str, level: int, version: str = "1") -> dict[str, Any]:
                     "reason": "r",
                     "rejected": [],
                     "exactness": "sourced",
+                    "checks": [{"kind": "bounds", "pattern": "^\\{"}],
                     "work": {"rule": "connector", "operation": "files.read"},
                 }
             ],

@@ -47,7 +47,7 @@
 # Switching it off (`taktusctl deactivate --process b-5-06`) changes nothing: it only reads.
 
 id: b-5-06
-version: "2"
+version: "3"
 name: B-5.06 Business customers' seats
 autonomy:
   level: 1
@@ -86,11 +86,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what payments.customers.subscriptions answered", columns: [complete, subscriptions] }
     fallback:
       when: the connector serving payments.customers is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       scope: { subject: { $input: customer } }
       rule: connector
       operation: payments.customers.subscriptions
@@ -146,11 +149,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what entitlements.customers.list answered", columns: [complete, entitlements] }
     fallback:
       when: the connector serving entitlements.customers is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       scope: { subject: { $input: customer } }
       rule: connector
       operation: entitlements.customers.list

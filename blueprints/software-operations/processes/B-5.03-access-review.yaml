@@ -36,7 +36,7 @@
 # Switching it off (`taktusctl deactivate --process b-5-03`) changes nothing: it only reads.
 
 id: b-5-03
-version: "1"
+version: "2"
 name: B-5.03 Access review
 autonomy:
   level: 1
@@ -74,11 +74,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what directory.accounts.list answered", columns: [accounts, complete] }
     fallback:
       when: the connector serving directory.accounts is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: directory.accounts.list
       input:
@@ -97,6 +100,8 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what directory.accounts.list answered", columns: [accounts, complete] }
     fallback:
       when: the connector serving directory.accounts is unavailable
       to: human
@@ -104,6 +109,7 @@ steps:
     # After the whole directory, so that both readings are of the same moment's directory.
     depends_on: [accounts]
     work:
+      checking: { select: output }
       rule: connector
       operation: directory.accounts.list
       input:

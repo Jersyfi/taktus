@@ -67,6 +67,7 @@ BILLING = bundle(
         "reason": "r",
         "rejected": [],
         "exactness": "sourced",
+        "checks": [{"kind": "bounds", "pattern": "^\\{"}],
         "work": {"rule": "connector", "operation": READ, "input": {"id": "x"}},
     },
     {

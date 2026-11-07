@@ -26,7 +26,7 @@
 # Switching it off (`taktusctl deactivate --process b-1-12`) changes nothing at the service.
 
 id: b-1-12
-version: "2"
+version: "3"
 name: B-1.12 Pipeline infrastructure
 autonomy:
   level: 2
@@ -55,11 +55,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.pipelines.list answered", columns: [runs] }
     fallback:
       when: the connector serving repository.pipelines is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.pipelines.list
       input:
@@ -74,12 +77,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.pipelines.list answered", columns: [runs] }
     fallback:
       when: the connector serving repository.pipelines is unavailable
       to: human
       role: owner
     depends_on: [read-queued]
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.pipelines.list
       input:
@@ -130,12 +136,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.pipelines.cancel answered", columns: [attempt] }
     fallback:
       when: the connector serving repository.pipelines is unavailable
       to: human
       role: owner
     depends_on: [running-too-long]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: running-too-long, $select: count }, not_matches: "^0$" }
       rule: connector
@@ -162,12 +171,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.pipelines.rerun answered", columns: [attempt, conclusion, id, name, rerun, status, url] }
     fallback:
       when: the connector serving repository.pipelines is unavailable, or the run was not completed in time
       to: human
       role: owner
     depends_on: [settle, cancel-lost, running-too-long]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: running-too-long, $select: count }, not_matches: "^0$" }
       rule: connector
@@ -185,12 +197,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.runners.list answered", columns: [runners] }
     fallback:
       when: the connector serving repository.runners is unavailable
       to: human
       role: owner
     depends_on: [read-queued]
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.runners.list
       input: {}

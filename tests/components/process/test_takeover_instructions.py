@@ -67,6 +67,7 @@ def two_steps(level: int = 2, version: str = "1") -> dict[str, Any]:
                 "reason": "a read",
                 "rejected": [],
                 "exactness": "sourced",
+                "checks": [{"kind": "bounds", "pattern": "^\\{"}],
                 "work": {
                     "rule": "connector",
                     "operation": "repository.issues.read",

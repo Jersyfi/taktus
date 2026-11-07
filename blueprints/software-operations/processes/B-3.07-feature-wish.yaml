@@ -25,7 +25,7 @@
 # the portal stays there.
 
 id: b-3-07
-version: "1"
+version: "2"
 name: B-3.07 A feature wish
 autonomy:
   level: 2
@@ -64,11 +64,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what mail.messages.read answered", columns: [from, subject, text] }
     fallback:
       when: the connector serving mail.messages is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: mail.messages.read
       input:
@@ -83,11 +86,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what feedback.posts.list answered", columns: [complete, posts] }
     fallback:
       when: the connector serving feedback.posts is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: feedback.posts.list
       input:
@@ -175,12 +181,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what feedback.posts.vote answered", columns: [counted, post] }
     fallback:
       when: the connector serving feedback.posts is unavailable
       to: human
       role: owner
     depends_on: [read-message, title, matched]
     work:
+      checking: { select: output }
       when:
         - { value: { $input: consent }, matches: "^yes$" }
         - { value: { $from: title, $select: extracted }, not_matches: "^\\[\\]$" }
@@ -200,6 +209,8 @@ steps:
       - method: llm
         why: a fixed composition needs no model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "A customer asked support for this, and agreed that it be posted here" }
     depends_on: [read-message, title, matched]
     work:
       when:
@@ -223,12 +234,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what feedback.posts.create answered", columns: [board, id, url] }
     fallback:
       when: the connector serving feedback.posts is unavailable
       to: human
       role: owner
     depends_on: [read-message, title, matched, compose]
     work:
+      checking: { select: output }
       when:
         - { value: { $input: consent }, matches: "^yes$" }
         - { value: { $from: title, $select: extracted }, not_matches: "^\\[\\]$" }

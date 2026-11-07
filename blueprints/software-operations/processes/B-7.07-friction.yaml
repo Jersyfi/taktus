@@ -10,7 +10,7 @@
 #
 # Switching it off (`taktusctl deactivate --process b-7-07`) leaves open pull requests as they are.
 id: b-7-07
-version: "1"
+version: "2"
 name: B-7.07 Friction in the product
 autonomy:
   level: 2
@@ -174,12 +174,15 @@ steps:
       - method: worker
         why: a worker that pushes has a credential to the repository and writes outward past the ledger
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.branches.create answered", columns: [base, commit_url, name, sha, url] }
     fallback:
       when: the connector serving repository.branches is unavailable, or the branch exists
       to: human
       role: owner
     depends_on: [implement, branch-name, protected]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: protected, $select: count }, matches: "^0$" }
       rule: connector
@@ -202,12 +205,15 @@ steps:
       - method: worker
         why: a worker that pushes has a credential to the repository and writes outward past the ledger
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.branches.create answered", columns: [base, commit_url, name, sha, url] }
     fallback:
       when: the connector serving repository.branches is unavailable, or the branch exists
       to: human
       role: owner
     depends_on: [implement, branch-name, protected]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: protected, $select: count }, matches: "^[1-9]" }
       ask:
@@ -261,12 +267,15 @@ steps:
       - method: llm
         why: a judgement of test output is not a verdict; the pipeline's conclusion is
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.pipelines.status answered", columns: [state] }
     fallback:
       when: the connector serving repository.pipelines is unavailable, or the pipeline is red
       to: human
       role: owner
     depends_on: [wait-for-pipeline]
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.pipelines.status
       input:
@@ -283,12 +292,15 @@ steps:
       merge stays with a person at every level
     rejected: []
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.pullrequests.open answered", columns: [number] }
     fallback:
       when: the connector serving repository.pullrequests is unavailable
       to: human
       role: owner
     depends_on: [read-pipeline]
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.pullrequests.open
       input:
@@ -304,12 +316,15 @@ steps:
     reason: the pull request is marked as Taktus's, so that a reader sees who opened it
     rejected: []
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.labels.set answered", columns: [labels, number] }
     fallback:
       when: the connector serving repository.labels is unavailable
       to: human
       role: owner
     depends_on: [open-pr]
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.labels.set
       input:

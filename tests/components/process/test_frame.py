@@ -52,6 +52,7 @@ def connector(id: str, operation: str, **frame: Any) -> dict[str, Any]:
         "reason": "r",
         "rejected": [],
         "exactness": "sourced",
+        "checks": [{"kind": "bounds", "pattern": "^\\{"}],
         "work": {"rule": "connector", "operation": operation, "input": {}, **frame},
     }
 

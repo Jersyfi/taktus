@@ -29,7 +29,7 @@
 # Switching it off (`taktusctl deactivate --process b-5-02`) changes nothing at the service: it only asks.
 
 id: b-5-02
-version: "2"
+version: "3"
 name: B-5.02 Back-office health
 autonomy:
   level: 1
@@ -77,11 +77,14 @@ steps:
       - method: llm
         why: a request and its status need no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what check.http.run answered", columns: [duration_ms, expectation, failures, method, outcome, path, status] }
     fallback:
       when: the connector serving check.http is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: check.http.run
       input:
@@ -107,12 +110,15 @@ steps:
       - method: llm
         why: a request and its status need no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what check.http.run answered", columns: [duration_ms, expectation, failures, method, outcome, path, status] }
     fallback:
       when: the connector serving check.http is unavailable
       to: human
       role: owner
     depends_on: [pause]
     work:
+      checking: { select: output }
       rule: connector
       operation: check.http.run
       input:
@@ -150,12 +156,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what logs.query.entries answered", columns: [entries] }
     fallback:
       when: the connector serving logs.query is unavailable
       to: human
       role: owner
     depends_on: [check-first]
     work:
+      checking: { select: output }
       when:
         - { value: { $input: log_filter, $otherwise: "" }, matches: "." }
       rule: connector

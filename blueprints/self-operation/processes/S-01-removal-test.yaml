@@ -17,7 +17,7 @@
 # hand, which is the takeover test of ADR-0013 B for this process.
 
 id: s01-removal-test
-version: "3"
+version: "4"
 name: S-01 Removal test
 autonomy:
   level: 3
@@ -61,7 +61,10 @@ steps:
       - method: llm
         why: a read of configuration needs no judgement
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what orchestrator.integrations.describe answered", columns: [family, integration] }
     work:
+      checking: { select: output }
       rule: connector
       operation: orchestrator.integrations.describe
       input:
@@ -106,8 +109,11 @@ steps:
       - method: worker
         why: nothing here needs a sandbox; the instance exercises itself
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what orchestrator.removal.exercise answered", columns: [configuration, family, integration, processes, verdict] }
     depends_on: [admit]
     work:
+      checking: { select: output }
       rule: connector
       operation: orchestrator.removal.exercise
       input:
@@ -120,8 +126,11 @@ steps:
       - method: llm
         why: a read of configuration needs no judgement
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what orchestrator.integrations.describe answered", columns: [integration, serves] }
     depends_on: [exercise]
     work:
+      checking: { select: output }
       rule: connector
       operation: orchestrator.integrations.describe
       input:
@@ -174,8 +183,11 @@ steps:
       - method: worker
         why: a write inside the instance needs no sandbox
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what orchestrator.maturity.record answered", columns: [content_digest, ledger_seq, maturity, missing] }
     depends_on: [verdict]
     work:
+      checking: { select: output }
       rule: connector
       operation: orchestrator.maturity.record
       input:
@@ -188,6 +200,8 @@ steps:
       - method: llm
         why: a narrative is not needed for one line; the values speak
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "Ledger entry removal\\.tested seq" }
     depends_on: [record]
     work:
       rule: template

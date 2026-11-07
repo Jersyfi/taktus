@@ -19,7 +19,7 @@
 # Switching it off (`taktusctl deactivate --process b-8-07`) changes nothing in the repository.
 
 id: b-8-07
-version: "1"
+version: "2"
 name: B-8.07 Release hygiene
 autonomy:
   level: 2
@@ -47,11 +47,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.pullrequests.list answered", columns: [pulls] }
     fallback:
       when: the connector serving repository.pullrequests is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.pullrequests.list
       input:
@@ -87,6 +90,8 @@ steps:
       - method: llm
         why: a fixed composition needs no model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "Written by Taktus, process B-8\\.07 Release hygiene, once a person confirmed it" }
     depends_on: [overdue]
     work:
       when:
@@ -115,12 +120,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.comments.create answered", columns: [author, body, created_at, id, url] }
     fallback:
       when: the connector serving repository.comments is unavailable
       to: human
       role: owner
     depends_on: [overdue, compose]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: overdue, $select: count }, matches: "^[1-9]" }
       rule: connector

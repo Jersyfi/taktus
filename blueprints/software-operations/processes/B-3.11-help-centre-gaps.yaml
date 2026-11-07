@@ -25,7 +25,7 @@
 # draft until a person publishes or deletes it.
 
 id: b-3-11
-version: "1"
+version: "2"
 name: B-3.11 Gaps in the help centre
 autonomy:
   level: 2
@@ -55,11 +55,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what helpdesk.tickets.list answered", columns: [tickets] }
     fallback:
       when: the connector serving helpdesk.tickets is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: helpdesk.tickets.list
       input:
@@ -76,11 +79,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what helpcentre.articles.list answered", columns: [articles, complete] }
     fallback:
       when: the connector serving helpcentre.articles is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: helpcentre.articles.list
       input:
@@ -214,12 +220,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what helpcentre.articles.draft answered", columns: [draft, id, labels, published, section, title, updated_at, url] }
     fallback:
       when: the connector serving helpcentre.articles is unavailable
       to: human
       role: owner
     depends_on: [title, body, verdict]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: verdict, $select: extracted }, matches: "^\\[\"original\"\\]$" }
         - { value: { $from: body, $select: extracted }, not_matches: "^\\[\\]$" }

@@ -30,7 +30,7 @@
 # Switching it off (`taktusctl deactivate --process b-7-12`) changes nothing in the repository.
 
 id: b-7-12
-version: "1"
+version: "2"
 name: B-7.12 A merge by a reviewing step
 autonomy:
   level: 2
@@ -65,11 +65,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.pullrequests.read answered", columns: [draft, state, title] }
     fallback:
       when: the connector serving repository.pullrequests is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.pullrequests.read
       input:
@@ -87,12 +90,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.pullrequests.files answered", columns: [complete, count, files, head_sha] }
     fallback:
       when: the connector serving repository.pullrequests is unavailable
       to: human
       role: owner
     depends_on: [read-pull]
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.pullrequests.files
       input:
@@ -130,12 +136,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.pipelines.status answered", columns: [state] }
     fallback:
       when: the connector serving repository.pipelines is unavailable
       to: human
       role: owner
     depends_on: [wait-for-pipeline]
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.pipelines.status
       input:
@@ -233,12 +242,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.pullrequests.merge answered", columns: [head_sha, merged, number, sha] }
     fallback:
       when: the connector serving repository.pullrequests is unavailable, or the service does not merge
       to: human
       role: owner
     depends_on: [read-pull, read-files, read-pipeline, not-documentation, protected-decided]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: read-pipeline, $select: output.state }, matches: "^success$" }
         - { value: { $from: read-files, $select: output.count }, matches: "^[1-9]" }
@@ -261,12 +273,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.pullrequests.merge answered", columns: [head_sha, merged, number, sha] }
     fallback:
       when: the connector serving repository.pullrequests is unavailable, or the service does not merge
       to: human
       role: owner
     depends_on: [read-pull, read-files, read-pipeline, not-dependencies, protected-decided]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: read-pipeline, $select: output.state }, matches: "^success$" }
         - { value: { $from: read-files, $select: output.count }, matches: "^[1-9]" }

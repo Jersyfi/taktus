@@ -82,7 +82,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p03-implementation
-version: "24"
+version: "25"
 name: P-03 Implementation
 autonomy:
   level: 4
@@ -169,11 +169,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.read answered", columns: [body, labels, title] }
     fallback:
       when: the connector serving repository.issues is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.issues.read
       input:
@@ -188,12 +191,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.comments.list answered", columns: [comments] }
     fallback:
       when: the connector serving repository.comments is unavailable
       to: human
       role: owner
     depends_on: [read-issue]
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.comments.list
       input:
@@ -208,6 +214,8 @@ steps:
       - method: llm
         why: a fixed composition needs no model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "Discussion \\(JSON" }
     depends_on: [read-issue, read-comments]
     work:
       rule: template
@@ -233,12 +241,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.list answered", columns: [complete, issues] }
     fallback:
       when: the connector serving repository.issues is unavailable
       to: human
       role: owner
     depends_on: [read-issue]
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.issues.list
       input:
@@ -258,12 +269,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.files.list answered", columns: [entries] }
     fallback:
       when: the connector serving repository.files is unavailable
       to: human
       role: owner
     depends_on: [read-issue]
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.files.list
       input:
@@ -306,12 +320,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.labels.set answered", columns: [labels, number] }
     fallback:
       when: the connector serving repository.labels is unavailable
       to: human
       role: owner
     depends_on: [admit]
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.labels.set
       input:
@@ -330,6 +347,8 @@ steps:
       - method: llm
         why: a fixed composition needs no model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "closes this issue, or it gives the issue back here and says why\\. Merging stays with a" }
     depends_on: [claim]
     work:
       rule: template
@@ -352,12 +371,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.comments.create answered", columns: [author, body, created_at, id, url] }
     fallback:
       when: the connector serving repository.comments is unavailable
       to: human
       role: owner
     depends_on: [claim, claim-notice]
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.comments.create
       input:
@@ -397,12 +419,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.branches.read answered", columns: [free] }
     fallback:
       when: the connector serving repository.branches is unavailable
       to: human
       role: owner
     depends_on: [claim, branch-name]
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.branches.read
       input:
@@ -459,12 +484,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.pipelines.status answered", columns: [state] }
     fallback:
       when: the connector serving repository.pipelines is unavailable
       to: human
       role: owner
     depends_on: [wait-for-main]
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.pipelines.status
       input:
@@ -621,12 +649,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.files.list answered", columns: [entries] }
     fallback:
       when: the connector serving repository.files is unavailable
       to: human
       role: owner
     depends_on: [implement]
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.files.list
       input:
@@ -642,12 +673,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.files.list answered", columns: [entries] }
     fallback:
       when: the connector serving repository.files is unavailable
       to: human
       role: owner
     depends_on: [implement]
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.files.list
       input:
@@ -693,12 +727,15 @@ steps:
       - method: worker
         why: a worker that pushes has a credential to the repository and writes outward past the ledger
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.refs.create answered", columns: [references, target] }
     fallback:
       when: the connector serving repository.refs is unavailable
       to: human
       role: owner
     depends_on: [record-references]
     work:
+      checking: { select: output }
       when:
         - value: { $from: record-references, $select: extracted }
           not_matches: '^\[\]$'
@@ -721,12 +758,15 @@ steps:
       - method: worker
         why: a worker that pushes has a credential to the repository and writes outward past the ledger
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.branches.create answered", columns: [base, commit_url, name, sha, url] }
     fallback:
       when: the connector serving repository.branches is unavailable
       to: human
       role: owner
     depends_on: [implement, branch-name, reserve-records]
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.branches.create
       input:
@@ -773,12 +813,15 @@ steps:
       pipeline was re-run reads it again instead of judging the old reading (issue #31)
     rejected: []
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.pipelines.status answered", columns: [state] }
     fallback:
       when: the connector serving repository.pipelines is unavailable
       to: human
       role: owner
     depends_on: [wait-for-pipeline]
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.pipelines.status
       input:
@@ -875,6 +918,8 @@ steps:
       - method: llm
         why: a fixed composition needs no model, and a copy by a model is not exact (issue #34)
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "Needed from the owner" }
     depends_on: [verify]
     work:
       rule: template
@@ -900,6 +945,8 @@ steps:
           refused descriptions failed on deterministic parts asked of the coding worker
           (DEC-0025)
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "in an isolated workspace, put on this branch by the run, and the pipeline's verdict was" }
     depends_on: [verify, closing-section]
     work:
       rule: template
@@ -955,12 +1002,15 @@ steps:
     reason: opening a pull request is an API call; a repeat after a restart finds the one opened
     rejected: []
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.pullrequests.open answered", columns: [number] }
     fallback:
       when: the connector serving repository.pullrequests is unavailable
       to: human
       role: owner
     depends_on: [pull-request-title-form, pull-request-body-form]
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.pullrequests.open
       input:
@@ -976,12 +1026,15 @@ steps:
     reason: the pull request is marked as Taktus's, so that a reader sees who opened it
     rejected: []
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.labels.set answered", columns: [labels, number] }
     fallback:
       when: the connector serving repository.labels is unavailable
       to: human
       role: owner
     depends_on: [open-pr]
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.labels.set
       input:
@@ -1006,12 +1059,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.labels.remove answered", columns: [labels, number] }
     fallback:
       when: the connector serving repository.labels is unavailable
       to: human
       role: owner
     depends_on: [claim]
     work:
+      checking: { select: output }
       on_escalation: true
       when:
         - value: { $run: failed.step }
@@ -1031,6 +1087,8 @@ steps:
       - method: llm
         why: a fixed composition needs no model, and the reason is the failed step's own
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "The label `in-progress` is removed\\. The label `to-taktus` stays: remove it to leave the" }
     depends_on: [claim]
     work:
       on_escalation: true
@@ -1062,12 +1120,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.comments.create answered", columns: [author, body, created_at, id, url] }
     fallback:
       when: the connector serving repository.comments is unavailable
       to: human
       role: owner
     depends_on: [claim, give-back-notice]
     work:
+      checking: { select: output }
       on_escalation: true
       rule: connector
       operation: repository.comments.create

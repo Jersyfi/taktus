@@ -23,7 +23,7 @@
 # Switching it off (`taktusctl deactivate --process b-7-10`) changes nothing in the repository.
 
 id: b-7-10
-version: "2"
+version: "3"
 name: B-7.10 Abandoned work
 autonomy:
   level: 1
@@ -51,11 +51,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.pullrequests.list answered", columns: [pulls] }
     fallback:
       when: the connector serving repository.pullrequests is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.pullrequests.list
       input:
@@ -70,12 +73,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.list answered", columns: [issues] }
     fallback:
       when: the connector serving repository.issues is unavailable
       to: human
       role: owner
     depends_on: [read-pulls]
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.issues.list
       input:
@@ -128,12 +134,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.branches.list answered", columns: [branches, complete] }
     fallback:
       when: the connector serving repository.branches is unavailable
       to: human
       role: owner
     depends_on: [read-pulls]
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.branches.list
       input: {}

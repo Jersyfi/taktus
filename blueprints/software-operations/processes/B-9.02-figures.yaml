@@ -21,7 +21,7 @@
 # Switching it off (`taktusctl deactivate --process b-9-02`) changes nothing.
 
 id: b-9-02
-version: "1"
+version: "2"
 name: B-9.02 Questions about figures
 autonomy:
   level: 2
@@ -90,12 +90,15 @@ steps:
       - method: llm
         why: a figure may not come from a language model (CLAUDE.md §4)
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what warehouse.queries.run answered", columns: [complete, rows, total_rows] }
     fallback:
       when: the connector serving warehouse.queries is unavailable, or it refuses the query
       to: human
       role: owner
     depends_on: [query]
     work:
+      checking: { select: output }
       rule: connector
       operation: warehouse.queries.run
       input:
@@ -197,6 +200,8 @@ steps:
       - method: llm
         why: a fixed composition needs no model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "Answered by Taktus, process B-9\\.02 Questions about figures, from the copy without" }
     depends_on: [query, rows, reading]
     work:
       rule: template
@@ -224,12 +229,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what chat.threads.post answered", columns: [address, author, text, thread, ts] }
     fallback:
       when: the connector serving chat.threads is unavailable
       to: human
       role: owner
     depends_on: [compose, verify, promises]
     work:
+      checking: { select: output }
       rule: connector
       operation: chat.threads.post
       input:

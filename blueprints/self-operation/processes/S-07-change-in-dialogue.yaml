@@ -14,7 +14,7 @@
 # reaches itself (docs/architecture/contracts.md §4).
 
 id: s07-change-in-dialogue
-version: "3"
+version: "4"
 name: S-07 Change in dialogue
 autonomy:
   level: 3
@@ -49,11 +49,14 @@ steps:
       - method: llm
         why: a version is read, not judged
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what orchestrator.changes.read answered", columns: [bundle] }
     fallback:
       when: the loopback connector is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: orchestrator.changes.read
       input:

@@ -37,7 +37,7 @@
 # Switching it off (`taktusctl deactivate --process b-7-04`) changes nothing in the repository.
 
 id: b-7-04
-version: "1"
+version: "2"
 name: B-7.04 Keeping pull requests mergeable
 autonomy:
   level: 2
@@ -75,11 +75,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.pullrequests.list answered", columns: [pulls] }
     fallback:
       when: the connector serving repository.pullrequests is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.pullrequests.list
       input:
@@ -146,12 +149,15 @@ steps:
       - method: worker
         why: the service merges two branches itself; nothing here needs a sandbox
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.branches.update answered", columns: [base, name, previous, sha, updated] }
     fallback:
       when: the connector serving repository.branches is unavailable, or the merge conflicts
       to: human
       role: owner
     depends_on: [behind]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: behind, $select: count }, matches: "^[1-9]" }
       rule: connector
@@ -170,12 +176,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.comments.list answered", columns: [comments] }
     fallback:
       when: the connector serving repository.comments is unavailable
       to: human
       role: owner
     depends_on: [behind, red]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: behind, $select: count }, matches: "^0$" }
         - { value: { $from: red, $select: count }, matches: "^[1-9]" }
@@ -268,12 +277,15 @@ steps:
       - method: worker
         why: a worker that pushes has a credential to the repository and writes outward past the ledger
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.branches.commit answered", columns: [name, parent, sha, url] }
     fallback:
       when: the connector serving repository.branches is unavailable, or the branch moved
       to: human
       role: owner
     depends_on: [red, repair, protected]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: protected, $select: count }, matches: "^0$" }
       rule: connector
@@ -296,12 +308,15 @@ steps:
       - method: worker
         why: a worker that pushes has a credential to the repository and writes outward past the ledger
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.branches.commit answered", columns: [name, parent, sha, url] }
     fallback:
       when: the connector serving repository.branches is unavailable, or the branch moved
       to: human
       role: owner
     depends_on: [red, repair, protected]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: protected, $select: count }, matches: "^[1-9]" }
       ask:

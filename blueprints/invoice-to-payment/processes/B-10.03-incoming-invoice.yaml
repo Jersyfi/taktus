@@ -29,7 +29,7 @@
 # (`taktusctl deactivate --process b-10-03-incoming-invoice`) changes nothing in the books.
 
 id: b-10-03-incoming-invoice
-version: "2"
+version: "3"
 name: B-10.03 Incoming invoice
 autonomy:
   level: 3
@@ -88,11 +88,14 @@ steps:
       - method: llm
         why: a structured invoice is read field by field; a model would only add a chance of a wrong field
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what documents.invoices.read answered", columns: [digest, order_reference] }
     fallback:
       when: the connector serving documents.invoices is unavailable, or the document is no invoice it reads
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: documents.invoices.read
       input:
@@ -107,12 +110,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what accounting.orders.read answered", columns: [account, cost_centre, currency, lines, net_invoiced, net_total, reference, supplier] }
     fallback:
       when: the invoice names no order the accounting system holds, or its connector is unavailable
       to: human
       role: owner
     depends_on: [read-invoice]
     work:
+      checking: { select: output }
       rule: connector
       operation: accounting.orders.read
       input:
@@ -169,12 +175,15 @@ steps:
       - method: worker
         why: a proposal is one call of a declared operation; a worker would add an actor where none is needed
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what accounting.bookings.propose answered", columns: [id] }
     fallback:
       when: the connector serving accounting.bookings is unavailable or refuses the proposal
       to: human
       role: owner
     depends_on: [check]
     work:
+      checking: { select: output }
       rule: connector
       operation: accounting.bookings.propose
       input:
@@ -204,12 +213,15 @@ steps:
       - method: worker
         why: a release is one call of a declared operation, and its decision is a person's, not a worker's
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what payment.release.submit answered", columns: [id, status] }
     fallback:
       when: the connector serving payment.release is unavailable or refuses the payment
       to: human
       role: owner
     depends_on: [propose-booking]
     work:
+      checking: { select: output }
       rule: connector
       operation: payment.release.submit
       input:

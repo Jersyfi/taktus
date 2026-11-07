@@ -66,6 +66,7 @@ BUNDLE: dict[str, Any] = instructed(
                 "reason": "a read",
                 "rejected": [],
                 "exactness": "sourced",
+                "checks": [{"kind": "bounds", "pattern": "^\\{"}],
                 "work": {
                     "rule": "connector",
                     "operation": READ,
@@ -127,6 +128,7 @@ BUNDLE: dict[str, Any] = instructed(
                 "reason": "a write",
                 "rejected": [],
                 "exactness": "sourced",
+                "checks": [{"kind": "bounds", "pattern": "^\\{"}],
                 "depends_on": ["settle"],
                 "work": {
                     "rule": "connector",

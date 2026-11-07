@@ -31,7 +31,7 @@
 # README.md.
 
 id: p05-triage
-version: "3"
+version: "4"
 name: P-05 Triage of contributions
 autonomy:
   level: 3
@@ -69,11 +69,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.read answered", columns: [body, is_pull_request, state, title, url] }
     fallback:
       when: the connector serving repository.issues is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.issues.read
       input:
@@ -91,11 +94,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.files.read answered", columns: [content] }
     fallback:
       when: the connector serving repository.files is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.files.read
       input:
@@ -217,12 +223,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.close answered", columns: [author, body, created_at, is_pull_request, labels, milestone, number, state, title, updated_at, url] }
     fallback:
       when: the connector serving repository.issues is unavailable
       to: human
       role: owner
     depends_on: [classification]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: classification, $select: class }, equals: spam }
       rule: connector
@@ -244,12 +253,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.milestone answered", columns: [author, body, created_at, is_pull_request, labels, milestone, number, state, title, updated_at, url] }
     fallback:
       when: the connector serving repository.issues is unavailable
       to: human
       role: owner
     depends_on: [classification, read-contribution]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: classification, $select: class }, not_matches: "^spam$" }
       ask:
@@ -283,6 +295,8 @@ steps:
       - method: llm
         why: a fixed composition needs no model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "Closed by Taktus, process P-05 Triage of contributions: the maintainer did not take this into the plan" }
     depends_on: [accept]
     work:
       when:
@@ -302,12 +316,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.close answered", columns: [author, body, created_at, is_pull_request, labels, milestone, number, state, title, updated_at, url] }
     fallback:
       when: the connector serving repository.issues is unavailable
       to: human
       role: owner
     depends_on: [compose-decline, accept]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: accept, $select: declined }, equals: true }
       rule: connector

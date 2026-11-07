@@ -29,7 +29,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p01-roadmap-control
-version: "6"
+version: "7"
 name: P-01 Roadmap control
 autonomy:
   level: 3
@@ -93,11 +93,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.files.read answered", columns: [commit, content] }
     fallback:
       when: the connector serving repository.files is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.files.read
       input:
@@ -116,11 +119,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.list answered", columns: [complete, issues] }
     fallback:
       when: the connector serving repository.issues is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.issues.list
       input:
@@ -139,11 +145,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.files.list answered", columns: [entries] }
     fallback:
       when: the connector serving repository.files is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.files.list
       input:
@@ -202,6 +211,8 @@ steps:
       - method: llm
         why: a fixed composition needs no model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "Written by Taktus, process P-01 Roadmap control\\. It proposes and changes nothing: a" }
     depends_on: [order, reconcile]
     work:
       rule: template
@@ -240,12 +251,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.comments.create answered", columns: [author, body, created_at, id, url] }
     fallback:
       when: the connector serving repository.comments is unavailable
       to: human
       role: owner
     depends_on: [compose-report]
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.comments.create
       input:

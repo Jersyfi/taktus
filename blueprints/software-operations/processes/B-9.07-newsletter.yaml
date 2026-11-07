@@ -22,7 +22,7 @@
 # Switching it off (`taktusctl deactivate --process b-9-07`) changes nothing at the service.
 
 id: b-9-07
-version: "1"
+version: "2"
 name: B-9.07 Newsletter
 autonomy:
   level: 2
@@ -64,11 +64,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.pullrequests.list answered", columns: [pulls] }
     fallback:
       when: the connector serving repository.pullrequests is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.pullrequests.list
       input:
@@ -131,6 +134,8 @@ steps:
       - method: llm
         why: a fixed composition needs no model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "What is new in" }
     work:
       rule: template
       text: "What is new in ${release}"
@@ -144,12 +149,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what newsletter.broadcasts.draft answered", columns: [id, recipients] }
     fallback:
       when: the connector serving newsletter.broadcasts is unavailable
       to: human
       role: owner
     depends_on: [write, subject]
     work:
+      checking: { select: output }
       rule: connector
       operation: newsletter.broadcasts.draft
       input:
@@ -171,12 +179,15 @@ steps:
       - method: human
         why: the service sends the campaign as the person decided; nothing is left to do by hand
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what newsletter.broadcasts.send answered", columns: [emails_sent, id, list, recipients, send_time, status, web_id] }
     fallback:
       when: the connector serving newsletter.broadcasts is unavailable
       to: human
       role: owner
     depends_on: [draft]
     work:
+      checking: { select: output }
       ask:
         question: "Send the newsletter on ${release} to ${recipients} recipients?"
         situation: >

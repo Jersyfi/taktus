@@ -31,7 +31,7 @@
 # stays closed, and a person reopens it in the helpdesk.
 
 id: b-3-01
-version: "1"
+version: "2"
 name: B-3.01 Sorting the inbox
 autonomy:
   level: 2
@@ -62,11 +62,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what helpdesk.tickets.read answered", columns: [description, subject] }
     fallback:
       when: the connector serving helpdesk.tickets is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: helpdesk.tickets.read
       input:
@@ -178,12 +181,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what helpdesk.tickets.close answered", columns: [previous, tag, ticket] }
     fallback:
       when: the connector serving helpdesk.tickets is unavailable
       to: human
       role: owner
     depends_on: [obvious]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: obvious, $select: extracted }, not_matches: "^\\[\\]$" }
       rule: connector
@@ -201,12 +207,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what helpdesk.tickets.close answered", columns: [previous, tag, ticket] }
     fallback:
       when: the connector serving helpdesk.tickets is unavailable
       to: human
       role: owner
     depends_on: [class]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: class, $select: extracted }, matches: "sorted-(spam|bounce|cold-sales|test|application)" }
       rule: connector
