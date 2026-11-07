@@ -27,12 +27,39 @@
     },
     {
       "capabilities": [
+        "stores.beta",
+        "stores.releases"
+      ],
+      "image": "taktus-connector-appstores",
+      "name": "appstores",
+      "operations": [
+        "stores.beta.builds",
+        "stores.beta.distribute",
+        "stores.beta.feedback",
+        "stores.releases.halt",
+        "stores.releases.raise",
+        "stores.releases.read",
+        "stores.releases.submit"
+      ]
+    },
+    {
+      "capabilities": [
         "billing.costs"
       ],
       "image": "taktus-connector-aws",
       "name": "aws",
       "operations": [
         "billing.costs.daily"
+      ]
+    },
+    {
+      "capabilities": [
+        "warehouse.queries"
+      ],
+      "image": "taktus-connector-bigquery",
+      "name": "bigquery",
+      "operations": [
+        "warehouse.queries.run"
       ]
     },
     {
@@ -55,6 +82,18 @@
       "name": "calendar",
       "operations": [
         "calendar.events.list"
+      ]
+    },
+    {
+      "capabilities": [
+        "deployment.workloads"
+      ],
+      "image": "taktus-connector-cloudrun",
+      "name": "cloudrun",
+      "operations": [
+        "deployment.workloads.read",
+        "deployment.workloads.release",
+        "deployment.workloads.rollback"
       ]
     },
     {
@@ -90,6 +129,18 @@
       "operations": [
         "expiry.certificates.read",
         "expiry.domains.read"
+      ]
+    },
+    {
+      "capabilities": [
+        "deployment.sites"
+      ],
+      "image": "taktus-connector-firebase",
+      "name": "firebase",
+      "operations": [
+        "deployment.sites.read",
+        "deployment.sites.release",
+        "deployment.sites.rollback"
       ]
     },
     {
@@ -136,6 +187,16 @@
         "repository.pullrequests.open",
         "repository.pullrequests.read",
         "repository.refs.create"
+      ]
+    },
+    {
+      "capabilities": [
+        "analytics.reports"
+      ],
+      "image": "taktus-connector-googleanalytics",
+      "name": "googleanalytics",
+      "operations": [
+        "analytics.reports.run"
       ]
     },
     {
@@ -205,6 +266,30 @@
     },
     {
       "capabilities": [
+        "newsletter.broadcasts"
+      ],
+      "image": "taktus-connector-mailchimp",
+      "name": "mailchimp",
+      "operations": [
+        "newsletter.broadcasts.draft",
+        "newsletter.broadcasts.read",
+        "newsletter.broadcasts.send"
+      ]
+    },
+    {
+      "capabilities": [
+        "deployment.sites"
+      ],
+      "image": "taktus-connector-netlify",
+      "name": "netlify",
+      "operations": [
+        "deployment.sites.read",
+        "deployment.sites.release",
+        "deployment.sites.rollback"
+      ]
+    },
+    {
+      "capabilities": [
         "models.costs"
       ],
       "image": "taktus-connector-openai",
@@ -261,6 +346,30 @@
         "payments.customers.subscriptions",
         "payments.subscriptions.list",
         "payments.subscriptions.read"
+      ]
+    },
+    {
+      "capabilities": [
+        "deployment.sites"
+      ],
+      "image": "taktus-connector-vercel",
+      "name": "vercel",
+      "operations": [
+        "deployment.sites.read",
+        "deployment.sites.release",
+        "deployment.sites.rollback"
+      ]
+    },
+    {
+      "capabilities": [
+        "website.posts"
+      ],
+      "image": "taktus-connector-wordpress",
+      "name": "wordpress",
+      "operations": [
+        "website.posts.draft",
+        "website.posts.publish",
+        "website.posts.read"
       ]
     }
   ],

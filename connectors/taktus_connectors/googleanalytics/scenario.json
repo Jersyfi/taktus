@@ -1,0 +1,25 @@
+{
+  "credentials": {
+    "actions": "ANALYTICS_KEY"
+  },
+  "read": {
+    "operation": "analytics.reports.run",
+    "input": {
+      "dimensions": ["date"],
+      "metrics": ["activeUsers"],
+      "start": "28daysAgo",
+      "end": "yesterday"
+    }
+  },
+  "writes": [],
+  "invalid": {
+    "operation": "analytics.reports.run",
+    "input": {
+      "dimensions": ["customUser:email"],
+      "metrics": ["activeUsers"],
+      "start": "7daysAgo",
+      "end": "today"
+    },
+    "expected_cause": "invalid"
+  }
+}

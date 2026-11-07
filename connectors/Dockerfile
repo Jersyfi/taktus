@@ -50,9 +50,19 @@ COPY --chown=connector:connector connectors/taktus_connectors/anthropic /app/tak
 ENTRYPOINT ["python", "-m", "taktus_connectors.anthropic"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
+FROM base AS appstores
+COPY --chown=connector:connector connectors/taktus_connectors/appstores /app/taktus_connectors/appstores
+ENTRYPOINT ["python", "-m", "taktus_connectors.appstores"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
 FROM base AS aws
 COPY --chown=connector:connector connectors/taktus_connectors/aws /app/taktus_connectors/aws
 ENTRYPOINT ["python", "-m", "taktus_connectors.aws"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
+FROM base AS bigquery
+COPY --chown=connector:connector connectors/taktus_connectors/bigquery /app/taktus_connectors/bigquery
+ENTRYPOINT ["python", "-m", "taktus_connectors.bigquery"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
 FROM base AS bookstack
@@ -65,6 +75,11 @@ COPY --chown=connector:connector connectors/taktus_connectors/calendar /app/takt
 ENTRYPOINT ["python", "-m", "taktus_connectors.calendar"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
+FROM base AS cloudrun
+COPY --chown=connector:connector connectors/taktus_connectors/cloudrun /app/taktus_connectors/cloudrun
+ENTRYPOINT ["python", "-m", "taktus_connectors.cloudrun"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
 FROM base AS einvoice
 COPY --chown=connector:connector connectors/taktus_connectors/einvoice /app/taktus_connectors/einvoice
 ENTRYPOINT ["python", "-m", "taktus_connectors.einvoice"]
@@ -75,9 +90,19 @@ COPY --chown=connector:connector connectors/taktus_connectors/expiry /app/taktus
 ENTRYPOINT ["python", "-m", "taktus_connectors.expiry"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
+FROM base AS firebase
+COPY --chown=connector:connector connectors/taktus_connectors/firebase /app/taktus_connectors/firebase
+ENTRYPOINT ["python", "-m", "taktus_connectors.firebase"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
 FROM base AS github
 COPY --chown=connector:connector connectors/taktus_connectors/github /app/taktus_connectors/github
 ENTRYPOINT ["python", "-m", "taktus_connectors.github"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
+FROM base AS googleanalytics
+COPY --chown=connector:connector connectors/taktus_connectors/googleanalytics /app/taktus_connectors/googleanalytics
+ENTRYPOINT ["python", "-m", "taktus_connectors.googleanalytics"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
 FROM base AS httpcheck
@@ -93,6 +118,16 @@ CMD ["--host", "0.0.0.0", "--port", "9100"]
 FROM base AS mail
 COPY --chown=connector:connector connectors/taktus_connectors/mail /app/taktus_connectors/mail
 ENTRYPOINT ["python", "-m", "taktus_connectors.mail"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
+FROM base AS mailchimp
+COPY --chown=connector:connector connectors/taktus_connectors/mailchimp /app/taktus_connectors/mailchimp
+ENTRYPOINT ["python", "-m", "taktus_connectors.mailchimp"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
+FROM base AS netlify
+COPY --chown=connector:connector connectors/taktus_connectors/netlify /app/taktus_connectors/netlify
+ENTRYPOINT ["python", "-m", "taktus_connectors.netlify"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
 FROM base AS openai
@@ -123,4 +158,14 @@ CMD ["--host", "0.0.0.0", "--port", "9100"]
 FROM base AS vendor
 COPY --chown=connector:connector connectors/taktus_connectors/vendor /app/taktus_connectors/vendor
 ENTRYPOINT ["python", "-m", "taktus_connectors.vendor"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
+FROM base AS vercel
+COPY --chown=connector:connector connectors/taktus_connectors/vercel /app/taktus_connectors/vercel
+ENTRYPOINT ["python", "-m", "taktus_connectors.vercel"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
+FROM base AS wordpress
+COPY --chown=connector:connector connectors/taktus_connectors/wordpress /app/taktus_connectors/wordpress
+ENTRYPOINT ["python", "-m", "taktus_connectors.wordpress"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]

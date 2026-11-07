@@ -1,0 +1,19 @@
+{
+  "credentials": {
+    "actions": "SITES_TOKEN"
+  },
+  "read": {
+    "operation": "deployment.sites.read",
+    "input": {
+      "name": "web"
+    }
+  },
+  "writes": [],
+  "invalid": {
+    "operation": "deployment.sites.read",
+    "input": {
+      "name": "Not A Name"
+    },
+    "expected_cause": "invalid"
+  }
+}
