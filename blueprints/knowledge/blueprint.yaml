@@ -1,0 +1,38 @@
+# Blueprint: knowledge
+# Answers from the organisation's own knowledge sources — wikis, document stores, repositories —
+# each statement naming the document it came from, read with the asker's own rights (UC-5.5,
+# ADR-0265). A deployment of the core, not a knowledge system: the sources stay the record.
+
+apiVersion: taktus.eu/process-bundle/v1
+kind: Blueprint
+metadata:
+  id: knowledge
+  name: Knowledge
+  domain: knowledge
+  maturity: experimental       # draft | experimental | verified | reference
+
+# Capabilities, never product names. Mapping to an adapter is configuration.
+requires:
+  connectors:
+    - capability: knowledge.documents
+  models:
+    - purpose: triage        # the words a question is searched for
+    - purpose: support       # the answer from the documents
+
+anchors:
+  strategic: []
+  legal: []
+
+processes:
+  - id: K-01
+    name: Answer from knowledge
+    autonomy:
+      level: 3
+      reason: it reads with the asker's own rights and writes nothing outside; every statement names the documents it rests on, checked by rule
+      toward_next: none is needed; the answer goes to the person who asked
+    steps:
+      - { id: terms,   method: llm,  exactness: tolerant }
+      - { id: search,  method: rule, exactness: sourced }
+      - { id: answer,  method: llm,  exactness: sourced }
+      - { id: confirm, method: rule, exactness: sourced }
+      - { id: cite,    method: rule, exactness: sourced }
