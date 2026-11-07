@@ -109,6 +109,7 @@ from taktus.adapters.driving.cli import (
     sources_command,
     stage_command,
     stop_command,
+    structure_command,
     subject_command,
     submit_command,
     takeover_command,
@@ -166,6 +167,7 @@ app.command("evidence")(subject_command.evidence)
 app.add_typer(messages_command.messages, name="messages")
 app.add_typer(messages_command.case, name="case")
 app.add_typer(units_command.units, name="units")
+app.add_typer(structure_command.structure, name="structure")
 app.add_typer(deadline_command.deadline, name="deadline")
 app.add_typer(stop_command.stop, name="stop")
 app.add_typer(trace_command.trace, name="trace")

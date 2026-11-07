@@ -38,7 +38,7 @@
 <section class="register" aria-labelledby="register-title">
 	<p class="eyebrow">What acts for us</p>
 	<h1 id="register-title">{register.summary}</h1>
-	<p class="private" data-private>Adapters, steps and runs only. No row names a person.</p>
+	<p class="private" data-private data-act="adapter.list">Adapters, steps and runs only. No row names a person.</p>
 
 	<div class="tools">
 		<label><input type="checkbox" bind:checked={onlyAttention} /> Only what needs attention ({needing})</label>
@@ -54,6 +54,7 @@
 				<div class="head">
 					<span class="family">{row.family}</span>
 					<strong>{row.adapter}</strong>
+					<span class="chip" data-maturity title="As the catalogue records it; never set by hand">{row.maturity ?? 'no maturity'}</span>
 					{#if row.removal}
 						<span class="chip {row.removal.verdict}" title="Last removal test, {row.removal.tested_at.slice(0, 10)}"
 							>{row.removal.verdict}</span
@@ -92,7 +93,7 @@
 						<span class="held">A stop is held.</span>
 					{:else if asking === row.adapter}
 						<span>Every run on {row.adapter} halts at its next step boundary{row.processes.length ? ` (${row.processes.join(', ')})` : ''}.</span>
-						<button type="button" class="danger" onclick={() => stop(row)}>Stop {row.adapter}</button>
+						<button type="button" class="danger" data-act="adapter.stop" onclick={() => stop(row)}>Stop {row.adapter}</button>
 						<button type="button" class="quiet" onclick={() => (asking = null)}>Keep it running</button>
 					{:else if onStop}
 						<button type="button" class="quiet" onclick={() => (asking = row.adapter)}>Stop…</button>

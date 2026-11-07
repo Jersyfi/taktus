@@ -52,12 +52,13 @@
 
 	<ul class="list">
 		{#each tenants as t (t.id)}
-			<li data-tenant={t.id}>
+			<li data-tenant={t.id} data-act="tenant.list">
 				<span class="id">{t.id}</span>
 				<strong>{t.name}</strong>
 				<span class="muted">since {t.created_at.slice(0, 10)}</span>
 				{#if renaming === t.id}
 					<form
+						data-act="tenant.rename"
 						onsubmit={(e) => {
 							e.preventDefault();
 							if (newName.trim()) pending = { act: 'rename', id: t.id };
@@ -75,6 +76,7 @@
 
 	<form
 		class="create"
+		data-act="tenant.create"
 		onsubmit={(e) => {
 			e.preventDefault();
 			if (name.trim()) pending = { act: 'create', id: null };

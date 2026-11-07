@@ -88,6 +88,8 @@ from taktus.components.command.application.service import (
     CompleteIntakeHandler,
     ReceiveIntakeHandler,
 )
+from taktus.components.command.application.service.coach import Coach
+from taktus.components.command.application.service.sessions import Sessions
 from taktus.components.command.domain.model import IntakeEvent
 from taktus.components.decision.application.query import DecisionQueries
 from taktus.components.decision.application.service import (
@@ -104,6 +106,7 @@ from taktus.components.governance.application.service import (
     ResultDefects,
     Stages,
     SubjectRequests,
+    TenantOrgUnits,
 )
 from taktus.components.governance.domain.model import (
     AnchorConfiguration,
@@ -112,6 +115,7 @@ from taktus.components.governance.domain.model import (
     WatchConfiguration,
 )
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
+from taktus.components.identity.application.service.structure import OrganisationStructure
 from taktus.components.identity.domain.model import (
     BrowserSession,
     ChannelLink,
@@ -226,6 +230,7 @@ from taktus.composition.owner_channel import (
     owner_channel_wiring,
 )
 from taktus.composition.participants import ParticipantAnswers
+from taktus.composition.planning import PlanActs
 from taktus.composition.profiles import RoleProfiles
 from taktus.composition.proposals import InstanceChanges, ProposalActs
 from taktus.composition.reactions import Reactions, capacity_condition
@@ -253,6 +258,7 @@ from taktus.composition.tenant_export import TenantExports
 from taktus.composition.traces import traces_tick
 from taktus.composition.trials import Trials, trials_tick
 from taktus.composition.triggers import Triggers
+from taktus.composition.workspace import Workspace, structure_of, workspace_of
 from taktus.ports.clock import Clock
 from taktus.ports.configuration import Configuration, ConfigurationError, Secret
 from taktus.ports.leadership import Leadership
@@ -379,6 +385,9 @@ class Wired:
     """The trace inside a worker's step, read and shared by role, and erased by the scheduler
     when its retention ends (ADR-0135)."""
     """What the MCP surface needs beyond the HTTP surface's services (ADR-0131)."""
+    workspace: Workspace
+    """The plan dialogue, the coach, the structure with its projects, and the sessions in them
+    (ADR-0279)."""
     moves: MethodMoves | None = None
     """An accepted proposal to move a step applied, and a move rolled back (ADR-0114)."""
     runner: Runner | None = None
@@ -407,6 +416,26 @@ class Wired:
     @property
     def administration_key(self) -> Secret | None:
         return self.settings.administration_key
+
+    @property
+    def planning(self) -> PlanActs:
+        return self.workspace.planning
+
+    @property
+    def coach(self) -> Coach:
+        return self.workspace.coach
+
+    @property
+    def structure(self) -> OrganisationStructure:
+        return self.workspace.structure
+
+    @property
+    def sessions(self) -> Sessions:
+        return self.workspace.sessions
+
+    @property
+    def org_units(self) -> TenantOrgUnits:
+        return self.decisions.org_units
 
     @property
     def corrections(self) -> Corrections:
@@ -553,6 +582,13 @@ async def wire(
             clock=clock,
             ids=ids,
         )
+
+        def stored_here[T: Stored](kind: type[T]) -> Repository[T]:
+            return PostgresRepository(persistence, kind)
+
+        # The organisation's structure, which the identity component reads what a person does
+        # not see from (ADR-0275).
+        structure = structure_of(stored_here, persistence, ledger, clock)
         # Who a sender is, and who acts: the identity component, and nothing else (ADR-0040).
         identities = IdentityDirectory(
             tenants=tenants,
@@ -566,6 +602,7 @@ async def wire(
             clock=clock,
             randomness=SystemRandomness(),
             session_lifetime=timedelta(hours=settings.session_hours),
+            structure=structure,
         )
         provenance_store = PostgresProvenanceStore(persistence)
         trace_store = PostgresTraceStore(persistence)
@@ -580,7 +617,9 @@ async def wire(
             return PostgresRepository(persistence, kind)
 
         decisions = decision_wiring(stored, persistence, ledger, clock, identities)
-        org_units = OrgUnitsOfTheRun(decisions.org_units, PostgresOrgUnitSpends(persistence))
+        org_units = OrgUnitsOfTheRun(
+            decisions.org_units, PostgresOrgUnitSpends(persistence), structure
+        )
         async with open_workers(
             settings.workers, configuration, state_dir=settings.state_dir, relay=relay
         ) as opened:
@@ -746,6 +785,7 @@ async def wire(
                 # The owner's conversation answers a request for a representation with its
                 # text equivalent and a link, read as the web app reads it (ADR-0069).
                 levels=levels,
+                sight=identities,
             )
             decisions.requests.report_to(owner.decision_raised)
             # A tenant's introduction in stages: the ceiling registration asks, the look the
@@ -1017,6 +1057,7 @@ async def wire(
                     deliveries=owner.deliveries,
                     secrets=owner.secrets,
                     clock=clock,
+                    sight=identities,
                 )
             )
             # The processes a person may start, and a start as the person, from any channel
@@ -1056,6 +1097,7 @@ async def wire(
                     deliveries=owner.deliveries,
                     secrets=owner.secrets,
                     clock=clock,
+                    sight=identities,
                 )
             )
             findings = ProductFindings(
@@ -1120,6 +1162,7 @@ async def wire(
                                 ledger=ledger,
                                 work=persistence,
                                 ceiling_seconds=settings.shutdown_ceiling_seconds,
+                                sight=identities,
                             ),
                             ConnectorReplies(pools.connectors),
                             owner.answers,
@@ -1168,6 +1211,7 @@ async def wire(
                 evaluations=evaluations,
                 spend=spend,
                 trials=trials,
+                workspace=workspace_of(stored, persistence, ledger, clock, ids, structure),
                 gallery=Gallery(
                     settings.gallery_directory,
                     proposals,

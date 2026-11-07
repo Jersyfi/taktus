@@ -179,6 +179,10 @@ class Right(StrEnum):
     STEER_RUN = "run.steer"
     """Pause or cancel a run that does not act on the person's own behalf, through any channel
     (ADR-0236). A run that acts on a person's behalf is theirs to steer without it."""
+    ADMINISTER = "tenant.administer"
+    """The tenant's administrative acts on the HTTP surface and in the web app: identities,
+    their keys, roles and rights, channel links, and quotas per unit (UC-10.2, ADR-0279). The
+    command line authenticates by holding the instance's state instead."""
     SHAPE_STRUCTURE = "structure.shape"
     """Name the structure's levels, add a unit, place an object in one, configure a unit's
     knowledge system (ADR-0275). An administrative act (UC-10.2)."""

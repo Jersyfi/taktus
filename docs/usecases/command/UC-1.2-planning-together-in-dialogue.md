@@ -4,10 +4,10 @@ title: Planning together in dialogue
 component: command
 epic: E1
 serves: [P2, P10]
-state: built
+state: verified
 version: 0.3.0
-tests: [tests/components/command/test_commission.py::test_commissioning_is_a_recorded_act, tests/components/command/test_plan_dialogue.py::test_a_plan_lacking_a_part_is_refused_and_the_refusal_names_what_is_missing, tests/components/command/test_plan_dialogue.py::test_an_estimate_without_a_basis_is_shown_as_a_guess_never_as_a_figure, tests/components/command/test_plan_dialogue.py::test_commissioning_records_the_version_and_who_and_a_change_needs_it_again, tests/components/run/test_pause_and_cancel.py::test_nothing_runs_from_a_plan_that_was_not_commissioned, tests/components/run/test_pause_and_cancel.py::test_confirming_a_step_at_level_two_is_not_commissioning_a_plan, tests/components/command/test_plan_dialogue.py::test_a_plan_results_in_a_run_or_in_a_new_process_version, tests/components/command/test_plan_dialogue.py::test_a_step_that_cannot_be_estimated_refuses_the_plan_before_anything_runs]
-adrs: {ADR-0005: 0ea928e2016b, ADR-0026: ccc4bd1f5423, ADR-0237: 94207b391c5a}
+tests: [tests/components/command/test_commission.py::test_commissioning_is_a_recorded_act, tests/components/command/test_plan_dialogue.py::test_a_plan_lacking_a_part_is_refused_and_the_refusal_names_what_is_missing, tests/components/command/test_plan_dialogue.py::test_an_estimate_without_a_basis_is_shown_as_a_guess_never_as_a_figure, tests/components/command/test_plan_dialogue.py::test_commissioning_records_the_version_and_who_and_a_change_needs_it_again, tests/components/run/test_pause_and_cancel.py::test_nothing_runs_from_a_plan_that_was_not_commissioned, tests/components/run/test_pause_and_cancel.py::test_confirming_a_step_at_level_two_is_not_commissioning_a_plan, tests/components/command/test_plan_dialogue.py::test_a_plan_results_in_a_run_or_in_a_new_process_version, tests/components/command/test_plan_dialogue.py::test_a_step_that_cannot_be_estimated_refuses_the_plan_before_anything_runs, tests/adapters/rest/test_planning.py::test_a_plan_is_worked_out_in_the_guided_mode_and_commissioned, tests/adapters/rest/test_planning.py::test_commissioning_a_draft_that_lacks_a_part_is_refused_naming_it]
+adrs: {ADR-0005: 0ea928e2016b, ADR-0026: ccc4bd1f5423, ADR-0237: 94207b391c5a, ADR-0279: 0db73bd11974}
 supersedes: null
 ---
 
@@ -68,7 +68,7 @@ Built by ADR-0237, and shown by the named tests:
   no commissioning.
 - A plan results in a run or in a new process version.
 
-What Taktus proposes in the dialogue — alternatives, the steps of long work — is put into the
-draft by its caller; the record does not propose (ADR-0237, *Where this promise ends*). No
-surface — the web app, the chat — presents the dialogue yet; the state stays `built` until one
-does.
+The web app presents the dialogue (`#/plans`, ADR-0279) over `/plans`: a person opens a draft,
+works it out, and commissions a version as an act of its own. What Taktus proposes in the
+dialogue — alternatives, the steps of long work — is put into the draft by its caller; the record
+does not propose (ADR-0237, *Where this promise ends*).

@@ -194,6 +194,7 @@ from taktus.composition.skills import CatalogGuidance, SkillLifecycle
 from taktus.composition.stages import stage_wiring
 from taktus.composition.subjects import ProcessingEvidence, RunHoldings
 from taktus.composition.tenant_export import TenantExports
+from taktus.composition.workspace import structure_of
 from taktus.ports.backups import BackupLog
 from taktus.ports.configuration import Configuration, ConfigurationError
 from taktus.ports.org_units import OrgUnitSpends
@@ -305,6 +306,8 @@ class LocalWiring:
                 clock=clock,
                 ids=ids,
             )
+            # The organisation's structure, beside the identities it places (ADR-0275).
+            structure = structure_of(stores.of, stores.work, ledger, clock)
             identities = IdentityDirectory(
                 tenants=registry,
                 identities=stores.of(Identity),
@@ -316,12 +319,13 @@ class LocalWiring:
                 ledger=ledger,
                 clock=clock,
                 randomness=SystemRandomness(),
+                structure=structure,
             )
             decisions = decision_wiring(stores.of, stores.work, ledger, clock, identities)
             org_units = (
                 None
                 if stores.spends is None
-                else OrgUnitsOfTheRun(decisions.org_units, stores.spends)
+                else OrgUnitsOfTheRun(decisions.org_units, stores.spends, structure)
             )
             objects = MemoryObjectStore(state_dir / "objects")
             recordings = RecordedResponses(runs, stores.work, objects)
@@ -774,6 +778,7 @@ class LocalWiring:
                 sources=decisions.sources,
                 messages=decisions.messages.tenant,
                 org_units=decisions.org_units,
+                structure=structure,
                 deadlines=decisions.deadlines,
                 stops=stops,
                 traces=None
