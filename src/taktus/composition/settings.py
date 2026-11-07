@@ -1171,6 +1171,10 @@ class Settings:
     triage: Mapping[str, str]
     """Public channel → the process that triages an unknown sender's contribution there
     (`TAKTUS_TRIAGE`, UC-1.9, ADR-0088). A channel it does not name has no triage."""
+    rollout: Mapping[str, str]
+    """Rollout channel — a channel capability, or `<capability>/<conversation>` — → the agent
+    it serves (`TAKTUS_ROLLOUT`, UC-12.1, ADR-0261). A channel it does not name is a command
+    channel."""
     personal_credentials: Mapping[tuple[str, str], str]
     """(identity, parameter) → the parameter of that identity's own credential standing for it
     (`TAKTUS_PERSONAL_CREDENTIALS`, ADR-0264): what a step on behalf of the identity reads
@@ -1260,6 +1264,7 @@ class Settings:
             *self.capacity.effective(),
             ("TAKTUS_CONNECTORS", ",".join(f"{c}={u}" for c, u in self.connectors.items())),
             ("TAKTUS_TRIAGE", ",".join(f"{c}={p}" for c, p in self.triage.items())),
+            ("TAKTUS_ROLLOUT", ",".join(f"{c}={a}" for c, a in self.rollout.items())),
             (
                 "TAKTUS_PERSONAL_CREDENTIALS",
                 ",".join(f"{i}/{p}={o}" for (i, p), o in self.personal_credentials.items()),
@@ -1334,6 +1339,7 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         capacity=load_capacity(configuration),
         connectors=reader.connectors(),
         triage=reader.triage(),
+        rollout=reader.rollout(),
         personal_credentials=reader.personal_credentials(),
         administration=load_administration(configuration),
         knowledge_directory=load_knowledge_directory(configuration),
@@ -1548,6 +1554,34 @@ class _Reader:
             if capability in mapping:
                 raise ConfigurationError(name, f"{capability!r} is mapped twice")
             mapping[capability] = process
+        return mapping
+
+    def rollout(self) -> Mapping[str, str]:
+        """`channel.chat/C0HELP=helpdesk`: a channel capability, optionally a slash and one
+        conversation of it, an equals sign, the agent the rollout channel serves (ADR-0261)."""
+        name, value = self._raw("rollout")
+        if value is None:
+            return {}
+        mapping: dict[str, str] = {}
+        for entry in (e.strip() for e in value.split(",") if e.strip()):
+            channel, separator, agent = (part.strip() for part in entry.partition("="))
+            capability, _, conversation = channel.partition("/")
+            if not separator or not capability or not agent:
+                raise ConfigurationError(
+                    name,
+                    f"{entry!r} is not channel=agent (for example channel.chat/C0HELP=helpdesk)",
+                )
+            if "." not in capability or capability != capability.lower():
+                raise ConfigurationError(
+                    name, f"{capability!r} is not a capability (lowercase, dotted)"
+                )
+            if "/" in channel and re.fullmatch(r"[^\s/=,]+", conversation) is None:
+                raise ConfigurationError(name, f"{conversation!r} is not a conversation")
+            if re.fullmatch(r"[a-z][a-z0-9-]*", agent) is None:
+                raise ConfigurationError(name, f"{agent!r} is not an agent's name")
+            if channel in mapping:
+                raise ConfigurationError(name, f"{channel!r} is mapped twice")
+            mapping[channel] = agent
         return mapping
 
     def personal_credentials(self) -> Mapping[tuple[str, str], str]:

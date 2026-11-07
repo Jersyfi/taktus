@@ -15,9 +15,11 @@ metadata:
 requires:
   connectors:
     - capability: knowledge.documents
+    - capability: channel.chat   # K-02 answers in the conversation it was asked in
   models:
     - purpose: triage        # the words a question is searched for
     - purpose: support       # the answer from the documents
+    - purpose: check         # K-02: the answer checked, and classified for promises
 
 anchors:
   strategic: []
@@ -36,3 +38,19 @@ processes:
       - { id: answer,  method: llm,  exactness: sourced }
       - { id: confirm, method: rule, exactness: sourced }
       - { id: cite,    method: rule, exactness: sourced }
+  - id: K-02
+    name: Answer in the chat
+    autonomy:
+      level: 3
+      reason: it reads with the asker's own rights and answers only them, in their thread; every statement names its documents, and the answer is held by the frame of an outward message
+      toward_next: none is needed; the answer goes to the person who asked
+    steps:
+      - { id: terms,    method: llm,  exactness: tolerant }
+      - { id: search,   method: rule, exactness: sourced }
+      - { id: answer,   method: llm,  exactness: sourced }
+      - { id: confirm,  method: rule, exactness: sourced }
+      - { id: cite,     method: rule, exactness: sourced }
+      - { id: verify,   method: llm,  exactness: free }
+      - { id: promises, method: llm,  exactness: free }
+      - { id: reply,    method: rule, exactness: sourced }
+      - { id: nothing,  method: rule, exactness: sourced }

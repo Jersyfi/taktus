@@ -29,6 +29,12 @@ number as its one input. The command records the contribution's event, never its
 entry waits while no version is active or its registrant is not known; one received before the
 version became active starts nothing.
 
+**A message in a rollout channel starts its assistant** (UC-12.1, ADR-0261). The entries
+`intake.assistant` are read on the same pass, and each is handed to the assistants
+(`composition/assistants.py`), which run the agent's own process as the person who wrote. No
+trigger is matched and no command is completed from it. An entry that fails stays unpublished
+and is read again.
+
 This is wiring, because a reaction crosses three components — command, process and run — and
 only the composition root may hold them all (`composition/README.md`).
 """
@@ -38,7 +44,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, Protocol
 
 import structlog
 
@@ -69,7 +75,13 @@ from taktus.composition.tenancy import this_round
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.identity import IdentityResolver, ServedTenants
 from taktus.ports.ledger import Fact, Ledger
-from taktus.ports.outbox import INTAKE_ACCEPTED, INTAKE_CONTRIBUTION, Outbox, OutboxEntry
+from taktus.ports.outbox import (
+    INTAKE_ACCEPTED,
+    INTAKE_ASSISTANT,
+    INTAKE_CONTRIBUTION,
+    Outbox,
+    OutboxEntry,
+)
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 from taktus.ports.platform import Platform
 from taktus.ports.worker import Limits
@@ -82,6 +94,14 @@ type ConditionCheck = Callable[[ProcessVersion], Awaitable[str | None]]
 """Why the condition does not hold for a version now, or None when it does."""
 
 log = structlog.get_logger("taktusd")
+
+
+class AssistantService(Protocol):
+    """Who serves a message kept for an assistant (`composition/assistants.py`, ADR-0261)."""
+
+    async def serve(self, tenant: Tenant, kept: IntakeEvent, agent: str) -> list[str]:
+        """The runs the message started, by identifier."""
+        ...
 
 
 def event_of(kept: IntakeEvent) -> Event | None:
@@ -159,9 +179,11 @@ class Reactions:
         capacity: ConditionCheck | None = None,
         identities: IdentityResolver | None = None,
         ids: Identifiers | None = None,
+        assistants: AssistantService | None = None,
     ) -> None:
         """`identities` and `ids` let a contribution start its triage (ADR-0088); without
-        them, the entries `intake.contribution` wait."""
+        them, the entries `intake.contribution` wait. `assistants` serve the messages of the
+        rollout channels (ADR-0261); without them, the entries `intake.assistant` wait."""
         self._tenants = tenants
         self._outbox = outbox
         self._intake = intake
@@ -175,6 +197,7 @@ class Reactions:
         self._capacity = capacity
         self._identities = identities
         self._ids = ids
+        self._assistants = assistants
         self._placed = False
 
     async def tick(self) -> list[str]:
@@ -206,6 +229,19 @@ class Reactions:
                         except Exception as error:  # one entry never stops the others
                             log.error(
                                 "a contribution's triage failed; the next pass tries again",
+                                tenant=tenant,
+                                entry=entry.id,
+                                error=f"{type(error).__name__}: {error}",
+                            )
+                if self._assistants is not None:
+                    async with self._work.transaction(tenant):
+                        messages = await self._outbox.unpublished(tenant, INTAKE_ASSISTANT, BATCH)
+                    for entry in messages:
+                        try:
+                            started.extend(await self._assist(tenant, entry))
+                        except Exception as error:  # one entry never stops the others
+                            log.error(
+                                "an assistant's message failed; the next pass tries again",
                                 tenant=tenant,
                                 entry=entry.id,
                                 error=f"{type(error).__name__}: {error}",
@@ -296,6 +332,21 @@ class Reactions:
                 )
         if not waiting:
             await self._publish(tenant, entry)
+        return started
+
+    async def _assist(self, tenant: Tenant, entry: OutboxEntry) -> list[str]:
+        """Hand one message of a rollout channel to its assistant (ADR-0261)."""
+        event_id = str(entry.payload.get("event_id", ""))
+        agent = str(entry.payload.get("agent", ""))
+        kept = await self._intake.event(tenant, event_id) if event_id else None
+        if kept is None or not agent or self._assistants is None:
+            log.warning(
+                "an outbox entry names no assistant's message", tenant=tenant, entry=entry.id
+            )
+            await self._publish(tenant, entry)
+            return []
+        started = await self._assistants.serve(tenant, kept, agent)
+        await self._publish(tenant, entry)
         return started
 
     async def _triage(self, tenant: Tenant, entry: OutboxEntry) -> list[str]:

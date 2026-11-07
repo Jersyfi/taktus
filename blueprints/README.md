@@ -20,7 +20,7 @@ none of them.
 | [`software-operations`](software-operations/README.md) | operating a software business, introduced in stages — use case UC-03, the second tenant | nine processes run as bundles, for stages 0 to 2; the stages and the anchors proposed |
 | [`self-operation`](self-operation/README.md) | what Taktus runs for itself, on itself | S-01 the removal test runs weekly |
 | [`it-operations`](it-operations/README.md) | systems operation, unattended — use case UC-02 — and its reference assistant, the IT service chat (UC-12.2) | a description; the roadmap's `0.7.0` |
-| [`knowledge`](knowledge/README.md) | answers from the organisation's own knowledge sources, every statement naming its source, read with the asker's rights — use case UC-5.5 | K-01 runs as a bundle |
+| [`knowledge`](knowledge/README.md) | answers from the organisation's own knowledge sources, every statement naming its source, read with the asker's rights — use case UC-5.5 | K-01 and K-02 run as bundles |
 | [`gallery`](gallery/README.md) | first processes for a family, a club and a small business, which the web app's gallery offers — use case UC-10.4 | three blueprints, each one process that rehearses on a new instance |
 | [`finance`](finance/README.md) | the finance reference domain under legal anchors — UC-15.2 | a description; its first part runs as `invoice-to-payment` |
 | [`invoice-to-payment`](invoice-to-payment/README.md) | from an incoming invoice to its payment, released by a person — use case UC-04, the roadmap's second domain (`0.7.0`) | B-10.03 runs as a bundle; not to be used before the legal-anchor review (DEC-0029) |

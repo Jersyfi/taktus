@@ -43,6 +43,16 @@ place. It is not kept as an intake event, and the outcome says what became of it
 nobody could place who writes there is told that the answer is not filed, not how to link an
 account. A message that asks the owner's conversation for a live representation goes the same
 way (ADR-0069): it is answered there and is no command.
+
+**A rollout channel serves an assistant** (UC-12.1, ADR-0261). Which channels are rollout
+channels is configuration (`TAKTUS_ROLLOUT`): a channel capability, or one conversation of it,
+mapped to the agent it serves; an entry for the conversation holds before one for its
+capability, and every other channel is a command channel. In a rollout channel a placed person's
+message is kept as an intake event of status `assistant`, and the outbox entry
+`intake.assistant` names it and the agent in the same transaction. It is never written as
+`intake.accepted`, never taken as an answer to something Taktus asked, and never completed into a
+command. A sender nobody could place is answered as anywhere; a message its sender did not
+write, or an automation's, is passed over and kept nowhere.
 """
 
 from __future__ import annotations
@@ -70,7 +80,7 @@ from taktus.ports.connector import (
     SenderKind,
 )
 from taktus.ports.identity import IdentityResolver, Resolution
-from taktus.ports.outbox import INTAKE_ACCEPTED, INTAKE_CONTRIBUTION, Outbox
+from taktus.ports.outbox import INTAKE_ACCEPTED, INTAKE_ASSISTANT, INTAKE_CONTRIBUTION, Outbox
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 from taktus.ports.telemetry import Telemetry
 from taktus.shared.v1 import Capability
@@ -81,6 +91,23 @@ conversation, unless configured otherwise (`TAKTUS_OFFER_WINDOW_SECONDS`)."""
 
 CONTRIBUTIONS = frozenset({"issue.opened", "pull_request.opened"})
 """The kinds of event that open a contribution (UC-1.9): an item opened, nothing else."""
+
+NOT_AUTHORED = "not_authored"
+"""Why a message in a rollout channel was passed over: its sender did not write it, or the
+sender is an automation (ADR-0261 §2)."""
+
+
+def assistant_of(
+    rollout: Mapping[str, str], channel: Capability, context: Mapping[str, object]
+) -> str | None:
+    """The agent a message on `channel` is for, or None in a command channel (ADR-0261 §1): the
+    entry of its conversation, `<channel>/<conversation>`, before the entry of its channel."""
+    conversation = context.get("conversation")
+    if isinstance(conversation, str) and conversation:
+        found = rollout.get(f"{channel}/{conversation}")
+        if found is not None:
+            return found
+    return rollout.get(channel)
 
 
 class UnknownChannel(Exception):
@@ -100,9 +127,10 @@ class ReceiveIntake:
 
 @dataclass(frozen=True)
 class IntakeOutcome:
-    """Exactly one of four: accepted and kept, refused by the connector, accepted by the
-    connector and not placed because the sender is unknown, or taken as an answer to what
-    Taktus asked (`answer`, with `unknown_sender` too when nobody could place the sender). For
+    """Exactly one of six: accepted and kept, refused by the connector, accepted by the
+    connector and not placed because the sender is unknown, taken as an answer to what
+    Taktus asked (`answer`, with `unknown_sender` too when nobody could place the sender), kept
+    for an assistant (`assistant`), or passed over in a rollout channel (`passed`). For
     an unknown sender and for an answer, `replied` says whether the answer to it reached the
     channel, and `linked` whether the message linked the account."""
 
@@ -117,6 +145,11 @@ class IntakeOutcome:
     contribution: IntakeEvent | None = None
     """For an unknown sender's contribution on a public channel: the event kept as data of
     its triage (ADR-0088), beside `unknown_sender`."""
+    assistant: IntakeEvent | None = None
+    """For a placed person's message in a rollout channel: the event kept for the assistant
+    (ADR-0261). Never a command."""
+    passed: str | None = None
+    """For a message in a rollout channel nothing is done with: why (`not_authored`)."""
 
 
 class ReceiveIntakeHandler:
@@ -134,9 +167,12 @@ class ReceiveIntakeHandler:
         clock: Clock | None = None,
         offer_window: timedelta = OFFER_WINDOW,
         triage: Mapping[Capability, str] | None = None,
+        rollout: Mapping[str, str] | None = None,
     ) -> None:
         """`triage` maps a public channel to the process that triages its contributions
-        (`TAKTUS_TRIAGE`, ADR-0088); a channel it does not name has none."""
+        (`TAKTUS_TRIAGE`, ADR-0088); a channel it does not name has none. `rollout` maps a
+        rollout channel, or one conversation of it, to the agent it serves (`TAKTUS_ROLLOUT`,
+        ADR-0261); a channel it does not name is a command channel."""
         self._connectors = connectors
         self._events = events
         self._work = work
@@ -147,6 +183,7 @@ class ReceiveIntakeHandler:
         self._outbox = outbox
         self._offers = Offers(clock, offer_window)
         self._triage = dict(triage or {})
+        self._rollout = dict(rollout or {})
 
     @property
     def channels(self) -> tuple[Capability, ...]:
@@ -172,6 +209,9 @@ class ReceiveIntakeHandler:
             raise ConnectorError("the intake result is neither accepted nor refused")
         resolution = await self._identities.resolve(command.channel, accepted.sender.account)
         authored = accepted.intent.by_sender
+        agent = assistant_of(self._rollout, command.channel, accepted.context)
+        if agent is not None:
+            return await self._for_assistant(command, accepted, resolution, agent)
         if self._answers is not None and accepted.sender.kind is SenderKind.PERSON and authored:
             taken = await self._answers.take(
                 command.tenant if resolution is None else resolution.tenant,
@@ -197,21 +237,7 @@ class ReceiveIntakeHandler:
                 contribution=contribution,
             )
         tenant = resolution.tenant
-        event = IntakeEvent(
-            id=accepted.event_id,
-            tenant=tenant,
-            channel=accepted.channel,
-            event=accepted.event,
-            sender_account=accepted.sender.account,
-            sender_kind=accepted.sender.kind,
-            intent=accepted.intent.raw,
-            context=dict(accepted.context),
-            reply_channel=accepted.reply_to.channel,
-            reply_address=accepted.reply_to.address,
-            reply_thread=accepted.reply_to.thread,
-            occurred_at=accepted.occurred_at,
-            received_at=command.delivery.received_at,
-        )
+        event = kept_event(command, accepted, tenant)
         async with self._work.transaction(tenant):
             kept = await self._events.get(tenant, event.id)
             if kept is not None:
@@ -222,6 +248,32 @@ class ReceiveIntakeHandler:
             if self._outbox is not None:
                 await self._outbox.write(tenant, INTAKE_ACCEPTED, {"event_id": event.id})
         return IntakeOutcome(accepted=event)
+
+    async def _for_assistant(
+        self,
+        command: ReceiveIntake,
+        accepted: Intake,
+        resolution: Resolution | None,
+        agent: str,
+    ) -> IntakeOutcome:
+        """A message in a rollout channel: kept for the assistant, or passed over (ADR-0261)."""
+        if not accepted.intent.by_sender or accepted.sender.kind is not SenderKind.PERSON:
+            return IntakeOutcome(passed=NOT_AUTHORED)
+        if resolution is None:
+            return await self._unknown(command, accepted)
+        tenant = resolution.tenant
+        event = kept_event(command, accepted, tenant, IntakeStatus.ASSISTANT)
+        async with self._work.transaction(tenant):
+            kept = await self._events.get(tenant, event.id)
+            if kept is not None:
+                # A redelivery serves nothing twice.
+                return IntakeOutcome(assistant=kept)
+            await self._events.put(tenant, event)
+            if self._outbox is not None:
+                await self._outbox.write(
+                    tenant, INTAKE_ASSISTANT, {"event_id": event.id, "agent": agent}
+                )
+        return IntakeOutcome(assistant=event)
 
     async def _contribution(self, command: ReceiveIntake, accepted: Intake) -> IntakeEvent | None:
         """Keep an unknown sender's contribution on a public channel as data of its triage, or
@@ -291,6 +343,31 @@ class ReceiveIntakeHandler:
             if replied:
                 turn.done()
         return replied
+
+
+def kept_event(
+    command: ReceiveIntake,
+    accepted: Intake,
+    tenant: Tenant,
+    status: IntakeStatus = IntakeStatus.AWAITING_IDENTITY,
+) -> IntakeEvent:
+    """The intake event a placed sender's accepted message is kept as."""
+    return IntakeEvent(
+        id=accepted.event_id,
+        tenant=tenant,
+        channel=accepted.channel,
+        event=accepted.event,
+        sender_account=accepted.sender.account,
+        sender_kind=accepted.sender.kind,
+        intent=accepted.intent.raw,
+        context=dict(accepted.context),
+        reply_channel=accepted.reply_to.channel,
+        reply_address=accepted.reply_to.address,
+        reply_thread=accepted.reply_to.thread,
+        occurred_at=accepted.occurred_at,
+        received_at=command.delivery.received_at,
+        status=status,
+    )
 
 
 class Offers:

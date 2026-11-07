@@ -14,6 +14,7 @@ answer says where it came from, not that it is true (UC-5.5 §3).
 | Process | What it does | State |
 |---|---|---|
 | [K-01 Answer from knowledge](processes/K-01-answer-from-knowledge.yaml) | a question answered from the documents a search through `knowledge.documents` finds, on behalf of the asker; every statement names the documents it rests on, checked by the rule `citation`; a source changed or removed since the reading says so | Built (`tests/composition/test_knowledge_answers.py`) |
+| [K-02 Answer in the chat](processes/K-02-answer-in-the-chat.yaml) | an assistant's process (UC-12.1, ADR-0261): a person's message in a rollout channel answered as K-01 answers, and the cited answer said in the person's thread through `channel.chat` under the frame of an outward message; a search that finds nothing says so in fixed words | Built (`tests/composition/test_rollout_channels.py`) |
 
 ## What it needs
 
@@ -23,7 +24,12 @@ answer says where it came from, not that it is true (UC-5.5 §3).
 - **Each asker's own credential for the source**, mapped by the operator in
   `TAKTUS_PERSONAL_CREDENTIALS` to the parameter `KNOWLEDGE_TOKEN` (ADR-0264). A person without
   one gets nothing from the source: the search fails before any call, and a person answers.
-- **Models of the purposes `triage` and `support`.**
+- **Models of the purposes `triage` and `support`**, and for K-02 of the purpose `check`.
+- **For K-02, an assistant rolled out.** A shared agent whose flow is `k-02`, a profile for each
+  role that may use it granting `knowledge.documents` and `channel.chat`, and the conversation
+  named as its rollout channel: `TAKTUS_ROLLOUT=channel.chat/C0HELP=<agent>`. The chat
+  connector answers with the parameter `CHAT_TOKEN`. The tenant's message rules hold the answer:
+  its label is added, and its delay passes first, so a chat assistant wants a short delay.
 
 ## What it does not do yet
 

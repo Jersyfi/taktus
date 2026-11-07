@@ -377,7 +377,9 @@ role it would tie the core to a model stack and the removal test would be lost.
   A trigger whose condition does not hold leaves its entry for a later pass.
   The same pass reads `intake.contribution`: an unknown sender's contribution on a channel
   `TAKTUS_TRIAGE` names starts that channel's triage process once, acting for whoever registered
-  its active version, with no trigger matched (UC-1.9, ADR-0088).
+  its active version, with no trigger matched (UC-1.9, ADR-0088). It reads `intake.assistant`
+  too: a placed person's message in a rollout channel `TAKTUS_ROLLOUT` names runs the agent's
+  own process as that person (`composition/assistants.py`, UC-12.1, ADR-0261).
 - **The stream of changes** is the `api` role's (`composition/live.py`, ADR-0055). Each process
   holds at most `TAKTUS_LIVE_STREAMS` streams and one listening connection. A notification for a
   tenant with open streams wakes one read of its ledger, after the oldest position its streams

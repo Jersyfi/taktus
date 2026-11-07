@@ -177,6 +177,7 @@ from taktus.composition.agent_surface import AgentSurface
 from taktus.composition.agents import SharedAgents
 from taktus.composition.alerts import alerts, alerts_tick, say_who_hears
 from taktus.composition.anchors import anchors_tick
+from taktus.composition.assistants import Assistants
 from taktus.composition.capacity import capacity_report, capacity_tick, rules_of
 from taktus.composition.case_spend import InstanceSpend
 from taktus.composition.catalogue_in_channel import CatalogueInChannel
@@ -1120,6 +1121,8 @@ async def wire(
                     offer_window=timedelta(seconds=settings.offer_window_seconds),
                     # A public channel's triage of contributions (ADR-0088): TAKTUS_TRIAGE.
                     triage=settings.triage,
+                    # The rollout channels and the agents they serve (ADR-0261): TAKTUS_ROLLOUT.
+                    rollout=settings.rollout,
                 ),
                 identities=identities,
                 tenants=tenants,
@@ -1251,6 +1254,15 @@ async def wire(
                     ),
                     identities=identities,
                     ids=ids,
+                    # A message in a rollout channel runs its assistant's process (ADR-0261).
+                    assistants=Assistants(
+                        agents=shared_agents,
+                        identities=identities,
+                        runs=runs,
+                        ledger=ledger,
+                        work=persistence,
+                        replies=ConnectorReplies(pools.connectors),
+                    ),
                 ),
                 leadership=PostgresLeadership(persistence.engine),
                 clock=clock,

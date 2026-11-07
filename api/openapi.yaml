@@ -66,8 +66,10 @@ paths:
       responses:
         '202':
           description: 'Decided: `accepted` with the intake event, `refused`, `unknown_sender` with whether
-            the sender was answered in the channel and whether the message linked their account, or `answer`
-            for a message in the thread of a report to the owner, with what became of it.'
+            the sender was answered in the channel and whether the message linked their account, `answer`
+            for a message in the thread of a report to the owner, with what became of it, `assistant`
+            with the intake event kept for the assistant of a rollout channel, or `passed` with why a
+            message in a rollout channel was passed over.'
           content:
             application/json:
               schema: {}
@@ -143,7 +145,8 @@ paths:
           content:
             application/problem+json: {}
         '422':
-          description: The sender cannot be placed.
+          description: The sender cannot be placed, or the event was written in a rollout channel and
+            is no command.
           content:
             application/problem+json: {}
   /identity/link-codes:

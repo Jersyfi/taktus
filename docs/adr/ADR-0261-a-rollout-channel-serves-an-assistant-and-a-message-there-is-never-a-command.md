@@ -56,7 +56,9 @@ it. In a rollout channel:
 
 The automation role reads `intake.assistant` on its pass. For each entry it starts the agent's
 flow once, as a call of the agent (ADR-0163 §3): the profile is resolved from the person's
-roles, `agent.called` records it, and the run acts as the person. The run's identifier is
+roles, `agent.called` records it, and the run acts as the person. The call is commissioned as
+every call of an agent is: the record that commissions its plan names the call of the agent,
+never the message, and the message is one of the run's inputs. The run's identifier is
 derived from the tenant, the flow and the event. A redelivery, a restart or a second leader
 names the same run, which the engine refuses to create twice.
 

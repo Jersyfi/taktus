@@ -8,7 +8,8 @@ a plan from it; nothing is executed here.
 
 A sender the resolver cannot place is `UnknownSender`: the event stays as it is. An event that
 was completed before is `AlreadyCompleted`, and the command it produced is named, so that a
-redelivery completes nothing twice.
+redelivery completes nothing twice. An event kept for an assistant in a rollout channel is
+`NotACommand` (ADR-0261).
 """
 
 from __future__ import annotations
@@ -32,6 +33,16 @@ class UnknownSender(Exception):
         super().__init__(
             f"the sender of intake event {event.id!r} on {event.channel} cannot be placed; "
             "an unknown sender gets no execution"
+        )
+
+
+class NotACommand(Exception):
+    """A message in a rollout channel, kept for its assistant: never a command (ADR-0261)."""
+
+    def __init__(self, event: IntakeEvent) -> None:
+        super().__init__(
+            f"intake event {event.id!r} was written in a rollout channel on {event.channel}; "
+            "it is served by the channel's assistant and is never a command"
         )
 
 
@@ -95,6 +106,8 @@ class CompleteIntakeHandler:
             raise UnknownIntakeEvent(command.tenant, command.event_id)
         if event.status is IntakeStatus.COMPLETED:
             raise AlreadyCompleted(event)
+        if event.status is IntakeStatus.ASSISTANT:
+            raise NotACommand(event)
         if event.status is IntakeStatus.CONTRIBUTION:
             # Data of a triage, from a sender nobody placed: never a command (ADR-0088).
             raise UnknownSender(event)

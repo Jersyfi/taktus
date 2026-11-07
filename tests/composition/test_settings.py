@@ -193,7 +193,7 @@ def test_the_effective_configuration_masks_every_secret() -> None:
     assert effective["TAKTUS_ROLES"] == "scheduler"
     assert "hunter2" not in json.dumps(effective)
     assert set(effective) == {name for name, _ in loaded.effective()}
-    assert len(effective) == 87, "every setting is in the startup log"
+    assert len(effective) == 89, "every setting is in the startup log"
 
 
 def test_the_administration_key_is_read_from_a_file_and_masked(tmp_path: Path) -> None:
@@ -542,6 +542,23 @@ def test_a_channel_is_public_only_where_the_operator_names_its_triage() -> None:
     for wrong in ("channel.repo", "Repo=p05", "channel.repo=P 05", "a.b=x,a.b=y"):
         with pytest.raises(ConfigurationError, match="TAKTUS_TRIAGE"):
             settings(TAKTUS_TRIAGE=wrong)
+
+
+def test_a_channel_is_a_rollout_channel_only_where_the_operator_names_its_agent() -> None:
+    """UC-12.1, ADR-0261: `TAKTUS_ROLLOUT` names a rollout channel, or one conversation of it,
+    and the agent it serves; every other channel is a command channel."""
+    assert settings().rollout == {}
+    loaded = settings(TAKTUS_ROLLOUT="channel.chat/C0HELP=helpdesk, channel.mail=sales-answers")
+    assert loaded.rollout == {"channel.chat/C0HELP": "helpdesk", "channel.mail": "sales-answers"}
+    for wrong in (
+        "channel.chat",
+        "Chat/C0=helpdesk",
+        "channel.chat/=helpdesk",
+        "channel.chat/C0=Help Desk",
+        "channel.chat/C0=a,channel.chat/C0=b",
+    ):
+        with pytest.raises(ConfigurationError, match="TAKTUS_ROLLOUT"):
+            settings(TAKTUS_ROLLOUT=wrong)
 
 
 def test_the_platform_and_what_each_credential_administers_are_read() -> None:
