@@ -25,6 +25,7 @@ from taktus.components.process.domain.service import schedule
 from taktus.components.process.domain.service.autonomy import actions_used
 from taktus.components.process.domain.service.validation import topological_order, validate_graph
 from taktus.shared.v1 import Autonomy, AutonomyLevel, ExactnessClass, Step, StepId, Value
+from taktus.shared.v1.autonomy import depending_on
 
 # What a step does when it runs — the task for a worker, the rule to evaluate, what to wait for.
 # Its shape belongs to the process bundle format, which arrives at 0.3.0 (ADR-0011,
@@ -362,6 +363,9 @@ class ProcessVersion(Value):
     evaluation: EvaluationSpec | None = None
     """The process's evaluation cases, its scorers and the schedule they run on without a
     change (ADR-0134 §1). None: a change is held to no cases, and nothing measures drift."""
+    case: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_]*$")
+    """The input that names a run's case — the support message, the pull request — by which
+    its spend is grouped (ADR-0216). None: the process's runs are counted per run alone."""
     takeover: TakeoverInstructions | None = None
     """How a person runs this version without Taktus (UC-6.3, ADR-0180). Registration requires
     it; None only on a version stored before it was required, which is read as it is."""
@@ -411,6 +415,22 @@ class ProcessVersion(Value):
             "this process uses: the level would never apply (ADR-0039)"
             for action in sorted(set(self.autonomy.action_levels) - used)
         )
+        if self.case is not None and self.case not in self.inputs:
+            findings.append(
+                f"the case is named by the input {self.case!r}, which the process does not "
+                "declare under `inputs` (ADR-0216)"
+            )
+        classes = self.autonomy.classes
+        if classes is not None and classes.step not in ids:
+            findings.append(
+                f"the autonomy statement reads the class of request from {classes.step!r}, "
+                "which is not a step of this process (ADR-0215)"
+            )
+        elif classes is not None and not depending_on(self.steps, classes.step):
+            findings.append(
+                f"no step depends on {classes.step!r}, whose result names the class of request: "
+                "the levels per class would never apply (ADR-0215)"
+            )
         for trigger in self.triggers:
             findings.extend(trigger.findings())
             if trigger.schedule is not None:

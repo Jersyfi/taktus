@@ -1,0 +1,116 @@
+# B-2.02 Cost per case — UC-03 §4.2: what the business's processes spend, attributed to the
+# case each run was about — a support message, a pull request — so that the costliest cases of a
+# week are named without a person adding up runs (ADR-0216).
+#
+# A process names the input that is its run's case (`case:` in its bundle; B-3.02 names
+# `message`). The instance groups the spend of the process's runs by that input and serves it
+# through `orchestrator.spend.cases`, from its own ledger, each run priced at its own price
+# table (ADR-0148). What is not priced is named, never counted as free. A process paused at its
+# budget is every process's own `limits` (ADR-0005); this process only reads.
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-2.02-cost-per-case.yaml \
+#         --input process=b-3-02 --input days=7
+#
+# Switching it off (`taktusctl deactivate --process b-2-02`) changes nothing else.
+
+id: b-2-02
+version: "1"
+name: B-2.02 Cost per case
+autonomy:
+  level: 1
+  reason: >
+    the process only reads the instance's own records and orders them by a fixed rule; nothing
+    leaves the system, so at level 1 every step runs and none acts; it starts at level 1,
+    observing, as UC-03 starts every process at level 1 or 2 when its stage opens
+  toward_next: >
+    stage 1 of the tenant's plan open, and three months of weekly readings a person checked
+    against the runs and found right; then Taktus proposes level 3, the target UC-03 names
+    (UC-7.1, UC-9.6)
+author: the repository
+reason: the costliest support cases of a week named without a person adding up runs (UC-03 B-2.02)
+
+triggers:
+  - schedule: "0 6 * * 1"
+    inputs:
+      process: b-3-02
+      days: 7
+
+inputs:
+  process:
+    description: the process whose cases are read, by its identifier
+    example: b-3-02
+  days:
+    description: how many days back the runs are read, ending now
+    example: 7
+
+limits:
+  quota: { units: 2 }
+
+steps:
+  - id: read-cases
+    method: rule
+    reason: the instance's own records are read verbatim, each run priced at its own table
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving orchestrator.spend is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: orchestrator.spend.cases
+      input:
+        process: { $input: process }
+        days: { $input: days }
+
+  - id: costliest
+    method: rule
+    reason: >
+      the costliest cases are a fixed ordering of the priced figures; a case whose money could
+      not be priced in one currency is left out of the order, never read as free
+    rejected:
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the five costliest cases of the window }
+    depends_on: [read-cases]
+    work:
+      rule: filter
+      items: { $from: read-cases, $select: output.cases }
+      all:
+        - { field: amount, at_least: 0 }
+      order: amount
+      descending: true
+      limit: 5
+
+# How a person runs this process without Taktus (ADR-0013 B, ADR-0180).
+takeover:
+  sequence: >
+    The process runs once a week, on Monday at 06:00 UTC; whoever watches what the business's
+    processes cost starts it. The steps run in order: read every run of the process named over
+    the days named, with what each run cost and the case it was about, then name the five
+    costliest cases. A case whose cost cannot be priced is named as such, never counted as free.
+  steps:
+    read-cases:
+      system: a shell with the instance's command-line tool
+      do: >
+        list the runs of the process named over the days named, and for each run print its cost
+        with `taktusctl cost RUN`. Note for each run the value of the input the process names as
+        its case — for B-3.02 the message identifier — and add the runs' money up per case and
+        currency. Note every run whose cost could not be priced, with the reason the tool gives.
+      expertise: reading a run's cost from the instance's command-line tool
+      credentials: []
+      done: every case of the window is written down with its runs and its money per currency
+    costliest:
+      system: a spreadsheet, on the cases written down
+      do: >
+        leave out every case whose money is not in one currency or could not be priced. Sort the
+        rest by money, largest first, and take the first five.
+      expertise: sorting a table
+      credentials: []
+      done: the five costliest cases are written down with their money

@@ -100,6 +100,7 @@ process_version = Table(
     Column("deadlines", JSONB),  # the deadlines of each run, by name (ADR-0133)
     Column("evaluation", JSONB),  # the cases, the scorers and their schedule (ADR-0134)
     Column("takeover", JSONB),  # how a person runs it without Taktus (ADR-0180)
+    Column("case_input", Text),  # the input that names a run's case (ADR-0216)
     Column("inputs", JSONB, nullable=False),
     Column("author", Text),
     Column("reason", Text),
@@ -776,6 +777,8 @@ run = Table(
     Column("profile", Text),  # the role profile of a shared agent it serves (ADR-0163)
     Column("org_unit", Text),  # the unit it runs for (ADR-0166)
     Column("org_unit_month", Text),  # the month it committed its budget to its unit's quota
+    Column("classes", JSONB),  # the levels per class of request it took on (ADR-0215)
+    Column("case_class", Text),  # the class its class step named (ADR-0215)
     Column("state", Text, nullable=False),
     Column("cause", Text),
     Column("reason", Text),

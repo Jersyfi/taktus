@@ -83,6 +83,8 @@ def unit_of(entry: LedgerEntry) -> Unit | None:
     version = entry.refs.process_version
     if version is None:
         return None
+    if entry.refs.case_class is not None:
+        return Unit(process_id=process_of(version), case_class=entry.refs.case_class)
     return Unit(process_id=process_of(version), action=entry.refs.action)
 
 
@@ -121,7 +123,7 @@ def changed_at(entries: Iterable[LedgerEntry], unit: Unit) -> datetime | None:
         version = entry.refs.process_version
         if version is None or process_of(version) != unit.process_id:
             continue
-        if entry.kind == LOWERED and entry.refs.action != unit.action:
+        if entry.kind == LOWERED and unit_of(entry) != unit:
             continue
         if newest is None or entry.ts > newest:
             newest = entry.ts
@@ -192,10 +194,19 @@ def lowering_due(
         window=limits.lower_window,
         changed=changed_at(until, unit),
     )
+    return counted if lowers(counted, limits) else None
+
+
+def lowers(counted: Rate, limits: CorrectionLimits) -> bool:
+    """Whether a unit's decisions in the lowering window lower it: a count of corrections
+    where the limits name one (a class of request, ADR-0215 §4), else the rate above its limit
+    with its minimum of decisions (ADR-0110 §4)."""
+    if limits.lower_corrections is not None:
+        return counted.corrected + counted.rejected >= limits.lower_corrections
     value = counted.rate
-    if counted.decided < limits.lower_minimum or value is None or value <= limits.lower_rate:
-        return None
-    return counted
+    return not (
+        counted.decided < limits.lower_minimum or value is None or value <= limits.lower_rate
+    )
 
 
 def raise_due(
@@ -229,6 +240,7 @@ def lowered(entries: Iterable[LedgerEntry], process_version: str) -> Lowered:
     """The levels a version was lowered to by rule: for each unit, the lowest named."""
     level: AutonomyLevel | None = None
     actions: dict[str, AutonomyLevel] = {}
+    classes: dict[str, AutonomyLevel] = {}
     for entry in entries:
         if entry.kind != LOWERED or entry.rehearsal:
             continue
@@ -237,12 +249,14 @@ def lowered(entries: Iterable[LedgerEntry], process_version: str) -> Lowered:
         to = level_of(entry.outcome)
         if to is None:
             continue
-        action = entry.refs.action
-        if action is None:
+        action, named = entry.refs.action, entry.refs.case_class
+        if named is not None:
+            classes[named] = min(classes.get(named, to), to)
+        elif action is None:
             level = to if level is None else min(level, to)
         else:
             actions[action] = min(actions.get(action, to), to)
-    return Lowered(level=level, actions=actions)
+    return Lowered(level=level, actions=actions, classes=classes)
 
 
 def one_below(level: AutonomyLevel) -> AutonomyLevel | None:

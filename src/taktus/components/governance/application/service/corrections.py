@@ -17,6 +17,10 @@ perform it. The process falls one level, and an incident of kind `anchor.breach`
 anchors, the run and the step. At level 1 nothing lies below; the incident is raised all the
 same.
 
+**A class of request** (ADR-0215) is a unit of its own. It is counted by the limits its
+process's statement names, not the tenant's: a raise is proposed on the statement's numbers,
+and the class falls once the statement's count of corrections within its window is reached.
+
 Nobody approves a lowering, because lowering makes the system safer (UC-7.5 §1). It is never
 recorded with an actor: Taktus acted on its own. A level that fell rises again only by a version
 a person approves with its evidence (ADR-0039 §3).
@@ -47,7 +51,7 @@ from taktus.components.governance.domain.service import corrections as rule
 from taktus.ports.clock import Clock
 from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
-from taktus.shared.v1 import AutonomyLevel, LedgerEntry, LedgerRefs
+from taktus.shared.v1 import AutonomyLevel, ClassLimits, LedgerEntry, LedgerRefs
 
 RAISED = "incident.raised"
 CONFIGURED = "corrections.configured"
@@ -62,6 +66,10 @@ class DecisionMade:
     step_id: str
     action: str | None
     level: AutonomyLevel
+    case_class: str | None = None
+    """The class of request whose level held the step (ADR-0215); None for none."""
+    class_limits: ClassLimits | None = None
+    """The limits the process's statement names for its classes; given with `case_class`."""
 
 
 @dataclass(frozen=True)
@@ -200,8 +208,13 @@ class Corrections:
     # --- the rule --------------------------------------------------------------------------------
 
     async def decided(self, tenant: Tenant, decision: DecisionMade) -> Verdict:
-        unit = Unit(process_id=rule.process_of(decision.process_version), action=decision.action)
+        process = rule.process_of(decision.process_version)
         limits = await self.limits(tenant)
+        if decision.case_class is not None and decision.class_limits is not None:
+            unit = Unit(process_id=process, case_class=decision.case_class)
+            limits = of_class(limits, decision.class_limits)
+        else:
+            unit = Unit(process_id=process, action=decision.action)
         now = self._clock.now()
         counted = await self.counted(tenant, now, max(rule.MONTH, limits.lower_window))
         due = state.lowering_due(counted, unit, now, limits)
@@ -231,6 +244,7 @@ class Corrections:
                         tenant=tenant,
                         process_version=decision.process_version,
                         action=unit.action,
+                        case_class=unit.case_class,
                     ),
                     outcome=rule.PROPOSED_BY_CORRECTIONS,
                 ),
@@ -257,7 +271,7 @@ class Corrections:
         self, tenant: Tenant, version: str, unit: Unit, held: AutonomyLevel
     ) -> AutonomyLevel:
         """The unit's level now: what the run held it at, or lower where it fell since."""
-        already = (await self.lowered(tenant, version)).of(unit.action)
+        already = (await self.lowered(tenant, version)).of(unit.action, unit.case_class)
         return held if already is None else min(held, already)
 
     async def _lower(
@@ -273,7 +287,8 @@ class Corrections:
         step_id: str,
         facts: Mapping[str, str | float | None],
     ) -> Incident | None:
-        iid = incident_id(tenant, kind, unit.process_id, f"{unit.action or ''}:{key}")
+        named = unit.action or ("" if unit.case_class is None else f"class:{unit.case_class}")
+        iid = incident_id(tenant, kind, unit.process_id, f"{named}:{key}")
         below = rule.one_below(current)
         now = self._clock.now()
         incident = Incident(
@@ -286,7 +301,9 @@ class Corrections:
             rule=kind.value,
             facts={
                 **facts,
-                "unit": unit.action or "process",
+                "unit": unit.action
+                or (None if unit.case_class is None else f"class {unit.case_class}")
+                or "process",
                 "step": step_id,
                 "level_before": str(current),
                 "level_after": str(below if below is not None else current),
@@ -308,6 +325,7 @@ class Corrections:
                         run_id=run_id,
                         step_id=step_id,
                         action=unit.action,
+                        case_class=unit.case_class,
                     ),
                     outcome="lowered" if below is not None else "lowest",
                 ),
@@ -324,6 +342,7 @@ class Corrections:
                             run_id=run_id,
                             step_id=step_id,
                             action=unit.action,
+                            case_class=unit.case_class,
                         ),
                         outcome=rule.level_outcome(below),
                     ),
@@ -331,7 +350,29 @@ class Corrections:
         return incident
 
 
+def of_class(tenant: CorrectionLimits, limits: ClassLimits) -> CorrectionLimits:
+    """The tenant's limits with a class's own in their place (ADR-0215 §4): its raise, and a
+    count of corrections over its window that lowers in place of the rate."""
+    return tenant.model_copy(
+        update={
+            "raise_decisions": limits.raise_decisions,
+            "raise_weeks": limits.raise_weeks,
+            "raise_rate": limits.raise_rate,
+            "lower_window": timedelta(days=limits.lower_days),
+            "lower_corrections": limits.lower_corrections,
+        }
+    )
+
+
 def _rate_facts(due: Rate, limits: CorrectionLimits) -> dict[str, str | float | None]:
+    if limits.lower_corrections is not None:
+        return {
+            "window_days": due.window.total_seconds() / 86400,
+            "decided": float(due.decided),
+            "corrected": float(due.corrected),
+            "rejected": float(due.rejected),
+            "corrections_limit": float(limits.lower_corrections),
+        }
     return {
         "window_days": due.window.total_seconds() / 86400,
         "decided": float(due.decided),

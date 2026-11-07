@@ -26,6 +26,10 @@
       "description": "The quality history a raise of this process's level, or of one of its actions, needs: how many runs in a row, the most recent ones, ended without a failure or a result defect. Absent: no raise is admitted until a version names one. A raise also needs a person's approval; Taktus may propose one, never apply it (ADR-0026, ADR-0039).",
       "type": "integer",
       "minimum": 1
+    },
+    "classes": {
+      "description": "Levels per class of request, as the result of one step names it (ADR-0215). Every step that depends on that step, directly or through another, runs at no higher a level than its class's; a class not named, or a result that names none, runs at default. No class level is above the process's, since the lower one holds. A class rises and falls by limits the statement names, never by a product default.",
+      "$ref": "#/$defs/classes"
     }
   },
   "required": ["level", "reason"],
@@ -34,6 +38,45 @@
   "then": { "not": { "required": ["toward_next"] } },
   "else": { "required": ["toward_next"] },
   "$defs": {
+    "classes": {
+      "title": "ClassAutonomy",
+      "type": "object",
+      "properties": {
+        "step": {
+          "description": "The step whose result names the class.",
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]*$"
+        },
+        "select": {
+          "description": "The path of the class in the step's result, as $select reads one; absent takes the result's text.",
+          "type": "string",
+          "minLength": 1
+        },
+        "default": { "$ref": "#/$defs/action" },
+        "levels": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[a-z][a-z0-9_-]*$" },
+          "additionalProperties": { "$ref": "#/$defs/action" }
+        },
+        "limits": { "$ref": "#/$defs/limits" }
+      },
+      "required": ["step", "default", "limits"],
+      "additionalProperties": false
+    },
+    "limits": {
+      "title": "ClassLimits",
+      "description": "When a class rises and falls: a raise is proposed after raise_decisions decisions within 28 days spanning raise_weeks weeks with a correction rate below raise_rate over 7 and 28 days; the class falls one level once lower_corrections decisions within lower_days days were corrected or rejected.",
+      "type": "object",
+      "properties": {
+        "raise_decisions": { "type": "integer", "minimum": 1 },
+        "raise_weeks": { "type": "integer", "minimum": 1 },
+        "raise_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "lower_corrections": { "type": "integer", "minimum": 1 },
+        "lower_days": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["raise_decisions", "raise_weeks", "raise_rate", "lower_corrections", "lower_days"],
+      "additionalProperties": false
+    },
     "action": {
       "title": "ActionAutonomy",
       "description": "The level one tool action runs at, why, and what is missing to go higher — the same statement as the process's, for one action.",

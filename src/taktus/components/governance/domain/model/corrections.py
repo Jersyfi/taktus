@@ -8,7 +8,8 @@ run records each as `proposal.decided`, naming the process version, the run, the
 **action class**: the tool action whose level held the step, or none where the process's own
 level held it. It names no person.
 
-A **unit** is what is counted and what is lowered: a process, or one action class of it. The
+A **unit** is what is counted and what is lowered: a process, one action class of it, or one
+class of request a step's result named (ADR-0215). The
 **correction rate** of a unit over a window is the share of its decisions that were corrected or
 rejected. It is counted only from the unit's last change of level, so that the decisions made at
 another level count for nothing.
@@ -27,7 +28,7 @@ from enum import StrEnum
 from pydantic import Field, model_validator
 
 from taktus.shared.v1 import AutonomyLevel, Value
-from taktus.shared.v1.autonomy import ACTION_PATTERN
+from taktus.shared.v1.autonomy import ACTION_PATTERN, CLASS_PATTERN
 
 
 class Outcome(StrEnum):
@@ -42,8 +43,19 @@ class Unit(Value):
     process_id: str = Field(min_length=1)
     action: str | None = Field(default=None, pattern=ACTION_PATTERN)
     """None for the process's own level."""
+    case_class: str | None = Field(default=None, pattern=CLASS_PATTERN)
+    """The class of request whose level held the step (ADR-0215); None for none. A unit is a
+    process, an action of it, or a class of it, never an action and a class at once."""
+
+    @model_validator(mode="after")
+    def _one_kind(self) -> Unit:
+        if self.action is not None and self.case_class is not None:
+            raise ValueError("a unit is an action or a class of request, never both")
+        return self
 
     def describe(self) -> str:
+        if self.case_class is not None:
+            return f"the class {self.case_class} of {self.process_id}"
         return (
             f"the process {self.process_id}"
             if self.action is None
@@ -108,8 +120,12 @@ class Lowered(Value):
 
     level: AutonomyLevel | None = None
     actions: Mapping[str, AutonomyLevel] = Field(default_factory=dict)
+    classes: Mapping[str, AutonomyLevel] = Field(default_factory=dict)
+    """Each class of request lowered (ADR-0215)."""
 
-    def of(self, action: str | None) -> AutonomyLevel | None:
+    def of(self, action: str | None, case_class: str | None = None) -> AutonomyLevel | None:
+        if case_class is not None:
+            return self.classes.get(case_class)
         return self.level if action is None else self.actions.get(action)
 
 
@@ -138,6 +154,10 @@ class CorrectionLimits(Value):
     """The window that rate is counted over."""
     lower_minimum: int = Field(default=LOWER_MINIMUM, ge=1)
     """The fewest decisions within that window for the rate to lower anything."""
+    lower_corrections: int | None = Field(default=None, ge=1)
+    """Where set, a count lowers instead of the rate: this many corrected or rejected decisions
+    within the window. Only a class of request's own limits set it (ADR-0215 §4); a tenant's
+    limits leave it None."""
     configured_at: datetime | None = None
     """When it was configured; None for the shipped default, which nobody configured."""
 

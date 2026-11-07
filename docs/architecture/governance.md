@@ -86,6 +86,14 @@ approval and the quality history: registration measures the replaced version at 
 level. The owner hears of a fall and of a proposed raise through the owner-facing channel. The
 tenant's limits are `taktusctl corrections configure`; the shipped default is NTC-0215.
 
+**A level per class of request** (ADR-0215, UC-03 B-3.03). A statement may name the classes
+of request one step's result names — `autonomy.classes`, with a level per class, a default for
+any other answer and the limits the class rises and falls by. Every step that depends on that
+step runs at no higher a level than its class; the run reads the class once and records it as
+`run.classified`. A decision on a step a class held counts for the class. A class falls one
+level at its statement's count of corrections within its window, and a raise is proposed on its
+statement's numbers; a class rises only by a version a person approves, as every level does.
+
 **Where a person reads it** (ADR-0122, DEC-0218). `GET /autonomy` answers, for every process
 the reader may see, the level its version states and why, the level a rule lowered it to and
 the incident that says why, the level in force, and each unit's rates over 7 and 28 days. The

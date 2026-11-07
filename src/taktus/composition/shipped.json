@@ -366,7 +366,8 @@
         "orchestrator.integrations",
         "orchestrator.maturation",
         "orchestrator.maturity",
-        "orchestrator.removal"
+        "orchestrator.removal",
+        "orchestrator.spend"
       ],
       "image": null,
       "name": "loopback",
@@ -384,7 +385,8 @@
         "orchestrator.maturation.measures",
         "orchestrator.maturation.propose",
         "orchestrator.maturity.record",
-        "orchestrator.removal.exercise"
+        "orchestrator.removal.exercise",
+        "orchestrator.spend.cases"
       ]
     },
     {
@@ -590,6 +592,16 @@
       "capabilities": [],
       "image": null,
       "name": "a2a",
+      "operations": []
+    },
+    {
+      "capabilities": [
+        "browser.check",
+        "browser.headless",
+        "workspace.isolated"
+      ],
+      "image": null,
+      "name": "browser",
       "operations": []
     },
     {

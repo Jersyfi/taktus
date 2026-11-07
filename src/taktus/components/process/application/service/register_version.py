@@ -344,7 +344,9 @@ class RegisterProcessVersionHandler:
         lowered = lowerings.get(version.ref)
         if lowered is None:
             return version.autonomy
-        return autonomy.lowered_to(version.autonomy, lowered.level, lowered.actions)
+        return autonomy.lowered_to(
+            version.autonomy, lowered.level, lowered.actions, lowered.classes
+        )
 
     async def _replaced(self, tenant: Tenant, version: ProcessVersion) -> list[ProcessVersion]:
         """The version the new one replaces: the process's active version where it is known;
@@ -496,6 +498,7 @@ def parse_bundle(bundle: Document) -> ProcessVersion:
             open_work=_open_work(bundle.get("open_work")),
             deadlines=_deadlines(bundle.get("deadlines")),
             evaluation=_evaluation(bundle.get("evaluation")),
+            case=bundle.get("case"),
             takeover=_takeover(bundle.get("takeover")),
             author=bundle.get("author"),
             reason=bundle.get("reason"),

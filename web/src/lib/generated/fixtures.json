@@ -2204,7 +2204,8 @@
           "stated_text": "Runs at autonomy level 2: a person confirms each step. Toward level 3: twenty runs without a result defect.",
           "lowered": {
             "level": 1,
-            "actions": {}
+            "actions": {},
+            "classes": {}
           },
           "in_force": 1,
           "text": "Runs at autonomy level 1, lowered by rule from the stated 2: a person confirms each step.",

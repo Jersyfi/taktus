@@ -38,6 +38,12 @@ proposed. The instance answers through the `Changes` protocol below, which the c
 implements over the process component's proposals (`composition/proposals.py`). Keeping a
 proposal validates it as registration would and registers nothing; both operations are a `read`.
 
+What a process spends per case (ADR-0216) is read by a process too, B-2.02 of the blueprint
+`software-operations`. It asks the instance for the capability `orchestrator.spend`: a process's
+runs over a window, grouped by the case each run was about, the costliest first. The instance
+answers through the `Spend` protocol below, which the composition root implements over the
+accounting component (`composition/case_spend.py`). It is a `read`.
+
 Every operation but two declares effect `read`. The effect field says whether an operation's
 effect leaves Taktus (contracts/connector/v1 §3); a rehearsal run inside Taktus and a record in
 the catalog do not leave it, so no egress entry is written for them (ADR-0022). Running a
@@ -82,6 +88,7 @@ CONFORMANCE = "orchestrator.conformance"
 GUIDES = "orchestrator.guides"
 MATURATION = "orchestrator.maturation"
 CHANGES = "orchestrator.changes"
+SPEND = "orchestrator.spend"
 
 LIST = f"{INTEGRATIONS}.list"
 DESCRIBE = f"{INTEGRATIONS}.describe"
@@ -97,6 +104,7 @@ MATURATION_MEASURES = f"{MATURATION}.measures"
 MATURATION_PROPOSE = f"{MATURATION}.propose"
 CHANGES_READ = f"{CHANGES}.read"
 CHANGES_PROPOSE = f"{CHANGES}.propose"
+SPEND_CASES = f"{SPEND}.cases"
 
 
 class UnknownIntegration(LookupError):
@@ -220,6 +228,17 @@ class Changes(Protocol):
         ...
 
 
+class Spend(Protocol):
+    """What the connector needs from the instance for the spend per case (ADR-0216). The
+    instance validates what it is given and raises `ValueError`, naming what is wrong."""
+
+    async def cases(self, tenant: str, process: str, days: int) -> dict[str, Any]:
+        """The process's runs with a step finished in the last `days` days, grouped by case:
+        `cases`, the costliest first, each with `case`, `runs`, `amounts` per currency, `takte`
+        and `unpriced`; `runs` and `without_case`."""
+        ...
+
+
 DECLARATION = Capabilities.model_validate(
     {
         "contract": "connector/v1",
@@ -232,6 +251,7 @@ DECLARATION = Capabilities.model_validate(
             GUIDES,
             MATURATION,
             CHANGES,
+            SPEND,
         ],
         "operations": [
             {
@@ -347,6 +367,15 @@ DECLARATION = Capabilities.model_validate(
                 "summary": "A proposal kept for a changed bundle, validated as registration "
                 "would; nothing is registered.",
             },
+            {
+                "name": SPEND_CASES,
+                "capability": SPEND,
+                "effect": "read",
+                "demand": {"quota_units": 1},
+                "summary": "A process's runs over the last days, grouped by the case each run "
+                "was about, the costliest first; each case's money per currency, as each run's "
+                "own price table prices it.",
+            },
         ],
         "credentials": [],
         "consumption": {"kinds": ["quota"], "unit": "calls", "window_seconds": 3600},
@@ -366,11 +395,13 @@ class LoopbackConnector:
         guides: Guides | None = None,
         maturation: Maturation | None = None,
         changes: Changes | None = None,
+        spend: Spend | None = None,
     ) -> None:
         self._orchestrator = orchestrator
         self._guides = guides
         self._maturation = maturation
         self._changes = changes
+        self._spend = spend
 
     def bind(
         self,
@@ -378,7 +409,10 @@ class LoopbackConnector:
         guides: Guides | None = None,
         maturation: Maturation | None = None,
         changes: Changes | None = None,
+        spend: Spend | None = None,
     ) -> None:
+        if spend is not None:
+            self._spend = spend
         if changes is not None:
             self._changes = changes
         if orchestrator is not None:
@@ -397,6 +431,13 @@ class LoopbackConnector:
                 return await self._guide(operation, context, dict(input))
             if operation.startswith(f"{CHANGES}."):
                 output = await self._change(operation, context, dict(input))
+                return Result(
+                    output=output,
+                    effect=EffectReport(kind=Effect.READ),
+                    consumption=Consumption(quota_units=1),
+                )
+            if operation.startswith(f"{SPEND}."):
+                output = await self._spent(operation, context, dict(input))
                 return Result(
                     output=output,
                     effect=EffectReport(kind=Effect.READ),
@@ -515,6 +556,15 @@ class LoopbackConnector:
             )
         raise CallFailed(operation, _failure(Cause.NOT_FOUND, f"no operation {operation!r}"))
 
+    async def _spent(
+        self, operation: str, context: CallContext, input: dict[str, Any]
+    ) -> dict[str, Any]:
+        if self._spend is None:
+            raise _no_spend(operation)
+        if operation == SPEND_CASES:
+            return await self._spend.cases(context.tenant, _text(input, "process"), _days(input))
+        raise CallFailed(operation, _failure(Cause.NOT_FOUND, f"no operation {operation!r}"))
+
     async def _change(
         self, operation: str, context: CallContext, input: dict[str, Any]
     ) -> dict[str, Any]:
@@ -534,6 +584,17 @@ class LoopbackConnector:
                 request=_text(input, "request"),
             )
         raise CallFailed(operation, _failure(Cause.NOT_FOUND, f"no operation {operation!r}"))
+
+
+def _no_spend(operation: str) -> CallFailed:
+    return CallFailed(operation, _failure(Cause.NOT_FOUND, "this instance reads no spend per case"))
+
+
+def _days(input: Mapping[str, Any]) -> int:
+    days = input.get("days", 7)
+    if not isinstance(days, int) or isinstance(days, bool) or not 1 <= days <= 366:
+        raise ValueError("`days` is a number of days, from 1 to 366")
+    return days
 
 
 def _published(output: Mapping[str, Any]) -> EffectReport:

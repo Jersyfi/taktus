@@ -18,6 +18,7 @@ from taktus.ports.worker import AssignmentId, Limits
 from taktus.shared.v1 import (
     Artifact,
     AutonomyLevel,
+    ClassAutonomy,
     Consumption,
     ConsumptionQuantities,
     Digest,
@@ -411,6 +412,12 @@ class Run(Value):
     """The level of each tool action of the process that runs below the process's level: a
     capability or a connector operation. A step that uses one runs at the lowest level that
     applies to it (ADR-0039)."""
+    classes: ClassAutonomy | None = None
+    """The levels per class of request the version's statement names, as far as they were
+    lowered: every step depending on the class's step runs at no higher a level (ADR-0215)."""
+    case_class: str | None = None
+    """The class of request the class's step named, once it did; None before, and where its
+    result names no class the statement knows."""
     budget: Limits
     margin: float = Field(default=0.0, ge=0.0, le=0.9)
     """The share of every limit held back from the first step on; the run is held to the

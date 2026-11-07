@@ -143,6 +143,7 @@ from taktus.composition.acting import ActingReads
 from taktus.composition.agents import SharedAgents
 from taktus.composition.alerts import alerts
 from taktus.composition.capacity import capacity_report, rules_of
+from taktus.composition.case_spend import InstanceSpend
 from taktus.composition.catalogue import CatalogueAuthor, InstanceCatalogueIndex
 from taktus.composition.conformance import InstanceSuites, worker_suites
 from taktus.composition.decisions import decision_wiring
@@ -531,6 +532,14 @@ class LocalWiring:
                     stores.of(Process),
                     stores.of(ProcessVersion),
                     stores.work,
+                ),
+                # What a process spends per case, which B-2.02 reads (ADR-0216).
+                spend=InstanceSpend(
+                    SpendHandler(ledger, objects, stores.work),
+                    stores.of(ProcessVersion),
+                    runs,
+                    stores.work,
+                    clock,
                 ),
             )
             drifts = Drifts(

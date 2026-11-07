@@ -106,7 +106,28 @@ def side(side: Side, version: str, results: Iterable[CaseResult]) -> SideResult:
         score=mean(r.score for r in mine),
         cases=len(mine),
         unscored=sum(1 for r in mine if r.score is None),
+        dimensions=dimensions(mine),
     )
+
+
+def dimensions(results: Iterable[CaseResult]) -> dict[str, float | None]:
+    """Per dimension, the share of the cases scored on it that passed its gate (ADR-0217)."""
+    passed: dict[str, list[bool]] = {}
+    for result in results:
+        for scored in result.scores:
+            if scored.dimension is None:
+                continue
+            held = passed.setdefault(scored.dimension, [])
+            if scored.passed is not None:
+                held.append(scored.passed)
+    return {name: (sum(held) / len(held) if held else None) for name, held in passed.items()}
+
+
+def gated(scored: float | None, gate: float | None) -> bool | None:
+    """Whether a score passes its dimension's gate; None without a score or a gate."""
+    if scored is None or gate is None:
+        return None
+    return scored >= gate - 1e-9
 
 
 def change(active: SideResult, proposed: SideResult, tolerance: float) -> Verdict:
@@ -115,6 +136,12 @@ def change(active: SideResult, proposed: SideResult, tolerance: float) -> Verdic
         return Verdict.INCOMPLETE
     if proposed.score < active.score - tolerance - 1e-9:
         return Verdict.REGRESSED
+    for name, before in active.dimensions.items():
+        after = proposed.dimensions.get(name)
+        if before is None or after is None:
+            continue
+        if after < before - tolerance - 1e-9:
+            return Verdict.REGRESSED  # a gate passed less often: the dimension regressed
     return Verdict.PASSED
 
 
@@ -165,7 +192,13 @@ def _shown_side(result: CaseResult) -> dict[str, Any]:
         "models": dict(result.models),
         "left_out": result.left_out,
         "scores": [
-            {"step": s.step, "method": s.method.value, "score": s.score, "how": s.how}
+            {
+                "step": s.step,
+                "method": s.method.value,
+                "score": s.score,
+                "how": s.how,
+                **({} if s.dimension is None else {"dimension": s.dimension, "passed": s.passed}),
+            }
             for s in result.scores
         ],
     }

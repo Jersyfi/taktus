@@ -92,12 +92,22 @@ class Corrected:
         return not any(unit.lost for unit in self.units.values())
 
 
+CLASS_KEY = "#"
+"""A class of request is kept in the key's second place behind this mark (ADR-0215): an action
+always holds a dot, a class never, and neither begins with it."""
+
+
 def key_of(unit: Unit) -> Key:
+    if unit.case_class is not None:
+        return (unit.process_id, f"{CLASS_KEY}{unit.case_class}")
     return (unit.process_id, unit.action)
 
 
 def unit_of(key: Key) -> Unit:
-    return Unit(process_id=key[0], action=key[1])
+    second = key[1]
+    if second is not None and second.startswith(CLASS_KEY):
+        return Unit(process_id=key[0], case_class=second.removeprefix(CLASS_KEY))
+    return Unit(process_id=key[0], action=second)
 
 
 def figures(state: Corrected, unit: Unit, now: datetime) -> Figures:
@@ -126,10 +136,7 @@ def lowering_due(
     """`rule.lowering_due`, from the state."""
     key = key_of(unit)
     counted = _rate(state.units.get(key) or Counted(), now, limits.lower_window, state.changed(key))
-    value = counted.rate
-    if counted.decided < limits.lower_minimum or value is None or value <= limits.lower_rate:
-        return None
-    return counted
+    return counted if rule.lowers(counted, limits) else None
 
 
 def raise_due(
@@ -272,7 +279,8 @@ def _changed(state: Corrected, entry: LedgerEntry) -> None:
         return
     process = rule.process_of(version)
     if entry.kind == rule.LOWERED:
-        key = (process, entry.refs.action)
+        unit = rule.unit_of(entry)
+        key = (process, entry.refs.action) if unit is None else key_of(unit)
         before = state.changed(key)
         if key not in state.lowered or entry.ts > state.lowered[key]:
             state.lowered[key] = entry.ts

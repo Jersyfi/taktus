@@ -25,6 +25,8 @@ class LoweredLevels(Value):
 
     level: AutonomyLevel | None = None
     actions: Mapping[str, AutonomyLevel] = Field(default_factory=dict)
+    classes: Mapping[str, AutonomyLevel] = Field(default_factory=dict)
+    """Each class of request lowered by rule (ADR-0215)."""
 
 
 class LoweredVersions(Protocol):

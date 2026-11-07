@@ -403,6 +403,7 @@ from taktus.shared.v1 import (
     Value,
     add_tokens_by_model,
 )
+from taktus.shared.v1.autonomy import depending_on
 from taktus.shared.v1.consumption import MODEL_NAME_PATTERN
 
 RECOUNTS = 5
@@ -630,6 +631,8 @@ PROPOSAL_DECIDED = "proposal.decided"
 """A person's decision on a step proposed at level 1 or 2 (ADR-0110)."""
 RUN_LOWERED = "run.lowered"
 """A run took on a level its version was lowered to by rule (ADR-0110)."""
+RUN_CLASSIFIED = "run.classified"
+"""The run's class step named the class of request its dependants run at (ADR-0215)."""
 RETRIED = "step.retried"
 """A step admitted again after it failed: a retry, as a fact of its own (ADR-0147 §4)."""
 
@@ -643,6 +646,7 @@ class _Decision:
     level: AutonomyLevel
     action: str | None
     corrected: Mapping[str, Any] | None = None
+    case_class: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1010,6 +1014,9 @@ class RunEngine:
             identity=command.identity,
             autonomy_level=command.plan.autonomy_level,
             actions=dict(command.actions),
+            classes=None
+            if self._levels is None
+            else await self._levels.classes(command.tenant, command.process_version),
             budget=command.budget,
             margin=self._options.margin if command.margin is None else command.margin,
             steps=command.plan.steps,
@@ -1370,6 +1377,7 @@ class RunEngine:
             level=level,
             action=held.action,
             corrected=corrected,
+            case_class=held.case_class,
         )
         if command.rejected:
             return (
@@ -1430,7 +1438,9 @@ class RunEngine:
             work[step.id] = dict(decision.corrected)
         return run if work == dict(run.work) else run.model_copy(update={"work": work})
 
-    async def _decision_record(self, run: Run, decision: _Decision) -> tuple[str, str | None, str]:
+    async def _decision_record(
+        self, run: Run, decision: _Decision
+    ) -> tuple[str, str | None, str, str | None]:
         """The outcome, the action class and the digest of the decision's document: the
         proposal as `step.awaiting` put it down, and for a correction the version the person
         released, so that the change can be seen (UC-7.5 §2)."""
@@ -1459,11 +1469,12 @@ class RunEngine:
             "outcome": decision.outcome,
             "level": decision.level,
             "action": decision.action,
+            "case_class": decision.case_class,
             "proposal": proposed,
             "released": released,
         }
         digest = await self._objects.put(_canonical(record))
-        return decision.outcome, decision.action, digest
+        return decision.outcome, decision.action, digest, decision.case_class
 
     async def _counted(self, run: Run, decision: _Decision) -> None:
         """The governance component applies its rule to the decision (ADR-0110)."""
@@ -1477,6 +1488,8 @@ class RunEngine:
                 step_id=decision.step_id,
                 action=decision.action,
                 level=decision.level,
+                case_class=decision.case_class,
+                class_limits=None if run.classes is None else run.classes.limits,
             ),
         )
 
@@ -1512,7 +1525,45 @@ class RunEngine:
 
     def _held(self, run: Run, step: Step) -> autonomy.Held:
         work = parse_work(step, run.work.get(step.id), run.inputs)
-        return autonomy.held(run.autonomy_level, run.actions, autonomy.actions_of(step, work))
+        return self._held_using(run, step, autonomy.actions_of(step, work))
+
+    @staticmethod
+    def _held_using(run: Run, step: Step, used: Sequence[str]) -> autonomy.Held:
+        """The level a step runs at: the process's, its actions' and its class's (ADR-0215)."""
+        return autonomy.held(
+            run.autonomy_level,
+            run.actions,
+            used,
+            autonomy.class_of(run.classes, run.steps, step.id, run.case_class),
+        )
+
+    async def _classified(self, run: Run, step: Step) -> Run:
+        """The run with the class of request its class step named, once a step that depends on
+        that step comes to its boundary (ADR-0215 §2). Read once from the class step's result
+        and recorded as `run.classified`; a result that names no class the statement knows is
+        recorded `unnamed`, and its dependants run at the default level."""
+        classes = run.classes
+        if classes is None or run.case_class is not None:
+            return run
+        if step.id not in depending_on(run.steps, classes.step):
+            return run
+        if any(e.kind == RUN_CLASSIFIED for e in await self._entries(run)):
+            return run
+        try:
+            source = run.step_run(classes.step)
+        except KeyError:
+            return run
+        checkpoint = source.checkpoint
+        if source.state is not StepState.SUCCEEDED or checkpoint is None:
+            return run
+        digest = checkpoint.result_digest
+        stored = None if digest is None else await self._objects.get(digest)
+        value = None if stored is None else json.loads(stored)
+        named = autonomy.class_named(classes, value)
+        run = run.model_copy(update={"case_class": named})
+        return await self._commit(
+            run, RUN_CLASSIFIED, outcome="named" if named else "unnamed", case_class=named
+        )
 
     async def decide(self, command: DecideSteps) -> Run:
         """Continue a run whose anchored steps were decided. A run that does not wait, or whose
@@ -2506,7 +2557,7 @@ class RunEngine:
         """Whether Taktus heals the step that failed: at level 4, a known failure inside the
         frame (ADR-0160, `domain.service.healing`)."""
         work = parse_work(step, run.work.get(step.id), run.inputs)
-        held = autonomy.held(run.autonomy_level, run.actions, autonomy.actions_of(step, work))
+        held = self._held_using(run, step, autonomy.actions_of(step, work))
         if held.level < healing.UNATTENDED or run.rehearsal:
             return healing.Healing(heals=False)
         healed = sum(
@@ -2691,7 +2742,8 @@ class RunEngine:
             if refusal is not None:
                 return await self._refuse_administering(run, step_run, refusal, span)
             used = autonomy.actions_of(step, work)
-            held = autonomy.held(run.autonomy_level, run.actions, used)
+            run = await self._classified(run, step)
+            held = self._held_using(run, step, used)
             span.set_attribute("autonomy.level", held.level)
             control = control_of(step, run.work.get(step.id), run.inputs)
             work = await self._guided(run, work, control)
@@ -2810,11 +2862,26 @@ class RunEngine:
             if lower < min(actions.get(action, level), level):
                 actions[action] = lower
                 changes.append((action, lower))
-        if not changes:
+        classes = run.classes
+        named: list[tuple[str, AutonomyLevel]] = []
+        if classes is not None:
+            levels = dict(classes.levels)
+            for name, lower in sorted(lowered.classes.items()):
+                own = levels.get(name)
+                if own is not None and lower < own.level:
+                    levels[name] = own.model_copy(update={"level": lower})
+                    named.append((name, lower))
+            if named:
+                classes = classes.model_copy(update={"levels": levels})
+        if not changes and not named:
             return run
-        run = run.model_copy(update={"autonomy_level": level, "actions": actions})
+        run = run.model_copy(
+            update={"autonomy_level": level, "actions": actions, "classes": classes}
+        )
         for held_by, lower in changes:
             run = await self._commit(run, RUN_LOWERED, outcome=f"level_{lower}", action=held_by)
+        for name, lower in named:
+            run = await self._commit(run, RUN_LOWERED, outcome=f"level_{lower}", case_class=name)
         return run
 
     async def _breach(self, run: Run, step: Step, step_run: StepRun) -> None:
@@ -3409,7 +3476,9 @@ class RunEngine:
             "step_id": step.id,
             "method": str(step.method),
             "level": held.level,
-            "held_by": held.action or "process",
+            "held_by": held.action
+            or (None if held.case_class is None else f"class {held.case_class}")
+            or "process",
             "awaits": awaited,
             "work": dict(run.work.get(step.id) or {}),
         }
@@ -6935,7 +7004,8 @@ class RunEngine:
         interface: str | None = None,
         ended: str | None = None,
         action: str | None = None,
-        proposal: tuple[str, str | None, str] | None = None,
+        proposal: tuple[str, str | None, str, str | None] | None = None,
+        case_class: str | None = None,
         before: Sequence[Mapping[str, Any]] = (),
         after: Sequence[Mapping[str, Any]] = (),
         inside: Callable[[], Awaitable[None]] | None = None,
@@ -6974,9 +7044,10 @@ class RunEngine:
                     digest=digest,
                     decision=decision,
                     action=action,
+                    case_class=case_class,
                 )
                 if proposal is not None and step is not None:
-                    decided, held_by, document = proposal
+                    decided, held_by, document, named = proposal
                     await self._record(
                         run,
                         PROPOSAL_DECIDED,
@@ -6984,6 +7055,7 @@ class RunEngine:
                         outcome=decided,
                         digest=document,
                         action=held_by,
+                        case_class=named,
                         bare=True,
                     )
                 if interface is not None and step is not None:
@@ -7071,6 +7143,7 @@ class RunEngine:
         duration: float | None = None,
         action: str | None = None,
         bare: bool = False,
+        case_class: str | None = None,
     ) -> LedgerEntry:
         """`bare` records only what names the step — no assignment, no artifacts, no method,
         adapter or consumption — for an entry that counts a decision (ADR-0110)."""
@@ -7083,6 +7156,7 @@ class RunEngine:
             assignment_id=None if step is None or bare else step.assignment_id,
             decision_request_id=decision,
             action=action,
+            case_class=case_class,
             artifact_ids=None
             if step is None or bare or not step.artifacts
             else tuple(a.id for a in step.artifacts),
