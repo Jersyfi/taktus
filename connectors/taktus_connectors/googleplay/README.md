@@ -66,11 +66,13 @@ message is never copied into an error: only its status token is (`operations.py`
 
 | Name | Purpose | How it reaches the connector |
 |---|---|---|
-| `STORE_REVIEWS_ACCOUNT` | actions: the **requesting identity's** service account key file, JSON as the console hands it out, of an account the store's console grants "Reply to reviews" for the app, and nothing else | the file `TAKTUS_CREDENTIAL_STORE_REVIEWS_ACCOUNT_FILE` names, read at the moment of each call, never stored |
+| `STORE_REVIEWS_KEY` | actions: the **requesting identity's** service account key file, JSON as the console hands it out, of an account the store's console grants "Reply to reviews" for the app, and nothing else | the file `TAKTUS_CREDENTIAL_STORE_REVIEWS_KEY_FILE` names, read at the moment of each call, never stored |
 
 The connector signs a statement with the key and exchanges it at the configured token endpoint
 — never at the `token_uri` the file names — for an access token, which it keeps in memory by the
-key's digest until a minute before it expires. Each exchange counts as a request.
+key's digest until a minute before it expires. Each exchange counts as a request. The name is
+the first store's: a process names one key of the store its instance's connector serves, and
+a capability resolves to one connector.
 
 ## Conformance
 

@@ -18,7 +18,7 @@ type Json = dict[str, Any]
 CONTRACT = "connector/v1"
 VERSION = "1.0.0"
 CAPABILITY = "stores.reviews"
-ACTIONS_CREDENTIAL = "STORE_REVIEWS_ACCOUNT"
+ACTIONS_CREDENTIAL = "STORE_REVIEWS_KEY"
 
 OPERATIONS: list[Json] = [
     {

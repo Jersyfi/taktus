@@ -56,7 +56,7 @@ STORES = {
     ),
     "second": Store(
         "second",
-        "STORE_REVIEWS_ACCOUNT",
+        "STORE_REVIEWS_KEY",
         second_store.credential,
         second_store,
         lambda url: McpActionConnector(second_server(SecondConfig(url, "/token", timeout=5.0))),

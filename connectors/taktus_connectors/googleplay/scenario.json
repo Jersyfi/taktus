@@ -1,6 +1,6 @@
 {
   "credentials": {
-    "actions": "STORE_REVIEWS_ACCOUNT"
+    "actions": "STORE_REVIEWS_KEY"
   },
   "read": {
     "operation": "stores.reviews.list",
