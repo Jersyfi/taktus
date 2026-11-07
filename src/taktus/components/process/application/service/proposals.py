@@ -20,9 +20,14 @@ from typing import Any
 
 from taktus.components.process.application.service.register_version import (
     credentials_named,
-    parse_bundle,
+    read_bundle,
 )
-from taktus.components.process.domain.model import InvalidProcess, Process, ProcessVersion
+from taktus.components.process.domain.model import (
+    ChangeRecord,
+    InvalidProcess,
+    Process,
+    ProcessVersion,
+)
 from taktus.components.process.domain.model.proposal import OPEN, Proposal, ProposalState
 from taktus.components.process.domain.service.difference import difference
 from taktus.ports.administration import Administration
@@ -50,6 +55,11 @@ class Propose:
     """The identity that asks for the change."""
     request: str | None = None
     """The person's words, where the change was asked for in words (ADR-0091 §2)."""
+    change: ChangeRecord | None = None
+    """For a change Taktus proposes: what led to it (ADR-0255 §3)."""
+    findings: tuple[str, ...] = ()
+    """For a change Taktus proposes: why it is not a version. Where it is given, the findings
+    of the rules beyond the bundle's shape are kept here instead of refusing the proposal."""
 
 
 class Proposals:
@@ -73,7 +83,10 @@ class Proposals:
 
     async def propose(self, command: Propose) -> Proposal:
         """The proposal for a changed bundle, stored; or InvalidProcess with every finding."""
-        version = parse_bundle(command.bundle)
+        version, refused = read_bundle(command.bundle)
+        if refused and not command.findings:
+            raise InvalidProcess(tuple(refused))
+        kept = (*command.findings, *refused)
         findings: list[str] = []
         if version.process_id != command.process_id:
             findings.append(
@@ -112,6 +125,8 @@ class Proposals:
                 requested_by=command.by,
                 difference=difference(base, version),
                 created_at=self._clock.now(),
+                change=command.change,
+                findings=tuple(dict.fromkeys(kept)),
             )
             await self._proposals.put(command.tenant, proposal)
         return proposal

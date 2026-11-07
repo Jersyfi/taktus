@@ -233,6 +233,34 @@ class Escalation(Value):
         return self
 
 
+FRAME_KINDS = ("work", "step_added", "checks_added", "takeover")
+"""The kinds of change a process's owner may let Taktus make on its own (ADR-0255 §1)."""
+
+type FrameKind = Literal["work", "step_added", "checks_added", "takeover"]
+
+
+class Frame(Value):
+    """What Taktus may change in the process on its own (UC-4.3, ADR-0255 §1). The owner's: a
+    change of it is always outside it. Empty: every change is outside."""
+
+    changes: tuple[FrameKind, ...] = ()
+
+
+class ChangeRecord(Value):
+    """Why a version Taktus registered within the frame exists (UC-4.3, ADR-0255 §3): what was
+    observed, on what, the version it replaces, and what changed against it."""
+
+    observed: Literal["failure", "interface", "run"]
+    on: str = Field(min_length=1)
+    """The run or the operation it was observed on."""
+    said: str = Field(min_length=1)
+    """What was observed, in words: the failure, the changed interface."""
+    predecessor: str = Field(min_length=1)
+    """The version it replaces, as `process@version`."""
+    changes: tuple[str, ...] = Field(min_length=1)
+    """Every change against the predecessor, in words."""
+
+
 class Expect(Value):
     """When a run of the process is expected (ADR-0107): at every slot of a `schedule`, or
     within a `gap` of the last run's start; and that a run ends within its `bound`. A run
@@ -392,11 +420,15 @@ class ProcessVersion(Value):
     """How a person runs this version without Taktus (UC-6.3, ADR-0180). Registration requires
     it; None only on a version stored before it was required, which is read as it is."""
     escalation: Escalation | None = None
+    """Who a failure's escalation reaches, by which path, and the time to react (ADR-0252).
+    None: the tenant's owner, through the owner-facing channel, without a time to react."""
     heal_limit: int = Field(default=3, ge=1)
     """How often the same failure of a step is healed before Taktus says it is a design fault
     of the process (UC-4.6, ADR-0254 §2). At least one: it cannot be switched off."""
-    """Who a failure's escalation reaches, by which path, and the time to react (ADR-0252).
-    None: the tenant's owner, through the owner-facing channel, without a time to react."""
+    frame: Frame | None = None
+    """What Taktus may change in it on its own (ADR-0255 §1). None: nothing."""
+    change: ChangeRecord | None = None
+    """For a version Taktus registered within the frame: what led to it (ADR-0255 §3)."""
     author: str | None = None
     reason: str | None = None
 

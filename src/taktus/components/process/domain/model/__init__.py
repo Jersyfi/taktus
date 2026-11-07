@@ -16,12 +16,14 @@ from taktus.components.process.domain.model.event import (
     holds,
 )
 from taktus.components.process.domain.model.process import (
+    ChangeRecord,
     DeadlineAction,
     DeadlineDeclaration,
     Each,
     Edge,
     Escalation,
     Expect,
+    Frame,
     InputDeclaration,
     OpenWorkCap,
     OpenWorkCount,
@@ -48,6 +50,7 @@ from taktus.components.process.domain.model.trigger_state import Firing, Trigger
 __all__ = [
     "KINDS",
     "CaseState",
+    "ChangeRecord",
     "Condition",
     "CorrectedCase",
     "CredentialPointer",
@@ -64,6 +67,7 @@ __all__ = [
     "Expect",
     "Fields",
     "Firing",
+    "Frame",
     "InputDeclaration",
     "InvalidProcess",
     "Kind",

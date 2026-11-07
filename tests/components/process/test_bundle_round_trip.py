@@ -45,8 +45,9 @@ def test_a_version_written_back_registers_as_itself_under_a_new_name(path: Path)
 
 
 EXAMPLE = ROOT / "examples" / "processes" / "six-times-seven.yaml"
-RENAMED = {"version": "restored", "author": "idn_ada", "reason": "rolled back"}
-"""The fields a rollback gives anew; every other one is the restored version's."""
+RENAMED = {"version": "restored", "author": "idn_ada", "reason": "rolled back", "change": None}
+"""The fields a rollback gives anew; every other one is the restored version's. A rollback is a
+person's act, and carries no record of a change Taktus made (ADR-0255 §4)."""
 
 
 def every_field() -> dict[str, Any]:
@@ -64,6 +65,14 @@ def every_field() -> dict[str, Any]:
     document["slo"] = {"freshness": "24h", "latency": "90s", "completion": 0.95}
     document["escalation"] = {"role": "support", "react_within": "30m", "path": "ledger"}
     document["heal_limit"] = 5
+    document["frame"] = {"changes": ["work", "takeover"]}
+    document["change"] = {
+        "observed": "interface",
+        "on": "repository.issues.list",
+        "said": "the operation answers `items` where it answered `issues`",
+        "predecessor": "six-times-seven@0",
+        "changes": ["step compute: its work changed"],
+    }
     document["case"] = "due"  # the input that names a run's case (ADR-0216)
     document["expect"] = {"schedule": "0 7 * * 1-5", "bound": "2h"}
     document["open_work"] = {

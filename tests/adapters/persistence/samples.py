@@ -139,6 +139,20 @@ def process_version(version: str = "1", tenant: str = "t") -> ProcessVersion:
     ]
     document["slo"] = {"freshness": "24h", "latency": "90s"}
     document["expect"] = {"schedule": "0 7 * * 1-5", "bound": "2h"}
+    document["escalation"] = {"role": "support", "react_within": "30m", "path": "ledger"}
+    document["heal_limit"] = 5
+    document["inputs"] = {
+        "due": {"description": "when the answer is due", "example": "2026-11-02", "required": False}
+    }
+    document["case"] = "due"
+    document["frame"] = {"changes": ["work", "takeover"]}
+    document["change"] = {
+        "observed": "interface",
+        "on": "repository.issues.list",
+        "said": "the operation answers `items` where it answered `issues`",
+        "predecessor": "six-times-seven@0",
+        "changes": ["step compute: its work changed"],
+    }
     document["open_work"] = {
         "pull_requests": {
             "cap": 2,
