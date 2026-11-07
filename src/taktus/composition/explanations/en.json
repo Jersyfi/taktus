@@ -1,0 +1,13 @@
+{
+  "language": "en",
+  "did": "Step {step_id} of run {run_id} ({process_version}) was done by the method {method}.",
+  "why": "Why this method: {reason}",
+  "ended": "It is {state}{outcome}.",
+  "cost": "It cost {money} {currency}{takte}.",
+  "takt": "It used {takte} Takt.",
+  "class": "Its result is of the exactness class {exactness}.",
+  "rejected": "Not chosen: {method}, because {why}",
+  "fallback": "If it fails: {fallback}",
+  "input": "It read {kind} {ref}{read_at}.",
+  "result": "It produced the result {result}."
+}

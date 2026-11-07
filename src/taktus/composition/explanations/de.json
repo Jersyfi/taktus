@@ -1,0 +1,13 @@
+{
+  "language": "de",
+  "did": "Schritt {step_id} von Lauf {run_id} ({process_version}) wurde mit der Methode {method} erledigt.",
+  "why": "Warum diese Methode: {reason}",
+  "ended": "Er ist {state}{outcome}.",
+  "cost": "Er kostete {money} {currency}{takte}.",
+  "takt": "Er verbrauchte {takte} Takt.",
+  "class": "Sein Ergebnis hat die Exaktheitsklasse {exactness}.",
+  "rejected": "Nicht gewählt: {method}, weil {why}",
+  "fallback": "Wenn er scheitert: {fallback}",
+  "input": "Er las {kind} {ref}{read_at}.",
+  "result": "Er erzeugte das Ergebnis {result}."
+}

@@ -74,6 +74,7 @@ from taktus.composition.levels import RepositoryLevelRecords
 from taktus.composition.live import LiveHub, LiveOptions, Records, state_of
 from taktus.composition.owner_channel import KnownSecrets, OwnerChannelWiring, owner_channel_wiring
 from taktus.composition.profiles import RoleProfiles
+from taktus.composition.reports import ReadingWiring, reading_wiring
 from taktus.composition.streams import StreamReads
 from taktus.ports.configuration import Secret
 from taktus.ports.connector import (
@@ -388,6 +389,24 @@ class Services:
                 MemoryRepository(self.persistence, Request),
                 MemoryRepository(self.persistence, TakeoverTrial),
             )
+        )
+
+    @property
+    def reading(self) -> ReadingWiring:
+        """Views, the export, reports, explanations, value and the own view (ADR-0241..0245),
+        over this world's stores; a report is said into `deliveries`."""
+        return reading_wiring(
+            lambda kind: MemoryRepository(self.persistence, kind),
+            ledger=self.ledger,
+            provenance=MemoryProvenanceStore(self.persistence),
+            spend=self.spend,
+            blocked=BlockedTime(self.ledger, self.objects, self.persistence, self.runs),
+            identities=self.identities,
+            levels=self.levels,
+            deliveries=self.deliveries,
+            work=self.persistence,
+            clock=self.clock,
+            identifiers=self.ids,
         )
 
     @property

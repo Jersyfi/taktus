@@ -2315,6 +2315,37 @@ class CallerCredentialMapper:
         return [self._document(row) for row in rows]
 
 
+class DocumentMapper:
+    """One row per record as a document, keyed by tenant and identifier, with the moment the
+    document names in `at_field` (ADR-0241, ADR-0242, ADR-0244, ADR-0245). With `once`, a row is
+    inserted and never changed: a second insert under the same identifier fails."""
+
+    def __init__(self, table: Any, at_field: str, *, once: bool = False) -> None:
+        self._table = table
+        self._at_field = at_field
+        self._once = once
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, self._table, tenant, id)
+        return None if row is None else dict(row.document)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        row = {
+            "tenant": tenant,
+            "id": document["id"],
+            "at": _at(document[self._at_field]),
+            "document": document,
+        }
+        if self._once:
+            await connection.execute(insert(self._table).values(**row))
+        else:
+            await _upsert(connection, self._table, ("tenant", "id"), row)
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, self._table, tenant, self._table.c.at, self._table.c.id)
+        return [dict(row.document) for row in rows]
+
+
 # Keyed by the aggregate's class name in snake case: `Run` → "run", `ProcessVersion` →
 # "process_version". The persistence looks a mapper up by the class the composition root binds.
 MAPPERS: dict[str, Mapper] = {
@@ -2372,4 +2403,9 @@ MAPPERS: dict[str, Mapper] = {
     "role_profile": RoleProfileMapper(),
     "catalogue_share": CatalogueShareMapper(),
     "caller_credential": CallerCredentialMapper(),
+    "view_configuration": DocumentMapper(s.view_configuration, "configured_at"),
+    "report_definition": DocumentMapper(s.report_definition, "set_at"),
+    "own_view": DocumentMapper(s.own_view, "set_at"),
+    "value_basis": DocumentMapper(s.value_basis, "set_at", once=True),
+    "discovered_process": DocumentMapper(s.discovered_process, "at"),
 }

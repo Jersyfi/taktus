@@ -227,6 +227,9 @@ jobs:
           - name: taktus-connector-paypal
             dockerfile: connectors/Dockerfile
             target: paypal
+          - name: taktus-connector-powerbi
+            dockerfile: connectors/Dockerfile
+            target: powerbi
           - name: taktus-connector-prometheus
             dockerfile: connectors/Dockerfile
             target: prometheus

@@ -233,6 +233,7 @@ from taktus.composition.profiles import RoleProfiles
 from taktus.composition.proposals import InstanceChanges, ProposalActs
 from taktus.composition.reactions import Reactions, capacity_condition
 from taktus.composition.replies import ConnectorReplies
+from taktus.composition.reports import ReadingWiring, reading_tick, reading_wiring
 from taktus.composition.run_answers import RunAnswers
 from taktus.composition.settings import (
     CONNECT_KEY,
@@ -253,6 +254,7 @@ from taktus.composition.stops import RuleStops, StopsConfirmed
 from taktus.composition.streams import StreamReads
 from taktus.composition.subjects import ProcessingEvidence, RunHoldings
 from taktus.composition.takeover_in_channel import TakeoverInChannel
+from taktus.composition.tenancy import this_round
 from taktus.composition.tenant_export import TenantExports
 from taktus.composition.traces import traces_tick
 from taktus.composition.trials import Trials, trials_tick
@@ -388,6 +390,9 @@ class Wired:
     """The organisation as value streams, and their declaration (ADR-0159)."""
     profiles: RoleProfiles
     """A role's profile, derived from the processes (ADR-0167)."""
+    reading: ReadingWiring
+    """Views, the export, reports, explanations, the value ledger and a person's own view
+    (ADR-0241 to ADR-0245)."""
     traces: StepTraces
     """The trace inside a worker's step, read and shared by role, and erased by the scheduler
     when its retention ends (ADR-0135)."""
@@ -1247,6 +1252,19 @@ async def wire(
                     work=persistence,
                     clock=clock,
                 ),
+                reading=reading_wiring(
+                    stored,
+                    ledger=ledger,
+                    provenance=provenance_store,
+                    spend=spend,
+                    blocked=BlockedTime(ledger, objects, persistence, runs),
+                    identities=identities,
+                    levels=levels,
+                    deliveries=owner.deliveries,
+                    work=persistence,
+                    clock=clock,
+                    identifiers=ids,
+                ),
                 profiles=RoleProfiles(
                     processes=PostgresRepository(persistence, Process),
                     versions=PostgresRepository(persistence, ProcessVersion),
@@ -1699,6 +1717,8 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
         # And it judges every signal against its corridor, and raises the daily report
         # (ADR-0109).
         judge_signals = signals_tick(wired.signals, wired.tenants, wired.clock)
+        # And it says every report and every person's line that is due (ADR-0242, ADR-0245).
+        say_reports = reading_tick(wired.reading, lambda: this_round(wired.tenants, "scheduler"))
         # And it measures drift on every process's evaluation cases, moves every evaluation on,
         # and proposes a case for every corrected draft (ADR-0134).
         evaluate = evaluations_tick(wired.evaluations, wired.tenants, wired.clock)
@@ -1754,6 +1774,7 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
             await report_interfaces()
             await report_alerts()
             await judge_signals()
+            await say_reports()
             await evaluate()
             await erase_traces()
             await anchor_chains()

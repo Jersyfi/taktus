@@ -1,0 +1,21 @@
+{
+  "credentials": {
+    "actions": "BI_TOKEN"
+  },
+  "read": {
+    "operation": "bi.figures.query",
+    "input": {
+      "dataset": "cfafbeb1-8037-4d0c-896e-a46fb27ff229",
+      "query": "EVALUATE VALUES(Sales)"
+    }
+  },
+  "writes": [],
+  "invalid": {
+    "operation": "bi.figures.query",
+    "input": {
+      "dataset": "00000000-0000-0000-0000-000000000000",
+      "query": "EVALUATE VALUES(Sales)"
+    },
+    "expected_cause": "invalid"
+  }
+}

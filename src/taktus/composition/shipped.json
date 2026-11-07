@@ -503,6 +503,16 @@
     },
     {
       "capabilities": [
+        "bi.figures"
+      ],
+      "image": "taktus-connector-powerbi",
+      "name": "powerbi",
+      "operations": [
+        "bi.figures.query"
+      ]
+    },
+    {
+      "capabilities": [
         "metrics.series"
       ],
       "image": "taktus-connector-prometheus",

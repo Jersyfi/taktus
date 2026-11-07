@@ -5,13 +5,15 @@
 	A running worker step can be taken over here, and its result handed back (UC-4.19, ADR-0128):
 	the page sends the ask and the result, reads the state of every held take-over, and shows
 	what the level says of each. A running worker step can be sent a message (ADR-0156). Below it, the trace inside each worker step: what its worker
-	reported, live, and shared with a role (UC-6.14, ADR-0135). Both routes of a run draw this
+	reported, live, and shared with a role (UC-6.14, ADR-0135). Last, per step a "Why?" that reads
+	the step's explanation from the records (UC-6.5, ADR-0243). Both routes of a run draw this
 	page: `#/runs/<run>` and `#/runs/<run>/steps/<step>`, the link a share hands on.
 -->
 <script lang="ts">
 	import { frame } from './frame.svelte';
 	import { onDestroy } from 'svelte';
 	import { surface } from './api';
+	import ExplanationPanel from './ExplanationPanel.svelte';
 	import SignInForm from './SignInForm.svelte';
 	import { followLevel } from './live';
 	import { motion } from './motion.svelte';
@@ -144,6 +146,7 @@
 			<TakeoverPanel level={shown} {asked} {states} {message} {busy} {now} onTakeOver={takeOver} onHandBack={giveBack} />
 			<SteeringPanel level={shown} said={steered} {busy} onSend={steer} />
 			<TracePanel level={shown} base={base()} {named} motionAllowed={motion.allowed} onRefused={() => (signedIn = false)} />
+			<ExplanationPanel level={shown} base={base()} onRefused={() => (signedIn = false)} />
 		{/snippet}
 	</RunView>
 {:else}

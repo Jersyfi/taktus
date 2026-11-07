@@ -3972,6 +3972,1002 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /figures:
+    get:
+      tags:
+      - figures
+      summary: 'Every figure the reader is entitled to: the export'
+      description: The same figures, definitions and values every view shows, in JSON. A figure the reader's
+        roles are not entitled to is absent. Each names its owner, definition, unit, scope, period, value
+        or why it is withheld, method and basis.
+      operationId: exported_figures_get
+      parameters:
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 366
+          minimum: 1
+          description: The period, in days up to now.
+          default: 30
+          title: Days
+        description: The period, in days up to now.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The figures.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /figures.csv:
+    get:
+      tags:
+      - figures
+      summary: Every figure the reader is entitled to, as CSV
+      description: The rows of `GET /figures`, one figure a row, for any business-intelligence tool.
+      operationId: exported_csv_figures_csv_get
+      parameters:
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 366
+          minimum: 1
+          description: The period, in days up to now.
+          default: 30
+          title: Days
+        description: The period, in days up to now.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The CSV.
+          content:
+            text/csv; charset=utf-8: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /views:
+    get:
+      tags:
+      - figures
+      summary: The reader's views, each with the figures it shows them
+      description: A view the reader holds by a role or was given by name, showing only the figures the
+        reader's roles are entitled to. Every figure here is in `GET /figures`.
+      operationId: views_views_get
+      parameters:
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 366
+          minimum: 1
+          description: The period, in days up to now.
+          default: 30
+          title: Days
+        description: The period, in days up to now.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The views.
+          content:
+            application/json:
+              schema:
+                title: Response Views Views Get
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /views/configuration:
+    get:
+      tags:
+      - figures
+      summary: The tenant's views and who is entitled to which figure
+      operationId: configuration_views_configuration_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The configuration.
+          content:
+            application/json:
+              schema:
+                title: Response Configuration Views Configuration Get
+        '403':
+          description: Only a person holding `owner` sets it.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+    put:
+      tags:
+      - figures
+      summary: Set the tenant's views and entitlements
+      description: Views, each with its figures, the roles that hold it, the persons it is given to and
+        what it groups by — never a person; entitlements per figure; depth and language of an explanation
+        per role. A figure no component computes is refused.
+      operationId: configure_views_configuration_put
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              title: Body
+      responses:
+        '200':
+          description: Stored.
+          content:
+            application/json:
+              schema:
+                title: Response Configure Views Configuration Put
+        '403':
+          description: Only a person holding `owner` sets it.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /value/index:
+    get:
+      tags:
+      - figures
+      summary: 'The bus-factor index: without Taktus, per role, per supplier'
+      description: Computed from recorded takeover trials and removal verdicts only. With the trend per
+        day and the graph of dependencies. No figure names a person.
+      operationId: index_value_index_get
+      parameters:
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 366
+          minimum: 1
+          description: The period, in days up to now.
+          default: 30
+          title: Days
+        description: The period, in days up to now.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The index.
+          content:
+            application/json:
+              schema:
+                title: Response Index Value Index Get
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /value/proposals:
+    get:
+      tags:
+      - figures
+      summary: 'What to do: targets missed, deteriorations, each process''s quadrant'
+      description: Computed on every read and stored nowhere; nothing changes. A reader sees the proposals
+        addressed to a role they hold; `owner` sees every one.
+      operationId: proposals_value_proposals_get
+      parameters:
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 366
+          minimum: 1
+          description: The period, in days up to now.
+          default: 30
+          title: Days
+        description: The period, in days up to now.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The proposals.
+          content:
+            application/json:
+              schema:
+                title: Response Proposals Value Proposals Get
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /value/transformation:
+    get:
+      tags:
+      - figures
+      summary: Maturity per unit, progress against the plan, the backlog of potential
+      operationId: transformation_value_transformation_get
+      parameters:
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 366
+          minimum: 1
+          description: The period, in days up to now.
+          default: 30
+          title: Days
+        description: The period, in days up to now.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The transformation.
+          content:
+            application/json:
+              schema:
+                title: Response Transformation Value Transformation Get
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /value/basis:
+    get:
+      tags:
+      - figures
+      summary: The organisation's stated value basis, every version
+      operationId: bases_value_basis_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The versions.
+          content:
+            application/json:
+              schema:
+                title: Response Bases Value Basis Get
+        '403':
+          description: Only a person holding `owner` sets it.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+    put:
+      tags:
+      - figures
+      summary: State the next version of the value basis
+      description: Personnel cost rates per role — never per person — and per process the minutes by hand,
+        the roles, the time to learn, the response by hand, the relevance, the licence share and the investment;
+        targets; the plan; entered potential.
+      operationId: set_basis_value_basis_put
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              title: Body
+      responses:
+        '200':
+          description: Stored.
+          content:
+            application/json:
+              schema:
+                title: Response Set Basis Value Basis Put
+        '403':
+          description: Only a person holding `owner` sets it.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /reports/definitions:
+    get:
+      tags:
+      - figures
+      summary: 'The reports for roles: reader, trigger, channel'
+      operationId: definitions_reports_definitions_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The definitions.
+          content:
+            application/json:
+              schema:
+                title: Response Definitions Reports Definitions Get
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /reports/definitions/{report}:
+    put:
+      tags:
+      - figures
+      summary: 'Set a report: its reader role, its trigger and the channel'
+      description: A report without a reader is refused; a schedule needs `every` and `hour`, a week its
+        `weekday`.
+      operationId: set_definition_reports_definitions__report__put
+      parameters:
+      - name: report
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Report
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              title: Body
+      responses:
+        '200':
+          description: Stored.
+          content:
+            application/json:
+              schema:
+                title: Response Set Definition Reports Definitions  Report  Put
+        '403':
+          description: Only a person holding `owner` sets it.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /reports/definitions/{report}/now:
+    get:
+      tags:
+      - figures
+      summary: The report composed now, for a reader who holds its role
+      description: Its first level carries only what bears on its reader role; a quiet period is one sentence.
+      operationId: now_reports_definitions__report__now_get
+      parameters:
+      - name: report
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Report
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The report.
+          content:
+            application/json:
+              schema:
+                title: Response Now Reports Definitions  Report  Now Get
+        '404':
+          description: No such record.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /levels/runs/{run}/steps/{step}/explanation:
+    get:
+      tags:
+      - figures
+      summary: Why Taktus did a step the way it did, from the records
+      description: What was done, by which method and why, what was rejected, what it consumed and what
+        came out — at the depth and in the language of the reader's role. Every number in it is a number
+        of the records.
+      operationId: explanation_levels_runs__run__steps__step__explanation_get
+      parameters:
+      - name: run
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run
+      - name: step
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Step
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The explanation.
+          content:
+            application/json:
+              schema:
+                title: Response Explanation Levels Runs  Run  Steps  Step  Explanation Get
+        '404':
+          description: No such record.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /summary:
+    get:
+      tags:
+      - figures
+      summary: What Taktus did in a period, per process
+      operationId: summary_summary_get
+      parameters:
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 366
+          minimum: 1
+          description: The period, in days up to now.
+          default: 30
+          title: Days
+        description: The period, in days up to now.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The summary.
+          content:
+            application/json:
+              schema:
+                title: Response Summary Summary Get
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /me/relief:
+    get:
+      tags:
+      - figures
+      summary: 'What Taktus took off you: tasks, time regained, your goals'
+      description: Yours alone unless you share it with a role. No points, levels, ranks or comparisons.
+      operationId: mine_me_relief_get
+      parameters:
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 366
+          minimum: 1
+          description: The period, in days up to now.
+          default: 30
+          title: Days
+        description: The period, in days up to now.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: Your view.
+          content:
+            application/json:
+              schema:
+                title: Response Mine Me Relief Get
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /me/relief/settings:
+    put:
+      tags:
+      - figures
+      summary: 'Your own view''s settings: whom you share it with, your goals, your line'
+      operationId: settings_me_relief_settings_put
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              title: Body
+      responses:
+        '200':
+          description: Stored.
+          content:
+            application/json:
+              schema:
+                title: Response Settings Me Relief Settings Put
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /people/{identity}/relief:
+    get:
+      tags:
+      - figures
+      summary: A person's own view, while they share it with a role you hold
+      operationId: theirs_people__identity__relief_get
+      parameters:
+      - name: identity
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Identity
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 366
+          minimum: 1
+          description: The period, in days up to now.
+          default: 30
+          title: Days
+        description: The period, in days up to now.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: Their view.
+          content:
+            application/json:
+              schema:
+                title: Response Theirs People  Identity  Relief Get
+        '404':
+          description: No such record.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /discoveries/interview:
+    get:
+      tags:
+      - figures
+      summary: The questions of the interview, guided or expert
+      operationId: interview_discoveries_interview_get
+      parameters:
+      - name: mode
+        in: query
+        required: false
+        schema:
+          type: string
+          default: guided
+          title: Mode
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The questions.
+          content:
+            application/json:
+              schema:
+                title: Response Interview Discoveries Interview Get
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+    post:
+      tags:
+      - figures
+      summary: Write the documented process from the interview's answers
+      description: The same answers give the same documented process in either mode.
+      operationId: interviewed_discoveries_interview_post
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              title: Body
+      responses:
+        '200':
+          description: The documented process.
+          content:
+            application/json:
+              schema:
+                title: Response Interviewed Discoveries Interview Post
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /discoveries:
+    get:
+      tags:
+      - figures
+      summary: Processes nobody wrote down, at their stage
+      description: The organisation's, and the patterns found for you, which only you see.
+      operationId: discoveries_discoveries_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The discovered processes.
+          content:
+            application/json:
+              schema:
+                title: Response Discoveries Discoveries Get
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+    post:
+      tags:
+      - figures
+      summary: Make a process visible
+      description: '`origin` is `interview`, `pattern` or `request`. A pattern is found for you and stays
+        yours until you agree.'
+      operationId: discover_discoveries_post
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              title: Body
+      responses:
+        '200':
+          description: Recorded.
+          content:
+            application/json:
+              schema:
+                title: Response Discover Discoveries Post
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /discoveries/{id}/agree:
+    post:
+      tags:
+      - figures
+      summary: Agree that a pattern found for you becomes the organisation's procedure
+      operationId: agree_discoveries__id__agree_post
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: Shared.
+          content:
+            application/json:
+              schema:
+                title: Response Agree Discoveries  Id  Agree Post
+        '404':
+          description: No such record.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /discoveries/{id}/stages/{stage}:
+    post:
+      tags:
+      - figures
+      summary: Take a discovered process to its next stage
+      description: 'documented (description, owner_role), valued (minutes_by_hand, cases_per_month), decided
+        (decision: automate or keep — a person''s), automated (process_id, level 1 or 2, instructions).
+        A stage out of order is refused.'
+      operationId: advance_discoveries__id__stages__stage__post
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Id
+      - name: stage
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Stage
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              title: Body
+      responses:
+        '200':
+          description: Recorded.
+          content:
+            application/json:
+              schema:
+                title: Response Advance Discoveries  Id  Stages  Stage  Post
+        '409':
+          description: 'Refused: out of order or incomplete.'
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such record.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
   /runs/{run_id}/spend:
     get:
       tags:

@@ -168,6 +168,10 @@ ACTS: dict[str, str] = {
         f"{ACT}: one request for a change and who asked it, beside the autonomy statement of "
         "the version it proposes (ADR-0091)"
     ),
+    "taktus.components.value.application.service.basis.BasisSet": (
+        f"{ACT}: one version of the organisation's value basis and who set it (ADR-0244 §2); "
+        "its rates are per role, never per person"
+    ),
     "taktus.ports.connector.CallContext": (
         f"{ACT}: one call of a connector, for whom it acts, and its attempt"
     ),
@@ -205,6 +209,22 @@ DECLARED: dict[str, str] = {
 """Every type whose numbers are declared parameters of a process, not figures of anyone."""
 
 OWN: dict[str, str] = {
+    "taktus.components.reporting.domain.model.views.OwnView": (
+        "tests/adapters/rest/test_figures.py::"
+        "test_nobody_but_the_person_reads_their_own_view_until_they_share_it"
+    ),
+    "taktus.components.reporting.domain.service.own.OwnRelief": (
+        "tests/adapters/rest/test_figures.py::"
+        "test_nobody_but_the_person_reads_their_own_view_until_they_share_it"
+    ),
+    "taktus.components.value.domain.model.discovery.DiscoveredProcess": (
+        "tests/components/value/test_discovery.py::"
+        "test_a_pattern_found_for_a_person_is_theirs_until_they_agree"
+    ),
+    "taktus.components.value.domain.service.discovery.Pattern": (
+        "tests/components/value/test_discovery.py::"
+        "test_a_pattern_found_for_a_person_is_theirs_until_they_agree"
+    ),
     "taktus.components.decision.domain.service.response_times.ResponseTimes": (
         "tests/governance/test_anchors.py::"
         "test_another_identity_cannot_read_a_decider_s_response_time_under_their_name"

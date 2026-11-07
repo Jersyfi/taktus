@@ -4,10 +4,10 @@ title: The value balance of a process
 component: value
 epic: E9
 serves: [P8, P10, P14]
-state: specified
+state: built
 version: 0.5.0
-tests: []
-adrs: {ADR-0004: ffdb1f1537f5, ADR-0010: e381de241d4a, ADR-0015: 3a42705e5561, ADR-0026: ccc4bd1f5423, ADR-0029: 37c061ef032a}
+tests: [tests/components/value/test_figures.py::test_the_balance_rests_on_the_stated_basis_and_says_so, tests/components/value/test_figures.py::test_without_time_by_hand_or_instructions_a_figure_is_withheld_never_zero, tests/components/value/test_figures.py::test_each_quadrant_carries_its_recommendation, tests/components/value/test_figures.py::test_no_figure_can_have_a_person_as_its_scope, tests/components/value/test_figures.py::test_a_rate_is_set_per_role_and_no_field_takes_a_person]
+adrs: {ADR-0004: ffdb1f1537f5, ADR-0010: e381de241d4a, ADR-0015: 3a42705e5561, ADR-0026: ccc4bd1f5423, ADR-0029: 37c061ef032a, ADR-0244: 0e3d5ef324fa}
 supersedes: null
 ---
 
@@ -78,3 +78,12 @@ work — of models, workers and compute — in one normalised unit, the Takt, an
 (ADR-0010); the cost side reads both. The definition's way to optimise an expensive process is a
 cheaper model or a tuned prompt; method selection makes a more reproducible method the first
 candidate, and a cheaper model the second (ADR-0004).
+
+## 5. What is proven so far
+
+Built (ADR-0244). By the named tests: rates are per role; cost is read from accounting; time
+saved and the revert analysis rest on the stated basis, shown as an assumption; without takeover
+instructions the revert analysis says it cannot be made; each quadrant carries its
+recommendation, optimisation naming a more reproducible method first; no figure has a person as
+its scope. Not yet: weights of the organisation's own criteria, and the aggregation per domain
+(UC-15.1) and per chain (UC-15.4).

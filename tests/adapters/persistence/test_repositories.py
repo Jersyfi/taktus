@@ -51,6 +51,11 @@ from taktus.components.process.domain.model import (
     ValueStream,
 )
 from taktus.components.reporting.domain.model import Corridor, OwnerChannel, Report
+from taktus.components.reporting.domain.model.views import (
+    OwnView,
+    ReportDefinition,
+    ViewConfiguration,
+)
 from taktus.components.run.domain.model import (
     AdapterStop,
     Deadline,
@@ -60,6 +65,7 @@ from taktus.components.run.domain.model import (
     StepState,
     WorkingTime,
 )
+from taktus.components.value.domain.model import DiscoveredProcess, ValueBasis
 from taktus.ports.persistence import WrongTenant
 from taktus.shared.v1 import Command, Plan
 
@@ -115,6 +121,11 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (CoachPolicy, samples.coach_policy),
     (CatalogueShare, samples.catalogue_share),
     (CallerCredential, samples.caller_credential),
+    (ViewConfiguration, samples.view_configuration),
+    (ReportDefinition, samples.report_definition),
+    (OwnView, samples.own_view),
+    (ValueBasis, samples.value_basis),
+    (DiscoveredProcess, samples.discovered_process),
 ]
 
 

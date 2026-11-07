@@ -1348,6 +1348,13 @@ BUSINESS: dict[str, BusinessConnector] = {
     "paypal": BusinessConnector(
         "paypal", FAKES / "billing_plans_service.py", "PAYMENTS_TOKEN", pair=True
     ),
+    "powerbi": BusinessConnector(
+        "powerbi",
+        FAKES / "business_intelligence_service.py",
+        "BI_TOKEN",
+        ("--login", "{target}", "--tenant", "example"),
+        pair=True,
+    ),
     "resend": BusinessConnector(
         "resend",
         FAKES / "mail_api_service.py",

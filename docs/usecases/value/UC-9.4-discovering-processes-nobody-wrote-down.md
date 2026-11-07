@@ -4,10 +4,10 @@ title: Discovering processes nobody wrote down
 component: value
 epic: E9
 serves: [P6, P10, P14]
-state: specified
+state: verified
 version: 0.6.0
-tests: []
-adrs: {}
+tests: [tests/components/value/test_discovery.py::test_every_stage_is_a_ledger_entry_and_none_is_reached_without_the_one_before, tests/components/value/test_discovery.py::test_a_pattern_found_for_a_person_is_theirs_until_they_agree, tests/components/value/test_discovery.py::test_the_interview_writes_the_same_process_in_the_guided_and_the_expert_mode, tests/components/value/test_discovery.py::test_a_request_recurring_in_three_weeks_is_a_pattern_for_its_person, tests/adapters/rest/test_figures.py::test_a_discovered_process_passes_its_stages_in_order_and_a_person_decides]
+adrs: {ADR-0245: 37972412cef0}
 supersedes: null
 ---
 
@@ -54,3 +54,11 @@ takeover instructions (UC-6.3); the autonomy range (UC-7.1); the guided and the 
 and the automation coach (UC-13.3); principle 14, which forbids describing how a named person works.
 Definition `UC-9.4`. The roadmap names no version; `0.6.0`, with the coach and the skill lifecycle, is
 the session's proposal.
+
+## 5. What is proven so far
+
+Built (ADR-0245). By the named tests: five stages in order, each a ledger entry, none without
+the one before; the decision is a person's and Taktus is refused; automation enters at level 1
+or 2 with takeover instructions; a pattern found in a person's requests is theirs until they
+agree, then a procedure of the organisation without their name; the interview writes the same
+documented process in the guided and the expert mode.

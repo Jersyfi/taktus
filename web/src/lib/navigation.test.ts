@@ -49,6 +49,17 @@ describe('the navigation', () => {
 		expect(currentDestination('/nowhere')).toBeNull();
 	});
 
+	it('puts the views, the value ledger and the reports for a role under steering, discoveries under starting work', () => {
+		expect(currentDestination('/views')).toBe('views');
+		expect(currentDestination('/value')).toBe('value');
+		expect(currentDestination('/role-reports')).toBe('role-reports');
+		expect(currentDestination('/reports/[id]')).toBe('today');
+		expect(currentDestination('/discoveries')).toBe('discoveries');
+		const band = (id: string) => DESTINATIONS.find((d) => d.id === id)?.band;
+		expect(['views', 'value', 'role-reports'].map(band)).toEqual(['steer', 'steer', 'steer']);
+		expect(band('discoveries')).toBe('start');
+	});
+
 	it('marks only what a line says waits, and nothing the surface refused', () => {
 		const governs: Line[] = [
 			{ kind: 'requests', href: '#/requests', text: 'Decision requests: 2 wait for you.', waiting: true },

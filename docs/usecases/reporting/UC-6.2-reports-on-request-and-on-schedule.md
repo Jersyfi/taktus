@@ -4,10 +4,10 @@ title: Reports on request and on a schedule
 component: reporting
 epic: E6
 serves: [P7, P9]
-state: specified
+state: built
 version: 0.5.0
-tests: []
-adrs: {ADR-0029: 37c061ef032a}
+tests: [tests/adapters/rest/test_figures.py::test_a_report_without_a_reader_is_refused_and_one_with_one_tells_what_bears_on_it, tests/adapters/rest/test_figures.py::test_a_quiet_period_is_one_sentence, tests/components/reporting/test_views_and_reports.py::test_a_report_needs_a_reader_and_a_schedule_needs_its_hour, tests/components/reporting/test_views_and_reports.py::test_the_first_level_carries_only_what_bears_on_the_reader]
+adrs: {ADR-0029: 37c061ef032a, ADR-0242: d86032064894}
 supersedes: null
 ---
 
@@ -46,3 +46,12 @@ incidents**, which are raised into the organisation's own tracking (UC-6.8).
 
 The views of UC-6.4 and the component that owns them (ADR-0029); the channels of UC-1.1; the
 exactness statement of UC-6.9. Definition `UC-6.2`.
+
+## 5. What is proven so far
+
+Built (ADR-0242). By the named tests: a report without a reader is refused; a scheduled one is
+said in its reader's channel once per slot; its first level carries decisions waiting for the
+role, escalations and blocked work of processes the role takes part in, figures outside their
+target and, for `owner`, a process proposed to be switched off; a quiet period is one sentence;
+no line names a person. Not yet shown by a test: that a reply to a report reaches Taktus as a
+command — it arrives through the channel's intake like every message (UC-1.1).

@@ -70,6 +70,23 @@ export async function send<T>(
 	return answered<T>(response);
 }
 
+/** A JSON replacement as the signed-in reader: settings the reader sets for themselves. A
+ * refusal is the surface's problem, never thrown. */
+export async function put<T>(
+	base: URL,
+	path: string,
+	body: unknown,
+	fetcher: typeof fetch = fetch
+): Promise<Answer<T>> {
+	const response = await fetcher(new URL(path, base), {
+		method: 'PUT',
+		credentials: 'same-origin',
+		headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+		body: JSON.stringify(body)
+	});
+	return answered<T>(response);
+}
+
 /** A delete as the signed-in reader: a share withdrawn. A refusal is the surface's problem,
  * never thrown. */
 export async function remove<T>(base: URL, path: string, fetcher: typeof fetch = fetch): Promise<Answer<T>> {

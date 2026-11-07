@@ -62,6 +62,8 @@ from taktus_connectors.netlify.operations import Config as SiteDeploysConfig
 from taktus_connectors.netlify.server import build_server as site_deploys_server
 from taktus_connectors.openai.operations import Config as ModelCostsConfig
 from taktus_connectors.openai.server import build_server as model_costs_server
+from taktus_connectors.powerbi.operations import Config as FiguresConfig
+from taktus_connectors.powerbi.server import build_server as figures_server
 from taktus_connectors.prometheus.operations import Config as MetricsConfig
 from taktus_connectors.prometheus.server import build_server as metrics_server
 from taktus_connectors.resend.api import Config as MailApiConfig
@@ -130,6 +132,9 @@ SERVERS: dict[str, Any] = {
     "warehouse": lambda: warehouse_server(
         WarehouseConfig("http://127.0.0.1:9", "example", "product_copy")
     ),
+    "figures": lambda: figures_server(
+        FiguresConfig("http://127.0.0.1:9", "http://127.0.0.1:9", "example")
+    ),
     "crm": lambda: crm_server(CrmConfig("http://127.0.0.1:9")),
     "tasks-graph": lambda: graph_tasks_server(GraphTasksConfig("http://127.0.0.1:9")),
     "tasks-rest": lambda: rest_tasks_server(RestTasksConfig("http://127.0.0.1:9", "TSK")),
@@ -170,6 +175,7 @@ SERVES = {
     "analytics": ["analytics.reports"],
     "events": ["analytics.reports"],
     "warehouse": ["warehouse.queries"],
+    "figures": ["bi.figures"],
     "crm": ["crm.contacts"],
     "tasks-graph": ["tasks.items"],
     "tasks-rest": ["tasks.items"],

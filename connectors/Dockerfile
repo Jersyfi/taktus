@@ -210,6 +210,11 @@ COPY --chown=connector:connector connectors/taktus_connectors/paypal /app/taktus
 ENTRYPOINT ["python", "-m", "taktus_connectors.paypal"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
+FROM base AS powerbi
+COPY --chown=connector:connector connectors/taktus_connectors/powerbi /app/taktus_connectors/powerbi
+ENTRYPOINT ["python", "-m", "taktus_connectors.powerbi"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
 FROM base AS prometheus
 COPY --chown=connector:connector connectors/taktus_connectors/prometheus /app/taktus_connectors/prometheus
 ENTRYPOINT ["python", "-m", "taktus_connectors.prometheus"]
