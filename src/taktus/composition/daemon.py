@@ -1318,7 +1318,9 @@ async def wire(
                 evaluations=evaluations,
                 spend=spend,
                 trials=trials,
-                workspace=workspace_of(stored, persistence, ledger, clock, ids, structure),
+                workspace=workspace_of(
+                    stored, persistence, ledger, clock, ids, structure, agents=agent_catalog
+                ),
                 gallery=Gallery(
                     settings.gallery_directory,
                     proposals,

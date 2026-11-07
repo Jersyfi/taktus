@@ -93,6 +93,9 @@ class AgentCore(Value):
     model: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_-]*$")
     """The model purpose it asks, as a step names one."""
     autonomy_level: AutonomyLevel
+    autonomy_reason: str | None = Field(default=None, min_length=1, max_length=500)
+    """Why the level, as the plan the agent was drafted in states it (ADR-0292); None for a
+    core proposed from a file."""
     grants: Grants
     state: CoreState = CoreState.HELD
     verdicts: Mapping[str, str] = Field(default_factory=dict)

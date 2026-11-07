@@ -17,6 +17,7 @@ Pure: what the draft lacks is computed here; nothing reads a store.
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import Field
@@ -30,6 +31,17 @@ PARTS: tuple[str, ...] = (
     "the autonomy level with its reason",
 )
 """The four parts of a plan, in the words a refusal names them by (ADR-0026)."""
+
+AGENT_PARTS: tuple[str, ...] = (
+    "the agent's name",
+    "its instructions",
+    "the model purpose it asks",
+    "the tools it may use",
+    "the knowledge it reads",
+    "the process it runs",
+)
+"""What an agent draft lacks besides the four parts, in the order the guided mode asks for them
+(ADR-0292 §1). The agent's role is the goal, its autonomy level and reason the plan's."""
 
 Unit = Literal["seconds", "tokens", "minor_units", "takte", "turns"]
 
@@ -61,6 +73,40 @@ class Estimate(Value):
         return f"step {self.step_id}: {amount}, computed from {self.basis}"
 
 
+class AgentPart(Value):
+    """The agent a draft works out, beside the plan's own parts (ADR-0292, UC-8.7). Named by
+    capability: what a tool, source or connector is called is checked by the catalogue when the
+    agent is registered (ADR-0287)."""
+
+    name: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9-]*$")
+    version: str = Field(default="1", pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+    instructions: str | None = Field(default=None, min_length=1, max_length=20000)
+    model: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_-]*$")
+    """The model purpose the agent asks, as a step names one."""
+    tools: tuple[str, ...] | None = None
+    """None: never stated. An empty tuple is stated: the agent may use no tool."""
+    sources: tuple[str, ...] | None = None
+    """The knowledge it reads. None: never stated; empty: it reads none."""
+    connectors: tuple[str, ...] = ()
+    formats: tuple[str, ...] = ()
+    approval_limit: Decimal | None = Field(default=None, ge=0)
+
+    def missing(self) -> tuple[str, ...]:
+        """The agent's own parts it lacks, in their order; the process it runs is the draft's."""
+        lacking: list[str] = []
+        if self.name is None:
+            lacking.append(AGENT_PARTS[0])
+        if self.instructions is None:
+            lacking.append(AGENT_PARTS[1])
+        if self.model is None:
+            lacking.append(AGENT_PARTS[2])
+        if self.tools is None:
+            lacking.append(AGENT_PARTS[3])
+        if self.sources is None:
+            lacking.append(AGENT_PARTS[4])
+        return tuple(lacking)
+
+
 class PlanDraft(Value):
     id: str = Field(min_length=1)
     tenant: str = Field(min_length=1)
@@ -78,6 +124,8 @@ class PlanDraft(Value):
     autonomy_reason: str | None = Field(default=None, min_length=1, max_length=500)
     estimates: tuple[Estimate, ...] = ()
     results_in: PlanResult = PlanResult.RUN
+    agent: AgentPart | None = None
+    """The agent the draft works out, or None for a plan that is no agent (ADR-0292)."""
     changed_by: str = Field(min_length=1)
     changed_at: datetime
     commissioned_version: int | None = Field(default=None, ge=1)
@@ -106,6 +154,10 @@ class PlanDraft(Value):
             lacking.append(PARTS[2])
         if self.autonomy_level is None or self.autonomy_reason is None:
             lacking.append(PARTS[3])
+        if self.agent is not None:
+            lacking.extend(self.agent.missing())
+            if self.process_version is None:
+                lacking.append(AGENT_PARTS[5])
         return tuple(lacking)
 
     def unestimable(self) -> tuple[str, ...]:

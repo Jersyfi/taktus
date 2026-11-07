@@ -116,6 +116,12 @@ class AgentCatalog:
             raise AgentError("unknown", f"the agent {agent!r} has no such core")
         return agents.describe(core, await self.profiles(tenant, agent))
 
+    def check_named(self, identifier: str, grants: Grants) -> None:
+        """`AgentError` with the reason `product` where a grant is named after a product: the
+        check `propose_core` and `set_profile` make, asked before anything is written
+        (ADR-0292 §3)."""
+        self._named_by_function(identifier, grants)
+
     def _named_by_function(self, identifier: str, grants: Grants) -> None:
         found = agents.named_by_product(grants, self._products)
         if found:
@@ -146,9 +152,12 @@ class AgentCatalog:
         grants: Grants,
         model: str | None = None,
         by: str | None = None,
+        autonomy_reason: str | None = None,
+        plan_id: str | None = None,
     ) -> AgentCore:
         """A new core version, held until every profile's evaluation passed on it; active at
-        once while the agent has no profile."""
+        once while the agent has no profile. `plan_id` names the commissioned plan the core was
+        drafted in, recorded with the proposal (ADR-0292)."""
         core_id = f"{agent}@{version}"
         self._named_by_function(core_id, grants)
         async with self._work.transaction(tenant):
@@ -164,11 +173,14 @@ class AgentCatalog:
                 flow=flow,
                 model=model,
                 autonomy_level=autonomy_level,
+                autonomy_reason=autonomy_reason,
                 grants=grants,
                 proposed_at=self._clock.now(),
             )
             await self._cores.put(tenant, core)
-            await self._record(tenant, CORE_PROPOSED, core_id, "proposed", actor=by)
+            await self._record(
+                tenant, CORE_PROPOSED, core_id, "proposed", actor=by, plan_id=plan_id
+            )
         return await self.activate(tenant, core_id)
 
     async def record_verdict(
@@ -294,13 +306,20 @@ class AgentCatalog:
             )
 
     async def _record(
-        self, tenant: Tenant, kind: str, agent_id: str, outcome: str, *, actor: str | None = None
+        self,
+        tenant: Tenant,
+        kind: str,
+        agent_id: str,
+        outcome: str,
+        *,
+        actor: str | None = None,
+        plan_id: str | None = None,
     ) -> None:
         await self._ledger.record(
             tenant,
             Fact(
                 kind=kind,
-                refs=LedgerRefs(tenant=tenant, agent_id=agent_id, actor=actor),
+                refs=LedgerRefs(tenant=tenant, agent_id=agent_id, actor=actor, plan_id=plan_id),
                 outcome=outcome,
             ),
         )

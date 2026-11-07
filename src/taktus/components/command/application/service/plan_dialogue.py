@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from taktus.components.command.domain.model.planning import Estimate, PlanDraft
+from taktus.components.command.domain.model.planning import AgentPart, Estimate, PlanDraft
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
@@ -46,6 +46,7 @@ REVISABLE = frozenset(
         "autonomy_reason",
         "estimates",
         "results_in",
+        "agent",
     }
 )
 
@@ -90,6 +91,8 @@ class OpenDraft:
     autonomy_reason: str | None = None
     estimates: Sequence[Estimate] = ()
     results_in: PlanResult = PlanResult.RUN
+    agent: AgentPart | None = None
+    """An agent draft's agent part, as far as it is known (ADR-0292)."""
 
 
 @dataclass(frozen=True)
@@ -142,6 +145,7 @@ class PlanDialogue:
             autonomy_reason=command.autonomy_reason,
             estimates=tuple(command.estimates),
             results_in=command.results_in,
+            agent=command.agent,
             changed_by=command.command.identity,
             changed_at=self._clock.now(),
         )

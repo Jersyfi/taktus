@@ -18,6 +18,7 @@ from collections.abc import Mapping
 from datetime import datetime
 from typing import Any
 
+from taktus.components.catalog.application.service import AgentCatalog
 from taktus.components.command.application.service import (
     CommissionDraft,
     OpenDraft,
@@ -25,7 +26,7 @@ from taktus.components.command.application.service import (
     PlanningError,
     ReviseDraft,
 )
-from taktus.components.command.domain.model import Estimate, PlanDraft
+from taktus.components.command.domain.model import AgentPart, Estimate, PlanDraft
 from taktus.components.command.domain.service.guided import (
     SAFE_LEVELS,
     Mode,
@@ -33,6 +34,7 @@ from taktus.components.command.domain.service.guided import (
     settings,
 )
 from taktus.components.process.domain.model import ProcessVersion
+from taktus.composition.agent_drafting import AgentDrafts
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 from taktus.shared.v1 import Capability, Command, Intent, Plan, PlanResult, ReplyTo, Step
@@ -48,7 +50,11 @@ class PlanActs:
         work: UnitOfWork,
         clock: Clock,
         ids: Identifiers,
+        agents: AgentCatalog | None = None,
     ) -> None:
+        self._agents = None if agents is None else AgentDrafts(agents, dialogue, versions, work)
+        """Where an agent draft is registered when commissioned (ADR-0292); None: an agent
+        draft is not commissioned here."""
         self._dialogue = dialogue
         self._drafts = drafts
         self._commands = commands
@@ -64,9 +70,11 @@ class PlanActs:
         org_path: tuple[str, ...],
         said: str,
         channel: Capability = "channel.web",
+        *,
+        agent: bool = False,
     ) -> PlanDraft:
         """A new draft for what the person said; its goal is what they said, where they said
-        anything."""
+        anything. `agent`: the draft works out an agent, whose role the goal is (ADR-0292)."""
         now = self._clock.now()
         command = Command(
             id=self._ids.new("cmd"),
@@ -78,7 +86,14 @@ class PlanActs:
             received_at=now,
         )
         goal = said.strip() or None
-        return await self._dialogue.open(OpenDraft(command=command, tenant=tenant, goal=goal))
+        return await self._dialogue.open(
+            OpenDraft(
+                command=command,
+                tenant=tenant,
+                goal=goal,
+                agent=AgentPart() if agent else None,
+            )
+        )
 
     async def mine(self, tenant: Tenant, identity: str) -> list[PlanDraft]:
         """The drafts of the person's own commands, newest change first."""
@@ -126,7 +141,15 @@ class PlanActs:
         )
 
     async def commission(self, tenant: Tenant, identity: str, draft_id: str) -> Plan:
-        await self.get(tenant, identity, draft_id)
+        draft = await self.get(tenant, identity, draft_id)
+        if draft.agent is not None:
+            if self._agents is None:
+                raise PlanningError(
+                    "an agent draft is commissioned where the catalogue registers the agent; "
+                    "it never becomes a plan alone (ADR-0292)"
+                )
+            plan, _ = await self._agents.commission(tenant, identity, draft)
+            return plan
         return await self._dialogue.commission(
             CommissionDraft(draft_id=draft_id, tenant=tenant, by=identity)
         )
@@ -198,7 +221,9 @@ class PlanActs:
                 raise PlanningError("the guided start offers level 1 or 2 (ADR-0026)")
             return {"autonomy_level": level}
         if field == "steps":
-            return await self._steps(tenant, value)
+            return await self._agent_tools(tenant, draft, await self._steps(tenant, value))
+        if field == "agent" or field.startswith("agent."):
+            return {"agent": _agent_part(draft, field, value)}
         if field == "estimates":
             return {"estimates": self._estimates(draft, value, step_id)}
         if field == "results_in":
@@ -219,6 +244,20 @@ class PlanActs:
             return {"steps": tuple(Step.model_validate(s) for s in value)}
         raise PlanningError("steps are a process version to choose, or the steps themselves")
 
+    async def _agent_tools(
+        self, tenant: Tenant, draft: PlanDraft, changes: dict[str, Any]
+    ) -> dict[str, Any]:
+        """For an agent draft whose tools were never stated, the tools of the chosen flow: what
+        it uses and nothing more (ADR-0292 §2)."""
+        chosen = changes.get("process_version")
+        agent = draft.agent
+        if agent is None or agent.tools is not None or not isinstance(chosen, str):
+            return changes
+        if self._agents is None:
+            return changes
+        tools = await self._agents.proposed_tools(tenant, chosen)
+        return {**changes, "agent": agent.model_copy(update={"tools": tools})}
+
     @staticmethod
     def _estimates(draft: PlanDraft, value: Any, step_id: str | None) -> tuple[Estimate, ...]:
         given = value if isinstance(value, list) else [value]
@@ -229,3 +268,30 @@ class PlanActs:
             estimate = Estimate.model_validate({"step_id": step_id, **one})
             found[estimate.step_id] = estimate
         return tuple(found.values())
+
+
+LISTED = frozenset({"tools", "sources", "connectors", "formats"})
+
+
+def _agent_part(draft: PlanDraft, field: str, value: Any) -> AgentPart:
+    """The agent part with one answer, or the expert mode's mapping, merged in (ADR-0292). A
+    list part is given as a list or as words separated by commas; `none` states it empty."""
+    if draft.agent is None and field != "agent":
+        raise PlanningError("this draft works out no agent; set its agent part to make it one")
+    current = (draft.agent or AgentPart()).model_dump()
+    if field == "agent":
+        if not isinstance(value, Mapping):
+            raise PlanningError("the agent part is a mapping of its fields")
+        given = dict(value)
+    else:
+        given = {field.removeprefix("agent."): value}
+    for name, one in given.items():
+        if name in LISTED and isinstance(one, str):
+            words = [w.strip() for w in one.split(",") if w.strip()]
+            given[name] = () if [w.lower() for w in words] in ([], ["none"]) else tuple(words)
+        elif isinstance(one, str):
+            given[name] = one.strip() or None
+    unknown = sorted(set(given) - set(AgentPart.model_fields))
+    if unknown:
+        raise PlanningError(f"an agent has no part named {', '.join(unknown)}")
+    return AgentPart.model_validate({**current, **given})

@@ -171,7 +171,13 @@ class PlanActs(Protocol):
     its steps from the process component."""
 
     async def open(
-        self, tenant: Tenant, identity: str, org_path: tuple[str, ...], said: str
+        self,
+        tenant: Tenant,
+        identity: str,
+        org_path: tuple[str, ...],
+        said: str,
+        *,
+        agent: bool = False,
     ) -> PlanDraft: ...
 
     async def mine(self, tenant: Tenant, identity: str) -> list[PlanDraft]: ...

@@ -13,6 +13,7 @@ import re
 from dataclasses import dataclass
 from typing import Protocol
 
+from taktus.components.catalog.application.service import AgentCatalog
 from taktus.components.command.application.service import PlanDialogue
 from taktus.components.command.application.service.coach import Coach
 from taktus.components.command.application.service.sessions import Passage, Sessions
@@ -161,13 +162,17 @@ def workspace_of(
     clock: Clock,
     ids: Identifiers,
     structure: OrganisationStructure,
+    *,
+    agents: AgentCatalog | None = None,
 ) -> Workspace:
+    """`agents`: the catalogue an agent drafted in the plan dialogue is registered in
+    (ADR-0292); None where the wiring has none."""
     commands = stored(Command)
     drafts = stored(PlanDraft)
     versions = stored(ProcessVersion)
     dialogue = PlanDialogue(commands, drafts, stored(Plan), ledger, work, clock, ids)
     return Workspace(
-        planning=PlanActs(dialogue, drafts, commands, versions, work, clock, ids),
+        planning=PlanActs(dialogue, drafts, commands, versions, work, clock, ids, agents=agents),
         coach=Coach(
             stored(CoachSettings),
             stored(CoachHint),

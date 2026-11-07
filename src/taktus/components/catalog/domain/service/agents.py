@@ -138,6 +138,8 @@ def describe(core: AgentCore, profiles: Sequence[RoleProfile]) -> str:
     if core.model is not None:
         lines.append(f"It asks a model of the purpose `{core.model}`.")
     lines.append(f"At autonomy level {level} {LEVELS[level]}.")
+    if core.autonomy_reason is not None:
+        lines.append(f"The level was chosen because: {core.autonomy_reason.strip()}")
     lines += ["", "## What it reads", ""]
     lines.append(_sentence("Knowledge sources", grants.sources))
     lines.append(_sentence("Connectors", grants.connectors))

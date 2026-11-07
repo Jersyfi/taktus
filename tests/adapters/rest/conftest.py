@@ -28,6 +28,8 @@ from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.adapters.driving.rest import build_app
 from taktus.adapters.driving.rest.wiring import ProposalActs
 from taktus.components.accounting.application.service import SpendHandler
+from taktus.components.catalog.application.service import AgentCatalog
+from taktus.components.catalog.domain.model import AgentCore, RoleProfile
 from taktus.components.command.application.service import (
     CommissionPlanHandler,
     CompleteIntakeHandler,
@@ -264,6 +266,8 @@ class Services:
     instance has none, and accepting is refused."""
     built_agent: AgentSurface | None = None
     built_workspace: Workspace | None = None
+    built_agents: AgentCatalog | None = None
+    """The catalogue an agent drafted in the plan dialogue is registered in (ADR-0292)."""
     requested: Any = None
     """The data-protection requests (ADR-0176); a test that reaches them sets them. What they
     find and erase is held by `tests/composition/test_subjects.py`."""
@@ -374,8 +378,17 @@ class Services:
             def of[T: Stored](kind: type[T]) -> Repository[T]:
                 return MemoryRepository(self.persistence, kind)
 
+            self.built_agents = AgentCatalog(
+                of(AgentCore), of(RoleProfile), self.persistence, self.ledger, self.clock
+            )
             self.built_workspace = workspace_of(
-                of, self.persistence, self.ledger, self.clock, self.ids, self.identity.structure
+                of,
+                self.persistence,
+                self.ledger,
+                self.clock,
+                self.ids,
+                self.identity.structure,
+                agents=self.built_agents,
             )
         return self.built_workspace
 
