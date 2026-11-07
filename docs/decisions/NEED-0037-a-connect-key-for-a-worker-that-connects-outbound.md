@@ -67,3 +67,18 @@ the record that names `binding: outbound`.
 
 `taktusctl conformance list` on the instance shows the worker `connected-reference` with a
 record whose configuration names `binding: outbound`.
+
+## Outcome
+
+**Provided:** 2026-11-04
+**Provided by:** the session generated the key into the vault (NEED-0040, DEC-0224); the owner
+created the Secret on the cluster and the instance's values naming the worker.
+**Confirmed by:** section 7, on 2026-11-07, on the instance at 0.2.0-rc.37 with the reference
+worker connected outbound from a machine outside the cluster. `taktusctl conformance record
+worker.connected-reference` recorded `conformance.tested` (ledger seq 12917), taken under
+`binding: outbound`, version 1.3.0, serving `shell.sandboxed`, `shell.script` and
+`workspace.isolated`. No check failed. W-08, W-13 and W-15 were inconclusive: the worker's
+profile writes no log the suite reads over the relay, reaches no host, and was not driven to its
+capacity. It needed #673, which let `taktusctl` reach a connected worker through the database's
+relay. No value was printed.
+**Recorded in:** this pull request
