@@ -502,6 +502,7 @@ def parse_bundle(bundle: Document) -> ProcessVersion:
             case=bundle.get("case"),
             takeover=_takeover(bundle.get("takeover")),
             escalation=_escalation(bundle.get("escalation")),
+            heal_limit=bundle.get("heal_limit", 3),
             author=bundle.get("author"),
             reason=bundle.get("reason"),
         )

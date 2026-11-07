@@ -81,6 +81,8 @@ def bundle_of(
         bundle["case"] = version.case
     if version.takeover is not None:
         bundle["takeover"] = version.takeover.document()
+    if version.heal_limit != 3:
+        bundle["heal_limit"] = version.heal_limit
     if version.escalation is not None:
         bundle["escalation"] = {
             "role": version.escalation.role,

@@ -63,6 +63,7 @@ def every_field() -> dict[str, Any]:
     ]
     document["slo"] = {"freshness": "24h", "latency": "90s", "completion": 0.95}
     document["escalation"] = {"role": "support", "react_within": "30m", "path": "ledger"}
+    document["heal_limit"] = 5
     document["case"] = "due"  # the input that names a run's case (ADR-0216)
     document["expect"] = {"schedule": "0 7 * * 1-5", "bound": "2h"}
     document["open_work"] = {

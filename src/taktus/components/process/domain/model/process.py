@@ -392,6 +392,9 @@ class ProcessVersion(Value):
     """How a person runs this version without Taktus (UC-6.3, ADR-0180). Registration requires
     it; None only on a version stored before it was required, which is read as it is."""
     escalation: Escalation | None = None
+    heal_limit: int = Field(default=3, ge=1)
+    """How often the same failure of a step is healed before Taktus says it is a design fault
+    of the process (UC-4.6, ADR-0254 §2). At least one: it cannot be switched off."""
     """Who a failure's escalation reaches, by which path, and the time to react (ADR-0252).
     None: the tenant's owner, through the owner-facing channel, without a time to react."""
     author: str | None = None

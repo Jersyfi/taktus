@@ -211,6 +211,7 @@ from taktus.composition.findings import (
 from taktus.composition.gallery import Gallery
 from taktus.composition.guides import InstanceGuides, served_directory
 from taktus.composition.interfaces import broken_interfaces, interfaces_tick
+from taktus.composition.ledger_signal import LedgerSignal, ledger_signal_tick
 from taktus.composition.levels import RepositoryLevelRecords, VersionStatements
 from taktus.composition.live import LiveHub, LiveOptions, Records, run_listener, state_of
 from taktus.composition.logging import configure, log_effective_configuration
@@ -218,6 +219,7 @@ from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.maturation import InstanceMaturation, RepositoryScores, maturation_wiring
 from taktus.composition.maturity import CatalogMaturities, InstanceCatalogue
 from taktus.composition.moves import MethodMoves
+from taktus.composition.objectives import ObjectivesWatch, objectives_tick
 from taktus.composition.objects import object_store_of
 from taktus.composition.operation import OperationRecords
 from taktus.composition.org_units import OrgUnitsOfTheRun
@@ -323,6 +325,12 @@ class Wired:
     escalations: EscalationWatch
     """Every failure's escalation delivered with its situation package, and watched against
     its process's time to react, by the scheduler once a minute while it leads (ADR-0252)."""
+    objectives: ObjectivesWatch
+    """Every ended run measured against its process's objectives, and a failure healed again
+    and again said, by the scheduler once a minute while it leads (ADR-0254)."""
+    ledger_signal: LedgerSignal
+    """The ledger exported as a telemetry signal entry by entry, by the scheduler's leader
+    every few seconds (ADR-0253 §3)."""
     expected: ExpectedRunsWatch
     """The watch over expected runs the scheduler makes once a minute while it leads: a run
     that did not happen raises an incident (ADR-0107)."""
@@ -1261,6 +1269,16 @@ async def wire(
                     clock=clock,
                     form=shape,
                 ),
+                objectives=ObjectivesWatch(
+                    ledger=ledger,
+                    versions=PostgresRepository(persistence, ProcessVersion),
+                    objects=objects,
+                    work=persistence,
+                    clock=clock,
+                    channels=owner.channel,
+                    raising=owner.raising,
+                ),
+                ledger_signal=LedgerSignal(ledger_store, persistence, telemetry),
                 escalations=EscalationWatch(
                     ledger=ledger,
                     runs=runs,
@@ -1615,6 +1633,11 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
         # And it delivers every failure's escalation with its situation package, and records
         # one that passed its time to react (ADR-0252).
         watch_escalations = escalations_tick(wired.escalations, wired.tenants, wired.clock)
+        # And it exports every new ledger entry as a telemetry signal (ADR-0253 §3).
+        # And it measures every ended run against its process's objectives, and says a
+        # failure healed again and again (ADR-0254).
+        measure_objectives = objectives_tick(wired.objectives, wired.tenants, wired.clock)
+        signal_ledger = ledger_signal_tick(wired.ledger_signal, wired.tenants, wired.clock)
         # And it judges every signal against its corridor, and raises the daily report
         # (ADR-0109).
         judge_signals = signals_tick(wired.signals, wired.tenants, wired.clock)
@@ -1662,6 +1685,8 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
             await wired.stops.tick()
             await watch_expected()
             await watch_escalations()
+            await measure_objectives()
+            await signal_ledger()
             await tick()
             await send_findings()
             await report_interfaces()
