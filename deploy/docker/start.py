@@ -27,8 +27,10 @@ import platform
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 COMPOSE_YAML = ROOT / "deploy" / "docker" / "compose.yml"
@@ -95,6 +97,64 @@ def seconds(start: datetime, end: datetime | None) -> float | None:
     return None if end is None else round((end - start).total_seconds(), 1)
 
 
+def wait_for_rehearsal(
+    taktusctl: Callable[..., subprocess.CompletedProcess[str]],
+    tenant: str,
+    started: datetime,
+    give_up_after: float | None,
+    poll_seconds: float = POLL_SECONDS,
+) -> tuple[dict[str, str | None], datetime | None, bool]:
+    """The clock (ADR-0136 §6): asks `taktusctl first rehearsal` until the tenant's first
+    rehearsal has finished, or the time to give up has passed, or a person stopped it. What it
+    read last, when the rehearsal finished, and whether the clock was stopped by hand. Shared
+    with the cluster's `deploy/k8s/start.py` (ADR-0228)."""
+    reading: dict[str, str | None] = {}
+    try:
+        while True:
+            answer = taktusctl("first", "rehearsal", "--tenant", tenant)
+            if answer.returncode == 0 and answer.stdout.strip():
+                reading = json.loads(answer.stdout.strip().splitlines()[-1])
+                if reading.get("rehearsal_finished_at"):
+                    finished = datetime.fromisoformat(str(reading["rehearsal_finished_at"]))
+                    return reading, finished, False
+            elapsed = (now() - started).total_seconds()
+            if give_up_after is not None and elapsed > give_up_after:
+                return reading, None, False
+            time.sleep(poll_seconds)
+    except KeyboardInterrupt:
+        return reading, None, True
+
+
+def machine() -> dict[str, object]:
+    return {
+        "system": platform.system(),
+        "release": platform.release(),
+        "architecture": platform.machine(),
+        "processors": os.cpu_count(),
+    }
+
+
+def told(record: dict[str, Any], path: str, *, stopped: bool, before: bool) -> int:
+    """The measurement written and said; the exit code of the clock."""
+    Path(path).write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    total = record["seconds"]["total"]
+    if stopped:
+        print(f"\nstart: the clock was stopped; Taktus keeps running. Written: {path}")
+        return 130
+    if before:
+        print("\nstart: this tenant's first rehearsal finished before; nothing was measured.")
+        return 0
+    if total is None:
+        print(f"\nstart: no rehearsal finished in time. Written: {path}")
+        return 1
+    minutes, rest = divmod(int(total), 60)
+    print(f"\nstart: your first rehearsal finished {minutes} min {rest} s after the install began.")
+    for name, value in record["seconds"].items():
+        print(f"  {name:<18} {value} s")
+    print(f"Written: {path}")
+    return 0
+
+
 def main() -> int:
     # Each line reaches the person, or the file the output goes to, as it is printed: the key
     # and the instructions must not wait in a buffer behind the clock.
@@ -141,23 +201,9 @@ def main() -> int:
         "runs until that rehearsal has finished. Ctrl-C stops the clock; Taktus keeps running."
     )
 
-    reading: dict[str, str | None] = {}
-    finished: datetime | None = None
-    stopped = False
-    try:
-        while True:
-            answer = install.taktusctl("first", "rehearsal", "--tenant", tenant)
-            if answer.returncode == 0 and answer.stdout.strip():
-                reading = json.loads(answer.stdout.strip().splitlines()[-1])
-                if reading.get("rehearsal_finished_at"):
-                    finished = datetime.fromisoformat(str(reading["rehearsal_finished_at"]))
-                    break
-            elapsed = (now() - marks["started"]).total_seconds()
-            if options.give_up_after is not None and elapsed > options.give_up_after:
-                break
-            time.sleep(POLL_SECONDS)
-    except KeyboardInterrupt:
-        stopped = True
+    reading, finished, stopped = wait_for_rehearsal(
+        install.taktusctl, tenant, marks["started"], options.give_up_after
+    )
     started_rehearsal = reading.get("rehearsal_started_at")
     rehearsal_started = None if not started_rehearsal else datetime.fromisoformat(started_rehearsal)
     before = finished is not None and finished < marks["started"]
@@ -187,29 +233,9 @@ def main() -> int:
         "rehearsal_run": reading.get("run"),
         "finished_before_this_start": before,
         "clock_stopped_by_hand": stopped,
-        "machine": {
-            "system": platform.system(),
-            "release": platform.release(),
-            "architecture": platform.machine(),
-            "processors": os.cpu_count(),
-        },
+        "machine": machine(),
     }
-    Path(options.record).write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
-    if stopped:
-        print(f"\nstart: the clock was stopped; Taktus keeps running. Written: {options.record}")
-        return 130
-    if before:
-        print("\nstart: this tenant's first rehearsal finished before; nothing was measured.")
-        return 0
-    if total is None:
-        print(f"\nstart: no rehearsal finished in time. Written: {options.record}")
-        return 1
-    minutes, rest = divmod(int(total), 60)
-    print(f"\nstart: your first rehearsal finished {minutes} min {rest} s after the install began.")
-    for name, value in record["seconds"].items():  # type: ignore[union-attr]
-        print(f"  {name:<18} {value} s")
-    print(f"Written: {options.record}")
-    return 0
+    return told(record, options.record, stopped=stopped, before=before)
 
 
 if __name__ == "__main__":

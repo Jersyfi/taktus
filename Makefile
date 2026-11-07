@@ -212,6 +212,13 @@ up: need-docker ## Bring Taktus up: two containers, migrations applied, ready
 start: need-docker ## Install on one machine in one command: up, the first tenant and its key, and the clock to a first rehearsed process
 	python3 deploy/docker/start.py $(if $(NAME),--name "$(NAME)")
 
+# The same on a cluster (ADR-0228): the chart installed with the operator's values, the first
+# tenant created in a pod of the control plane, and the clock (deploy/k8s/start.py). VALUES= the
+# values file, ADDRESS= the web app's address; INSTALLED=1 takes the release as it stands.
+.PHONY: start-cluster
+start-cluster: ## Install on a cluster in one command: the chart, the first tenant and its key, and the clock to a first rehearsed process
+	python3 deploy/k8s/start.py --address "$(ADDRESS)" $(if $(VALUES),--values "$(VALUES)") $(if $(INSTALLED),--installed) $(if $(NAME),--name "$(NAME)") $(if $(NAMESPACE),--namespace "$(NAMESPACE)")
+
 .PHONY: up-dev
 up-dev: need-docker ## The same, plus the reference worker in its own image, for development
 	deploy/docker/secrets.sh
