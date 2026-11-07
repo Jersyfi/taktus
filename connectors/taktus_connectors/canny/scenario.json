@@ -1,0 +1,30 @@
+{
+  "credentials": {
+    "actions": "FEEDBACK_TOKEN"
+  },
+  "read": {
+    "operation": "feedback.posts.list",
+    "input": {
+      "board": "b0ard1",
+      "limit": 10
+    }
+  },
+  "writes": [
+    {
+      "operation": "feedback.posts.create",
+      "input": {
+        "board": "b0ard1",
+        "email": "person1@customer.example",
+        "title": "Conformance wish {{unique}}",
+        "details": "A wish the conformance suite files."
+      }
+    }
+  ],
+  "invalid": {
+    "operation": "feedback.posts.list",
+    "input": {
+      "board": "unknownboard"
+    },
+    "expected_cause": "invalid"
+  }
+}
