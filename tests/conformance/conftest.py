@@ -1130,12 +1130,18 @@ BUSINESS: dict[str, BusinessConnector] = {
         "einvoice", FAKES / "document_inbox_service.py", "DOCUMENTS_TOKEN"
     ),
     "expiry": BusinessConnector("expiry", FAKES / "expiry_service.py", "EXPIRY_TOKEN"),
+    "freshdesk": BusinessConnector(
+        "freshdesk", FAKES / "support_desk_service.py", "HELPDESK_TOKEN"
+    ),
     "kubernetes": BusinessConnector("kubernetes", FAKES / "workload_cluster.py", "WORKLOADS_TOKEN"),
     "openai": BusinessConnector("openai", FAKES / "model_costs_service.py", "MODEL_COSTS_TOKEN"),
     "sentry": BusinessConnector(
         "sentry", FAKES / "error_tracking_service.py", "ERRORS_TOKEN", ("--organization", "example")
     ),
     "stripe": BusinessConnector("stripe", FAKES / "payment_service.py", "PAYMENTS_TOKEN"),
+    "zendesk": BusinessConnector(
+        "zendesk", FAKES / "helpdesk_service.py", "HELPDESK_TOKEN", pair=True
+    ),
 }
 
 
