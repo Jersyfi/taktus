@@ -149,7 +149,8 @@ def pull_output(pull: Json) -> Json:
         "head_sha": str(pull.get("head", {}).get("sha") or "") or None,
         "base": str(pull.get("base", {}).get("ref", "")),
         "draft": bool(pull.get("draft", False)),
-        "merged": bool(pull.get("merged", False)),
+        # A pull request in a list carries `merged_at` and no `merged` (the service's list).
+        "merged": bool(pull.get("merged", False) or pull.get("merged_at")),
     }
 
 
@@ -1070,6 +1071,7 @@ def _listed_pull(pull: Json, now: datetime) -> Json:
         "updated_at": str(pull.get("updated_at") or pull.get("created_at", "")),
         "idle_hours": _whole(pull.get("updated_at") or pull.get("created_at"), now, 3600),
         "open_hours": _whole(pull.get("created_at"), now, 3600),
+        "merged_hours": _whole(pull.get("merged_at"), now, 3600),
     }
 
 
