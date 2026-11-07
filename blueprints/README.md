@@ -12,6 +12,15 @@ A blueprint is a deployment of the core, not a capability of it. Its processes n
 capability only, so that replacing the accounting system or the customer system behind a domain breaks
 none of them.
 
+A blueprint's `blueprint.yaml` enters the catalogue only complete: its id, name, domain and
+version; each process with its usual level and reason, taken from the bundle it names; every
+capability its bundles call; its value criteria; and at least one act that stays with a person.
+`taktusctl domain check` names every part that is missing. An organisation instantiates it with
+`taktusctl domain start`: Taktus asks which tool serves each capability and who owns the domain,
+and once both are answered proposes every process at level 1 or 2. A person commissions each
+proposal; a later version of the blueprint is offered the same way, never applied (ADR-0263).
+`taktusctl domain export` copies a blueprint's files as they are.
+
 ## The blueprints of this repository
 
 | Blueprint | What it is | State |

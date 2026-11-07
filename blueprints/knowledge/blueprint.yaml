@@ -10,6 +10,7 @@ metadata:
   name: Knowledge
   domain: knowledge
   maturity: experimental       # draft | experimental | verified | reference
+  version: "1"                 # a later version is offered to an instance, never applied (ADR-0263)
 
 # Capabilities, never product names. Mapping to an adapter is configuration.
 requires:
@@ -21,13 +22,23 @@ requires:
     - purpose: support       # the answer from the documents
     - purpose: check         # K-02: the answer checked, and classified for promises
 
+# What stays with a person regardless of the autonomy level: which sources are connected, and
+# which person's own credential a source is read with (ADR-0264, ADR-0265).
 anchors:
-  strategic: []
+  strategic:
+    - source.connect
+    - credential.map
   legal: []
+
+# What the domain's value balance keeps (UC-9.3). No figure assesses a person (principle 14).
+value_criteria:
+  cost: [ ai_consumption, compute ]
+  benefit: [ time_to_answer, answers_with_sources ]
 
 processes:
   - id: K-01
     name: Answer from knowledge
+    bundle: processes/K-01-answer-from-knowledge.yaml
     autonomy:
       level: 3
       reason: it reads with the asker's own rights and writes nothing outside; every statement names the documents it rests on, checked by rule

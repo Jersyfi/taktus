@@ -78,6 +78,7 @@ from taktus.components.accounting.application.service import (
 from taktus.components.catalog.application.service import (
     AgentCatalog,
     CatalogueInstalls,
+    DomainInstances,
     RecordRemovalResultHandler,
     RunConformanceHandler,
     SkillCatalog,
@@ -86,6 +87,7 @@ from taktus.components.catalog.domain.model import (
     AdapterMaturity,
     AgentCore,
     CatalogueInstallation,
+    DomainInstance,
     RoleProfile,
     SkillOwnership,
     SkillPolicy,
@@ -149,6 +151,12 @@ from taktus.composition.catalogue import CatalogueAuthor, InstanceCatalogueIndex
 from taktus.composition.conformance import InstanceSuites, worker_suites
 from taktus.composition.decisions import decision_wiring
 from taktus.composition.defects import CorrectionRequests
+from taktus.composition.domain_blueprints import (
+    DeclaredAdapters,
+    DomainBlueprints,
+    KnownPeople,
+    ProposalsOfProcesses,
+)
 from taktus.composition.evaluations import Evaluations
 from taktus.composition.execution import (
     connector_pool,
@@ -703,6 +711,31 @@ class LocalWiring:
                     ),
                     versions=stores.of(ProcessVersion),
                     work=stores.work,
+                ),
+                domains=DomainBlueprints(
+                    DomainInstances(
+                        stores.of(DomainInstance),
+                        stores.work,
+                        ProposalsOfProcesses(
+                            Proposals(
+                                stores.of(ProcessVersion),
+                                stores.of(Process),
+                                stores.of(Proposal),
+                                stores.work,
+                                clock,
+                                ids,
+                                administration,
+                            ),
+                            stores.of(ProcessVersion),
+                            stores.work,
+                        ),
+                        KnownPeople(identities),
+                        DeclaredAdapters.shipped(),
+                        clock,
+                        ids,
+                    ),
+                    runs,
+                    stores.work,
                 ),
                 deactivate=DeactivateProcessHandler(stores.of(Process), stores.work, ledger),
                 register_version=register_version,

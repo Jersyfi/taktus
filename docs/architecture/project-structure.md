@@ -551,6 +551,17 @@ role it would tie the core to a model stack and the removal test would be lost.
   on the command line alike. `taktusctl catalogue` (`adapters/driving/cli/catalogue_command.py`)
   reaches it through `catalogue_index` and `catalogue_author` of the command line's wiring; the
   table `catalogue_installation` is migration 0096.
+- **Domain blueprints** (ADR-0263, UC-15.1) are the catalog component's
+  `domain/model/blueprint.py` (the blueprint, what a bundle came to, the instance and its
+  answers, the offer, the figures per domain), `domain/service/blueprints.py` (the admission
+  with every finding, the open questions, the starting level, the runs counted per domain) and
+  `application/service/domains.py` (`DomainInstances`, the one writer of the instance), over the
+  ports of `ports/domains.py`: `ProcessProposals`, `People` and `Adapters`.
+  `composition/domain_blueprints.py` reads a blueprint's directory, holds each bundle to
+  `parse_bundle`, answers the three ports from `Proposals`, the identity directory and the
+  release's list of connectors, and exports a blueprint as its files. `taktusctl domain`
+  (`adapters/driving/cli/domain_command.py`) reaches it through `domains` of the command line's
+  wiring; the table `domain_instance` is migration 0106.
 - **A halted run raised and resumed** is `taktusctl resume` (`adapters/driving/cli/resume_command.py`, #458): it reads no bundle, so the process's active version stays; it raises a run's money or its quota (DEC-0208).
 - **Memory once started.** Once wired, the daemon collects and freezes what its start left
   alive — the modules, the wiring — so that a full garbage collection, which stops every thread
