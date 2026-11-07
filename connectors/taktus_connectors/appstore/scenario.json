@@ -1,0 +1,32 @@
+{
+  "credentials": {
+    "actions": "STORE_REVIEWS_KEY"
+  },
+  "read": {
+    "operation": "stores.reviews.list",
+    "input": {
+      "app": "1234567890",
+      "ratings": [1, 2],
+      "limit": 10
+    }
+  },
+  "writes": [
+    {
+      "operation": "stores.reviews.reply",
+      "input": {
+        "app": "1234567890",
+        "review": "rev-1",
+        "text": "Thank you, we are looking into it. {{unique}}",
+        "replace": true
+      }
+    }
+  ],
+  "invalid": {
+    "operation": "stores.reviews.read",
+    "input": {
+      "app": "1234567890",
+      "review": "../apps"
+    },
+    "expected_cause": "invalid"
+  }
+}
