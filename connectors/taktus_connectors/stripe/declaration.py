@@ -21,6 +21,9 @@ CONTRACT = "connector/v1"
 VERSION = "1.0.0"
 CAPABILITY = "payments.subscriptions"
 CUSTOMERS = "payments.customers"
+FAILURES = "payments.failures"
+INVOICES = "payments.invoices"
+EVENTS = "payments.events"
 ACTIONS_CREDENTIAL = "PAYMENTS_TOKEN"
 
 OPERATIONS: list[Json] = [
@@ -51,6 +54,55 @@ OPERATIONS: list[Json] = [
         "every status, in the shape of a listed one. Scoped: a call that serves a case answers "
         "only the case's subject, and refuses another customer as out_of_scope.",
     },
+    {
+        "name": "payments.customers.failures",
+        "demand": {"quota_units": 1},
+        "capability": CUSTOMERS,
+        "effect": "read",
+        "summary": "The failed payments of the customer `customer`, in the shape of "
+        "`payments.failures.list`, with `as_of`. Scoped like the customer's subscriptions.",
+    },
+    {
+        "name": "payments.customers.contact",
+        "demand": {"quota_units": 1},
+        "capability": CUSTOMERS,
+        "effect": "read",
+        "summary": "The e-mail address of the customer `customer`, as `{customer, email}`, "
+        "email null where none is held. Answered only to a call that serves that customer's "
+        "case; without a scope, or for another customer, out_of_scope.",
+    },
+    {
+        "name": "payments.failures.list",
+        "demand": {"quota_units": 1},
+        "capability": FAILURES,
+        "effect": "read",
+        "summary": "Every payment that failed and is still owed: the open invoices whose "
+        "payment was attempted, up to `limit` invoices read (default 1000). Each names its "
+        "customer and subscription by identifier, the amount owed in minor units, currency, "
+        "attempts, failed_at and next_attempt_at in seconds since the epoch, the whole "
+        "days_failing since, the decline code as reason, and update_url, the provider's page "
+        "where the customer pays with another method. `as_of` is the moment of the reading.",
+    },
+    {
+        "name": "payments.invoices.list",
+        "demand": {"quota_units": 1},
+        "capability": INVOICES,
+        "effect": "read",
+        "summary": "The invoices created in `month` (YYYY-MM, default the month before), in "
+        "`status` (draft, open, paid, uncollectible, void, or all, the default), up to `limit` "
+        "(default 1000, at most 10000). Each names its number, customer and subscription by "
+        "identifier, status, currency, total, tax, paid and remaining in minor units, and "
+        "issued_at, due_at and paid_at in seconds since the epoch.",
+    },
+    {
+        "name": "payments.events.undelivered",
+        "demand": {"quota_units": 1},
+        "capability": EVENTS,
+        "effect": "read",
+        "summary": "The events of the last 30 days not delivered to every webhook endpoint, "
+        "still pending or failed, up to `limit` (default 1000). Each names its id, type, "
+        "created, pending_webhooks, and the kind and identifier of the object it is about.",
+    },
 ]
 
 
@@ -58,7 +110,7 @@ def capabilities() -> Json:
     return {
         "contract": CONTRACT,
         "version": VERSION,
-        "capabilities": [CAPABILITY, CUSTOMERS],
+        "capabilities": [CAPABILITY, CUSTOMERS, EVENTS, FAILURES, INVOICES],
         "operations": [dict(op) for op in OPERATIONS],
         "credentials": [{"name": ACTIONS_CREDENTIAL, "purpose": "actions"}],
         "consumption": {"kinds": ["quota"], "unit": "requests", "window_seconds": 1},

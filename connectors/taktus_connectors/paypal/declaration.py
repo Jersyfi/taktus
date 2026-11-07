@@ -22,6 +22,8 @@ CONTRACT = "connector/v1"
 VERSION = "1.0.0"
 CAPABILITY = "payments.subscriptions"
 CUSTOMERS = "payments.customers"
+FAILURES = "payments.failures"
+INVOICES = "payments.invoices"
 ACTIONS_CREDENTIAL = "PAYMENTS_TOKEN"
 
 OPERATIONS: list[Json] = [
@@ -53,6 +55,43 @@ OPERATIONS: list[Json] = [
         "every status, in the shape of a listed one. Scoped: a call that serves a case answers "
         "only the case's subject, and refuses another customer as out_of_scope.",
     },
+    {
+        "name": "payments.customers.failures",
+        "demand": {"quota_units": 2},
+        "capability": CUSTOMERS,
+        "effect": "read",
+        "summary": "The failed payments of the payer `customer`, in the shape of "
+        "`payments.failures.list`, with `as_of`. Scoped like the payer's subscriptions.",
+    },
+    {
+        "name": "payments.customers.contact",
+        "demand": {"quota_units": 2},
+        "capability": CUSTOMERS,
+        "effect": "read",
+        "summary": "The e-mail address of the payer `customer`, from a subscription of theirs, "
+        "as `{customer, email}`. Answered only to a call that serves that payer's case; "
+        "without a scope, or for another payer, out_of_scope.",
+    },
+    {
+        "name": "payments.failures.list",
+        "demand": {"quota_units": 2},
+        "capability": FAILURES,
+        "effect": "read",
+        "summary": "Every active or suspended subscription whose consecutive payments failed, "
+        "in the first connector's shape: the payer as customer, the outstanding balance as "
+        "amount in minor units, the count of failures as attempts, the last failure's moment, "
+        "next retry and reason code; update_url null. `as_of` is the moment of the reading.",
+    },
+    {
+        "name": "payments.invoices.list",
+        "demand": {"quota_units": 2},
+        "capability": INVOICES,
+        "effect": "read",
+        "summary": "The invoices dated in `month` (YYYY-MM, default the month before), in "
+        "`status` (draft, open, paid, void, refunded, or all, the default), up to `limit` "
+        "read (default 1000), in the first connector's shape; customer and subscription null, "
+        "as the provider names a recipient by e-mail only.",
+    },
 ]
 
 
@@ -60,7 +99,7 @@ def capabilities() -> Json:
     return {
         "contract": CONTRACT,
         "version": VERSION,
-        "capabilities": [CAPABILITY, CUSTOMERS],
+        "capabilities": [CAPABILITY, CUSTOMERS, FAILURES, INVOICES],
         "operations": [dict(op) for op in OPERATIONS],
         "credentials": [{"name": ACTIONS_CREDENTIAL, "purpose": "actions"}],
         "consumption": {"kinds": ["quota"], "unit": "requests", "window_seconds": 1},

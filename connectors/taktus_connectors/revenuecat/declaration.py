@@ -23,6 +23,7 @@ CONTRACT = "connector/v1"
 VERSION = "1.0.0"
 CAPABILITY = "payments.subscriptions"
 CUSTOMERS = "payments.customers"
+FAILURES = "payments.failures"
 ACTIONS_CREDENTIAL = "PAYMENTS_TOKEN"
 
 OPERATIONS: list[Json] = [
@@ -55,6 +56,25 @@ OPERATIONS: list[Json] = [
         "in every status, in the shape of a listed one. Scoped: a call that serves a case "
         "answers only the case's subject, and refuses another customer as out_of_scope.",
     },
+    {
+        "name": "payments.customers.failures",
+        "demand": {"quota_units": 1},
+        "capability": CUSTOMERS,
+        "effect": "read",
+        "summary": "The failed renewals of the customer `customer`, in the shape of "
+        "`payments.failures.list`, with `as_of`. Scoped like the customer's subscriptions.",
+    },
+    {
+        "name": "payments.failures.list",
+        "demand": {"quota_units": 2},
+        "capability": FAILURES,
+        "effect": "read",
+        "summary": "Every subscription whose renewal failed and the store retries "
+        "(`in_billing_retry`, `in_grace_period`), read customer by customer, of the first "
+        "`limit` customers (default 1000), in the first connector's shape: update_url the "
+        "store's page for managing the subscription, reason the status; amount, attempts and "
+        "moments null, as the provider states none. `as_of` is the moment of the reading.",
+    },
 ]
 
 
@@ -62,7 +82,7 @@ def capabilities() -> Json:
     return {
         "contract": CONTRACT,
         "version": VERSION,
-        "capabilities": [CAPABILITY, CUSTOMERS],
+        "capabilities": [CAPABILITY, CUSTOMERS, FAILURES],
         "operations": [dict(op) for op in OPERATIONS],
         "credentials": [{"name": ACTIONS_CREDENTIAL, "purpose": "actions"}],
         "consumption": {"kinds": ["quota"], "unit": "requests", "window_seconds": 60},
