@@ -25,6 +25,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 ADDRESS = re.compile(r"\bhttps?://([A-Za-z0-9.-]+)")
 LOOPBACK = {"127.0.0.1", "localhost", "0.0.0.0"}  # noqa: S104 — a name being checked, not bound
+HOST = "host.docker.internal"
+"""This machine, as a container of the one-machine installation reaches it: where its local model
+server listens by default (ADR-0248)."""
 RESERVED = (".test", ".example", ".invalid", ".localhost", ".relay")
 """Names reserved for examples, and `.relay`: the label a client is given whose requests travel
 through the database's relay and are never sent over the network (ADR-0156)."""
@@ -32,6 +35,7 @@ IDENTIFIERS = {
     "www.omg.org": "the namespaces of BPMN's XML (wire/bpmn.py)",
     "www.w3.org": "the XML Schema instance namespace (wire/bpmn.py)",
     "json-schema.org": "the JSON Schema dialect a schema declares, never fetched",
+    "www.googleapis.com": "the OAuth scope a cloud model's token is asked for, never fetched",
 }
 MAKER = "taktus.eu"
 MAKER_USE = ROOT / "src" / "taktus" / "conformance" / "contracts.py"
@@ -67,7 +71,7 @@ def addresses(path: Path) -> list[tuple[str, int, str]]:
 
 
 def allowed(host: str, path: Path) -> bool:
-    if host in LOOPBACK or "." not in host or host.endswith(RESERVED):
+    if host in LOOPBACK or host == HOST or "." not in host or host.endswith(RESERVED):
         return True
     if host in IDENTIFIERS:
         return True
