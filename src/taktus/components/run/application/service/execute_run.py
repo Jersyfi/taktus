@@ -4789,6 +4789,7 @@ class RunEngine:
         role: str | None = None,
         lacking: str | None = None,
         awaited: Awaited | None = None,
+        short: Mapping[str, float] | None = None,
     ) -> tuple[Run, StepRun]:
         """The step is blocked from now — or from `since` — for this cause, unless it is
         already. A block it is in for another cause, or for another lack, ends first, with its
@@ -4809,6 +4810,7 @@ class RunEngine:
             role=role,
             lacking=lacking,
             awaited=awaited,
+            short=None if short is None else dict(short),
         )
         return run, step_run.model_copy(update={"block": opened})
 
@@ -5777,7 +5779,11 @@ class RunEngine:
         if not verdict.fits:
             span.record_failure("rejected by admission control")
             run, step_run = await self._open_block(
-                run, step_run, block.limit_account(verdict.kinds), block.REJECTED_BY_ADMISSION
+                run,
+                step_run,
+                block.limit_account(verdict.kinds),
+                block.REJECTED_BY_ADMISSION,
+                short=verdict.short,
             )
             step_run = step_run.to(
                 StepState.REJECTED,

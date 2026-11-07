@@ -10,6 +10,7 @@ from taktus.components.run.ports.anchors import (
 )
 from taktus.components.run.ports.connectors import ConnectorPool
 from taktus.components.run.ports.deadlines import DeclaredDeadlines
+from taktus.components.run.ports.departments import Departments
 from taktus.components.run.ports.guidance import Guidance
 from taktus.components.run.ports.levels import Breach, Levels, LoweredLevels, ProposalDecided
 from taktus.components.run.ports.maturity import Maturities, Standing
@@ -37,6 +38,7 @@ __all__ = [
     "CountReading",
     "Decisions",
     "DeclaredDeadlines",
+    "Departments",
     "Draft",
     "DraftOption",
     "EvaluationScores",

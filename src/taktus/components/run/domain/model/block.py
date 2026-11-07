@@ -193,3 +193,7 @@ class OpenBlock(Value):
     awaited: Awaited | None = None
     """For a step that waits for a participant outside the organisation: where the answer is
     expected (ADR-0155). None for every other block."""
+    short: dict[str, float] | None = None
+    """For a step refused by admission: by how much its reservation exceeded what was left, per
+    quantity, at the refusal that began the block (`Admission.short`, ADR-0283). None for every
+    other block."""
