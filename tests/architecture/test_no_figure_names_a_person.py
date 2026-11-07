@@ -145,6 +145,10 @@ ACTS: dict[str, str] = {
     "taktus.components.process.domain.model.trigger_state.Firing": (
         f"{ACT}: one firing of a trigger, and who fired it by hand"
     ),
+    "taktus.components.catalog.domain.model.blueprint.DomainInstance": (
+        f"{ACT}: who started a domain's instance, answered its questions and owns it "
+        "(ADR-0263), and the autonomy level each of its processes was proposed at"
+    ),
     "taktus.components.catalog.domain.model.maturity.ConformanceResult": (
         f"{ACT}: one conformance run, and who started it"
     ),

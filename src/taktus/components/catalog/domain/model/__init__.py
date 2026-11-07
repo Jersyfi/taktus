@@ -7,6 +7,11 @@ from taktus.components.catalog.domain.model.agent import (
     profile_id,
     widening,
 )
+from taktus.components.catalog.domain.model.blueprint import (
+    Admitted,
+    DomainBlueprint,
+    DomainInstance,
+)
 from taktus.components.catalog.domain.model.catalogue import (
     COMMUNITY_HIGHEST_LEVEL,
     Admission,
@@ -62,6 +67,7 @@ __all__ = [
     "NO_MANIFEST",
     "AdapterMaturity",
     "Admission",
+    "Admitted",
     "AgentCore",
     "AgentError",
     "CatalogueIndex",
@@ -69,6 +75,8 @@ __all__ = [
     "Configuration",
     "ConformanceResult",
     "CoreState",
+    "DomainBlueprint",
+    "DomainInstance",
     "EntrySignature",
     "Family",
     "Grants",

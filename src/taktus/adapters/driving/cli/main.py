@@ -57,7 +57,9 @@ figures and what is missing, and opens one as a person (ADR-0137). `skill` regis
 approves and puts skills into production, and prints the skill part of a process's takeover
 instructions (ADR-0162). `takeover` shows a process's takeover instructions and records a trial
 of them by a person (ADR-0180). `agent` proposes a shared agent's core, sets its role profiles,
-calls it and draws it (ADR-0163). The others need
+calls it and draws it (ADR-0163). `domain` admits a domain blueprint, instantiates it in
+dialogue as proposals at level 2 or below, offers a later version, and exports it as plain
+files (ADR-0263). The others need
 services, which the composition root provides as the typer context object (see `wiring`); the
 console script `taktusctl` therefore starts in `taktus.composition.taktusctl`, and this module
 exposes the application for it.
@@ -88,6 +90,7 @@ from taktus.adapters.driving.cli import (
     deactivate_command,
     deadline_command,
     defect_command,
+    domain_command,
     exactness_command,
     findings_command,
     first_command,
@@ -144,6 +147,7 @@ app.command("deactivate")(deactivate_command.deactivate)
 app.command("exactness")(exactness_command.exactness)
 app.add_typer(bundle_command.bundle, name="bundle")
 app.add_typer(catalogue_command.catalogue, name="catalogue")
+app.add_typer(domain_command.domain, name="domain")
 app.add_typer(bpmn_command.bpmn, name="bpmn")
 app.command("capacity")(capacity_command.capacity)
 app.command("cost")(cost_command.cost)
