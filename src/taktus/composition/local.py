@@ -619,6 +619,7 @@ class LocalWiring:
                 ledger=ledger,
                 work=stores.work,
                 clock=clock,
+                trials=stores.of(TakeoverTrial),
             )
             evidence = ProcessingEvidence(
                 register=acting.register,

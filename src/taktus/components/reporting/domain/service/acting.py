@@ -87,6 +87,12 @@ def attention(facts: ActorFacts, residency: Residency) -> tuple[str, ...]:
         reasons.append(
             f"a step runs on it at level {max(u.level for u in above)} while it is {facts.maturity}"
         )
+    untried = sorted({u.process_id for u in facts.uses if u.untried})
+    if untried:
+        reasons.append(
+            f"{_plural(len(untried), 'process')} acting on it at level 3 or 4 "
+            f"{'is' if len(untried) == 1 else 'are'} untried by hand: {', '.join(untried)}"
+        )
     return tuple(reasons)
 
 

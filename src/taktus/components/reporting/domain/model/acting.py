@@ -39,6 +39,9 @@ class ActorUse(Value):
     role: str | None = None
     """The role that takes the step over where it falls back to a person (ADR-0146)."""
     reason: str = Field(min_length=1)
+    untried: bool = False
+    """Its version runs at level 3 or 4 and no person has yet run it by hand from its takeover
+    instructions (UC-6.3 §2, ADR-0180 §3)."""
 
 
 class RemovalSeen(Value):

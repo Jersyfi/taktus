@@ -532,6 +532,7 @@ def _evidence(
                 missed=counted.missed,
                 incidents=counted.incidents,
                 last_finished=counted.last_finished,
+                untried=now is not None and not now.tried and max(now.level, granted) >= 3,
             )
         )
     return tuple(shown)

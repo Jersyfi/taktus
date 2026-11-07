@@ -13,6 +13,7 @@ it is left out of every row and every count.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
@@ -21,7 +22,8 @@ from taktus.components.catalog.domain.model import AdapterMaturity
 from taktus.components.catalog.domain.service import removal
 from taktus.components.governance.application.service import TenantResidency
 from taktus.components.identity.application.service import IdentityDirectory
-from taktus.components.process.domain.model import Process, ProcessVersion
+from taktus.components.process.domain.model import Process, ProcessVersion, TakeoverTrial
+from taktus.components.process.domain.service.takeover import untried
 from taktus.components.reporting.domain.model.acting import (
     ActorFacts,
     ActorUse,
@@ -74,7 +76,11 @@ class ActingReads:
         ledger: Ledger,
         work: UnitOfWork,
         clock: Clock,
+        trials: Repository[TakeoverTrial] | None = None,
     ) -> None:
+        self._trials = trials
+        """The trials of takeover instructions (ADR-0180 §3). None: none is recorded, and a
+        version at level 3 or 4 is untried."""
         self._processes = processes
         self._versions = versions
         self._maturities = maturities
@@ -188,12 +194,13 @@ class ActingReads:
         async with self._work.transaction(tenant):
             used = await self._ledger.project(tenant, acting.USED)
             records = {m.id: m for m in await self._maturities.list(tenant)}
+            trials = [] if self._trials is None else list(await self._trials.list(tenant))
         since = (self._clock.now() - timedelta(days=acting.PERIOD_DAYS)).date()
         facts: list[ActorFacts] = []
         for entry in entries:
             if entry.family not in FAMILIES:
                 continue
-            uses = [await self._use(s) for s in served if s.adapter == entry.adapter]
+            uses = [await self._use(s, trials) for s in served if s.adapter == entry.adapter]
             record = records.get(entry.adapter)
             found = None if record is None else record.removal
             facts.append(
@@ -245,7 +252,7 @@ class ActingReads:
                 found.append(_Served(version, step, serving[0], serving[1]))
         return found
 
-    async def _use(self, served: _Served) -> ActorUse:
+    async def _use(self, served: _Served, trials: Sequence[TakeoverTrial] = ()) -> ActorUse:
         version, step = served.version, served.step
         examples = {name: given.example for name, given in version.inputs.items()}
         work = parse_work(step, version.work.get(step.id), examples)
@@ -263,4 +270,5 @@ class ActingReads:
             instead=instead,
             role=step.performer,
             reason=finding.reason,
+            untried=untried(version.autonomy.level, trials, version.ref),
         )

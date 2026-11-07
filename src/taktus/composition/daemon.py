@@ -1122,6 +1122,7 @@ async def wire(
                     ledger=ledger,
                     work=persistence,
                     clock=clock,
+                    trials=PostgresRepository(persistence, TakeoverTrial),
                 ),
                 agent=agent,
                 streams=StreamReads(
