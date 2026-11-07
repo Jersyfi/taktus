@@ -45,7 +45,10 @@ def site(tmp_path: Path) -> Iterator[str]:
         with sync_playwright() as playwright:
             playwright.chromium.launch().close()
     except Exception as error:
-        pytest.skip(f"the browser worker needs its driver and Chromium: {error}")
+        message = f"the browser worker needs its driver and Chromium (`make browser`): {error}"
+        if os.environ.get("TAKTUS_REQUIRE_BROWSER"):
+            pytest.fail(message + " — and TAKTUS_REQUIRE_BROWSER says it may not skip")
+        pytest.skip(message)
     (tmp_path / "index.html").write_bytes(PAGE)
     server = ThreadingHTTPServer(
         ("127.0.0.1", 0), functools.partial(Quiet, directory=str(tmp_path))

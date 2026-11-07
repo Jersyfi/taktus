@@ -109,6 +109,16 @@ gate-conformance: env ## Contract conformance suite, both contracts: starts the 
 helm: ## Install the pinned helm into .tools/bin, for the chart's tests (deploy/k8s/chart)
 	tools/install_helm.sh
 
+# The browser worker's tests (tests/workers/test_browser_worker.py, the conformance suite's
+# browser worker) drive headless Chromium through the driver the lock file pins. `make browser`
+# installs the Chromium of that driver; on Linux with the system libraries it needs (`--with-deps`).
+# Without it the tests skip and say so; CI, which runs this target, sets TAKTUS_REQUIRE_BROWSER
+# so that they cannot.
+.PHONY: browser
+browser: env ## Install the Chromium the pinned browser driver drives, for the browser worker's tests
+	@if [ "$$(uname -s)" = Linux ]; then $(UV) run playwright install --with-deps chromium; \
+	else $(UV) run playwright install chromium; fi
+
 # The image workflow scans and signs with the pinned grype and cosign (ADR-0173);
 # `make image-tools` installs the same versions into .tools/bin, to scan an image by hand:
 # tools/scan_image.sh <image>@sha256:<digest>.

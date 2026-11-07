@@ -381,7 +381,7 @@ def browser_available() -> str | None:
         with sync_playwright() as playwright:
             playwright.chromium.launch().close()
     except Exception as error:
-        return f"the browser worker needs Chromium (`uv run playwright install chromium`): {error}"
+        return f"the browser worker needs Chromium (`make browser`): {error}"
     return None
 
 
@@ -392,6 +392,8 @@ def start_browser_worker(tmp_path: Path) -> Iterator[StartWorker]:
     withdrawn in the narrowed one (W-13). The estimate is half the expected demand, so that a
     limit equal to it is crossed (W-14)."""
     why = browser_available()
+    if why is not None and os.environ.get("TAKTUS_REQUIRE_BROWSER"):
+        pytest.fail(why + " — and TAKTUS_REQUIRE_BROWSER says it may not skip")
     if why is not None:
         pytest.skip(why)
     started: list[subprocess.Popen[bytes]] = []
