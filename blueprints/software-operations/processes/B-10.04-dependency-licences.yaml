@@ -77,11 +77,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.files.read answered", columns: [content] }
     fallback:
       when: the connector serving repository.files is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.files.read
       input:
@@ -97,12 +100,15 @@ steps:
       - method: llm
         why: a model could invent a licence; the index's own record is the source
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what packages.licences.list answered", columns: [complete, packages] }
     fallback:
       when: the connector serving packages.licences is unavailable
       to: human
       role: owner
     depends_on: [manifest]
     work:
+      checking: { select: output }
       rule: connector
       operation: packages.licences.list
       input:

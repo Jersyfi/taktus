@@ -57,11 +57,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what payments.events.undelivered answered", columns: [complete, events] }
     fallback:
       when: the connector serving payments.events is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: payments.events.undelivered
       input:

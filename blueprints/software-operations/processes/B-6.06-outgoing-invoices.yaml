@@ -64,11 +64,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what payments.invoices.list answered", columns: [complete, invoices] }
     fallback:
       when: the connector serving payments.invoices is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: payments.invoices.list
       input:

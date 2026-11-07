@@ -67,11 +67,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what payments.customers.failures answered", columns: [complete, failures] }
     fallback:
       when: the connector serving payments.customers is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       scope: { subject: { $input: customer } }
       rule: connector
       operation: payments.customers.failures
@@ -131,12 +134,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what payments.customers.contact answered", columns: [email] }
     fallback:
       when: the connector serving payments.customers is unavailable
       to: human
       role: owner
     depends_on: [stage]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: stage, $select: count }, not_matches: "^0$" }
       scope: { subject: { $input: customer } }
@@ -154,6 +160,8 @@ steps:
       - method: llm
         why: a fixed text needs no model, and nothing a model wrote reaches the customer
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "If you have already paid, please disregard this message\\." }
     depends_on: [stage]
     work:
       when:
@@ -179,12 +187,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what mail.messages.send answered", columns: [filed, message_id, refused, subject, to] }
     fallback:
       when: the connector serving mail.messages is unavailable
       to: human
       role: owner
     depends_on: [stage, contact, compose]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: stage, $select: count }, not_matches: "^0$" }
         - { value: { $from: contact, $select: output.email }, matches: "@" }

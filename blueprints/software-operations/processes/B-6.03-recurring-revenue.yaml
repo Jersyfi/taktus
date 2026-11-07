@@ -66,11 +66,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what payments.subscriptions.list answered", columns: [complete, subscriptions] }
     fallback:
       when: the connector serving payments.subscriptions is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: payments.subscriptions.list
       input:
@@ -90,11 +93,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what payments.failures.list answered", columns: [as_of, complete, failures] }
     fallback:
       when: the connector serving payments.failures is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: payments.failures.list
       input:
