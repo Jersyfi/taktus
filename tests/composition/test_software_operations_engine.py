@@ -128,3 +128,18 @@ async def test_b_2_02_names_the_costliest_support_cases_of_the_week(outside: Out
     (costliest,) = (await w.result(run, "costliest"))["items"]
     assert costliest["case"] == "<seed-1@mail.example>" and costliest["runs"] == 2
     assert costliest["amount"] > 0 and costliest["amounts"] == {"usd": costliest["amount"]}
+
+
+async def test_b_4_05_a_dimension_answered_no_holds_the_reply_by_rule(outside: Outside) -> None:
+    w = await World(outside).ready()
+    version = await w.registered("B-3.02-draft-reply.yaml")
+    replying(
+        w,
+        "You can export the report under Settings, then Export.",
+        dimensions="answers: yes\nlanguage: no\ntone: yes\ncomplete: yes",
+    )
+    before = outside.submitted()
+    run = await w.confirmed(await w.start(version, message="<seed-1@mail.example>"))
+    assert states(run)["send"] is not StepState.SUCCEEDED
+    assert "language" in (run.step_run("send").reason or ""), "the gate that held it is named"
+    assert outside.submitted() == before

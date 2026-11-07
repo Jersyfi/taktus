@@ -16,6 +16,11 @@ produced: the active version beside a proposal (`change`), or the active version
 
 A **corrected case** is a case proposed from a person's correction of a step's result. It
 enters the process's set only once a person confirmed its target (§7).
+
+A scorer may score one **dimension** of a result — whether it answers, whether it is correct,
+its tone — with a **gate**: a case passes the dimension where its score reaches the gate. A
+side's figure per dimension is the share of its scored cases that passed, and a change whose
+share in any dimension falls beyond the tolerance is a regression (ADR-0217).
 """
 
 from __future__ import annotations
@@ -74,10 +79,19 @@ class Scorer(Value):
     """For a judge: the purpose of the model it asks."""
     criterion: str | None = Field(default=None, min_length=1)
     """For a judge: what it asks the model to judge the result by."""
+    dimension: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_]*$")
+    """The dimension of the result this scorer scores (ADR-0217); None for the result whole."""
+    gate: float | None = Field(default=None, ge=0, le=1)
+    """For a dimension: the score a case must reach to pass it, yes or no."""
 
     @model_validator(mode="after")
     def _a_method_of_its_own(self) -> Scorer:
         findings: list[str] = []
+        if (self.dimension is None) != (self.gate is None):
+            findings.append(
+                "a scorer of a dimension names its `gate`, the score a case passes it at, and a "
+                "gate belongs to a dimension (ADR-0217)"
+            )
         if self.method not in SCORING_METHODS:
             findings.append(
                 f"a scorer is a rule, or a language model as judge where no rule can score, "
@@ -251,6 +265,10 @@ class Score(Value):
     score: float | None = Field(default=None, ge=0, le=1)
     """None where a judge fell back to a person."""
     how: Literal["rule", "judge", "fallback", "person", "no result"]
+    dimension: str | None = None
+    """The dimension the scorer scores (ADR-0217); None for the result whole."""
+    passed: bool | None = None
+    """For a dimension: whether the score reached its gate; None without a score."""
 
 
 class CaseResult(Value):
@@ -277,6 +295,9 @@ class SideResult(Value):
     """The mean of its cases' scores; None while one has none."""
     cases: int = Field(ge=0)
     unscored: int = Field(ge=0)
+    dimensions: Mapping[str, float | None] = Field(default_factory=dict)
+    """Per dimension, the share of the side's cases scored on it that passed its gate; None
+    where none was scored (ADR-0217)."""
 
 
 class Override(Value):

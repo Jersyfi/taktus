@@ -768,6 +768,8 @@ class Evaluations:
                 exactness=scorer.exactness,
                 score=value,
                 how=how,
+                dimension=scorer.dimension,
+                passed=scoring.gated(value, scorer.gate),
             )
 
         if produced is None:
