@@ -55,7 +55,9 @@ tenant's quotas per organisational unit (ADR-0166). `deadline` lists
 a tenant's open deadlines, ordered by when they fall due, and shows and sets its working time
 (ADR-0133). `trace retention` shows and sets how long the tenant keeps the trace inside a step
 (ADR-0135). `stop` stops every step an adapter serves and prints the confirmation once it
-holds (ADR-0138). `stage` declares a tenant's introduction in stages, shows each with its
+holds (ADR-0138). `domain` instantiates a tenant's domains with their owners, shows each
+owner the duties of their domains and generates the conformity evidence of their catalogue
+(ADR-0259, ADR-0280). `stage` declares a tenant's introduction in stages, shows each with its
 figures and what is missing, and opens one as a person (ADR-0137). `skill` registers, evaluates,
 approves and puts skills into production, and prints the skill part of a process's takeover
 instructions (ADR-0162). `takeover` shows a process's takeover instructions and records a trial
@@ -93,6 +95,7 @@ from taktus.adapters.driving.cli import (
     deactivate_command,
     deadline_command,
     defect_command,
+    domain_command,
     exactness_command,
     findings_command,
     first_command,
@@ -169,6 +172,7 @@ app.add_typer(corrections_command.corrections, name="corrections")
 app.add_typer(defect_command.defect, name="defect")
 app.add_typer(residency_command.residency, name="residency")
 app.add_typer(budget_command.budget, name="budget")
+app.add_typer(domain_command.domain, name="domain")
 app.add_typer(sources_command.sources, name="sources")
 app.add_typer(subject_command.subject, name="subject")
 app.command("evidence")(subject_command.evidence)

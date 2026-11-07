@@ -101,12 +101,15 @@ from taktus.components.governance.application.service import (
     ResultDefects,
     SubjectRequests,
 )
+from taktus.components.governance.application.service.domains import ConformityEvidence
+from taktus.components.governance.application.service.stop_incidents import StopIncidents
 from taktus.components.governance.domain.model import (
     Incident,
     SubjectRequest,
     WatchConfiguration,
 )
 from taktus.components.governance.domain.model.anchors import AnchorConfiguration
+from taktus.components.governance.domain.model.domains import Domain
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.identity.domain.model import (
     BrowserSession,
@@ -201,7 +204,7 @@ from taktus.composition.shipped import load as load_shipped
 from taktus.composition.signals import signal_wiring
 from taktus.composition.skills import CatalogGuidance, SkillLifecycle
 from taktus.composition.stages import stage_wiring
-from taktus.composition.stops import RuleStops
+from taktus.composition.stops import RuleStops, StopIncidentsOfGovernance
 from taktus.composition.subjects import ProcessingEvidence, RunHoldings
 from taktus.composition.tenant_export import TenantExports
 from taktus.ports.backups import BackupLog
@@ -355,6 +358,15 @@ class LocalWiring:
                 ),
                 model_pool(models),
             )
+            stop_incidents = StopIncidents(
+                stores.of(Incident),
+                stores.of(WatchConfiguration),
+                stores.of(Domain),
+                ledger,
+                objects,
+                stores.work,
+                clock,
+            )
             stops = Stops(
                 stores.of(AdapterStop),
                 cast("Queried[Run]", runs),
@@ -364,6 +376,7 @@ class LocalWiring:
                 clock,
                 ids,
                 stoppable=pools.identifiers(),
+                followed=StopIncidentsOfGovernance(stop_incidents),
             )
 
             # Skills and shared agents in the catalogue, handed to a run's steps (ADR-0162,
@@ -805,6 +818,11 @@ class LocalWiring:
                 unit_limits=decisions.unit_limits.limits,
                 deadlines=decisions.deadlines,
                 stops=stops,
+                stop_incidents=stop_incidents,
+                domains=decisions.domains,
+                conformity=ConformityEvidence(
+                    decisions.domains, ledger, objects, stores.work, clock
+                ),
                 traces=None
                 if stores.traces is None
                 else StepTraces(

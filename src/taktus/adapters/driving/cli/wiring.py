@@ -42,6 +42,11 @@ from taktus.components.governance.application.service import (
     TenantResidency,
     TenantSources,
 )
+from taktus.components.governance.application.service.domains import (
+    ConformityEvidence,
+    TenantDomains,
+)
+from taktus.components.governance.application.service.stop_incidents import StopIncidents
 from taktus.components.governance.application.service.tenant_budget import TenantBudgets
 from taktus.components.governance.application.service.unit_limits import UnitLimits
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
@@ -262,6 +267,15 @@ class Services:
     stops: Stops | None = None
     """The tenant's stops of adapters, requested, shown and lifted (`taktusctl stop`,
     ADR-0138)."""
+    stop_incidents: StopIncidents | None = None
+    """The incidents and situation packages of the stops a person requested (`taktusctl
+    incident package`, ADR-0280)."""
+    domains: TenantDomains | None = None
+    """The tenant's domains, their owners, their duties and the conformity evidence of their
+    catalogue (`taktusctl domain`, ADR-0259, ADR-0280)."""
+    conformity: ConformityEvidence | None = None
+    """The conformity evidence of the tenant's domains (`taktusctl domain evidence`,
+    ADR-0280 §4)."""
     traces: StepTraces | None = None
     """How long the tenant keeps the trace inside a step, shown and set (`taktusctl trace`,
     ADR-0135)."""

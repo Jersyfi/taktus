@@ -89,6 +89,7 @@ class ConfigureWatch:
     repeated_model_calls: int | None = None
     evaluation_tolerance: float | None = None
     evaluation_subjects: bool | None = None
+    on_call: str | None = None
 
 
 class UnknownIncident(LookupError):
@@ -152,6 +153,7 @@ class ExpectedRuns:
                 ("repeated_model_calls", command.repeated_model_calls),
                 ("evaluation_tolerance", command.evaluation_tolerance),
                 ("evaluation_subjects", command.evaluation_subjects),
+                ("on_call", command.on_call),
             )
             if value is not None
         }

@@ -105,12 +105,14 @@ from taktus.components.governance.application.service import (
     Stages,
     SubjectRequests,
 )
+from taktus.components.governance.application.service.stop_incidents import StopIncidents
 from taktus.components.governance.domain.model import (
     AnchorConfiguration,
     Incident,
     SubjectRequest,
     WatchConfiguration,
 )
+from taktus.components.governance.domain.model.domains import Domain
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.identity.domain.model import (
     BrowserSession,
@@ -243,7 +245,7 @@ from taktus.composition.signals import CommandInterventions, signal_wiring, sign
 from taktus.composition.skills import CatalogGuidance, SkillLifecycle, skills_tick
 from taktus.composition.spend_in_channel import SpendInChannel
 from taktus.composition.stages import stage_wiring, stages_tick
-from taktus.composition.stops import RuleStops, StopsConfirmed
+from taktus.composition.stops import RuleStops, StopIncidentsOfGovernance, StopsConfirmed
 from taktus.composition.streams import StreamReads
 from taktus.composition.subjects import ProcessingEvidence, RunHoldings
 from taktus.composition.takeover_in_channel import TakeoverInChannel
@@ -619,6 +621,17 @@ async def wire(
                 clock,
                 ids,
                 stoppable=pools.identifiers(),
+                followed=StopIncidentsOfGovernance(
+                    StopIncidents(
+                        PostgresRepository(persistence, Incident),
+                        PostgresRepository(persistence, WatchConfiguration),
+                        PostgresRepository(persistence, Domain),
+                        ledger,
+                        objects,
+                        persistence,
+                        clock,
+                    )
+                ),
             )
 
             # Skills and shared agents in the catalogue, handed to a run's steps (ADR-0162,

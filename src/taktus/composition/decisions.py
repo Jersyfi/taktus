@@ -429,13 +429,13 @@ class DecisionWiring:
     """A tenant's quotas per organisational unit (ADR-0166); the run's port over them is
     joined with the store of what was committed where the persistence is known."""
     domains: TenantDomains
+    """A tenant's domains and their owners, and registration's port over them (ADR-0259)."""
     budget: TenantBudgets
     """A tenant's monthly budget across all its runs (ADR-0260)."""
     budget_of_the_run: BudgetOfTheRun
     """The run's port over it."""
     unit_limits: UnitLimitsOfTheRun
     """A tenant's limits per unit of its structure, and the run's port over them (ADR-0282)."""
-    """A tenant's domains and their owners, and registration's port over them (ADR-0259)."""
 
 
 def decision_wiring(
@@ -496,6 +496,7 @@ def decision_wiring(
             DomainTestsOfTheInstance(
                 of(Process), of(TakeoverTrial), of(AdapterMaturity), ledger, work
             ),
+            incidents=of(Incident),
         ),
         budget=budgets,
         budget_of_the_run=BudgetOfTheRun(budgets),

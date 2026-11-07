@@ -72,6 +72,10 @@ class IncidentKind(StrEnum):
     BUDGET = "budget.reached"
     """What the tenant's runs of a month cost reached its monthly budget: every run waits at its
     boundary, and the budget's role is told, once a month (ADR-0260)."""
+    STOP = "stop.held"
+    """A stop a person requested holds: every run it covers reached its boundary. Its facts name
+    the stop, the runs it halted and the role it is reported to, and the incident carries a
+    situation package (ADR-0280 §1)."""
     LIMIT_ALERT = "limit.alert"
     """A unit limit's cost, or its forecast's upper edge, reached an alert share of its amount;
     its role is told once per period, share and basis (ADR-0282 §3)."""
@@ -204,6 +208,7 @@ EMPTY_MINIMUM = 10
 REPEATED_CALLS = 3
 REPEATED_MODEL_CALLS = 3
 EVALUATION_TOLERANCE = 0.05
+ON_CALL = "operator"
 
 
 class WatchConfiguration(Value):
@@ -234,6 +239,9 @@ class WatchConfiguration(Value):
     evaluation_subjects: bool = False
     """Whether an evaluation case may keep an input that a step's scope names as its subject:
     personal data by declaration (ADR-0134 §7, NTC-0228)."""
+    on_call: str = Field(default=ON_CALL, pattern=ROLE_PATTERN)
+    """The role a stop a person requested is reported to, with its situation package (UC-7.2,
+    ADR-0280 §1, NTC-0271)."""
     configured_at: datetime | None = None
     """When it was configured; None for the shipped default, which nobody configured."""
 
