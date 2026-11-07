@@ -472,7 +472,9 @@ role it would tie the core to a model stack and the removal test would be lost.
   `domain/service/proposing.py` over facts `composition/process_proposals.py`'s
   `ProcessProposals` reads from the ledger and the runs. Accepting one hands its words to
   `ProposalActs.ask` (`composition/proposals.py`); a decision is a ledger entry, and nothing is
-  stored to make the list.
+  stored to make the list. The daemon hands it to the HTTP surface as `process_proposals`
+  (`rest/process_proposals.py`, `GET /process-proposals` and its `accept` and `decline`), and
+  the web app reads it on its page *Proposed* (`web/src/routes/proposed/`).
 - **A distribution and the window of a defect** (ADR-0271): the engine applies a check of kind
   `distribution` after the result counted (`_distributed` in
   `run/application/service/execute_run.py`, the statistic in `run/domain/service/checking.py`)

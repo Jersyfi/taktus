@@ -51,6 +51,7 @@ from taktus.components.process.domain.model import (
     TakeoverTrial,
     ValueStream,
 )
+from taktus.components.process.domain.service.proposing import ProcessProposal
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.application.service import (
     Alerted,
@@ -296,6 +297,43 @@ class InstructionActs(Protocol):
     async def of_step(
         self, tenant: Tenant, process_version: str, step_id: str
     ) -> dict[str, Any] | None: ...
+
+
+class ProcessProposalRefused(Exception):
+    """A proposal of a process that is not the person's to decide, or is decided already, or
+    that no request path on this instance can build (ADR-0270 §5)."""
+
+
+class NoRequestPath(ProcessProposalRefused):
+    """Accepting is refused: no request path builds a process on this instance (ADR-0251)."""
+
+
+class AcceptedProposal(Protocol):
+    @property
+    def proposal(self) -> ProcessProposal: ...
+
+    @property
+    def run(self) -> Run:
+        """The run that builds the proposal of a version (UC-4.1)."""
+        ...
+
+
+class ProcessProposalActs(Protocol):
+    """The processes Taktus proposes to a person, and each accepted or declined on its own
+    (UC-4.4, ADR-0270): the composition root's, because the list reads the run component's
+    records and accepting crosses the command and run components."""
+
+    async def listed(self, tenant: Tenant, viewer: str) -> list[ProcessProposal]:
+        """What `viewer` is shown, most often recurring first, none decided already."""
+        ...
+
+    async def accept(self, tenant: Tenant, proposal_id: str, by: str) -> AcceptedProposal:
+        """`ProcessProposalRefused` when it is not `by`'s to decide."""
+        ...
+
+    async def decline(self, tenant: Tenant, proposal_id: str, by: str) -> ProcessProposal:
+        """`ProcessProposalRefused` when it is not `by`'s to decide."""
+        ...
 
 
 class StartRefused(Exception):
@@ -640,6 +678,11 @@ class RestServices(Protocol):
     @property
     def proposal_acts(self) -> ProposalActs:
         """A proposal rehearsed and commissioned, and a process rolled back (ADR-0091 §3 to §5)."""
+        ...
+
+    @property
+    def process_proposals(self) -> ProcessProposalActs:
+        """The processes Taktus proposes, to a person, from recurring work (ADR-0270)."""
         ...
 
     @property

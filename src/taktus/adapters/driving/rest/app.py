@@ -67,6 +67,7 @@ from taktus.adapters.driving.rest import (
     levels,
     operation,
     planning,
+    process_proposals,
     profiles,
     proposals,
     relay,
@@ -187,6 +188,7 @@ def build_app(
         app.include_router(operation.router(services, _authenticated), prefix=base)
         app.include_router(proposals.router(services, _authenticated), prefix=base)
         app.include_router(proposals.acts_router(services, _authenticated), prefix=base)
+        app.include_router(process_proposals.router(services, _authenticated), prefix=base)
         app.include_router(gallery.router(services, _authenticated), prefix=base)
         app.include_router(planning.router(services, _authenticated), prefix=base)
         app.include_router(structure.router(services, _authenticated), prefix=base)

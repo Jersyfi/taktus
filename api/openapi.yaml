@@ -2062,6 +2062,129 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /process-proposals:
+    get:
+      tags:
+      - process proposals
+      summary: The processes Taktus proposes to you
+      description: 'Work that recurs, found by rule in the ledger: a process you start by hand at a regular
+        cadence, shown to you alone, and a failure healed again and again, shown to everyone of the tenant.
+        Each says the work it would take over, its cost and why now; the list is ordered by how often
+        the work recurs per 30 days, and each says so (ADR-0270).'
+      operationId: listed_process_proposals_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The proposals, most often recurring first.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /process-proposals/{proposal_id}/accept:
+    post:
+      tags:
+      - process proposals
+      summary: Accept a proposal
+      description: Its words go to the request path that builds a proposal of a version, as you; the answer
+        names the run that builds it. Nothing runs for real before a person commissions the version (UC-4.1,
+        ADR-0251). Recorded `proposal.accepted`.
+      operationId: accept_process_proposals__proposal_id__accept_post
+      parameters:
+      - name: proposal_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Proposal Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The proposal, and the run that builds it.
+          content:
+            application/json:
+              schema:
+                title: Response Accept Process Proposals  Proposal Id  Accept Post
+        '400':
+          description: This instance has no request path that builds one.
+          content:
+            application/problem+json: {}
+        '404':
+          description: 'No open proposal of that identifier is shown to you: it is decided already, or
+            it is not yours.'
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /process-proposals/{proposal_id}/decline:
+    post:
+      tags:
+      - process proposals
+      summary: Decline a proposal
+      description: It is not listed again; declining costs nothing and changes nothing. Recorded `proposal.declined`.
+      operationId: decline_process_proposals__proposal_id__decline_post
+      parameters:
+      - name: proposal_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Proposal Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The proposal declined.
+          content:
+            application/json:
+              schema:
+                title: Response Decline Process Proposals  Proposal Id  Decline Post
+        '404':
+          description: 'No open proposal of that identifier is shown to you: it is decided already, or
+            it is not yours.'
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
   /gallery:
     get:
       tags:

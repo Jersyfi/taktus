@@ -78,6 +78,7 @@ from taktus.composition.levels import RepositoryLevelRecords
 from taktus.composition.live import LiveHub, LiveOptions, Records, state_of
 from taktus.composition.owner_channel import KnownSecrets, OwnerChannelWiring, owner_channel_wiring
 from taktus.composition.planning import PlanActs
+from taktus.composition.process_proposals import ProcessProposals
 from taktus.composition.profiles import RoleProfiles
 from taktus.composition.reports import ReadingWiring, reading_wiring
 from taktus.composition.streams import StreamReads
@@ -258,6 +259,9 @@ class Services:
     tried: Any = None
     """The model trials (ADR-0149); a test that reaches them sets them. What they do is held by
     `tests/composition/test_trials.py`."""
+    asking: Any = None
+    """The request path an accepted process proposal is handed to (ADR-0251 §1); None: this
+    instance has none, and accepting is refused."""
     built_agent: AgentSurface | None = None
     built_workspace: Workspace | None = None
     requested: Any = None
@@ -541,6 +545,19 @@ class Services:
     def gallery(self) -> Any:
         assert self.chosen is not None, "this test sets the gallery it reaches"
         return self.chosen
+
+    @property
+    def process_proposals(self) -> ProcessProposals:
+        """The processes Taktus proposes, over this world's ledger and runs (ADR-0270)."""
+        return ProcessProposals(
+            ledger=self.ledger,
+            runs=self.runs,
+            versions=MemoryRepository(self.persistence, ProcessVersion),
+            objects=self.objects,
+            work=self.persistence,
+            clock=self.clock,
+            asking=self.asking,
+        )
 
     @property
     def proposals(self) -> Proposals:
