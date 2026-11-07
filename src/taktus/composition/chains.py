@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -35,6 +36,19 @@ from taktus.shared.v1 import Commissioned, LedgerRefs, Plan, PlanResult, PlanSta
 
 HANDOVER = "chain.handover"
 HALTED = "chain.halted"
+_LINK_PLAN = re.compile(r"^pln_([a-z][a-z0-9-]*)_[1-9][0-9]*$")
+
+
+def link_plan(chain: str, index: int) -> str:
+    """The identifier of the plan of the chain's link at `index`, counted from zero."""
+    return f"pln_{chain}_{index + 1}"
+
+
+def chain_of(plan_id: str) -> str | None:
+    """The chain whose link the plan is, read back from `link_plan`; None for any other plan.
+    What sums the value balance per chain reads a chain's processes by it (ADR-0288)."""
+    found = _LINK_PLAN.match(plan_id)
+    return None if found is None else found.group(1)
 
 
 @dataclass(frozen=True)
@@ -132,7 +146,7 @@ class ChainRuns:
         actor: str,
     ) -> Run:
         plan = Plan(
-            id=f"pln_{chain.id}_{index + 1}",
+            id=link_plan(chain.id, index),
             command_id=f"cmd_{chain.id}_{index + 1}",
             goal=f"link {index + 1} of the chain {chain.name}: {version.ref}",
             autonomy_level=version.autonomy_level,

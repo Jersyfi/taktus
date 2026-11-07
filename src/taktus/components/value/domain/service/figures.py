@@ -11,7 +11,7 @@ from __future__ import annotations
 import statistics
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field
 
@@ -166,6 +166,14 @@ class BacklogSource(Value):
     basis: str = Field(min_length=1)
 
 
+class Group(Value):
+    """Processes whose balance is summed together: a domain, a chain, an assistant (ADR-0288)."""
+
+    scope: Literal["domain", "chain", "assistant"]
+    subject: str = Field(min_length=1)
+    processes: tuple[str, ...] = ()
+
+
 class Facts(Value):
     tenant: str = Field(min_length=1)
     since: datetime
@@ -176,6 +184,7 @@ class Facts(Value):
     processes: tuple[ProcessFacts, ...] = ()
     suppliers: tuple[SupplierFacts, ...] = ()
     backlog: tuple[BacklogSource, ...] = ()
+    groups: tuple[Group, ...] = ()
 
 
 def _days(facts: Facts) -> tuple[date, date]:
@@ -584,15 +593,7 @@ def proof_of_value(facts: Facts, per_process: Sequence[Figure]) -> list[Figure]:
     """The sums of the balance over the processes, each with its method and basis (UC-6.6)."""
     make = _Make(facts)
     out: list[Figure] = []
-    for id in (
-        "value.time_saved_hours",
-        "value.personnel_equivalent",
-        "value.cost_money",
-        "value.error_cost",
-        "value.licence_cost",
-        "value.balance",
-        "value.errors_avoided",
-    ):
+    for id in SUMMED:
         total, missing = _sum(per_process, id)
         out.append(
             make(
@@ -661,6 +662,51 @@ def proof_of_value(facts: Facts, per_process: Sequence[Figure]) -> list[Figure]:
             basis={"investment": investment},
         )
     )
+    return out
+
+
+SUMMED = (
+    "value.time_saved_hours",
+    "value.personnel_equivalent",
+    "value.cost_money",
+    "value.error_cost",
+    "value.licence_cost",
+    "value.balance",
+    "value.errors_avoided",
+)
+"""The figures a sum over processes keeps: the proof of value's and a group's (ADR-0288)."""
+
+
+def groups(facts: Facts, per_process: Sequence[Figure]) -> list[Figure]:
+    """The balance summed per domain, chain and assistant, over the group's processes the
+    facts hold: a process the reader may not see is in no fact and adds nothing (ADR-0288)."""
+    make = _Make(facts)
+    known = {p.process for p in facts.processes}
+    out: list[Figure] = []
+    for group in sorted(facts.groups, key=lambda g: (g.scope, g.subject)):
+        held = [p for p in dict.fromkeys(group.processes) if p in known]
+        mine = [f for f in per_process if f.scope == "process" and f.subject in held]
+        for id in SUMMED:
+            total, missing = _sum(mine, id)
+            out.append(
+                make(
+                    id,
+                    group.scope,
+                    group.subject,
+                    total,
+                    f"the sum over the {group.scope}'s processes of the per-process figure "
+                    "of the same name",
+                    withheld=None
+                    if total is not None
+                    else (
+                        f"no process of the {group.scope} the reader may see"
+                        if not held
+                        else "no process of it has a value for it"
+                    ),
+                    assumption=id not in ("value.cost_money", "value.errors_avoided"),
+                    basis={"processes": held, "processes_without_value": missing},
+                )
+            )
     return out
 
 

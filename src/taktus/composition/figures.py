@@ -17,7 +17,8 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from taktus.components.accounting.application.service.spend import SpendHandler, SpendOfProcess
-from taktus.components.catalog.domain.model import AdapterMaturity
+from taktus.components.catalog.domain.model import AdapterMaturity, AgentCore
+from taktus.components.governance.domain.model.domains import Domain
 from taktus.components.identity.application.service import IdentityDirectory
 from taktus.components.process.application.service.streams import ValueStreams
 from taktus.components.process.domain.model import Process, ProcessVersion, TakeoverTrial
@@ -28,11 +29,13 @@ from taktus.components.reporting.domain.model.signal import Corridor, Judged
 from taktus.components.reporting.domain.model.views import Shown, ViewConfiguration
 from taktus.components.reporting.domain.service import views as selection
 from taktus.components.reporting.domain.service import warehouse
+from taktus.components.run.domain.model import Run
 from taktus.components.value.application.query import ValueLedger
 from taktus.components.value.application.service import ValueBases
 from taktus.components.value.domain.model import DiscoveredProcess, Figure, ValueProposal
 from taktus.components.value.domain.service import figures as value
 from taktus.components.value.domain.service.proposals import proposals as proposed
+from taktus.composition.chains import chain_of
 from taktus.ports.clock import Clock
 from taktus.ports.connector import QUERYING
 from taktus.ports.ledger import Fact, Ledger
@@ -153,7 +156,16 @@ class FigureReads:
         ledger: Ledger,
         work: UnitOfWork,
         clock: Clock,
+        domains: Repository[Domain] | None = None,
+        agents: Repository[AgentCore] | None = None,
+        runs: Repository[Run] | None = None,
     ) -> None:
+        """`domains`, `agents` and `runs` give the groups the balance is summed over: the
+        governance component's domains, the catalogue's agents by their flow, the chains by
+        their links' runs (ADR-0288). Each left out sums no group of its kind."""
+        self._domains = domains
+        self._agents = agents
+        self._runs = runs
         self._processes = processes
         self._versions = versions
         self._streams = streams
@@ -238,6 +250,7 @@ class FigureReads:
             ),
             suppliers=tuple(await self._suppliers(tenant)),
             backlog=(),
+            groups=tuple(await self._groups(tenant)),
         )
         activity = await self._value.activity(tenant)
         dependence = await self._value.dependence(tenant)
@@ -248,6 +261,7 @@ class FigureReads:
         figures = [
             *per_process,
             *value.proof_of_value(facts, per_process),
+            *value.groups(facts, per_process),
             *index.figures,
             *units,
         ]
@@ -269,6 +283,29 @@ class FigureReads:
     ) -> list[Shown]:
         """The warehouse figures among the signals judged now (ADR-0291 §3)."""
         return await self._warehouse.shown(reader, visible, judged)
+
+    async def _groups(self, tenant: Tenant) -> list[value.Group]:
+        """The domains, chains and assistants of the tenant, each with its processes."""
+        found: list[value.Group] = []
+        async with self._work.transaction(tenant):
+            domains = [] if self._domains is None else list(await self._domains.list(tenant))
+            agents = [] if self._agents is None else list(await self._agents.list(tenant))
+            runs = [] if self._runs is None else list(await self._runs.list(tenant))
+        for d in domains:
+            found.append(value.Group(scope="domain", subject=d.id, processes=d.processes))
+        flows: dict[str, list[str]] = {}
+        for core in agents:
+            flows.setdefault(core.agent, []).append(core.flow)
+        for agent, processes in flows.items():
+            found.append(value.Group(scope="assistant", subject=agent, processes=tuple(processes)))
+        linked: dict[str, list[str]] = {}
+        for run in runs:
+            chain = chain_of(run.plan_id)
+            if chain is not None and not run.rehearsal:
+                linked.setdefault(chain, []).append(run.process_version.rpartition("@")[0])
+        for chain, processes in linked.items():
+            found.append(value.Group(scope="chain", subject=chain, processes=tuple(processes)))
+        return found
 
     async def _run_figures(self, reader: Reader, visible: frozenset[str]) -> list[Shown]:
         """The overview's own counts, read from the overview level itself (UC-6.10)."""

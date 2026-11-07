@@ -31,7 +31,9 @@ class Shown(Value):
     component: str = Field(min_length=1)
     definition: str = Field(min_length=1)
     unit: str = Field(min_length=1)
-    scope: Literal["tenant", "process", "stream", "unit", "role", "supplier"]
+    scope: Literal[
+        "tenant", "process", "stream", "unit", "role", "supplier", "domain", "chain", "assistant"
+    ]
     subject: str = Field(min_length=1)
     since: datetime | None = None
     until: datetime | None = None

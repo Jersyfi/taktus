@@ -18,8 +18,9 @@ from typing import Any
 import structlog
 
 from taktus.components.accounting.application.service.spend import SpendHandler, SpendOfRun
-from taktus.components.catalog.domain.model import AdapterMaturity
+from taktus.components.catalog.domain.model import AdapterMaturity, AgentCore
 from taktus.components.decision.domain.model import Request
+from taktus.components.governance.domain.model.domains import Domain
 from taktus.components.identity.application.service import IdentityDirectory
 from taktus.components.process.application.service.streams import ValueStreams
 from taktus.components.process.domain.model import (
@@ -504,6 +505,9 @@ def reading_wiring(
         ledger=ledger,
         work=work,
         clock=clock,
+        domains=of(Domain),
+        agents=of(AgentCore),
+        runs=of(Run),
     )
     return ReadingWiring(
         figures=figures,

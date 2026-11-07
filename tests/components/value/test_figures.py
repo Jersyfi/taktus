@@ -284,6 +284,35 @@ async def test_the_proof_of_value_sums_the_balances_and_names_its_basis() -> Non
         assert figure.method and "period" in figure.basis
 
 
+async def test_the_balance_is_summed_per_group_over_the_processes_the_reader_sees() -> None:
+    """ADR-0288: a domain, a chain and an assistant sum the balance of their processes; a
+    process the facts do not hold — one the reader may not see — adds nothing, and a group
+    with none is withheld, never zero."""
+    world = World()
+    activity = await three_runs(world)
+    stated = basis(invoice={"minutes_by_hand": 30, "roles_by_hand": ["accounting"]})
+    given = facts(stated).model_copy(
+        update={
+            "groups": (
+                value.Group(scope="domain", subject="finance", processes=("invoice", "hidden")),
+                value.Group(scope="chain", subject="month-end", processes=("invoice", "invoice")),
+                value.Group(scope="assistant", subject="clerk", processes=("hidden",)),
+            )
+        }
+    )
+    per = value.process_figures(given, activity)
+    summed = value.groups(given, per)
+    own = one(per, "value.balance")
+    for scope in ("domain", "chain"):
+        figure = one(summed, "value.balance", scope)
+        assert figure.value == own.value and own.value is not None, scope
+        assert figure.basis["processes"] == ["invoice"]
+        assert figure.assumption and "sum" in figure.method
+    assert one(summed, "value.cost_money", "domain").assumption is False
+    alone = one(summed, "value.balance", "assistant")
+    assert alone.value is None and alone.withheld is not None
+
+
 async def test_the_bus_factor_index_reads_recorded_results_only() -> None:
     world = World()
     await world.fact("takeover.trial", "invoice@1", outcome="passed")
@@ -357,6 +386,9 @@ def test_no_figure_can_have_a_person_as_its_scope() -> None:
         "unit",
         "role",
         "supplier",
+        "domain",
+        "chain",
+        "assistant",
     }
     with pytest.raises(ValueError):
         Figure.model_validate(

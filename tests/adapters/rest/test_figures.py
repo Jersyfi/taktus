@@ -21,6 +21,8 @@ from composition.test_warehouse_signals import SUBSCRIBERS
 from fakes.takeover import instructed
 
 from taktus.adapters.driven.memory import MemoryProvenanceStore, MemoryRepository
+from taktus.components.catalog.domain.model import AgentCore
+from taktus.components.governance.domain.model.domains import Domain
 from taktus.components.identity.domain.model import Right
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersion,
@@ -34,6 +36,8 @@ from taktus.ports.ledger import Fact
 from taktus.ports.worker import ComputeLimit, Limits
 from taktus.shared.v1 import LedgerRefs, Method, Provenance
 
+from ..persistence.samples import agent_core
+from ..persistence.samples import run as a_run
 from .conftest import OTHER, TENANT, Services
 from .test_process_level import bearer
 from .test_roles import BUNDLE
@@ -244,6 +248,53 @@ async def test_the_overview_s_counts_are_in_the_export_as_the_overview_counts_th
         if f["subject"] == "invoice" and f["id"].startswith("run.")
     }
     assert counted == {"run.working": process["working"], "run.waiting": process["waiting"]}
+
+
+async def test_the_balance_is_summed_per_domain_chain_and_assistant_in_the_export(
+    client: Client,
+) -> None:
+    """UC-15.1, UC-9.3, UC-12.1, ADR-0288: the groups come from their owners — the governance
+    component's domain, a chain's link runs, the catalogue's agent by its flow — and each sum
+    equals the process's own figure, for whom may see it."""
+    http, given, base = client
+    keys = await world(given)
+    await stated(http, base, keys)
+    at = datetime(2026, 11, 1, tzinfo=UTC)
+    async with given.persistence.transaction(TENANT):
+        await MemoryRepository(given.persistence, Domain).put(
+            TENANT,
+            Domain(
+                id="finance",
+                tenant=TENANT,
+                name="Finance",
+                owner="idn_owner",
+                jurisdiction="DE",
+                processes=("invoice", "payroll"),
+                created_at=at,
+            ),
+        )
+        await MemoryRepository(given.persistence, AgentCore).put(
+            TENANT,
+            agent_core(TENANT).model_copy(
+                update={"id": "clerk@1", "agent": "clerk", "version": "1", "flow": "invoice"}
+            ),
+        )
+        await MemoryRepository(given.persistence, Run).put(
+            TENANT,
+            a_run("run_chain_1", TENANT).model_copy(
+                update={"plan_id": "pln_month-end_1", "process_version": "invoice@1"}
+            ),
+        )
+    export = (await http.get(f"{base}/figures", headers=bearer(keys["idn_owner"]))).json()
+    found = {(f["id"], f["scope"], f["subject"]): f for f in export["figures"]}
+    own = found[("value.balance", "process", "invoice")]
+    for scope, subject in (("domain", "finance"), ("chain", "month-end"), ("assistant", "clerk")):
+        summed = found[("value.balance", scope, subject)]
+        assert summed["value"] == own["value"] and summed["value"] is not None, (scope, summed)
+        assert summed["basis"]["processes"] == ["invoice"], "payroll is no process the tenant has"
+        assert summed["component"] == "value" and summed["method"]
+    for figure in export["figures"]:
+        assert figure["scope"] != "person"
 
 
 async def test_the_same_work_with_and_without_a_knowledge_source_is_compared_for_whom_may_read_it(
