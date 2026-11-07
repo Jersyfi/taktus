@@ -41,6 +41,7 @@ from taktus.composition.pools import Pools
 from taktus.ports.clock import Clock
 from taktus.ports.ledger import Ledger
 from taktus.ports.persistence import ProvenanceStore, Repository, Tenant, UnitOfWork
+from taktus.ports.worker import UnaskedWorker
 from taktus.shared.v1 import EGRESS_KINDS
 
 FAMILIES = ("worker", "connector", "model")
@@ -222,7 +223,9 @@ class ActingReads:
 
     async def _served(self, tenant: Tenant, visible: frozenset[str]) -> list[_Served]:
         """Every step of every active version the reader may see, with the adapter that serves
-        it now. A step whose work cannot be read is left out, as the removal test leaves it."""
+        it now. A step whose work cannot be read is left out, as the removal test leaves it. So
+        is a step whose worker could not be asked what it offers: the register reads, it does
+        not start the unit that would answer (#674)."""
         async with self._work.transaction(tenant):
             processes = await self._processes.list(tenant)
             versions = [
@@ -239,7 +242,10 @@ class ActingReads:
                     work = parse_work(step, version.work.get(step.id), examples)
                 except RunError:
                     continue
-                serving = await self._pools.serving(step, work)
+                try:
+                    serving = await self._pools.serving(step, work)
+                except UnaskedWorker:
+                    continue
                 if serving is None or serving[1] is None:
                     continue
                 found.append(_Served(version, step, serving[0], serving[1]))
@@ -249,7 +255,10 @@ class ActingReads:
         version, step = served.version, served.step
         examples = {name: given.example for name, given in version.inputs.items()}
         work = parse_work(step, version.work.get(step.id), examples)
-        alternative = await self._pools.without(served.adapter).serving(step, work)
+        try:
+            alternative = await self._pools.without(served.adapter).serving(step, work)
+        except UnaskedWorker:
+            alternative = None
         instead = None if alternative is None else alternative[1]
         finding = removal.step_finding(step, served.served, instead)
         return ActorUse(

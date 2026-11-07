@@ -126,13 +126,13 @@ class Runs:
 
 
 class World:
-    def __init__(self) -> None:
+    def __init__(self, worker: FakeWorker | None = None) -> None:
         self.clock = FakeClock(AT)
         self.persistence = MemoryPersistence()
         self.ledger = ChainedLedger(MemoryLedgerStore(self.persistence), self.clock)
         self.provenance = MemoryProvenanceStore(self.persistence)
         self.pools = Pools(
-            StaticWorkerPool([("worker.fake", FakeWorker())]),
+            StaticWorkerPool([("worker.fake", worker or FakeWorker())]),
             StaticConnectorPool([("connector.fake", FakeConnector())]),
             StaticModelPool(
                 [
@@ -173,11 +173,11 @@ class World:
             clock=self.clock,
         )
 
-    async def registered(self) -> World:
+    async def registered(self, *more: dict[str, Any]) -> World:
         register = RegisterProcessVersionHandler(
             self.versions, self.persistence, self.processes, ledger=self.ledger, clock=self.clock
         )
-        for given in (BILLING, SUPPORT):
+        for given in (BILLING, SUPPORT, *more):
             await register.execute(
                 RegisterProcessVersion(bundle=instructed(given), tenant=TENANT, by="idn_a")
             )
@@ -210,6 +210,31 @@ async def test_the_register_lists_every_adapter_with_the_steps_it_acts_in() -> N
     assert by["model.second"].uses == (), "it serves nothing while model.first is first"
     assert by["model.first"].location == "eu" and by["model.third"].location == "elsewhere"
     assert register.rows[-1].attention == (), "what needs no attention comes last"
+
+
+SCRIPT = bundle(
+    "script",
+    {
+        "id": "compute",
+        "method": "worker",
+        "reason": "a command needs a shell",
+        "rejected": [{"method": "rule", "why": "the core runs no shell"}],
+        "exactness": "tolerant",
+        "fallback": {"when": "it fails", "to": "human", "role": "owner"},
+        "requires": ["shell.script"],
+        "work": {"task": {"goal": "run expr 6 '*' 7", "acceptance": ["it ran"]}},
+    },
+)
+
+
+async def test_a_worker_that_cannot_be_asked_leaves_its_step_out_and_the_register_answers() -> None:
+    """The api role has no cluster: the unit that would say what a launched worker offers does
+    not start there, and the register still answers (#674)."""
+    world = await World(worker=FakeWorker(creating_for=1_000)).registered(SCRIPT)
+    register = await world.reads.register(TENANT, EVERYTHING | {"script"})
+    by = {r.adapter: r for r in register.rows}
+    assert by["worker.fake"].uses == ()
+    assert [u.step_id for u in by["connector.fake"].uses] == ["fetch"]
 
 
 async def test_a_process_the_reader_may_not_see_is_left_out_of_every_row() -> None:
