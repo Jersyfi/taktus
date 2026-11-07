@@ -28,7 +28,7 @@ from taktus.ports.administration import NONE, Administration
 from taktus.ports.configuration import Configuration, ConfigurationError, Secret
 from taktus.ports.execution import variable_refusal
 from taktus.ports.hardware import HardwareNeeds
-from taktus.ports.model import LOCATIONS, MODEL_CLASSES, PriceTable, WeightingTable
+from taktus.ports.model import LOCATIONS, MODEL_CLASSES, Location, PriceTable, WeightingTable
 from taktus.ports.worker import Host
 
 
@@ -833,6 +833,41 @@ def load_connectors(configuration: Configuration) -> Mapping[str, str]:
     return _Reader(configuration).connectors()
 
 
+def load_connector_locations(configuration: Configuration) -> Mapping[str, Location]:
+    """`TAKTUS_CONNECTOR_LOCATIONS`: `channel.repo=eu,channel.chat=own` — where the system each
+    connector of `TAKTUS_CONNECTORS` reaches processes, as whoever configures it declares it
+    (ADR-0281 §1). A label `TAKTUS_CONNECTORS` does not name is refused; a connector without an
+    entry counts as `elsewhere`. `taktusctl` reads it too."""
+    reader = _Reader(configuration)
+    locations = reader.locations("connector.locations")
+    known = reader.connectors()
+    for label in locations:
+        if label not in known:
+            raise ConfigurationError(
+                configuration.name("connector.locations"),
+                f"{label!r} is not a connector of {configuration.name('connectors')}",
+            )
+    return locations
+
+
+def load_host_locations(configuration: Configuration) -> Mapping[str, Location]:
+    """`TAKTUS_HOST_LOCATIONS`: `api.example.eu=eu,10.0.0.5:8443=own` — where each host an
+    execution unit may reach processes, by the host as a frame or a worker's service hosts
+    name it (ADR-0281 §3). A host without an entry counts as `elsewhere`."""
+    reader = _Reader(configuration)
+    locations = reader.locations("host.locations")
+    for host in locations:
+        try:
+            _HOST.validate_python(host)
+        except ValidationError:
+            raise ConfigurationError(
+                configuration.name("host.locations"),
+                f"{host!r} is not a host: a lowercase host name or an IPv4 address, "
+                "optionally with a port, and no wildcard",
+            ) from None
+    return locations
+
+
 def load_execution(configuration: Configuration) -> ExecutionSettings:
     """The execution settings alone: `taktusctl` reads them too, without the daemon's."""
     reader = _Reader(configuration)
@@ -1240,6 +1275,12 @@ class Settings:
     """What the capacity report is told: thresholds, the database's volume, the interval."""
     connectors: Mapping[str, str]
     """Channel capability → the MCP URL of the connector that serves its intake."""
+    connector_locations: Mapping[str, Location]
+    """`TAKTUS_CONNECTOR_LOCATIONS`: where each connector's system processes, by its label in
+    `TAKTUS_CONNECTORS` (ADR-0281 §1). A connector it does not name counts as `elsewhere`."""
+    host_locations: Mapping[str, Location]
+    """`TAKTUS_HOST_LOCATIONS`: where each host an execution unit may reach processes, by the
+    host as a frame names it (ADR-0281 §3). A host it does not name counts as `elsewhere`."""
     triage: Mapping[str, str]
     """Public channel → the process that triages an unknown sender's contribution there
     (`TAKTUS_TRIAGE`, UC-1.9, ADR-0088). A channel it does not name has no triage."""
@@ -1327,6 +1368,14 @@ class Settings:
             *self.budget.effective(),
             *self.capacity.effective(),
             ("TAKTUS_CONNECTORS", ",".join(f"{c}={u}" for c, u in self.connectors.items())),
+            (
+                "TAKTUS_CONNECTOR_LOCATIONS",
+                ",".join(f"{c}={w}" for c, w in self.connector_locations.items()),
+            ),
+            (
+                "TAKTUS_HOST_LOCATIONS",
+                ",".join(f"{h}={w}" for h, w in self.host_locations.items()),
+            ),
             ("TAKTUS_TRIAGE", ",".join(f"{c}={p}" for c, p in self.triage.items())),
             ("TAKTUS_KNOWLEDGE_DIRECTORY", str(self.knowledge_directory or "")),
             ("TAKTUS_GALLERY_DIRECTORY", str(self.gallery_directory or "")),
@@ -1397,6 +1446,8 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         budget=load_budget(configuration),
         capacity=load_capacity(configuration),
         connectors=reader.connectors(),
+        connector_locations=load_connector_locations(configuration),
+        host_locations=load_host_locations(configuration),
         triage=reader.triage(),
         administration=load_administration(configuration),
         knowledge_directory=load_knowledge_directory(configuration),
@@ -1521,6 +1572,28 @@ class _Reader:
         if len(set(items)) != len(items):
             raise ConfigurationError(name, f"{value!r} names an entry twice")
         return items
+
+    def locations(self, key: str) -> dict[str, Location]:
+        """Comma-separated `name=location` pairs, each location `own`, `eu` or `elsewhere`, no
+        name twice (ADR-0281). Unset or empty: none."""
+        name, value = self._raw(key)
+        mapping: dict[str, Location] = {}
+        if value is None:
+            return mapping
+        for entry in (e.strip() for e in value.split(",") if e.strip()):
+            label, separator, location = (part.strip() for part in entry.partition("="))
+            if not separator or not label or not location:
+                raise ConfigurationError(
+                    name, f"{entry!r} is not name=location (for example channel.repo=eu)"
+                )
+            if location not in LOCATIONS:
+                raise ConfigurationError(
+                    name, f"{location!r} is not a location; one of {', '.join(LOCATIONS)}"
+                )
+            if label in mapping:
+                raise ConfigurationError(name, f"{label!r} is given twice")
+            mapping[label] = location
+        return mapping
 
     def hosts(self, key: str) -> tuple[str, ...]:
         """A comma-separated list of hosts, each as a frame names one — a lowercase host name or

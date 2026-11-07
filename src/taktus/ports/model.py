@@ -65,6 +65,16 @@ def admits(permitted: Permitted, location: Location) -> bool:
     return LOCATIONS.index(location) <= PERMITTED.index(permitted)
 
 
+def host_location(locations: Mapping[str, Location], host: str) -> Location:
+    """Where a host processes, as the configuration declares it (`TAKTUS_HOST_LOCATIONS`): by
+    the host as written, then by its name without a port; `elsewhere` where neither is declared
+    (ADR-0281 §3)."""
+    if host in locations:
+        return locations[host]
+    name = host.rsplit(":", 1)[0] if host.count(":") == 1 else host
+    return locations.get(name, "elsewhere")
+
+
 def narrower(first: Permitted, second: Permitted) -> Permitted:
     """The narrower of two permitted locations: where both hold."""
     return first if PERMITTED.index(first) <= PERMITTED.index(second) else second

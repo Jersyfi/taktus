@@ -189,10 +189,12 @@ from taktus.composition.settings import (
     load_budget,
     load_capacity,
     load_catalogue,
+    load_connector_locations,
     load_connectors,
     load_database_timeouts,
     load_findings,
     load_findings_connector,
+    load_host_locations,
     load_knowledge_directory,
     load_model,
     load_models,
@@ -282,6 +284,8 @@ class LocalWiring:
             configured = load_workers(self._configuration)
             telemetry = telemetry_of(load_telemetry(self._configuration))
             connectors = load_connectors(self._configuration)
+            connector_locations = load_connector_locations(self._configuration)
+            host_locations = load_host_locations(self._configuration)
             model = load_model(self._configuration)
             models = load_models(self._configuration)
             budget = load_budget(self._configuration)
@@ -355,6 +359,7 @@ class LocalWiring:
                 connector_pool(
                     connectors,
                     also=[(LOOPBACK, loopback), *served_directory(knowledge_directory)],
+                    locations=connector_locations,
                 ),
                 model_pool(models),
             )
@@ -420,6 +425,7 @@ class LocalWiring:
                         capacity=rules_of(capacity),
                         unit_memory_bytes=memory_demand(configured),
                         model_cool_down_seconds=model.cool_down_seconds,
+                        host_locations=host_locations,
                     ),
                     platform=HostPlatform(clock, state_dir=state_dir),
                     recordings=recordings,

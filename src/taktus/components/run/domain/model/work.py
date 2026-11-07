@@ -596,6 +596,9 @@ class ConnectorRule(Value):
     input: dict[str, Any] = Field(default_factory=dict)
     credentials: tuple[CredentialReference, ...] = ()
     expect: tuple[Expectation, ...] = ()
+    data_class: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_-]*$")
+    """The class of the data the call carries, as the process declares it: the tenant's
+    residency rule for that class decides whether the connector may be called (ADR-0281 §2)."""
 
     @property
     def capability(self) -> str:

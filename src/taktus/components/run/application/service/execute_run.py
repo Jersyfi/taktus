@@ -215,6 +215,7 @@ from taktus.components.run.domain.model import (
     MlWork,
     NoConnector,
     NoWorker,
+    OutsideResidency,
     ParticipantWork,
     ReadyRule,
     ReceivedMessage,
@@ -335,12 +336,15 @@ from taktus.ports.connector import (
 from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.model import (
     Calculability,
+    Location,
     ModelAtLimit,
     ModelError,
     Permitted,
     PriceTable,
     Prompt,
     WeightingTable,
+    admits,
+    host_location,
     price,
 )
 from taktus.ports.objectstore import ObjectStore
@@ -416,6 +420,8 @@ RECOUNTS = 5
 """How often a run counts its process's open work again when other runs of it pass at the same
 moment, before it waits a check instead (ADR-0132 §2)."""
 
+RESIDENCY_EGRESS = "residency.egress"
+"""Beside every egress entry: the location the effect went to, as outcome (ADR-0281 §5)."""
 CLAIM_LOST = "run.claim_lost"
 """The ledger kind a runner's lost claim is recorded under (ADR-0106 §2)."""
 
@@ -702,6 +708,9 @@ class Trace:
     message: Digest | None = None
     """For a message step that sent: the digest of its record, which `message.sent` names
     beside the egress entry (ADR-0142 §10)."""
+    location: Location | None = None
+    """For a step whose effect left the system: where the connector it went through is, which
+    `residency.egress` names beside the egress entry (ADR-0281 §5)."""
 
 
 @dataclass(frozen=True)
@@ -747,6 +756,9 @@ class EngineOptions:
     `parked`, and its runner defers the job to the wait's next check, holding no place
     meanwhile (ADR-0103). None waits inline, where no runner resumes a halted run — a run
     executed from the command line."""
+    host_locations: Mapping[str, Location] = field(default_factory=dict)
+    """Where each host an execution unit may reach processes (`TAKTUS_HOST_LOCATIONS`); a host
+    it does not name is `elsewhere` (ADR-0281 §3)."""
 
 
 @dataclass(frozen=True)
@@ -5604,7 +5616,7 @@ class RunEngine:
             calls = int(work.until.timeout_seconds // work.until.poll_seconds) + 1
             return _Demand(_times(operation.demand.document(), calls), adapter=resolved.adapter)
         if isinstance(work, ConnectorRule):
-            resolved = await self._connector(run, step.id, work.capability)
+            resolved = await self._connector(run, step.id, work.capability, work.data_class)
             await self._not_stopped(run, resolved.adapter)
             operation = resolved.declaration.operation(work.operation)
             if operation is None:
@@ -6038,10 +6050,14 @@ class RunEngine:
 
     # --- connector steps ------------------------------------------------------------------------
 
-    async def _connector(self, run: Run, step_id: StepId, capability: str) -> ResolvedConnector:
+    async def _connector(
+        self, run: Run, step_id: StepId, capability: str, data_class: str | None = None
+    ) -> ResolvedConnector:
         """The connector configured for the capability. None configured is a failed step, not
         an exception: the run escalates at the boundary with the reason, and a resume after
-        the configuration changed retries it (the same as a model that is not configured)."""
+        the configuration changed retries it (the same as a model that is not configured).
+        A connector outside the location the tenant's rule permits for the data class in a run
+        of the process fails the step the same way, before it is called (ADR-0281 §2)."""
         resolved = None
         pool = self._connector_pool(run)
         if pool is not None:
@@ -6055,6 +6071,20 @@ class RunEngine:
                 outcome="no connector",
                 lack=(block.NO_CONNECTOR, capability),
             )
+        if self._residency is not None:
+            permitted = await self._residency.permitted(
+                run.tenant, data_class, process_of(run.process_version)
+            )
+            if not admits(permitted, resolved.location):
+                raise _StepFailed(
+                    reason=str(
+                        OutsideResidency(step_id, resolved.adapter, resolved.location, permitted)
+                    ),
+                    retryable=True,
+                    consumption=None,
+                    adapter=resolved.adapter,
+                    outcome="outside residency",
+                )
         return resolved
 
     async def _connector_call(
@@ -6063,7 +6093,7 @@ class RunEngine:
         """One operation, called once for this attempt of the step. What comes back is the
         result as the contract shapes it — output, effect, consumption — and, for an outward
         effect, the egress entry the commit writes beside `step.finished`."""
-        resolved = await self._connector(run, step_run.step_id, work.capability)
+        resolved = await self._connector(run, step_run.step_id, work.capability, work.data_class)
         operation = resolved.declaration.operation(work.operation)
         if operation is None:
             raise _StepFailed(
@@ -6119,6 +6149,7 @@ class RunEngine:
             egress=egress,
             rehearsed=rehearsed,
             message=sent if egress is not None else None,
+            location=resolved.location if egress is not None else None,
         )
         return document, trace, result.consumption, resolved.adapter
 
@@ -6551,6 +6582,29 @@ class RunEngine:
                         step.id, step.required_capabilities, permitted=permitted, outside=outside
                     )
                 ),
+                retryable=True,
+                finished_at=self._clock.now(),
+            )
+            run = await self._commit(
+                run.with_step_run(step_run), "step.finished", step=step_run, outcome="failed"
+            )
+            return run, step_run
+        beyond_hosts = [
+            (host, located)
+            for host in dict.fromkeys((*work.allowed_hosts, *resolved.hosts))
+            if not admits(
+                permitted,
+                located := host_location(self._options.host_locations, host),
+            )
+        ]
+        if beyond_hosts:
+            # A host the unit would reach is outside the rule: nothing is assigned, and the
+            # reason names the rule and the host (ADR-0281 §3).
+            host, located = beyond_hosts[0]
+            span.record_failure("host outside residency")
+            step_run = step_run.to(
+                StepState.FAILED,
+                reason=str(OutsideResidency(step.id, f"the host {host}", located, permitted)),
                 retryable=True,
                 finished_at=self._clock.now(),
             )
@@ -7619,6 +7673,15 @@ class RunEngine:
                             f"egress.{trace.egress.kind}",
                             step=step,
                             outcome="replayed" if trace.egress.replayed else "acted",
+                            digest=trace.egress.content_digest,
+                        )
+                        # Where it went: the location of the adapter it went through, beside
+                        # the egress entry (ADR-0281 §5).
+                        await self._record(
+                            run,
+                            RESIDENCY_EGRESS,
+                            step=step,
+                            outcome=trace.location or "elsewhere",
                             digest=trace.egress.content_digest,
                         )
                         if trace.message is not None:

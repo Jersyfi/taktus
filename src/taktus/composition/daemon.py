@@ -605,6 +605,7 @@ async def wire(
                 connector_pool(
                     settings.connectors,
                     also=[(LOOPBACK, loopback), *served_directory(settings.knowledge_directory)],
+                    locations=settings.connector_locations,
                 ),
                 model_pool(settings.models),
             )
@@ -678,6 +679,7 @@ async def wire(
                         unit_memory_bytes=memory_demand(settings.workers),
                         park_waits_after_seconds=settings.poll_seconds,
                         model_cool_down_seconds=settings.model.cool_down_seconds,
+                        host_locations=settings.host_locations,
                     ),
                     platform=HostPlatform(clock, state_dir=settings.state_dir),
                     connectors=connectors,

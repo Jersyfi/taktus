@@ -193,7 +193,7 @@ def test_the_effective_configuration_masks_every_secret() -> None:
     assert effective["TAKTUS_ROLES"] == "scheduler"
     assert "hunter2" not in json.dumps(effective)
     assert set(effective) == {name for name, _ in loaded.effective()}
-    assert len(effective) == 88, "every setting is in the startup log"
+    assert len(effective) == 90, "every setting is in the startup log"
 
 
 def test_the_administration_key_is_read_from_a_file_and_masked(tmp_path: Path) -> None:
@@ -542,6 +542,41 @@ def test_a_channel_is_public_only_where_the_operator_names_its_triage() -> None:
     for wrong in ("channel.repo", "Repo=p05", "channel.repo=P 05", "a.b=x,a.b=y"):
         with pytest.raises(ConfigurationError, match="TAKTUS_TRIAGE"):
             settings(TAKTUS_TRIAGE=wrong)
+
+
+async def test_a_connector_and_a_host_are_where_the_configuration_declares_them() -> None:
+    """UC-11.1 §2: every connector is configured with a location, by its label, and every host
+    a unit may reach; what nobody declared counts as `elsewhere`, and the instance's own
+    connectors are `own` (ADR-0281 §1, §3)."""
+    from taktus.adapters.driven.connectors.loopback import ADAPTER as LOOPBACK
+    from taktus.adapters.driven.connectors.loopback import LoopbackConnector
+    from taktus.composition.execution import connector_pool
+
+    loaded = settings(
+        TAKTUS_CONNECTORS="channel.repo=http://repo:9100/mcp,channel.chat=http://chat:9101/mcp",
+        TAKTUS_CONNECTOR_LOCATIONS="channel.repo=eu",
+        TAKTUS_HOST_LOCATIONS="api.example.eu=eu,10.0.0.5:8443=own",
+    )
+    assert loaded.connector_locations == {"channel.repo": "eu"}
+    assert loaded.host_locations == {"api.example.eu": "eu", "10.0.0.5:8443": "own"}
+    assert dict(loaded.effective())["TAKTUS_CONNECTOR_LOCATIONS"] == "channel.repo=eu"
+    pool = connector_pool(
+        loaded.connectors,
+        also=[(LOOPBACK, LoopbackConnector())],
+        locations=loaded.connector_locations,
+    )
+    assert pool.location("connector.channel.repo") == "eu"
+    assert pool.location("connector.channel.chat") == "elsewhere"
+    assert pool.location(LOOPBACK) == "own"
+    for variable, value, words in [
+        ("TAKTUS_CONNECTOR_LOCATIONS", "channel.mail=eu", "is not a connector of"),
+        ("TAKTUS_CONNECTOR_LOCATIONS", "channel.repo=mars", "is not a location"),
+        ("TAKTUS_CONNECTOR_LOCATIONS", "channel.repo=eu,channel.repo=own", "given twice"),
+        ("TAKTUS_HOST_LOCATIONS", "*.example.eu=eu", "is not a host"),
+    ]:
+        with pytest.raises(ConfigurationError) as raised:
+            settings(TAKTUS_CONNECTORS="channel.repo=http://repo:9100/mcp", **{variable: value})
+        assert raised.value.setting == variable and words in str(raised.value)
 
 
 def test_the_platform_and_what_each_credential_administers_are_read() -> None:
