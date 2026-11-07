@@ -171,6 +171,7 @@ from taktus.composition.agents import SharedAgents
 from taktus.composition.alerts import alerts, alerts_tick, say_who_hears
 from taktus.composition.anchors import anchors_tick
 from taktus.composition.capacity import capacity_report, capacity_tick, rules_of
+from taktus.composition.case_spend import InstanceSpend
 from taktus.composition.catalogue_in_channel import CatalogueInChannel
 from taktus.composition.change_in_channel import ChangeInChannel
 from taktus.composition.conformance import InstanceSuites, worker_suites
@@ -812,6 +813,14 @@ async def wire(
                     PostgresRepository(persistence, Process),
                     PostgresRepository(persistence, ProcessVersion),
                     persistence,
+                ),
+                # What a process spends per case, which B-2.02 reads (ADR-0216).
+                spend=InstanceSpend(
+                    SpendHandler(ledger, objects, persistence),
+                    PostgresRepository(persistence, ProcessVersion),
+                    runs,
+                    persistence,
+                    clock,
                 ),
             )
             outbox = PostgresOutbox(persistence)

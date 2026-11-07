@@ -7,22 +7,36 @@ the run as the composition root wires them (`composition/decisions.py`).
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 from fakes.owner_channel import OWNER, TENANT
 
+from taktus.adapters.driven.connectors.loopback import LoopbackConnector
+from taktus.components.accounting.application.service import SpendHandler
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersion,
 )
 from taktus.components.process.domain.model import ProcessVersion
-from taktus.components.run.domain.model import RunState, StepState
+from taktus.components.run.application.service import EngineOptions
+from taktus.components.run.domain.model import Run, RunState, StepState
+from taktus.composition.case_spend import InstanceSpend
 from taktus.composition.decisions import decision_wiring
+from taktus.ports.model import PriceTable
 
 from .test_software_operations import Outside, World, bundle, outside, replying, states
 
 __all__ = ["outside"]
 
 CLASSIFY_MESSAGE = "You name the class"
+TABLE = PriceTable(
+    version="test-1",
+    valid_from=datetime(2026, 9, 30, tzinfo=UTC),
+    currency="usd",
+    unit_tokens=1_000_000,
+    source="a test",
+    prices={"fake-model@1": {"input": 3.0, "output": 15.0}},
+)
 
 
 def with_levels(w: World) -> World:
@@ -85,3 +99,32 @@ async def test_b_3_03_every_reply_of_the_shipped_version_is_released_and_counted
         entries = await w.ledger.entries(TENANT, run.id)
     sent = [e for e in entries if e.kind == "proposal.decided" and e.refs.step_id == "send"]
     assert [e.refs.case_class for e in sent] == ["how_to"]
+
+
+async def test_b_2_02_names_the_costliest_support_cases_of_the_week(outside: Outside) -> None:
+    w = await World(outside).ready()
+    w.engine._options = EngineOptions(uncalibrated_margin=0.0, prices=TABLE)
+    loopback = LoopbackConnector(
+        spend=InstanceSpend(
+            SpendHandler(w.ledger, w.objects, w.persistence),
+            w.of(ProcessVersion),
+            w.of(Run),
+            w.persistence,
+            w.clock,
+        )
+    )
+    w.engine._connectors._connectors.append(("connector.loopback", loopback))
+    replies = await w.registered("B-3.02-draft-reply.yaml")
+    assert replies.case == "message"
+    replying(w, "You can export the report under Settings, then Export.")
+    for _ in range(2):
+        await w.confirmed(await w.start(replies, message="<seed-1@mail.example>"))
+
+    version = await w.registered("B-2.02-cost-per-case.yaml")
+    run = await w.start(version, process="b-3-02", days=7)
+    assert run.state is RunState.FINISHED, [(s.step_id, s.reason) for s in run.step_runs]
+    read = await w.result(run, "read-cases")
+    assert read["output"]["runs"] == 2 and read["output"]["without_case"] == 0
+    (costliest,) = (await w.result(run, "costliest"))["items"]
+    assert costliest["case"] == "<seed-1@mail.example>" and costliest["runs"] == 2
+    assert costliest["amount"] > 0 and costliest["amounts"] == {"usd": costliest["amount"]}

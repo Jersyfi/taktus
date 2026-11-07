@@ -498,6 +498,7 @@ def parse_bundle(bundle: Document) -> ProcessVersion:
             open_work=_open_work(bundle.get("open_work")),
             deadlines=_deadlines(bundle.get("deadlines")),
             evaluation=_evaluation(bundle.get("evaluation")),
+            case=bundle.get("case"),
             takeover=_takeover(bundle.get("takeover")),
             author=bundle.get("author"),
             reason=bundle.get("reason"),

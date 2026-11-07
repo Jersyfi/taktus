@@ -119,6 +119,9 @@ inputs:
     description: the message identifier of the customer's message, as the mailbox gives it
     example: "<seed-1@mail.example>"
 
+# B-2.02: the message is the case its run's spend is counted for (ADR-0216).
+case: message
+
 limits:
   quota: { units: 10 }
 

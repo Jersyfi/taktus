@@ -75,6 +75,8 @@ def bundle_of(
         }
     if version.evaluation is not None:
         bundle["evaluation"] = version.evaluation.document()
+    if version.case is not None:
+        bundle["case"] = version.case
     if version.takeover is not None:
         bundle["takeover"] = version.takeover.document()
     return bundle
