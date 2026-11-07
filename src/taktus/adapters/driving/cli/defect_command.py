@@ -4,7 +4,9 @@
 `assess` prints the impact analysis and the rule's decision as JSON, and the remediation plan as
 text a person carries out without Taktus; it changes nothing. `raise` does the same and raises
 the incident of kind `result.defect`, once per result. A plan's outward steps are decided by the
-person of the correction anchor before anyone makes them (ADR-0022).
+person of the correction anchor before anyone makes them (ADR-0022). `by-hand` records on the
+incident a step of the plan a person carried out by hand, with the role and the time
+(ADR-0227 §2).
 
 The command line authenticates by holding the instance's state, as `incident` does.
 """
@@ -29,6 +31,8 @@ from taktus.adapters.driving.cli.run_command import (
 from taktus.adapters.driving.cli.wiring import NotOperable, Wiring
 from taktus.components.governance.application.service import (
     Assessment,
+    NotAResultDefect,
+    RecordByHand,
     ReportDefect,
     ResultDefects,
 )
@@ -63,7 +67,7 @@ def _run[T](ctx: typer.Context, state_dir: Path, act: Callable[[ResultDefects], 
 
     try:
         return asyncio.run(opened())
-    except (NotOperable, ValueError, defects.NotRecorded) as error:
+    except (NotOperable, ValueError, defects.NotRecorded, NotAResultDefect) as error:
         typer.echo(f"error: {error}", err=True)
         raise typer.Exit(code=2) from error
 
@@ -115,5 +119,28 @@ def raise_(
     async def act(service: ResultDefects) -> dict[str, Any]:
         incident, assessed = await service.raise_incident(command)
         return {"incident": incident.document(), **shown(assessed)}
+
+    typer.echo(json.dumps(_run(ctx, state_dir, act), indent=2, ensure_ascii=False, default=str))
+
+
+@defect.command("by-hand")
+def by_hand(
+    ctx: typer.Context,
+    incident_id: Annotated[str, typer.Argument(help="The result defect, by its identifier.")],
+    step: Annotated[str, typer.Option("--step", help="The plan's step that was carried out.")],
+    role: Annotated[str, typer.Option("--role", help="The role it was carried out in.")],
+    done: Annotated[str, typer.Option("--done", help="What was done, in your words.")],
+    by: Annotated[str, typer.Option("--by", help="Your identity: the entry's actor.")] = "operator",
+    tenant: Tenant = DEFAULT_TENANT,
+    state_dir: StateDir = Path(DEFAULT_STATE_DIR),
+) -> None:
+    """Record a step of the remediation plan a person carried out by hand. Exit code 2: no open
+    result defect of that name."""
+    command = RecordByHand(
+        tenant=tenant, incident_id=incident_id, step=step, role=role, done=done, by=by
+    )
+
+    async def act(service: ResultDefects) -> dict[str, Any]:
+        return (await service.by_hand(command)).document()
 
     typer.echo(json.dumps(_run(ctx, state_dir, act), indent=2, ensure_ascii=False, default=str))

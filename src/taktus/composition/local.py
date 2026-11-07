@@ -145,6 +145,7 @@ from taktus.composition.capacity import capacity_report, rules_of
 from taktus.composition.catalogue import CatalogueAuthor, InstanceCatalogueIndex
 from taktus.composition.conformance import InstanceSuites, worker_suites
 from taktus.composition.decisions import decision_wiring
+from taktus.composition.defects import CorrectionRequests
 from taktus.composition.evaluations import Evaluations
 from taktus.composition.execution import (
     connector_pool,
@@ -738,6 +739,8 @@ class LocalWiring:
                     ledger,
                     stores.work,
                     clock,
+                    # A result defect does not close while its correction waits (ADR-0227 §3).
+                    corrections=CorrectionRequests(ledger, stores.of(Request), stores.work),
                 ),
                 corridors=signals.corridors,
                 signals=signals.watch,

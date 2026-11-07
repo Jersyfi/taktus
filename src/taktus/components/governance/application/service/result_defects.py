@@ -30,6 +30,7 @@ from taktus.components.governance.domain.model.egress import ResultRef
 from taktus.components.governance.domain.model.incident import (
     Incident,
     IncidentKind,
+    IncidentState,
     RunSeen,
     WatchConfiguration,
     incident_id,
@@ -44,6 +45,29 @@ from taktus.shared.v1 import AnchorClass, InputKind, LedgerEntry, LedgerRefs, Pr
 
 RAISED = "incident.raised"
 FINISHED = "step.finished"
+BY_HAND = "incident.by_hand"
+REPORTED = "incident.reported"
+
+
+class NotAResultDefect(LookupError):
+    def __init__(self, tenant: str, incident: str) -> None:
+        super().__init__(f"tenant {tenant!r} has no open result defect {incident!r}")
+
+
+@dataclass(frozen=True)
+class RecordByHand:
+    """A step of a result defect's remediation plan that a person carried out by hand."""
+
+    tenant: Tenant
+    incident_id: str
+    step: str
+    """The plan's step, as its rendering numbers or names it."""
+    role: str
+    """The role it was carried out in: the incident names roles, never a person."""
+    done: str
+    """What was done, in the person's words."""
+    by: str
+    """The identity that records it: the actor of `incident.by_hand`, never a field of it."""
 
 
 @dataclass(frozen=True)
@@ -106,6 +130,37 @@ class ResultDefects:
         decision = defects.decide(facts, watch.defect_rules)
         systems = {e.seq: _system(e) for e in entries if e.kind.startswith("egress.")}
         return Assessment(analysis, decision, defects.plan(analysis, systems))
+
+    async def by_hand(self, command: RecordByHand) -> Incident:
+        """The step recorded on the incident with its role and time, and as `incident.by_hand`
+        in the ledger (UC-4.12 §2, ADR-0227 §2). A role that is a known identity's name is
+        refused by the shape of a role alone; who recorded it is the entry's actor."""
+        tenant = command.tenant
+        async with self._work.transaction(tenant):
+            incident = await self._incidents.get(tenant, command.incident_id)
+            if (
+                incident is None
+                or incident.kind is not IncidentKind.RESULT_DEFECT
+                or incident.state is not IncidentState.OPEN
+            ):
+                raise NotAResultDefect(tenant, command.incident_id)
+            recorded = incident.by_hand(command.step, command.role, command.done, self._clock.now())
+            await self._incidents.put(tenant, recorded)
+            await self._ledger.record(
+                tenant,
+                Fact(
+                    kind=BY_HAND,
+                    refs=LedgerRefs(
+                        tenant=tenant,
+                        process_version=incident.process_version,
+                        incident_id=incident.id,
+                        run_id=incident.run_id,
+                        actor=command.by,
+                    ),
+                    outcome="recorded",
+                ),
+            )
+        return recorded
 
     async def raise_incident(self, command: ReportDefect) -> tuple[Incident, Assessment]:
         """The incident of the result defect: the one raised now, or the one already raised."""

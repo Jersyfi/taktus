@@ -180,6 +180,7 @@ from taktus.composition.decisions import DecisionWiring, decision_wiring
 from taktus.composition.defects import (
     DefectWatch,
     IncidentDelivery,
+    IncidentReports,
     RecheckWatch,
     Remedies,
     defects_tick,
@@ -1243,6 +1244,7 @@ async def wire(
                         persistence,
                         clock,
                         ids,
+                        defects=result_defects,
                     ),
                 ),
                 delivery=IncidentDelivery(
@@ -1252,6 +1254,14 @@ async def wire(
                     ledger,
                     objects,
                     persistence,
+                    reports=IncidentReports(
+                        pools.models,
+                        PostgresRepository(persistence, Incident),
+                        result_defects,
+                        ledger,
+                        objects,
+                        persistence,
+                    ),
                 ),
                 rechecks=RecheckWatch(engine, ledger, persistence, clock),
                 stages=staged.stages,

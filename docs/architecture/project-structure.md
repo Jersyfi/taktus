@@ -473,6 +473,14 @@ role it would tie the core to a model stack and the removal test would be lost.
   `composition/levels.py`'s `measured_of` reads it and hands it to the statement, for the levels
   and `VersionStatements`. An `llm` step that reads the statement carries `explains` and a
   closing line naming it (`explaining` in `run/application/service/execute_run.py`).
+- **A result defect found, remedied and delivered** (ADR-0179, ADR-0184, ADR-0227) is wired in
+  `composition/defects.py`: `DefectWatch` raises it, `Remedies` starts the remediation run of the
+  wrong run and, once it finished, of every run built on its result (`follow`), `RecheckWatch`
+  applies the checks that read a source again, `IncidentDelivery` delivers the incident through
+  `repository.issues` or else `tasks.items`, `IncidentReports` has a model write its report, and
+  `CorrectionRequests` answers governance's port `OpenCorrections`, which holds an incident open
+  while its correction waits. A step done by hand is a happening of the incident
+  (`ResultDefects.by_hand`, `taktusctl defect by-hand`).
 - **An outside participant's answer** (ADR-0155) is taken from a channel's intake by
   `composition/participants.py`: `ParticipantAnswers` stands ahead of `OwnerAnswers` in the
   daemon's intake, finds the waiting `human` step of the tenant by the intake's channel and

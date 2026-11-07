@@ -4,10 +4,10 @@ title: Incident and incident report
 component: governance
 epic: E6
 serves: [P1, P6, P12, P14]
-state: building
+state: built
 version: 0.5.0
-tests: [tests/governance/test_result_defects.py::test_a_reported_result_raises_one_incident_with_what_the_rule_read, tests/composition/test_defect_watch.py::test_a_result_defect_is_delivered_once_with_its_package_and_updated_in_place, tests/composition/test_defect_watch.py::test_without_a_connector_for_the_tracking_system_nothing_is_delivered]
-adrs: {ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0023: 949c6f4e13af, ADR-0024: 52ba89e4adec, ADR-0029: 37c061ef032a, ADR-0153: f720e5930f42, ADR-0179: b70d264ab655}
+tests: [tests/governance/test_result_defects.py::test_a_reported_result_raises_one_incident_with_what_the_rule_read, tests/composition/test_defect_watch.py::test_a_result_defect_is_delivered_once_with_its_package_and_updated_in_place, tests/composition/test_defect_watch.py::test_without_a_connector_for_the_tracking_system_nothing_is_delivered, tests/composition/test_incident_remainders.py::test_an_incident_does_not_close_while_its_outward_correction_waits, tests/composition/test_incident_remainders.py::test_a_step_done_by_hand_reaches_the_tracking_system_as_a_comment, tests/composition/test_incident_remainders.py::test_without_a_repository_s_issues_the_incident_goes_to_a_board_of_work_items, tests/composition/test_incident_remainders.py::test_a_model_writes_the_report_naming_what_it_narrates_and_it_is_delivered]
+adrs: {ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0023: 949c6f4e13af, ADR-0024: 52ba89e4adec, ADR-0029: 37c061ef032a, ADR-0153: f720e5930f42, ADR-0179: b70d264ab655, ADR-0227: 0d5a95cb3102}
 supersedes: null
 ---
 
@@ -88,6 +88,10 @@ nothing; the incident names no person (ADR-0153). It is delivered through the co
 `repository.issues` as one issue whose text is the situation package with its five parts and the
 remediation plan, recorded as `egress.delivery`; a later change — the remediation started — is a
 comment on the same issue, never a new one; without such a connector nothing is delivered
-(ADR-0179 §4) — by the named tests. Not built: the report a model may write; delivery to a chat
-channel, an operations tool or mail; the refusal to close while a request of class `correction` is
-open, since Taktus closes no result defect yet.
+(ADR-0179 §4). Where no repository's issues serve, it goes to a board of work items through
+`tasks.items`; a step done by hand is a comment on the same object; the closure is refused while a
+request of class `correction` its remediation raised is open; and a model configured for the
+purpose `incident.report` writes the report, of class `free`, from the package, naming what it
+narrates, delivered beside the package (ADR-0227) — by the named tests. Not built: delivery to a
+chat channel, an operations tool or mail; a named test that a package missing a part says which
+part it lacks.

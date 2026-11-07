@@ -42,6 +42,7 @@ from pydantic import Field, model_validator
 
 from taktus.components.governance.domain.model.defects import SHIPPED, Rule, never_empty
 from taktus.shared.v1 import Value
+from taktus.shared.v1.step import ROLE_PATTERN
 
 
 class IncidentKind(StrEnum):
@@ -89,7 +90,7 @@ class Happening(Value):
     """One event of an incident's timeline."""
 
     at: datetime
-    what: Literal["missed", "happened", "closed", "red"]
+    what: Literal["missed", "happened", "closed", "red", "by_hand"]
     expected_at: datetime | None = None
     """For `missed`: when the run was expected. For `red`: when the red value was recorded."""
     deadline: datetime | None = None
@@ -97,6 +98,12 @@ class Happening(Value):
     run: RunSeen | None = None
     """For `happened`: the run that happened after the miss. For `red`: the run that measured
     the further red value."""
+    step: str | None = Field(default=None, min_length=1)
+    """For `by_hand`: the step of the remediation plan a person carried out by hand."""
+    role: str | None = Field(default=None, pattern=ROLE_PATTERN)
+    """For `by_hand`: the role it was carried out in, never a person (principle 14)."""
+    done: str | None = Field(default=None, min_length=1)
+    """For `by_hand`: what was done, in the words of the person who did it."""
 
 
 class Incident(Value):
@@ -139,6 +146,15 @@ class Incident(Value):
 
     def happened(self, run: RunSeen, at: datetime) -> Incident:
         return self._with(Happening(at=at, what="happened", run=run))
+
+    def by_hand(self, step: str, role: str, done: str, at: datetime) -> Incident:
+        """A step of the remediation plan carried out by a person, recorded on the incident
+        with the role and the time (UC-4.12 §2, ADR-0227 §2)."""
+        return self._with(Happening(at=at, what="by_hand", step=step, role=role, done=done))
+
+    @property
+    def done_by_hand(self) -> tuple[Happening, ...]:
+        return tuple(h for h in self.timeline if h.what == "by_hand")
 
     def closed(self, at: datetime) -> Incident:
         closing = self._with(Happening(at=at, what="closed"))
