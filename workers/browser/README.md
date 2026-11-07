@@ -20,6 +20,16 @@ python3 workers/browser/worker.py --port 9000
 | `expect` | texts the page must show |
 | `absent` | texts the page must not show |
 | `status` | the HTTP status the page must answer with; by default any below 400 |
+| `security` | `true`: the check is also a passive security check (ADR-0234); a task's `inputs.security: true` makes every check one |
+
+A passive security check reports, under `security`, whether the page was served over TLS and
+with which protocol, which protecting response headers are missing, which headers name the
+server's software, which cookies lack `Secure` or `HttpOnly` (by name), and which of a fixed list
+of well-known paths — `/.git/HEAD`, `/.git/config`, `/.env`, `/.svn/entries`, `/.htpasswd`,
+`/.aws/credentials`, `/id_rsa`, `/server-status`, `/phpinfo.php`, `/.DS_Store` — answers 200
+with the content its name promises. Every finding makes the check not pass. Nothing is tried on
+the application: no payload, no form, no guessed identifier; no header's or cookie's value and
+nothing an exposed path holds enters the report.
 
 The report names the status, the title, each expected text found or not, each absent text seen
 or not, each step done or why not, the console's errors, the requests that failed, the hosts

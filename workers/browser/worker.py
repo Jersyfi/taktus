@@ -91,9 +91,12 @@ def work_for(task: Json, profile: str, options: Any) -> list[Any]:
     if not checks:
         return _script_work_for(task, profile, options)
     hosts = hosts_of(task)
+    # `security: true` in the task's inputs makes every check a passive security check too
+    # (browse.py, B-7.09): what the page's answer says about itself, and nothing tried on it.
+    secure = {"security": True} if task.get("inputs", {}).get("security") is True else {}
     steps = []
     for n, check in enumerate(checks, 1):
-        given = {**check, "hosts": hosts}
+        given = {**check, **secure, "hosts": hosts}
         command = " ".join(
             shlex.quote(part) for part in (sys.executable, str(BROWSE), json.dumps(given))
         )
