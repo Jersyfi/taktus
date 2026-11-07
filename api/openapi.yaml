@@ -851,6 +851,46 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /ledger/export:
+    get:
+      tags:
+      - runs
+      summary: The tenant's whole ledger, one entry per line, for verification outside Taktus
+      description: 'Every entry of your tenant''s ledger in sequence order, each as the JSON document
+        its hash covers, one per line (`application/x-ndjson`). Anyone with the file and the ledger''s
+        published hash rule recomputes every chain without Taktus: `deploy/backup/backup.py verify-export
+        <file>` does (UC-6.1, ADR-0253). The entries carry identifiers, tokens and digests, no text. Only
+        the role `owner` may export: the ledger holds every run of the tenant, also those a reader may
+        not see.'
+      operationId: ledger_export_ledger_export_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The entries, one JSON document per line.
+          content:
+            application/json:
+              schema:
+                title: Response Ledger Export Ledger Export Get
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not include `owner`.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
   /runs/{run_id}/ledger:
     get:
       tags:

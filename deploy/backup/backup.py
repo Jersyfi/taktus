@@ -73,6 +73,11 @@ manifest is in it with its hash, and with `--heads <file>` that every tenant's n
 file's. It writes its report to `drills/taktus-<time>.drill.json` and keeps the drills by the
 retention.
 
+**An export of the ledger** (UC-6.1, ADR-0253). `verify-export <file>` walks a tenant's ledger
+as `GET /ledger/export` wrote it — one entry's document per line — by the same published rule,
+with no database and no instance: every finding is printed with its sequence number, and the
+exit code is 0 only for an intact chain.
+
 **The schedule** (ADR-0222). `schedule` runs on a machine without a scheduler of its own, as the
 single server's compose file starts it: a backup every `TAKTUS_BACKUP_EVERY_HOURS`, and after the
 backup of every `TAKTUS_DRILL_EVERY_DAYS` a drill of the newest backup. A drill that does not
@@ -822,6 +827,24 @@ def verify_ledger(rows: Iterable[Mapping[str, object]], wanted: Iterable[int] = 
     return found
 
 
+def verify_export(path: Path) -> Chains:
+    """Walk an export of one tenant's ledger — one entry's JSON document per line, in the order
+    the export wrote them — by the published rule (UC-6.1, ADR-0253). The order is the file's: a
+    line moved is found as a sequence number that does not rise."""
+    rows: list[Mapping[str, object]] = []
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as error:
+            raise BackupError(f"{path}: line {number} is no JSON document: {error}") from error
+        if not isinstance(row, dict) or "seq" not in row or "hash" not in row:
+            raise BackupError(f"{path}: line {number} is no ledger entry")
+        rows.append(row)
+    return verify_ledger(rows)
+
+
 def held_to(chains: Chains, before: object, exact: object) -> list[str]:
     """Where a tenant's restored chain fails the digest taken before: the manifest's head must
     be in it with its hash; a head noted at the moment restored to must be its newest entry."""
@@ -1189,7 +1212,7 @@ def database_of(env: Mapping[str, str]) -> tuple[str, Mapping[str, str]] | None:
         return None
 
 
-COMMANDS = ("backup", "list", "archive-wal", "fetch-wal", "drill", "schedule")
+COMMANDS = ("backup", "list", "archive-wal", "fetch-wal", "drill", "schedule", "verify-export")
 DEFAULT_EVERY_HOURS = 24
 DEFAULT_DRILL_DAYS = 7
 
@@ -1310,6 +1333,18 @@ def main(argv: Sequence[str] | None = None, env: Mapping[str, str] | None = None
             return 0
         if command == "drill":
             return run_drill(environment, args[1:], now)
+        if command == "verify-export":
+            if len(args) != 2:
+                raise BackupError("verify-export takes the file of the ledger's export")
+            walked = verify_export(Path(args[1]))
+            for finding in walked.findings:
+                print(finding)
+            head = "none" if walked.head is None else f"{walked.head[0]} {walked.head[1]}"
+            print(
+                f"{walked.entries} entries, newest {head}: "
+                + ("intact" if not walked.findings else f"{len(walked.findings)} findings")
+            )
+            return 0 if not walked.findings else 1
         if command == "schedule":
             return schedule(environment)
         s = settings(environment)

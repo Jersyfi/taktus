@@ -28,7 +28,7 @@ cannot reach the database, or whose database URL cannot be read, records nothing
 then sees the backup as missing. The login must be allowed to insert into `backup_outcome`: the
 database's superuser is; a login with `BYPASSRLS` needs `GRANT INSERT ON backup_outcome`.
 
-**Point-in-time recovery and the drill** (ADR-0174). Three more commands of the same program, none
+**Point-in-time recovery and the drill** (ADR-0174). More commands of the same program, none
 of which connects to the instance's database through a URL:
 
 | Command | What |
@@ -36,8 +36,10 @@ of which connects to the instance's database through a URL:
 | `archive-wal %p %f` | the database's `archive_command`: one finished segment of the write-ahead log into the store, under `wal/<system identifier>/`, encrypted where a recipient is set; a segment already there is not written again. It runs in the database's container, whose working directory is the data directory |
 | `fetch-wal <system identifier> %f %p` | the matching `restore_command`; decrypts with `TAKTUS_CREDENTIAL_BACKUP_IDENTITY_FILE` |
 | `drill [--backup NAME] [--to MOMENT\|latest] [--heads FILE]` | S-03: restores a backup into a server of its own, in its working directory, with archiving off and no network address; recomputes every tenant's ledger chain by the ledger's published rule; holds it to the manifest's heads, and with `--heads` to the heads noted at the moment; writes `drills/taktus-<time>.drill.json`. Exit code 0 only for a verified restore |
+| `verify-export FILE` | walks a tenant's ledger as `GET /ledger/export` wrote it, one entry per line, by the ledger's published rule, with no database and no instance; prints every finding with its sequence number. Exit code 0 only for an intact chain (UC-6.1, ADR-0253) |
 | `schedule` | for a machine without a scheduler, the compose file's service `backup` (ADR-0222): `backup` every `TAKTUS_BACKUP_EVERY_HOURS` (24), and after the backup of every `TAKTUS_DRILL_EVERY_DAYS` (7; 0: none) `drill`; a drill that does not verify is recorded as a failed run at the step `drill`, which the instance tells the owner of. The image makes `/backups`, owned by the user 70 it runs as, for the volume the compose file mounts there |
 
 `tests/deploy/test_point_in_time.py` runs all three against a database of its own;
 `tests/deploy/test_drill_chain.py` holds the drill's chain check to Taktus's own verification;
-`tests/deploy/test_backup_schedule.py` holds the schedule.
+`tests/deploy/test_backup_schedule.py` holds the schedule;
+`tests/deploy/test_ledger_export.py` holds `verify-export` to an export the instance wrote.

@@ -99,6 +99,7 @@ from taktus.components.decision.application.service import (
     UnknownRequest,
 )
 from taktus.components.identity.application.service import UnknownIdentity
+from taktus.components.ledger.domain.model import exported
 from taktus.components.reporting.application.query import view as report_view
 from taktus.components.reporting.application.service import AnswerOnPage
 from taktus.components.reporting.domain.model import (
@@ -926,6 +927,32 @@ def _reads(services: RestServices) -> APIRouter:
         return JSONResponse(run.document())
 
     @router.get(
+        "/ledger/export",
+        summary="The tenant's whole ledger, one entry per line, for verification outside Taktus",
+        description="Every entry of your tenant's ledger in sequence order, each as the JSON "
+        "document its hash covers, one per line (`application/x-ndjson`). Anyone with the file "
+        "and the ledger's published hash rule recomputes every chain without Taktus: "
+        "`deploy/backup/backup.py verify-export <file>` does (UC-6.1, ADR-0253). The entries "
+        "carry identifiers, tokens and digests, no text. Only the role `owner` may export: the "
+        "ledger holds every run of the tenant, also those a reader may not see.",
+        responses={
+            200: {"description": "The entries, one JSON document per line."},
+            **unauthenticated,
+            403: {"description": "Your roles do not include `owner`.", **PROBLEM},
+            **INVALID,
+        },
+    )
+    async def ledger_export(authorization: str | None = Header(default=None)) -> Any:
+        who = await _authenticated(services, authorization)
+        if who is None:
+            return problem(401, needs_key)
+        if EXPORTER not in who.roles:
+            return problem(403, f"only the role {EXPORTER!r} exports the tenant's ledger")
+        async with services.work.transaction(who.tenant):
+            entries = await services.ledger.entries(who.tenant)
+        return Response(content=exported(entries), media_type="application/x-ndjson")
+
+    @router.get(
         "/runs/{run_id}/ledger",
         summary="The ledger entries of one run you may see, in sequence",
         description="The account key in `Authorization: Bearer` proves the identity. A run you "
@@ -965,6 +992,9 @@ def _reads(services: RestServices) -> APIRouter:
 
     return router
 
+
+EXPORTER = "owner"
+"""The role that exports a tenant's whole ledger (ADR-0253 §1)."""
 
 RECONNECT_MILLIS = 1000
 """How long a reader waits before it reconnects, as the stream tells it (ADR-0055 §6)."""

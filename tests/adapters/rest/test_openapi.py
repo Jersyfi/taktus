@@ -81,6 +81,7 @@ def test_the_document_is_openapi_3_1_with_the_prefix_as_a_server_variable() -> N
         "/runs",
         "/runs/{run_id}",
         "/runs/{run_id}/ledger",
+        "/ledger/export",
         "/runs/{run_id}/spend",
         "/processes/{process_id}/spend",
         "/trials",

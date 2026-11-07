@@ -4,10 +4,10 @@ title: The complete activity log
 component: ledger
 epic: E6
 serves: [P6, P11, P12]
-state: building
+state: verified
 version: 0.5.0
-tests: [tests/components/ledger/test_chain.py::test_entries_link_and_verify, tests/components/ledger/test_chain.py::test_an_altered_field_is_found, tests/components/ledger/test_chain.py::test_a_removed_entry_is_found, tests/components/ledger/test_chain.py::test_a_reordered_chain_is_found, tests/components/ledger/test_checkpoint_and_projection.py::test_an_alteration_before_the_checkpoint_needs_the_full_verification, tests/components/ledger/test_chain.py::test_a_fact_carries_no_text, tests/components/ledger/test_chain.py::test_the_hash_rule_is_the_documented_one, tests/components/ledger/test_run_chains.py::test_a_rewrite_of_a_run_s_chain_is_found_against_its_anchor, tests/components/run/test_engine.py::test_a_run_completes_and_every_state_change_is_in_the_ledger, tests/components/run/test_provenance.py::test_every_completed_step_has_one_record_bound_to_its_ledger_entry]
-adrs: {ADR-0006: a5960785aee4, ADR-0007: 26804369941b, ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b}
+tests: [tests/components/ledger/test_chain.py::test_entries_link_and_verify, tests/components/ledger/test_chain.py::test_an_altered_field_is_found, tests/components/ledger/test_chain.py::test_a_removed_entry_is_found, tests/components/ledger/test_chain.py::test_a_reordered_chain_is_found, tests/components/ledger/test_checkpoint_and_projection.py::test_an_alteration_before_the_checkpoint_needs_the_full_verification, tests/components/ledger/test_chain.py::test_a_fact_carries_no_text, tests/components/ledger/test_chain.py::test_the_hash_rule_is_the_documented_one, tests/components/ledger/test_run_chains.py::test_a_rewrite_of_a_run_s_chain_is_found_against_its_anchor, tests/components/run/test_engine.py::test_a_run_completes_and_every_state_change_is_in_the_ledger, tests/components/run/test_provenance.py::test_every_completed_step_has_one_record_bound_to_its_ledger_entry, tests/deploy/test_ledger_export.py::test_an_export_verifies_outside_taktus, tests/deploy/test_ledger_export.py::test_every_alteration_of_an_export_is_found, tests/adapters/rest/test_ledger_export.py::test_the_owner_exports_every_entry_one_per_line_as_its_hash_covers_it, tests/adapters/rest/test_ledger_export.py::test_a_reader_without_the_owner_role_is_refused_and_a_key_is_needed, tests/composition/test_ledger_signal.py::test_every_entry_after_the_first_look_is_one_span_with_only_its_own_fields, tests/components/run/test_steering.py::test_a_message_reaches_the_worker_and_is_an_input_of_the_step]
+adrs: {ADR-0006: a5960785aee4, ADR-0007: 26804369941b, ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0253: da8b6d592e44}
 supersedes: null
 ---
 
@@ -63,6 +63,11 @@ and built.
 
 ## 5. What is proven so far
 
-The first four conditions, by the named tests. The export, a verification
-outside Taktus, and the export as a telemetry signal do not exist. That a worker's entries are fed
-from its event stream is proven by no named test.
+Every condition, by the named tests. The first four as before. The owner exports the tenant's
+ledger as one entry per line, each the document its hash covers; the backup program, which
+imports nothing of Taktus, verifies the file by the published rule with no database and no
+instance, and finds a field altered, an alteration whose own hash was recomputed, a line removed
+and two lines swapped (ADR-0253). Every entry recorded after the scheduler's first look is
+emitted as one span carrying the entry's own fields and nothing else. A message a worker
+reports receiving in its event stream becomes the entry `step.message_received`, with the
+message's digest and never its text, and is an input of the step's provenance.
