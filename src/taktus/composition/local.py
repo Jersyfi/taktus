@@ -53,6 +53,7 @@ from taktus.adapters.driven.postgres import (
     PostgresProjectionStore,
     PostgresProvenanceStore,
     PostgresQueue,
+    PostgresRelay,
     PostgresRepository,
     PostgresTenantStore,
     PostgresTraceStore,
@@ -236,6 +237,9 @@ class Stores:
     spends: OrgUnitSpends | None = None
     """What organisational units committed of their budget quotas (ADR-0166); None where no
     run commits to one."""
+    relay: Relay | None = None
+    """The outbound binding's relay, which lives in the database (ADR-0156); None where the
+    state is files, which no connected worker reaches."""
 
 
 class LocalWiring:
@@ -247,7 +251,9 @@ class LocalWiring:
         self, *, state_dir: Path, worker_endpoint: str, relay: Relay | None = None
     ) -> AsyncIterator[Services]:
         """`relay`: the outbound binding's relay, for a worker configured as connected
-        (ADR-0156); without one such a worker cannot be reached here."""
+        (ADR-0156); by default the database's, so that a command against the instance's
+        database reaches such a worker as its daemon does. Without a database it cannot be
+        reached here."""
         clock = SystemClock()
         ids = SystemIdentifiers()
         try:
@@ -278,7 +284,7 @@ class LocalWiring:
                 self._configuration,
                 state_dir=state_dir,
                 endpoint=worker_endpoint,
-                relay=relay,
+                relay=relay if relay is not None else stores.relay,
             ) as opened,
         ):
             runs = stores.of(Run)
@@ -457,6 +463,7 @@ class LocalWiring:
                         self._configuration,
                         state_dir=state_dir,
                         endpoint=worker_endpoint,
+                        relay=relay if relay is not None else stores.relay,
                     ),
                     connectors=connectors,
                     model_endpoint=model.endpoint,
@@ -895,6 +902,7 @@ class LocalWiring:
                 queue=PostgresQueue(postgres),
                 spends=PostgresOrgUnitSpends(postgres),
                 size=postgres,
+                relay=PostgresRelay(postgres),
             )
         finally:
             await postgres.close()
