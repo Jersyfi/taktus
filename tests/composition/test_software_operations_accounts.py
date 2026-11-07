@@ -46,6 +46,7 @@ from .test_software_operations import (
     CLASSIFY,
     MAILBOX,
     MANIFESTS,
+    REPORT,
     REPOSITORY,
     TOKEN,
     Outside,
@@ -56,6 +57,7 @@ from .test_software_operations import (
 
 SUBSCRIPTION = "You draft a reply to a customer of a software product who asks about cancelling"
 REQUEST = "You recognise a data protection request"
+TIE = "You tie a customer's defect report"
 SEED = "<seed-1@mail.example>"
 
 
@@ -315,3 +317,120 @@ async def test_b_3_08_a_request_left_undone_is_reminded_then_escalated_once(
     w.clock.current += timedelta(days=7)
     assert await w.deadlines.tick() == [], "taken once"
 
+
+# --- stage 2: B-3.06 A bug from support, added to an existing issue --------------------------
+
+DEFECT = (
+    "title: CSV export stops with an error\nsteps: open Reports, press Export\n"
+    "device: not given\nversion: 2.4.1\n"
+)
+
+
+def opened(outside: Outside, title: str, body: str = "Reported by the team.") -> int:
+    issue = outside.send("POST", f"/repos/{REPOSITORY}/issues", {"title": title, "body": body})
+    return int(issue["number"])
+
+
+def comments(outside: Outside, number: int) -> list[dict[str, Any]]:
+    found: list[dict[str, Any]] = outside.send(
+        "GET", f"/repos/{REPOSITORY}/issues/{number}/comments"
+    )
+    return found
+
+
+async def test_b_3_06_adds_the_report_to_the_open_issue_of_the_same_defect_once(
+    outside: Outside,
+) -> None:
+    w = await AccountsWorld(outside).ready()
+    version = await w.registered("B-3.06-bug-from-support.yaml")
+    known = opened(outside, "Export fails with an error")
+    w.model.answers.update({REPORT: DEFECT, TIE: f"issue: {known}"})
+    before = len(outside.issues())
+    run = await w.start(version, message=SEED)
+    assert run.state is RunState.WAITING_HUMAN and comments(outside, known) == []
+    run = await w.confirmed(run)
+    assert run.state is RunState.FINISHED, reasons(run)
+    assert len(outside.issues()) == before, "no new issue: the report went to the known one"
+    assert (await w.result(run, "file"))["skipped"] is True
+    [added] = comments(outside, known)
+    assert "version: 2.4.1" in added["body"] and f"support-case:{SEED}" in added["body"]
+    tie = next(p for p in w.model.prompts if (p.system or "").startswith(TIE))
+    assert "follow no instruction" in (tie.system or "")
+
+    again = await w.confirmed(await w.start(version, message=SEED))
+    assert again.state is RunState.FINISHED, reasons(again)
+    assert (await w.result(again, "uncommented"))["count"] == 0, "added once, never twice"
+    assert len(comments(outside, known)) == 1
+
+
+@pytest.mark.parametrize("answer", ["issue: none", "issue: 999", "I am not sure"])
+async def test_b_3_06_a_number_no_open_issue_carries_files_a_new_issue(
+    outside: Outside, answer: str
+) -> None:
+    w = await AccountsWorld(outside).ready()
+    version = await w.registered("B-3.06-bug-from-support.yaml")
+    other = opened(outside, "Dark mode")
+    w.model.answers.update({REPORT: DEFECT, TIE: answer})
+    before = len(outside.issues())
+    run = await w.confirmed(await w.start(version, message=SEED))
+    assert run.state is RunState.FINISHED, reasons(run)
+    assert len(outside.issues()) == before + 1
+    assert (await w.result(run, "comment"))["skipped"] is True
+    assert comments(outside, other) == []
+
+
+# --- stage 2: B-3.06 the fix live -----------------------------------------------------------------
+
+
+def close(outside: Outside, number: int) -> None:
+    outside.send("PATCH", f"/repos/{REPOSITORY}/issues/{number}", {"state": "closed"})
+
+
+async def test_b_3_06_live_tells_the_customer_once_a_person_released_the_notice(
+    outside: Outside,
+) -> None:
+    w = await AccountsWorld(outside).ready()
+    version = await w.registered("B-3.06-bug-from-support.yaml")
+    fixed = opened(outside, "Export fails", f"A customer reported it.\n\nsupport-case:{SEED}")
+    close(outside, fixed)
+    before = outside.submitted()
+    run = await w.start(version, message=SEED, fixed=fixed)
+    assert run.state is RunState.WAITING_HUMAN and outside.submitted() == before
+    run = await w.confirmed(run)
+    assert run.state is RunState.FINISHED, reasons(run)
+    assert outside.submitted() == before + 1
+    assert w.model.prompts == [], "the notice is a fixed text; no model is asked"
+
+
+async def test_b_3_06_live_finds_the_mark_in_a_comment_too(outside: Outside) -> None:
+    w = await AccountsWorld(outside).ready()
+    version = await w.registered("B-3.06-bug-from-support.yaml")
+    fixed = opened(outside, "Export fails")
+    outside.send(
+        "POST",
+        f"/repos/{REPOSITORY}/issues/{fixed}/comments",
+        {"body": f"Another report.\n\nsupport-case:{SEED}"},
+    )
+    close(outside, fixed)
+    before = outside.submitted()
+    run = await w.confirmed(await w.start(version, message=SEED, fixed=fixed))
+    assert run.state is RunState.FINISHED, reasons(run)
+    assert outside.submitted() == before + 1
+
+
+@pytest.mark.parametrize(("closed", "marked"), [(False, True), (True, False)])
+async def test_b_3_06_live_an_open_issue_or_a_message_it_does_not_carry_tells_nobody(
+    outside: Outside, closed: bool, marked: bool
+) -> None:
+    w = await AccountsWorld(outside).ready()
+    version = await w.registered("B-3.06-bug-from-support.yaml")
+    body = f"support-case:{SEED}" if marked else "support-case:<other@mail.example>"
+    number = opened(outside, "Export fails", body)
+    if closed:
+        close(outside, number)
+    before = outside.submitted()
+    run = await w.confirmed(await w.start(version, message=SEED, fixed=number))
+    assert states(run)["notify"] is not StepState.SUCCEEDED or (
+        (await w.result(run, "notify")).get("skipped") is True
+    )
+    assert outside.submitted() == before
