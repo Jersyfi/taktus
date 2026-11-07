@@ -122,6 +122,16 @@
     },
     {
       "capabilities": [
+        "packages.licences"
+      ],
+      "image": "taktus-connector-depsdev",
+      "name": "depsdev",
+      "operations": [
+        "packages.licences.list"
+      ]
+    },
+    {
+      "capabilities": [
         "knowledge.pages"
       ],
       "image": null,

@@ -1,0 +1,285 @@
+# B-6.03 Recurring revenue and churn — UC-03 §4.6: revenue, new subscriptions, cancellations
+# and failed payments, each day against the median of the seven days before it; a push on red
+# (UC-6.13, ADR-0231).
+#
+# Every morning every subscription is read through `payments.subscriptions`, and every payment
+# that failed and is still owed through `payments.failures`. The rule `recurring` counts four
+# series of whole days in UTC, ending yesterday: the monthly recurring revenue at each day's end
+# in minor units of one currency, the subscriptions started, the subscriptions ended, and the
+# payments failed. Each series is judged by the statistic `deviation`: yesterday against the
+# median of the seven days before. The figures are `exact`: no model touches them, and the same
+# readings always give the same figures (CLAUDE.md §4).
+#
+# The currency is the tenant's: this bundle counts EUR, and a tenant that bills in another
+# currency sets it in a version of its own. A subscription in another currency is counted under
+# `other_currency` and adds nothing; it is never converted.
+#
+# The judgement is the tenant's corridors, one per series. A person of the tenant configures
+# them once, for example:
+#
+#     uv run taktusctl signal configure payments.revenue --process b-6-03 \
+#         --step revenue --select ratio --bounds fixed --direction below \
+#         --yellow 0.98 --red 0.95 --fresh 26h --role <role> --case <where revenue is worked>
+#     uv run taktusctl signal configure payments.cancellations --process b-6-03 \
+#         --step cancelled --select change --bounds fixed --direction above \
+#         --yellow 2 --red 5 --fresh 26h --role <role> --case <where churn is worked>
+#
+# and the same for `new` (direction below) and `failed` (direction above). A red value raises an
+# incident and is pushed to the role at once; a yellow one waits for the daily report (ADR-0109).
+# The reaction stays with a person at every level (UC-03 §6): this process moves nothing.
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-6.03-recurring-revenue.yaml
+#
+# Switching it off (`taktusctl deactivate --process b-6-03`) changes nothing at the payment
+# provider: it only reads.
+
+id: b-6-03
+version: "1"
+name: B-6.03 Recurring revenue and churn
+autonomy:
+  level: 1
+  reason: >
+    the process only reads the payment provider and computes figures by a fixed rule and a
+    fixed statistic; nothing leaves the system, so at level 1 every step runs and none acts;
+    the judgement is the tenant's corridors, and a red value reaches a person at once as an
+    incident; UC-03 sets its target at level 1
+  toward_next: >
+    none: level 1 is this process's target in UC-03; the reaction to a red figure stays with a
+    person (UC-03 §6)
+author: the repository
+reason: revenue and churn are watched every day without a person adding up the subscriptions (UC-03 B-6.03)
+
+# Every morning, through the elected scheduler (ADR-0035).
+triggers:
+  - schedule: "45 5 * * *"
+
+limits:
+  quota: { units: 400 }
+
+steps:
+  - id: subscriptions
+    method: rule
+    reason: every subscription, in every status, is read as the payment provider holds it; nothing to judge
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving payments.subscriptions is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: payments.subscriptions.list
+      input:
+        status: all
+        limit: 10000
+      credentials:
+        - { name: PAYMENTS_TOKEN, injected_as: env }
+      expect:
+        - select: complete
+          equals: true
+          says: more subscriptions exist than one reading holds; a partial list would count too little revenue
+
+  - id: failures
+    method: rule
+    reason: every payment that failed and is still owed is read as the payment provider holds it; nothing to judge
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving payments.failures is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: payments.failures.list
+      input:
+        limit: 10000
+      credentials:
+        - { name: PAYMENTS_TOKEN, injected_as: env }
+      expect:
+        - select: complete
+          equals: true
+          says: more failed payments exist than one reading holds; a partial list would count too few
+
+  - id: figures
+    method: rule
+    reason: >
+      revenue is the sum of every paying subscription's monthly amount, and the counts are the
+      subscriptions started and ended and the payments failed on each day: fixed arithmetic in
+      fractions of a minor unit, rounded once, over the two readings
+    rejected:
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+      - method: statistics
+        why: nothing is estimated; every subscription is counted or named as not countable
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the revenue and the counts of each day }
+    depends_on: [subscriptions, failures]
+    work:
+      rule: recurring
+      subscriptions: { $from: subscriptions, $select: output.subscriptions }
+      failures: { $from: failures, $select: output.failures }
+      as_of: { $from: failures, $select: output.as_of }
+      currency: EUR
+      days: 8
+
+  - id: revenue
+    method: statistics
+    reason: yesterday's revenue against the median of the seven days before is a statistic of a series, computed in decimal
+    rejected:
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+      - method: rule
+        why: a median over a window is a statistic of a series, not a fixed rule over one value
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: "yesterday's revenue, its median and their ratio" }
+    depends_on: [figures]
+    work:
+      statistic: deviation
+      days: { $from: figures, $select: revenue }
+      window: 7
+      minimum: 7
+
+  - id: new
+    method: statistics
+    reason: yesterday's new subscriptions against the median of the seven days before, computed in decimal
+    rejected:
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+      - method: rule
+        why: a median over a window is a statistic of a series, not a fixed rule over one value
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: "yesterday's new subscriptions and their change" }
+    depends_on: [figures]
+    work:
+      statistic: deviation
+      days: { $from: figures, $select: new }
+      window: 7
+      minimum: 7
+
+  - id: cancelled
+    method: statistics
+    reason: yesterday's cancellations against the median of the seven days before, computed in decimal
+    rejected:
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+      - method: rule
+        why: a median over a window is a statistic of a series, not a fixed rule over one value
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: "yesterday's cancellations and their change" }
+    depends_on: [figures]
+    work:
+      statistic: deviation
+      days: { $from: figures, $select: cancelled }
+      window: 7
+      minimum: 7
+
+  - id: failed
+    method: statistics
+    reason: yesterday's failed payments against the median of the seven days before, computed in decimal
+    rejected:
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+      - method: rule
+        why: a median over a window is a statistic of a series, not a fixed rule over one value
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: "yesterday's failed payments and their change" }
+    depends_on: [figures]
+    work:
+      statistic: deviation
+      days: { $from: figures, $select: failed }
+      window: 7
+      minimum: 7
+
+# How a person runs this process without Taktus (ADR-0013 B, ADR-0180).
+takeover:
+  sequence: >
+    The process runs every morning at a quarter to six UTC, on its own schedule; whoever looks
+    after revenue takes it over. The steps run in order: export every subscription and every
+    failed payment from the payment provider, count the last eight whole days ending
+    yesterday, and judge yesterday's revenue, new subscriptions, cancellations and failed
+    payments against the median of the seven days before. Whether a figure is a deviation is
+    the tenant's corridor: a red one goes at once to the role responsible. The reaction stays
+    with a person.
+  steps:
+    subscriptions:
+      system: the payment provider's dashboard, or its export of subscriptions
+      do: >
+        export every subscription in every status, with its status, the moment it started and
+        ended, and for each item the amount in the smallest unit of its currency, the quantity,
+        the interval and the number of intervals. Make sure the export is complete
+      expertise: exporting subscriptions from the payment provider's dashboard
+      credentials:
+        - parameter: PAYMENTS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Payment provider key of the
+            requesting identity described in CREDENTIALS.md; a person reading the dashboard
+            signs in with their own account that may read subscriptions
+      done: every subscription is in the export with its dates and items
+    failures:
+      system: the payment provider's dashboard, under failed or open payments
+      do: >
+        export every payment that failed and is still owed, with the moment it failed. Make
+        sure the export is complete
+      expertise: finding failed payments in the payment provider's dashboard
+      credentials:
+        - parameter: PAYMENTS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Payment provider key of the
+            requesting identity described in CREDENTIALS.md; a person signs in with their own
+            account
+      done: every failed payment still owed is in the export with its moment
+    figures:
+      system: a spreadsheet, on the two exports
+      do: >
+        for each of the eight whole days in UTC ending yesterday, add up the monthly amount of
+        every subscription that had started before the day's end and had not ended by it,
+        leaving out those in a trial, incomplete or paused, and those in another currency;
+        bring a yearly amount to a month by dividing it by twelve, a weekly one by multiplying
+        by 52 and dividing by twelve; round each day's sum once to a whole minor unit. Count
+        too the subscriptions that started, that ended, and the payments that failed on each day
+      expertise: summing amounts by date in a spreadsheet
+      credentials: []
+      done: four rows of eight days are written down, with what could not be counted named
+    revenue:
+      system: the spreadsheet
+      do: >
+        take the median of the revenue of the seven days before yesterday, and divide
+        yesterday's revenue by it; compare the ratio with the tenant's bounds
+      expertise: taking a median in a spreadsheet; the tenant's corridor
+      credentials: []
+      done: the ratio is written down, and a red one has been reported to the role responsible
+    new:
+      system: the spreadsheet
+      do: >
+        take the median of the new subscriptions of the seven days before yesterday and subtract
+        it from yesterday's count; compare the change with the tenant's bounds
+      expertise: taking a median in a spreadsheet; the tenant's corridor
+      credentials: []
+      done: the change is written down, and a red one has been reported to the role responsible
+    cancelled:
+      system: the spreadsheet
+      do: >
+        take the median of the cancellations of the seven days before yesterday and subtract it
+        from yesterday's count; compare the change with the tenant's bounds
+      expertise: taking a median in a spreadsheet; the tenant's corridor
+      credentials: []
+      done: the change is written down, and a red one has been reported to the role responsible
+    failed:
+      system: the spreadsheet
+      do: >
+        take the median of the failed payments of the seven days before yesterday and subtract
+        it from yesterday's count; compare the change with the tenant's bounds
+      expertise: taking a median in a spreadsheet; the tenant's corridor
+      credentials: []
+      done: the change is written down, and a red one has been reported to the role responsible

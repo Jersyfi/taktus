@@ -71,11 +71,45 @@ does not admit is `unauthenticated`, and one without the right to read is `forbi
 throttled or failing provider is `unavailable` and retryable. The provider's message is never
 copied into an error: only its type and code are (`operations.py`).
 
+Each subscription carries too `started_at` (`start_date`) and `ended_at`, and each item
+`interval_count`, for B-6.03's revenue (ADR-0214, ADR-0231).
+
+## Failed payments, invoices, undelivered events (ADR-0214)
+
+Five more operations, all `read`, one request per page:
+
+| Operation | Capability | Reads |
+|---|---|---|
+| `payments.failures.list` | `payments.failures` | `GET /v1/invoices?status=open&expand[]=data.payment_intent`, keeping the invoices whose payment was `attempted` and of which an amount remains |
+| `payments.customers.failures` | `payments.customers`, scoped | the same, `customer=` the case's subject |
+| `payments.customers.contact` | `payments.customers`, scoped | `GET /v1/customers/<id>`: the `email`, answered only to a call that carries the customer's case as its scope |
+| `payments.invoices.list` | `payments.invoices` | `GET /v1/invoices` with `created[gte]` and `created[lt]` of a month, `month` YYYY-MM or the month before |
+| `payments.events.undelivered` | `payments.events` | `GET /v1/events?delivery_success=false`: events still pending or failed at a webhook endpoint |
+
+A failure is `{id, customer, subscription, amount, currency, attempts, failed_at, days_failing,
+next_attempt_at, reason, update_url}`: the invoice's identifier, the amount remaining in minor
+units, `attempt_count`, the invoice's finalization as the moment collection started and failed,
+the whole days since, `next_payment_attempt`, the payment intent's `last_payment_error`
+decline code, and `hosted_invoice_url`, the page where the customer pays with another method.
+An invoice is `{id, number, customer, subscription, status, currency, total, tax, paid,
+remaining, issued_at, due_at, paid_at}`, the tax being `total` less `total_excluding_tax`. An
+event is `{id, type, created, hours_pending, pending_webhooks, object, subject}`: the kind and
+identifier of the object it is about, and nothing else of it. Answers that depend on the clock
+carry `as_of`. No answer but the contact carries an e-mail or a name.
+
+The documentation it follows: the API reference for listing invoices,
+<https://docs.stripe.com/api/invoices/list>, and events, <https://docs.stripe.com/api/events/list>
+(`delivery_success`, 30 days kept), the invoice and event objects, retrieving a customer,
+<https://docs.stripe.com/api/customers/retrieve>, and the guide for undelivered events,
+<https://docs.stripe.com/webhooks/process-undelivered-events>. **The API reference names no
+operation that resends an event**; the guide tells the receiver to process it itself, so the
+connector resends nothing.
+
 ## Credentials
 
 | Name | Purpose | How it reaches the connector |
 |---|---|---|
-| `PAYMENTS_TOKEN` | actions: the **requesting identity's** restricted key, with read access to subscriptions, customers, products and prices, and nothing else | the file `TAKTUS_CREDENTIAL_PAYMENTS_TOKEN_FILE` names, read at the moment of each call, never stored |
+| `PAYMENTS_TOKEN` | actions: the **requesting identity's** restricted key, with read access to subscriptions, customers, products, prices, invoices and events, and nothing else | the file `TAKTUS_CREDENTIAL_PAYMENTS_TOKEN_FILE` names, read at the moment of each call, never stored |
 
 The contract has no connector without the requesting identity's credential (C-03): a call
 that references none is refused. The key goes to the configured API and nowhere else.

@@ -26,6 +26,8 @@ from taktus_connectors.canny.operations import Config as FeedbackConfig
 from taktus_connectors.canny.server import build_server as feedback_server
 from taktus_connectors.cloudrun.operations import Config as ServerlessConfig
 from taktus_connectors.cloudrun.server import build_server as serverless_server
+from taktus_connectors.depsdev.operations import Config as PackagesConfig
+from taktus_connectors.depsdev.server import build_server as packages_server
 from taktus_connectors.discourse.operations import Config as ForumConfig
 from taktus_connectors.discourse.server import build_server as forum_server
 from taktus_connectors.firebase.operations import Config as SiteReleasesConfig
@@ -94,6 +96,7 @@ SERVERS: dict[str, Any] = {
     "mentions-forum": lambda: forum_server(ForumConfig("http://127.0.0.1:9")),
     "mentions-social": lambda: social_server(SocialConfig("http://127.0.0.1:9")),
     "payments": lambda: payments_server(PaymentsConfig("http://127.0.0.1:9")),
+    "packages": lambda: packages_server(PackagesConfig("http://127.0.0.1:9")),
     "workloads": lambda: workloads_server(WorkloadsConfig("http://127.0.0.1:9")),
     "cloud": lambda: cloud_server(CloudConfig.at("example", target="http://127.0.0.1:9")),
     "logs": lambda: logs_server(LogsConfig("http://127.0.0.1:9")),
@@ -128,7 +131,14 @@ SERVES = {
     "feedback": ["feedback.posts"],
     "mentions-forum": ["mentions.search"],
     "mentions-social": ["mentions.search"],
-    "payments": ["payments.customers", "payments.subscriptions"],
+    "payments": [
+        "payments.customers",
+        "payments.events",
+        "payments.failures",
+        "payments.invoices",
+        "payments.subscriptions",
+    ],
+    "packages": ["packages.licences"],
     "workloads": ["deployment.workloads"],
     "cloud": ["billing.costs", "logs.query", "secrets.metadata"],
     "logs": ["logs.query"],

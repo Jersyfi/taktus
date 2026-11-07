@@ -9,7 +9,7 @@ B-6.04, B-6.06, DEC-0228
 The three payment connectors read subscriptions only (ADR-0206). UC-03 asks for more of the
 same providers: the events a webhook endpoint did not receive (B-6.02), the payments that
 failed and the customer's way to pay again (B-6.04), and the outgoing invoices of a month
-(B-6.06). Recurring revenue and churn (B-6.03) need the moment a subscription started
+(B-6.06). Recurring revenue and churn (B-6.03, ADR-0231) need the moment a subscription started
 and ended, which the shared shape did not carry. Each provider's published API serves part of
 this, and not the same part.
 
@@ -20,7 +20,7 @@ this, and not the same part.
 | Capability, operation | First provider | Second provider | In-app service |
 |---|---|---|---|
 | `payments.failures.list` | open invoices whose payment was attempted and is still owed | subscriptions with consecutive failed payments | subscriptions in billing retry or grace period |
-| `payments.invoices.list` | invoices created in a month | invoices dated in a month, the list read whole | not declared: invoices exist only per customer and only for web billing |
+| `payments.invoices.list` | invoices created in a month | invoices dated in a month, the list read whole | not declared: invoices are listed only per customer |
 | `payments.events.undelivered` | events whose delivery to a webhook endpoint is pending or failed | not declared: the event list states no delivery | not declared: the API lists no events |
 
 A failure is `{id, customer, subscription, amount, currency, attempts, failed_at, days_failing,

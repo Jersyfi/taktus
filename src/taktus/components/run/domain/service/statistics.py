@@ -3,9 +3,9 @@ out, in decimal arithmetic.
 
 `deviation` reads a series of days, each a total and its parts by group, as a costs reading
 gives it. It judges the newest day against the days before it. The result names the newest
-day's total, the median of the totals before it, and for each group its amount, its own median
-and the change between them. The group whose amount rose most above its own median is the
-`driver`: the part behind a jump.
+day's total, the median of the totals before it, the change between them (ADR-0231), and for
+each group its amount, its own median and the change between them. The group whose amount
+rose most above its own median is the `driver`: the part behind a jump.
 
 Every figure is computed from the decimal text the series gave and reported twice: as that text,
 and as a number for a corridor to read (ADR-0109). A day whose total is not the sum of its parts
@@ -124,12 +124,15 @@ def deviation(statistic: DeviationStatistic, days: Any) -> dict[str, Any]:
     ratio = (
         None if totals_median is None or totals_median == 0 else float(newest_total / totals_median)
     )
+    moved = _figure(None if totals_median is None else newest_total - totals_median)
     return {
         "day": newest_date,
         "total": total["value"],
         "total_text": total["text"],
         "median": middle["value"],
         "median_text": middle["text"],
+        "change": moved["value"],
+        "change_text": moved["text"],
         "ratio": ratio,
         "history": len(history),
         "groups": groups,

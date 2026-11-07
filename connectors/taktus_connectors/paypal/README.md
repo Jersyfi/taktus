@@ -83,6 +83,33 @@ token it does not admit is `unauthenticated`, and an application without the rig
 `forbidden`. A throttled or failing provider is `unavailable` and retryable. Only the error's
 `name` is reported, never its message.
 
+Each subscription carries too `started_at` (`start_time`) and `ended_at` (the moment of the
+status change of a cancelled or expired one), and its item `interval_count` (ADR-0214).
+
+## Failed payments, invoices, a payer's contact (ADR-0214)
+
+| Operation | Capability | Reads |
+|---|---|---|
+| `payments.failures.list` | `payments.failures` | the `ACTIVE` and `SUSPENDED` subscriptions whose `billing_info.failed_payments_count` is above zero |
+| `payments.customers.failures` | `payments.customers`, scoped | the same, kept to the case's payer |
+| `payments.customers.contact` | `payments.customers`, scoped | `subscriber.email_address` on a subscription of the payer, answered only under the payer's scope |
+| `payments.invoices.list` | `payments.invoices` | `GET /v2/invoicing/invoices` (`page_size` 100, `total_required=true`), read whole and kept to the month by `detail.invoice_date` |
+
+A failure takes the amount owed from `outstanding_balance` and the moment, retry and reason
+from `last_failed_payment`; the provider counts consecutive failures and resets the count on a
+payment, so a retry restarts `days_failing`. **No page to change the payment method is named**
+by the API: `update_url` is null, and B-6.04 hands such a failure to a person. An invoice's
+status is mapped: drafts, scheduled and shared ones `draft`; sent, unpaid, partly paid and
+pending ones `open`; paid ones `paid`; cancelled ones `void`; refunded ones `refunded`. The
+invoice names its recipient by e-mail only, so `customer` and `subscription` are null, and its
+payment moment is not read (`paid_at` null).
+
+The documentation it follows: the Subscriptions API's `subscription_billing_info` and
+`failed_payment_details`, and the Invoicing API v2, <https://developer.paypal.com/docs/api/invoicing/v2/>,
+and its OpenAPI document, <https://developer.paypal.com/api/invoicing/v2/schema.json>. The
+webhooks API, <https://developer.paypal.com/api/webhooks/v1/schema.json>, can resend an event,
+but its list of event notifications states no delivery, so no undelivered event is declared.
+
 ## Which processes run on it
 
 B-6.01, B-3.04 and B-5.06 read nothing but these three operations, so they run on this provider
@@ -94,7 +121,7 @@ plan's `product_id` as `product` (`blueprints/software-operations/connectors/ent
 
 | Name | Purpose | How it reaches the connector |
 |---|---|---|
-| `PAYMENTS_TOKEN` | actions: the **requesting identity's** REST application credentials, `<client id>:<secret>`, of an application whose only feature is reading subscriptions | the file `TAKTUS_CREDENTIAL_PAYMENTS_TOKEN_FILE` names, read at the moment of each call, never stored |
+| `PAYMENTS_TOKEN` | actions: the **requesting identity's** REST application credentials, `<client id>:<secret>`, of an application whose only features are reading subscriptions and the Invoicing API's invoices | the file `TAKTUS_CREDENTIAL_PAYMENTS_TOKEN_FILE` names, read at the moment of each call, never stored |
 
 The access token it exchanges for is kept for the one call and nowhere else. The contract has
 no connector without the requesting identity's credential (C-03). `CREDENTIALS.md` describes it.

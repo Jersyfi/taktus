@@ -30,6 +30,8 @@ from fakes import billing_plans_service as plans
 from fakes import entitlement_server as entitlements
 from fakes.maturity import VERIFIED
 from fakes.owner_channel import TENANT
+from taktus_connectors.mail.protocol import Config as MailConfig
+from taktus_connectors.mail.server import build_server as mail_server
 from taktus_connectors.paypal.operations import Config as SecondConfig
 from taktus_connectors.paypal.server import build_server as second_server
 from taktus_connectors.revenuecat.operations import Config as InAppConfig
@@ -52,6 +54,7 @@ from taktus.components.run.application.service import EngineOptions, RunEngine
 from taktus.components.run.domain.model import Run, RunState, StepState
 
 from .test_software_operations import (
+    MAILBOX,
     MANIFESTS,
     TOKEN,
     Outside,
@@ -172,6 +175,24 @@ class PaymentsWorld(World):
                         Wrapper(
                             Upstream(entitlements.create_server(outside.product), timeout=5.0),
                             with_manifest(*load_manifest(MANIFESTS / "entitlements.manifest.json")),
+                        )
+                    ),
+                    timeout=10.0,
+                ),
+            ),
+            (
+                "connector.mail",
+                McpActionConnector(
+                    mail_server(
+                        MailConfig(
+                            imap_host="127.0.0.1",
+                            imap_port=outside.mail.imap_port,
+                            smtp_host="127.0.0.1",
+                            smtp_port=outside.mail.smtp_port,
+                            user=MAILBOX,
+                            address=MAILBOX,
+                            security="none",
+                            timeout=5.0,
                         )
                     ),
                     timeout=10.0,

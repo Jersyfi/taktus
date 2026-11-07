@@ -101,7 +101,8 @@ OPERATIONS: list[Json] = [
         "effect": "read",
         "summary": "The events of the last 30 days not delivered to every webhook endpoint, "
         "still pending or failed, up to `limit` (default 1000). Each names its id, type, "
-        "created, pending_webhooks, and the kind and identifier of the object it is about.",
+        "created, the whole hours_pending since, pending_webhooks, and the kind and "
+        "identifier of the object it is about. `as_of` is the moment of the reading.",
     },
 ]
 

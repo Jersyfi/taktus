@@ -435,7 +435,7 @@ async def invoices(config: Config, call: Call, input: Json) -> Outcome:
     return Outcome(output=output, effect={"kind": "read"})
 
 
-def _event(record: Any) -> Json:
+def _event(record: Any, as_of: int) -> Json:
     if not isinstance(record, dict) or record.get("object") != "event":
         raise _unexpected("a record is not an event")
     data = record.get("data")
@@ -446,6 +446,9 @@ def _event(record: Any) -> Json:
         "id": record.get("id"),
         "type": kind if isinstance(kind, str) else None,
         "created": _whole(record.get("created")),
+        "hours_pending": None
+        if _whole(record.get("created")) is None
+        else max(0, (as_of - record["created"]) // 3600),
         "pending_webhooks": _whole(record.get("pending_webhooks")),
         "object": subject.get("object") if isinstance(subject.get("object"), str) else None,
         "subject": subject.get("id") if isinstance(subject.get("id"), str) else None,
@@ -457,8 +460,10 @@ async def undelivered(config: Config, call: Call, input: Json) -> Outcome:
     Each names its type, its moment and the identifier of the object it is about, and nothing
     else of that object."""
     params = {"delivery_success": "false"}
+    as_of = int(time.time())
     records, complete = await _listed(config, call, "/v1/events", params, _limit(input))
-    output = {"events": [_event(record) for record in records], "complete": complete}
+    events = [_event(record, as_of) for record in records]
+    output = {"events": events, "complete": complete, "as_of": as_of}
     return Outcome(output=output, effect={"kind": "read"})
 
 

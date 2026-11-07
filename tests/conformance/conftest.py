@@ -1276,6 +1276,7 @@ BUSINESS: dict[str, BusinessConnector] = {
         ("--project", "example", "--location", "europe-west1"),
         key="google",
     ),
+    "depsdev": BusinessConnector("depsdev", FAKES / "package_index_service.py", "PACKAGES_TOKEN"),
     "discourse": BusinessConnector("discourse", FAKES / "forum_service.py", "MENTIONS_TOKEN"),
     "einvoice": BusinessConnector(
         "einvoice", FAKES / "document_inbox_service.py", "DOCUMENTS_TOKEN"
