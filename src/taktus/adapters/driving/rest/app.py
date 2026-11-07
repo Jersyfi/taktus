@@ -59,6 +59,7 @@ from taktus.adapters.driving.rest import (
     catalogue,
     deprecation,
     evaluations,
+    figures,
     findings,
     gallery,
     levels,
@@ -195,6 +196,7 @@ def build_app(
         app.include_router(catalogue.router(services, _authenticated), prefix=base)
         app.include_router(streams.router(services, _authenticated), prefix=base)
         app.include_router(profiles.router(services, _authenticated), prefix=base)
+        app.include_router(figures.router(services, _authenticated), prefix=base)
         app.include_router(spend.router(services, _authenticated), prefix=base)
         app.include_router(trials.router(services, _authenticated), prefix=base)
         app.include_router(subjects.router(services, _authenticated), prefix=base)

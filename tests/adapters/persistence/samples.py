@@ -1135,3 +1135,119 @@ def role_profile(tenant: str = "t") -> RoleProfile:
 
 def skill_ownership(tenant: str = "t") -> SkillOwnership:
     return SkillOwnership(id="mine@1", tenant=tenant, owner="idn_t")
+
+
+def view_configuration(tenant: str = "t") -> Any:
+    """Two views, one given to a person beyond their roles (ADR-0241)."""
+    from taktus.components.reporting.domain.model.views import ViewConfiguration
+
+    return ViewConfiguration.model_validate(
+        {
+            "id": tenant,
+            "tenant": tenant,
+            "configured_at": AT.isoformat(),
+            "views": [
+                {
+                    "id": "team",
+                    "title": "Team",
+                    "figures": ["value.runs_ended"],
+                    "roles": ["lead"],
+                    "persons": ["idn_ada"],
+                    "group_by": "process",
+                },
+            ],
+            "entitlements": {"value.runs_ended": ["lead", "owner"]},
+            "depth": {"lead": "short"},
+            "language": {"lead": "de"},
+        }
+    )
+
+
+def report_definition(tenant: str = "t") -> Any:
+    from taktus.components.reporting.domain.model.views import ReportDefinition
+
+    return ReportDefinition(
+        id="weekly-lead",
+        tenant=tenant,
+        reader_role="lead",
+        trigger="schedule",
+        every="week",
+        hour=7,
+        weekday=0,
+        channel="channel.chat",
+        address="C1",
+        set_at=AT,
+        last_slot="2026-W40",
+    )
+
+
+def own_view(tenant: str = "t") -> Any:
+    from taktus.components.reporting.domain.model.views import Goal, OwnView
+
+    return OwnView(
+        id="idn_ada",
+        tenant=tenant,
+        reader="idn_ada",
+        shared_with=("lead",),
+        goals=(Goal(title="Fridays free", hours_per_week=4),),
+        line="week",
+        channel="channel.chat",
+        address="D1",
+        set_at=AT,
+        last_slot="2026-W40",
+    )
+
+
+def value_basis(tenant: str = "t") -> Any:
+    from taktus.components.value.domain.model import ValueBasis
+
+    return ValueBasis.model_validate(
+        {
+            "id": "v000001",
+            "tenant": tenant,
+            "version": 1,
+            "set_at": AT.isoformat(),
+            "currency": "EUR",
+            "pay": [{"role": "accounting", "per_hour": 55.5}],
+            "processes": [
+                {
+                    "process": "invoice",
+                    "minutes_by_hand": 12,
+                    "roles_by_hand": ["accounting"],
+                    "learn_hours": 3,
+                    "response_minutes_by_hand": 600,
+                    "relevance": "critical",
+                    "licence_per_month": 20,
+                    "investment": 900,
+                }
+            ],
+            "targets": [{"process": "invoice", "figure": "value.quality", "low": 0.95}],
+            "plan": [{"unit": "t/finance", "maturity": 0.6, "due": "2027-06-30"}],
+            "backlog": [
+                {
+                    "id": "dunning",
+                    "unit": "t/finance",
+                    "title": "Dunning",
+                    "hours_per_month": 8,
+                    "basis": "two reminders a day by hand",
+                }
+            ],
+        }
+    )
+
+
+def discovered_process(tenant: str = "t") -> Any:
+    from taktus.components.value.domain.model import DiscoveredProcess
+
+    return DiscoveredProcess(
+        id="dsc_1",
+        tenant=tenant,
+        title="Friday bank check",
+        origin="interview",
+        found="the open invoices are checked against the bank every Friday",
+        stage="valued",
+        description="What: the check",
+        owner_role="accounting",
+        minutes_by_hand=45,
+        at=AT,
+    )

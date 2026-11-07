@@ -38,8 +38,10 @@ The tenant's **view configuration** holds:
 
 A reader holds the views whose roles they hold, and those given to them. A view shows only
 the figures the reader's roles are entitled to: giving a view never widens an entitlement. A
-figure the reader is not entitled to is absent, not greyed out. A figure whose scope is a role
-or a unit held by fewer than two identities is withheld and says why (ADR-0015, NTC-0168).
+figure the reader is not entitled to is absent, not greyed out. A figure of what Taktus took off
+people — the time saved and its personnel equivalent — is withheld where no role that would do
+the work by hand is held by two identities or more, and says why (ADR-0015, NTC-0168, UC-13.5).
+A person's own view is the exception, and only they read it (ADR-0245).
 
 Until a tenant stores a configuration, the shipped default holds: five example views — the day,
 the team, management, the executive, the investor — each held by `owner`, and every figure
@@ -80,7 +82,8 @@ it triggers.
 - The export is read on request; nothing pushes it as it changes.
 - A view shows the figures the gathering computes; a figure an owner does not hand in cannot be
   configured into a view, and the configuration refuses it.
-- The small-group rule counts identities holding a role or unit now, not when the figure's
-  period ran.
+- The small-group rule counts identities holding a role now, not when the figure's period ran,
+  and it holds the figures of relief; a figure of a process done by one person's role in
+  another way is not seen.
 - The scan of the web app's paths reads the literal paths in its sources; a path built at run
   time from parts it cannot read is not checked.

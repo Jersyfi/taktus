@@ -1069,3 +1069,27 @@ transaction of its own."""
 RELAY_SETTING = "taktus.relay"
 """The session setting the relay's own policy reads (migration 0087, ADR-0156): `on`, and the
 outbound binding's tables are visible. Only the relay store sets it, in transactions of its own."""
+
+
+def _document_table(name: str) -> Table:
+    return Table(
+        name,
+        metadata,
+        _tenant(),
+        Column("id", Text, nullable=False),
+        _at("at"),
+        Column("document", JSONB, nullable=False),
+        PrimaryKeyConstraint("tenant", "id"),
+    )
+
+
+view_configuration = _document_table("view_configuration")
+"""One row per tenant that configured its views and entitlements (ADR-0241 §2)."""
+report_definition = _document_table("report_definition")
+"""One row per report definition: reader role, trigger, channel (ADR-0242 §1)."""
+own_view = _document_table("own_view")
+"""One row per person who set their own view; read for that person alone (ADR-0245 §1)."""
+value_basis = _document_table("value_basis")
+"""One row per version of a tenant's value basis, written once (ADR-0244 §2)."""
+discovered_process = _document_table("discovered_process")
+"""One row per discovered process, at its stage (ADR-0245 §2)."""

@@ -67,12 +67,26 @@ from taktus.components.reporting.domain.model.acting import (
     ResidencyView,
     WrongResultView,
 )
+from taktus.components.reporting.domain.model.live import Reader as LiveReader
+from taktus.components.reporting.domain.model.views import (
+    OwnView,
+    ReportDefinition,
+    Shown,
+    ViewConfiguration,
+)
 from taktus.components.reporting.domain.service.catalogue import Catalogue
+from taktus.components.reporting.domain.service.explaining import Explanation
+from taktus.components.reporting.domain.service.own import OwnRelief
 from taktus.components.reporting.domain.service.profiles import RoleIndex, RoleProfile
+from taktus.components.reporting.domain.service.reports import Composed
 from taktus.components.reporting.domain.service.streams import StreamLanes, StreamMap
 from taktus.components.reporting.domain.service.variants import VariantsView
 from taktus.components.run.application.service import HandBack, SteerStep, TakeOver
 from taktus.components.run.domain.model import Run
+from taktus.components.value.application.service import Discoveries, ValueBases
+from taktus.components.value.domain.model import ValueProposal
+from taktus.components.value.domain.service.figures import Facts as ValueFacts
+from taktus.components.value.domain.service.figures import Index
 from taktus.ports.clock import Clock
 from taktus.ports.configuration import Secret
 from taktus.ports.identity import Resolution
@@ -403,6 +417,91 @@ class TenantExportActs(Protocol):
     async def import_(self, content: bytes, *, by: str) -> TenantImported: ...
 
 
+class GatheredFigures(Protocol):
+    """Every owner's figures, gathered once for one reader (ADR-0241 §1)."""
+
+    @property
+    def shown(self) -> Sequence[Shown]: ...
+
+    @property
+    def index(self) -> Index: ...
+
+    @property
+    def proposals(self) -> Sequence[ValueProposal]: ...
+
+    @property
+    def backlog(self) -> Sequence[Mapping[str, Any]]: ...
+
+    @property
+    def facts(self) -> ValueFacts: ...
+
+    @property
+    def holders(self) -> Mapping[str, int]: ...
+
+
+class FigureGathering(Protocol):
+    async def gather(
+        self, reader: LiveReader, visible: frozenset[str], days: int
+    ) -> GatheredFigures: ...
+
+    async def configuration(self, tenant: Tenant) -> ViewConfiguration: ...
+
+    async def configure(
+        self, tenant: Tenant, document: Mapping[str, Any], *, by: str
+    ) -> ViewConfiguration: ...
+
+
+class ReportReads(Protocol):
+    async def every(self, tenant: Tenant) -> list[ReportDefinition]: ...
+
+    async def get(self, tenant: Tenant, id: str) -> ReportDefinition | None: ...
+
+    async def put(
+        self, tenant: Tenant, document: Mapping[str, Any], *, by: str
+    ) -> ReportDefinition: ...
+
+    async def compose(self, definition: ReportDefinition, visible: frozenset[str]) -> Composed: ...
+
+
+class ExplanationReads(Protocol):
+    async def step(self, reader: LiveReader, run_id: str, step_id: str) -> Explanation | None: ...
+
+    async def summary(
+        self, reader: LiveReader, visible: frozenset[str], days: int
+    ) -> dict[str, Any]: ...
+
+
+class OwnViewReads(Protocol):
+    async def settings(self, tenant: Tenant, reader: str) -> OwnView | None: ...
+
+    async def set(self, tenant: Tenant, reader: str, document: Mapping[str, Any]) -> OwnView: ...
+
+    async def relief(self, reader: LiveReader, visible: frozenset[str], days: int) -> OwnRelief: ...
+
+
+class Reading(Protocol):
+    """Views, the export, reports, explanations, the value ledger and a person's own view
+    (ADR-0241 to ADR-0245): the composition root's, because they gather many components."""
+
+    @property
+    def figures(self) -> FigureGathering: ...
+
+    @property
+    def reports(self) -> ReportReads: ...
+
+    @property
+    def explanations(self) -> ExplanationReads: ...
+
+    @property
+    def own(self) -> OwnViewReads: ...
+
+    @property
+    def bases(self) -> ValueBases: ...
+
+    @property
+    def discoveries(self) -> Discoveries: ...
+
+
 class RestServices(Protocol):
     @property
     def roles(self) -> Sequence[str]:
@@ -600,6 +699,11 @@ class RestServices(Protocol):
     @property
     def profiles(self) -> ProfileReads:
         """A role's profile, derived from the processes (ADR-0167)."""
+        ...
+
+    @property
+    def reading(self) -> Reading:
+        """Views, the export, reports, explanations, value and a person's own view."""
         ...
 
     @property
