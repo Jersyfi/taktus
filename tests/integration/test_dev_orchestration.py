@@ -618,11 +618,14 @@ def test_implementation_admits_a_ready_issue_claims_it_and_refuses_the_rest(
     assert setup["arguments"] == ["sync", "--all-extras", "--frozen"], setup
     assert setup["credential"] is False, setup
     assert setup["cache"].endswith("worker-state/cache"), setup
-    writes = [
+    rows = [
         line.split()[2:4]
         for line in output.splitlines()
         if line.strip().startswith(tuple("0123456789")) and "egress" in line
     ]
+    writes = [row for row in rows if row[0].startswith("egress.")]
+    located = [step for kind, step in rows if kind == "residency.egress"]
+    assert located == [step for _, step in writes], "each write names where it went (ADR-0281)"
     assert writes == [
         ["egress.write", "claim"],
         ["egress.write", "announce-claim"],
