@@ -69,6 +69,7 @@ WORKER = ROOT / "workers" / "script" / "worker.py"
 CODING_WORKER = ROOT / "workers" / "claudecode" / "worker.py"
 FAKE_AGENT = ROOT / "workers" / "claudecode" / "fake_agent.py"
 MLBENCH_WORKER = ROOT / "workers" / "mlbench" / "worker.py"
+BROWSER_WORKER = ROOT / "workers" / "browser" / "worker.py"
 SECOND_CODING_WORKER = ROOT / "workers" / "codex" / "worker.py"
 SECOND_FAKE_AGENT = ROOT / "workers" / "codex" / "fake_agent.py"
 CODING_CREDENTIAL = {"api-key": "CODING_AGENT_API_KEY", "session": "CODING_AGENT_SESSION"}
@@ -356,6 +357,89 @@ def start_mlbench_worker(tmp_path: Path) -> Iterator[StartWorker]:
         endpoint = f"http://127.0.0.1:{port}"
         wait_ready(process, f"{endpoint}/v1/health", log, "ML bench")
         return RunningWorker(endpoint, log, value, process, task=task, hosts=(host,))
+
+    yield start
+    stop_all(started)
+    server.shutdown()
+    server.server_close()
+
+
+PAGE = b"""<!doctype html><html><head><title>Orders</title></head><body>
+<h1>Orders</h1><form><input id="q" name="q"><button id="go" type="button"
+onclick="document.getElementById('out').textContent='Found: '+document.getElementById('q').value">
+Search</button></form><p id="out"></p></body></html>"""
+
+
+def browser_available() -> str | None:
+    """Why the browser worker cannot run here, or None: its driver and its Chromium."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        return "the browser worker's driver is the extra `browser`: `uv sync --all-extras`"
+    try:
+        with sync_playwright() as playwright:
+            playwright.chromium.launch().close()
+    except Exception as error:
+        return f"the browser worker needs Chromium (`uv run playwright install chromium`): {error}"
+    return None
+
+
+@pytest.fixture
+def start_browser_worker(tmp_path: Path) -> Iterator[StartWorker]:
+    """The browser worker, and a web page in this process that it checks: a search form, typed
+    into and clicked, and its answer read. The page's host is allowed in the main run and
+    withdrawn in the narrowed one (W-13). The estimate is half the expected demand, so that a
+    limit equal to it is crossed (W-14)."""
+    why = browser_available()
+    if why is not None:
+        pytest.skip(why)
+    started: list[subprocess.Popen[bytes]] = []
+    served = tmp_path / "site"
+    served.mkdir()
+    (served / "index.html").write_bytes(PAGE)
+    server = ThreadingHTTPServer(
+        ("127.0.0.1", 0), functools.partial(QuietFiles, directory=str(served))
+    )
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{server.server_port}/index.html"
+    check = {
+        "name": "search",
+        "url": url,
+        "steps": [{"fill": "#q", "value": "4711"}, {"click": "#go"}],
+        "expect": ["Orders", "Found: 4711"],
+        "absent": ["Error"],
+    }
+    task: dict[str, object] = {
+        "goal": "Conformance run of the browser worker: check the served page three times.",
+        "acceptance": ["a report per check"],
+        "inputs": {"checks": [check, {**check, "name": "again"}, {**check, "name": "third"}]},
+    }
+
+    def start(*, fault: str | None = None) -> RunningWorker:
+        port = free_port()
+        log = tmp_path / f"browser-{fault or 'honest'}.log"
+        value = "conf-" + secrets.token_hex(12)
+        env = {**os.environ, CREDENTIAL: value, "TAKTUS_BROWSER_CHECK_SECONDS": "1.5"}
+        args = [
+            sys.executable,
+            str(BROWSER_WORKER),
+            "--port",
+            str(port),
+            "--state-dir",
+            str(tmp_path / f"browser-state-{fault or 'honest'}"),
+            "--estimate-factor",
+            "0.5",
+        ]
+        if fault:
+            args += ["--fault", fault]
+        with log.open("wb") as handle:
+            process = subprocess.Popen(  # noqa: S603 — our own script, fixed arguments
+                args, stdout=handle, stderr=subprocess.STDOUT, env=env
+            )
+        started.append(process)
+        endpoint = f"http://127.0.0.1:{port}"
+        wait_ready(process, f"{endpoint}/v1/health", log, "browser worker")
+        return RunningWorker(endpoint, log, value, process, task=task, hosts=("127.0.0.1",))
 
     yield start
     stop_all(started)

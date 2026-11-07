@@ -250,7 +250,7 @@ exists and is what `make up` uses.
 
 - `.github/workflows/images.yml` runs on a tag `v<version>` and on a push to `main`
   (ADR-0173). It builds `taktus`, `taktus-worker-script`, `taktus-worker-coding`,
-  `taktus-worker-mlbench`, the backup's image and one `taktus-connector-<name>` per connector,
+  `taktus-worker-mlbench`, `taktus-worker-browser`, the backup's image and one `taktus-connector-<name>` per connector,
   and pushes them to the registry the repository variable `IMAGE_REGISTRY` names. A tag
   publishes them under the version; `main` under the full commit hash, the images the
   development instance runs (ADR-0020). Without the variable it builds nothing, pushes nothing

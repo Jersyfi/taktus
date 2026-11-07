@@ -326,7 +326,7 @@ follows (#447).
 | customer system and feedback portal | B-5.05, B-3.07, B-9.04 | no |
 | an analytics copy without personal fields | B-9.02, B-9.06 | no |
 | accounting export | B-6.06, B-10.03 | incoming invoices read from an inbox in EN 16931 (`documents.invoices`), orders read, bookings proposed and released payments submitted through a generic accounting interface (`accounting.orders`, `accounting.bookings`, `payment.release`; UC-15.8, UC-04); an export of outgoing invoices: no |
-| a browser for synthetic flows | B-1.06, B-7.08, B-7.09 | a worker; not built |
+| a browser for synthetic flows | B-1.06, B-7.07, B-7.08, B-7.09 | yes (`browser` worker, `browser.check`): pages checked in headless Chromium, a flow typed and clicked and what it shows read (ADR-0218) |
 | social media and forum search | B-3.10 | no |
 
 ---

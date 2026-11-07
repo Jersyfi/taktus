@@ -275,6 +275,16 @@
     },
     {
       "capabilities": [
+        "browser.check",
+        "browser.headless",
+        "workspace.isolated"
+      ],
+      "image": null,
+      "name": "browser",
+      "operations": []
+    },
+    {
+      "capabilities": [
         "code.edit",
         "code.read",
         "code.test",

@@ -116,6 +116,10 @@ jobs:
           # Its libraries at the exact versions workers/mlbench/requirements.txt names.
           - name: taktus-worker-mlbench
             dockerfile: workers/mlbench/Dockerfile
+          # Its driver at the exact versions workers/browser/requirements.txt names, and the
+          # headless Chromium of that release (ADR-0218).
+          - name: taktus-worker-browser
+            dockerfile: workers/browser/Dockerfile
           # The database's scheduled backup (ADR-0087): the database's image and three tools.
           - name: taktus-backup
             dockerfile: deploy/backup/Dockerfile
