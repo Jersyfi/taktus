@@ -55,10 +55,12 @@ as optional, for the web and database targets that need them. CI reaches the sam
 `need-<tool>` on every target it runs, so it does not call `make doctor` (its secret scan runs
 through an action that brings its own `gitleaks`).
 
-Twelve targets are for operating and not gates. `make start` is the one command of a first
+Thirteen targets are for operating and not gates. `make start` is the one command of a first
 install on one machine (`deploy/docker/start.py`, ADR-0136 §6): what `make up` does, then the
 first tenant and its administrator with the account key printed once, then a clock until the
-first rehearsal has finished; `make verify-first-process` runs `deploy/docker/first-process.sh`,
+first rehearsal has finished; `make start-cluster` is the same on a cluster
+(`deploy/k8s/start.py`, ADR-0228), the chart installed with the operator's values and the
+tenant created in a pod of the control plane; `make verify-first-process` runs `deploy/docker/first-process.sh`,
 that path from nothing without a person, failing above ten minutes. `make up` brings the control plane up in two
 containers (`deploy/docker/compose.yml`: writes the secret files once, fills them from the
 operator's secret store where `secret-store.json` names one (`deploy/docker/secret_store.py`,

@@ -4,9 +4,9 @@ title: A worker that only connects outbound serves every instance
 component: run
 epic: E4
 serves: [P4, P11, P12]
-state: built
+state: verified
 version: 0.6.0
-tests: [tests/integration/test_connected_worker.py::test_a_restart_of_the_instance_the_worker_is_connected_to_resumes_the_step, tests/integration/test_connected_worker.py::test_a_restart_of_the_runner_s_instance_resumes_the_run_at_its_boundary, tests/integration/test_connected_worker.py::test_the_removal_test_withholds_a_connected_worker_as_one_at_an_endpoint, tests/adapters/workers/test_connected.py::test_the_worker_port_reaches_a_worker_connected_outbound, tests/adapters/workers/test_connected.py::test_a_worker_without_the_key_is_refused_and_nothing_is_relayed, tests/adapters/relay/test_relay.py::test_a_request_is_taken_once_in_order_and_only_for_its_worker, tests/adapters/relay/test_relay.py::test_a_tenant_s_transaction_sees_no_request_in_flight, tests/composition/test_settings.py::test_a_connected_worker_needs_its_own_connect_key, tests/conformance/test_worker_v1_connected.py::test_the_instance_runs_the_suite_over_its_binding_and_records_the_binding]
+tests: [tests/integration/test_connected_worker.py::test_a_restart_of_the_instance_the_worker_is_connected_to_resumes_the_step, tests/integration/test_connected_worker.py::test_a_restart_of_the_runner_s_instance_resumes_the_run_at_its_boundary, tests/integration/test_connected_worker.py::test_the_removal_test_withholds_a_connected_worker_as_one_at_an_endpoint, tests/adapters/workers/test_connected.py::test_the_worker_port_reaches_a_worker_connected_outbound, tests/adapters/workers/test_connected.py::test_a_worker_without_the_key_is_refused_and_nothing_is_relayed, tests/adapters/relay/test_relay.py::test_a_request_is_taken_once_in_order_and_only_for_its_worker, tests/adapters/relay/test_relay.py::test_a_tenant_s_transaction_sees_no_request_in_flight, tests/composition/test_settings.py::test_a_connected_worker_needs_its_own_connect_key, tests/conformance/test_worker_v1_connected.py::test_the_instance_runs_the_suite_over_its_binding_and_records_the_binding, tests/tools/test_decision_rules.py::test_the_repository_reads_no_variable_of_another_form]
 adrs: {ADR-0013: 1da224cdeaf4, ADR-0044: 1087d01f9d8d, ADR-0139: b287482752f5, ADR-0156: 117468c0bc06}
 supersedes: null
 ---

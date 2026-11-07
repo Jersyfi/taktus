@@ -138,6 +138,7 @@ from taktus.components.run.application.query import (
 from taktus.components.run.application.service import EngineOptions, RunEngine
 from taktus.components.run.application.service.stops import Stops
 from taktus.components.run.domain.model import AdapterStop, Run
+from taktus.components.value.application.query import CorrectionRates
 from taktus.composition.acting import ActingReads
 from taktus.composition.agents import SharedAgents
 from taktus.composition.alerts import alerts
@@ -145,6 +146,7 @@ from taktus.composition.capacity import capacity_report, rules_of
 from taktus.composition.catalogue import CatalogueAuthor, InstanceCatalogueIndex
 from taktus.composition.conformance import InstanceSuites, worker_suites
 from taktus.composition.decisions import decision_wiring
+from taktus.composition.defects import CorrectionRequests
 from taktus.composition.evaluations import Evaluations
 from taktus.composition.execution import (
     connector_pool,
@@ -416,7 +418,9 @@ class LocalWiring:
                     masking=known_secrets(os.environ),
                     stops=stops,
                     messages=decisions.messages,
-                    statements=VersionStatements(stores.work, stores.of(ProcessVersion)),
+                    statements=VersionStatements(
+                        stores.work, stores.of(ProcessVersion), CorrectionRates(ledger, stores.work)
+                    ),
                     org_units=org_units,
                 )
 
@@ -625,6 +629,7 @@ class LocalWiring:
                 ledger=ledger,
                 work=stores.work,
                 clock=clock,
+                trials=stores.of(TakeoverTrial),
             )
             evidence = ProcessingEvidence(
                 register=acting.register,
@@ -740,6 +745,8 @@ class LocalWiring:
                     ledger,
                     stores.work,
                     clock,
+                    # A result defect does not close while its correction waits (ADR-0227 §3).
+                    corrections=CorrectionRequests(ledger, stores.of(Request), stores.work),
                 ),
                 corridors=signals.corridors,
                 signals=signals.watch,
@@ -772,6 +779,7 @@ class LocalWiring:
                         stores.of(Request),
                         stores.of(TakeoverTrial),
                         tenants=stores.tenants,
+                        rates=CorrectionRates(ledger, stores.work),
                     ),
                     traces=stores.traces,
                     work=stores.work,

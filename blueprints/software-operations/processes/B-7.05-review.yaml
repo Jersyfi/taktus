@@ -21,7 +21,7 @@
 # Switching it off (`taktusctl deactivate --process b-7-05`) changes nothing in the repository.
 
 id: b-7-05
-version: "1"
+version: "2"
 name: B-7.05 Review
 autonomy:
   level: 2
@@ -159,6 +159,8 @@ steps:
 
         Written by Taktus, process B-7.05 Review, once a person confirmed it. It approves and
         merges nothing.
+
+        ${statement}
       values:
         review: { $from: review, $select: text }
         count: { $from: read-files, $select: output.count }
@@ -166,6 +168,7 @@ steps:
         deletions: { $from: read-files, $select: output.deletions }
         complete: { $from: read-files, $select: output.complete }
         cut: { $from: cut, $select: count }
+        statement: { $run: exactness }
 
   - id: comment
     method: rule

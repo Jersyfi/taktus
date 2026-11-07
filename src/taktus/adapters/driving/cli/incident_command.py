@@ -36,6 +36,7 @@ from taktus.components.governance.application.service import (
     CloseIncident,
     ConfigureWatch,
     ExpectedRuns,
+    IncidentHeld,
     UnknownIncident,
 )
 
@@ -84,6 +85,9 @@ def _run[T](ctx: typer.Context, state_dir: Path, act: Callable[[ExpectedRuns], A
     except (UnknownIncident, NotOperable, ValueError) as error:
         typer.echo(f"error: {error}", err=True)
         raise typer.Exit(code=2) from error
+    except IncidentHeld as held:
+        typer.echo(f"error: {held}", err=True)
+        raise typer.Exit(code=3) from held
 
 
 def _watch(services: Services) -> ExpectedRuns:
@@ -129,7 +133,8 @@ def close(
     by: By = "operator",
     state_dir: StateDir = Path(DEFAULT_STATE_DIR),
 ) -> None:
-    """Close an incident. Exit code 2: the tenant has no such incident."""
+    """Close an incident. Exit code 2: the tenant has no such incident. Exit code 3: a result
+    defect whose outward correction waits for a person's decision (ADR-0227 §3)."""
 
     async def act(watch: ExpectedRuns) -> str:
         closed = await watch.close(CloseIncident(tenant=tenant, incident_id=incident_id, by=by))

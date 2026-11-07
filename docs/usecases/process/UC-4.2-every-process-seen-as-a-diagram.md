@@ -4,9 +4,9 @@ title: Every process seen as a diagram
 component: process
 epic: E4
 serves: [P6, P7]
-state: specified
+state: building
 version: 0.4.0
-tests: []
+tests: [tests/components/process/test_bpmn.py::test_an_export_round_trips_the_graph_the_roles_and_the_gateways, tests/components/process/test_bpmn.py::test_an_export_carries_a_diagram_a_tool_can_show]
 adrs: {ADR-0011: f25413d512b9, ADR-0029: 37c061ef032a}
 supersedes: null
 ---

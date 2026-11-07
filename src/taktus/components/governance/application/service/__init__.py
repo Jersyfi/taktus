@@ -16,6 +16,7 @@ from taktus.components.governance.application.service.expected_runs import (
     CloseIncident,
     ConfigureWatch,
     ExpectedRuns,
+    IncidentHeld,
     UnknownIncident,
     Watch,
 )
@@ -43,6 +44,8 @@ from taktus.components.governance.application.service.residency import (
 )
 from taktus.components.governance.application.service.result_defects import (
     Assessment,
+    NotAResultDefect,
+    RecordByHand,
     ReportDefect,
     ResultDefects,
 )
@@ -85,10 +88,13 @@ __all__ = [
     "DriftSeen",
     "Drifts",
     "ExpectedRuns",
+    "IncidentHeld",
     "Looked",
+    "NotAResultDefect",
     "OrgUnitQuotaRefused",
     "PrepareRequest",
     "RaiseRed",
+    "RecordByHand",
     "RepetitionSeen",
     "Repetitions",
     "ReportCapacity",

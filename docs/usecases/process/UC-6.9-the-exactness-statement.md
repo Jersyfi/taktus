@@ -4,10 +4,10 @@ title: The exactness statement
 component: process
 epic: E6
 serves: [P7, P8, P12]
-state: building
+state: verified
 version: 0.5.0
-tests: [tests/exactness/test_exactness_statement.py::test_the_statement_of_every_bundle_renders_with_all_four_parts, tests/exactness/test_exactness_statement.py::test_a_statement_without_what_it_does_not_cover_does_not_render, tests/exactness/test_exactness_statement.py::test_a_changed_check_changes_the_statement, tests/exactness/test_exactness_statement.py::test_a_bundle_whose_statement_would_say_guaranteed_is_refused, tests/exactness/test_exactness_statement.py::test_no_model_writes_the_statement, tests/exactness/test_statement_in_reports.py::test_a_report_carries_the_statement_of_the_process_that_produced_it_unchanged, tests/exactness/test_statement_in_reports.py::test_the_statement_a_run_reads_is_the_one_its_version_generates, tests/adapters/rest/test_exactness_statement.py::test_the_process_level_carries_the_statement_of_its_version_unchanged, tests/adapters/rest/test_exactness_statement.py::test_a_run_carries_the_statement_of_the_version_it_executes, tests/adapters/rest/test_exactness_statement.py::test_the_overview_carries_the_statement_per_process]
-adrs: {ADR-0014: 6611f7833deb, ADR-0023: 949c6f4e13af, ADR-0029: 37c061ef032a, ADR-0082: ec9f585ee911, ADR-0152: c193d1fbb4ed}
+tests: [tests/exactness/test_exactness_statement.py::test_the_statement_of_every_bundle_renders_with_all_four_parts, tests/exactness/test_exactness_statement.py::test_a_statement_without_what_it_does_not_cover_does_not_render, tests/exactness/test_exactness_statement.py::test_a_changed_check_changes_the_statement, tests/exactness/test_exactness_statement.py::test_a_bundle_whose_statement_would_say_guaranteed_is_refused, tests/exactness/test_exactness_statement.py::test_no_model_writes_the_statement, tests/exactness/test_statement_in_reports.py::test_a_report_carries_the_statement_of_the_process_that_produced_it_unchanged, tests/exactness/test_statement_in_reports.py::test_the_statement_a_run_reads_is_the_one_its_version_generates, tests/adapters/rest/test_exactness_statement.py::test_the_process_level_carries_the_statement_of_its_version_unchanged, tests/adapters/rest/test_exactness_statement.py::test_a_run_carries_the_statement_of_the_version_it_executes, tests/adapters/rest/test_exactness_statement.py::test_the_overview_carries_the_statement_per_process, tests/exactness/test_statement_explained.py::test_a_model_s_explanation_names_the_statement_it_explains, tests/exactness/test_statement_explained.py::test_a_model_s_answer_that_read_no_statement_names_none, tests/exactness/test_blueprint_reports.py::test_a_blueprint_report_with_numbers_carries_the_statement, tests/components/value/test_correction_rate.py::test_the_value_ledger_counts_corrections_after_the_checks_passed_per_hundred, tests/components/value/test_correction_rate.py::test_the_statement_carries_the_measured_rate_and_says_so_while_none_counted, tests/components/value/test_correction_rate.py::test_a_report_reads_the_rate_the_value_ledger_counted]
+adrs: {ADR-0014: 6611f7833deb, ADR-0023: 949c6f4e13af, ADR-0029: 37c061ef032a, ADR-0082: ec9f585ee911, ADR-0152: c193d1fbb4ed, ADR-0226: 08dc48632a85}
 supersedes: null
 ---
 
@@ -75,7 +75,9 @@ One without what its checks do not cover is refused, and so is a bundle whose st
 `taktusctl exactness` prints it (ADR-0082). The process level, every run level and the overview
 carry the statement of the version they show, unchanged, and the web app shows it on the process
 page, on every run and per process on the overview. A report a process delivers carries it by
-`{"$run": "exactness"}`, as generated; until the value ledger measures the rate of corrections
-after the checks passed, the statement says it is not yet measured (ADR-0152) — by the named
-tests. Not built: the measured rate itself, which the value ledger does not count yet, and a
-model's explanation of the statement that names it.
+`{"$run": "exactness"}`, as generated, and the reports of S-01, S-05, S-06 and B-7.05 name it.
+The value component counts the measured rate — results of checked steps a person corrected after
+the checks passed, per hundred — and the residual risk carries it, or says that none counted yet;
+the rate is read from the value ledger, never computed by a view. A model's explanation of the
+statement carries a closing line, written by the run, naming the version and the digest of the
+statement it explains (ADR-0226) — by the named tests.

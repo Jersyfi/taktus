@@ -167,6 +167,7 @@ from taktus.components.run.application.service import (
 )
 from taktus.components.run.application.service.stops import Stops
 from taktus.components.run.domain.model import AdapterStop, Run
+from taktus.components.value.application.query import CorrectionRates
 from taktus.composition import roles
 from taktus.composition.acting import ActingReads
 from taktus.composition.agent_surface import AgentSurface
@@ -182,6 +183,7 @@ from taktus.composition.decisions import DecisionWiring, decision_wiring
 from taktus.composition.defects import (
     DefectWatch,
     IncidentDelivery,
+    IncidentReports,
     RecheckWatch,
     Remedies,
     defects_tick,
@@ -687,7 +689,9 @@ async def wire(
                     stops=stops,
                     messages=decisions.messages,
                     statements=VersionStatements(
-                        persistence, PostgresRepository(persistence, ProcessVersion)
+                        persistence,
+                        PostgresRepository(persistence, ProcessVersion),
+                        CorrectionRates(ledger, persistence),
                     ),
                     guidance=CatalogGuidance(skill_catalog, agent_catalog),
                     org_units=org_units,
@@ -714,6 +718,7 @@ async def wire(
                     PostgresRepository(persistence, Request),
                     PostgresRepository(persistence, TakeoverTrial),
                     tenants=PostgresTenantStore(persistence),
+                    rates=CorrectionRates(ledger, persistence),
                 )
             )
             owner = owner_channel_wiring(
@@ -1156,6 +1161,7 @@ async def wire(
                     ledger=ledger,
                     work=persistence,
                     clock=clock,
+                    trials=PostgresRepository(persistence, TakeoverTrial),
                 ),
                 agent=agent,
                 streams=StreamReads(
@@ -1272,6 +1278,7 @@ async def wire(
                         persistence,
                         clock,
                         ids,
+                        defects=result_defects,
                     ),
                 ),
                 delivery=IncidentDelivery(
@@ -1281,6 +1288,14 @@ async def wire(
                     ledger,
                     objects,
                     persistence,
+                    reports=IncidentReports(
+                        pools.models,
+                        PostgresRepository(persistence, Incident),
+                        result_defects,
+                        ledger,
+                        objects,
+                        persistence,
+                    ),
                 ),
                 rechecks=RecheckWatch(engine, ledger, persistence, clock),
                 stages=staged.stages,

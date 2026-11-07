@@ -97,6 +97,7 @@ async def test_the_stages_are_read_with_their_evidence_by_the_responsible_role(
         "runs": 0,
         "missed": 0,
         "incidents": 0,
+        "untried": False,
     }, "a process the tenant runs no version of has no version and no level"
     assert "Missing: t runs no version of b-7-01" in stage["text"]
 

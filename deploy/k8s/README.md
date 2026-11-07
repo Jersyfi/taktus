@@ -193,7 +193,12 @@ are what the operator created.
 
 **Tenants are created after the install, not configured** (ADR-0104). The migration creates
 `default`. Every other tenant is created with `taktusctl tenant create NAME`, run in a pod of
-the control plane, which prints the identifier Taktus generated. Every role serves the new
+the control plane, which prints the identifier Taktus generated. A first install creates its
+first tenant in one command (ADR-0228): `make start-cluster VALUES=<your values>
+ADDRESS=<the web app's address>` installs the chart, waits for the roles, runs `taktusctl first
+start` in a pod of the control plane — the first tenant, its administrator `idn_admin`, and the
+key printed once — and keeps the clock to the first rehearsal, written to
+`deploy/k8s/first-process.json`. `INSTALLED=1` takes a release that stands already. Every role serves the new
 tenant at its next round, without a restart. The chart mounts no
 administration key, so the administration of tenants on the HTTP surface stays off on a
 cluster.

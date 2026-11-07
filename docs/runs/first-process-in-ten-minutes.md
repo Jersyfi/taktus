@@ -7,6 +7,8 @@ run's own record at the end. None is an estimate.
 
 The path is: `make start`; sign in to the web app with the printed key; open the gallery;
 choose a process and its choices; rehearse it. The clock stops when the rehearsal has finished.
+On a cluster the one command is `make start-cluster` (`deploy/k8s/start.py`, ADR-0228), with the
+same clock; no time on a cluster has been recorded yet.
 
 ## Without a person
 

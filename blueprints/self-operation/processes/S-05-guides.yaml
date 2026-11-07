@@ -26,7 +26,7 @@
 # `taktusctl guides publish` does the same by hand (README.md beside this directory).
 
 id: s05-guides
-version: "4"
+version: "5"
 name: S-05 Guides
 autonomy:
   level: 3
@@ -270,6 +270,8 @@ steps:
         Guides at ${commit}: ${created} pages created, ${updated} updated, ${kept} kept, ${withheld} withheld.
         Measured: ${write} to write, ${keep} to keep, ${withhold} to withhold.
         Edits reported to the role ${responsible}: ${reports}.
+
+        ${statement}
       values:
         commit: { $from: publish, $select: output.commit }
         created: { $from: publish, $select: output.created }
@@ -281,6 +283,7 @@ steps:
         withhold: { $from: measure, $select: output.withhold }
         responsible: { $input: responsible }
         reports: { $from: report-edits, $select: output.reports }
+        statement: { $run: exactness }
 
 # How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
 # every step the system to act in, what to do there, the expertise it needs, each credential by

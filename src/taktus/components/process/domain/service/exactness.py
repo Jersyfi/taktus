@@ -20,6 +20,7 @@ from taktus.components.process.domain.model.exactness import (
     CATALOGUE,
     NOT_YET_MEASURED,
     ExactnessStatement,
+    measured_rate,
 )
 from taktus.shared.v1 import (
     EXACT_ADMISSIBLE,
@@ -59,9 +60,18 @@ def findings(steps: Sequence[Step]) -> list[str]:
     return found
 
 
-def statement(process_version: str, name: str, steps: Iterable[Step]) -> ExactnessStatement:
+def statement(
+    process_version: str,
+    name: str,
+    steps: Iterable[Step],
+    measured: tuple[int, int] | None = None,
+) -> ExactnessStatement:
     """The exactness statement of a version, from its steps in declared order. Raises
-    `InvalidStatement` where a statement could not be complete or would say "guaranteed"."""
+    `InvalidStatement` where a statement could not be complete or would say "guaranteed".
+
+    `measured` is the value ledger's figure for the version — how many results of its checked
+    steps a person corrected after the checks passed, and how many counted (ADR-0226). Without
+    it the residual risk says that the rate is not yet measured."""
     applies: list[str] = []
     covers: list[str] = []
     not_covered: list[str] = []
@@ -94,7 +104,7 @@ def statement(process_version: str, name: str, steps: Iterable[Step]) -> Exactne
         residual.append("Whatever a person decides wrongly, or a wait passes on wrongly.")
     if not covers:
         covers.append("Nothing: no step of this process declares a check.")
-    residual.append(NOT_YET_MEASURED)
+    residual.append(NOT_YET_MEASURED if measured is None else measured_rate(*measured))
     return ExactnessStatement(
         process_version=process_version,
         name=name,

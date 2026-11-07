@@ -25,6 +25,8 @@ class RunningLevel(Value):
 
     process_version: str = Field(min_length=1)
     level: AutonomyLevel
+    tried: bool = False
+    """A person passed a trial of this version's takeover instructions (ADR-0180 §3)."""
 
 
 class ProcessLevels(Protocol):

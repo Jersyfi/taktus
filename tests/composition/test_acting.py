@@ -37,7 +37,7 @@ from taktus.components.process.application.service.register_version import (
     RegisterProcessVersion,
     RegisterProcessVersionHandler,
 )
-from taktus.components.process.domain.model import Process, ProcessVersion
+from taktus.components.process.domain.model import Process, ProcessVersion, TakeoverTrial
 from taktus.composition.acting import ActingReads
 from taktus.composition.maturity import CatalogMaturities, InstanceCatalogue
 from taktus.composition.pools import Pools
@@ -146,6 +146,7 @@ class World:
         maturities = MemoryRepository(self.persistence, AdapterMaturity)
         self.versions = MemoryRepository(self.persistence, ProcessVersion)
         self.processes = MemoryRepository(self.persistence, Process)
+        self.trials = MemoryRepository(self.persistence, TakeoverTrial)
         self.stops = Held()
         self.identity = directory((TENANT,), persistence=self.persistence, clock=self.clock)
         self.residency = TenantResidency(
@@ -171,13 +172,16 @@ class World:
             ledger=self.ledger,
             work=self.persistence,
             clock=self.clock,
+            trials=self.trials,
         )
 
-    async def registered(self, *more: dict[str, Any]) -> World:
+    async def registered(self, *more: dict[str, Any], support_level: int = 2) -> World:
         register = RegisterProcessVersionHandler(
             self.versions, self.persistence, self.processes, ledger=self.ledger, clock=self.clock
         )
-        for given in (BILLING, SUPPORT, *more):
+        support = copy.deepcopy(SUPPORT)
+        support["autonomy"]["level"] = support_level
+        for given in (BILLING, support, *more):
             await register.execute(
                 RegisterProcessVersion(bundle=instructed(given), tenant=TENANT, by="idn_a")
             )
@@ -235,6 +239,33 @@ async def test_a_worker_that_cannot_be_asked_leaves_its_step_out_and_the_registe
     by = {r.adapter: r for r in register.rows}
     assert by["worker.fake"].uses == ()
     assert [u.step_id for u in by["connector.fake"].uses] == ["fetch"]
+
+
+async def test_the_register_says_a_process_at_level_three_is_untried_until_a_trial_passed() -> None:
+    """ADR-0180 §3, UC-6.3 §2: where the register shows the level a process acts at, it says
+    that no person has yet run that version by hand from its instructions."""
+    world = await World().registered(support_level=3)
+    first = {r.adapter: r for r in (await world.reads.register(TENANT, EVERYTHING)).rows}
+    (answer,) = first["model.first"].uses
+    assert answer.untried
+    assert any("untried by hand: support" in a for a in first["model.first"].attention)
+    assert "untried by hand: support" in first["model.first"].text
+    assert not any(u.untried for u in first["connector.fake"].uses), "billing runs at level 2"
+    async with world.persistence.transaction(TENANT):
+        await world.trials.put(
+            TENANT,
+            TakeoverTrial(
+                id="trl_1",
+                process_id="support",
+                process_version="support@1",
+                role="support-lead",
+                passed=True,
+                at=AT,
+            ),
+        )
+    again = {r.adapter: r for r in (await world.reads.register(TENANT, EVERYTHING)).rows}
+    assert not again["model.first"].uses[0].untried
+    assert not any("untried" in a for a in again["model.first"].attention)
 
 
 async def test_a_process_the_reader_may_not_see_is_left_out_of_every_row() -> None:

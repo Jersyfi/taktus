@@ -4,7 +4,7 @@ title: A step that reads text is proposed a move through an embedding
 component: process
 epic: E4
 serves: [P2, P8]
-state: building
+state: built
 version: 0.4.0
 tests: [tests/workers/test_mlbench_embeddings.py::test_an_embedding_is_an_artifact_and_the_same_inputs_give_the_same_digest, tests/workers/test_mlbench_embeddings.py::test_a_training_on_text_learns_from_its_embedding_and_predicts_raw_text, tests/workers/test_mlbench_embeddings.py::test_what_is_served_is_what_was_evaluated_for_text_too, tests/workers/test_mlbench_embeddings.py::test_an_encoder_or_a_text_column_that_does_not_fit_is_refused, tests/workers/test_maturation_on_text.py::test_a_step_that_reads_text_is_proposed_a_model_the_bench_trained_on_its_embedding, tests/workers/test_maturation_on_text.py::test_the_moved_step_predicts_its_text_case_and_refuses_an_empty_text]
 adrs: {ADR-0007: 26804369941b, ADR-0076: 0fce968725a4, ADR-0084: b792ae358b77, ADR-0114: 75a031083f19, ADR-0183: db4da8845438}

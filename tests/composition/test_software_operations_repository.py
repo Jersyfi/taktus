@@ -38,6 +38,7 @@ from taktus.adapters.driven.models import StaticModelPool
 from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.components.decision.application.service import AnswerRequest, ConfirmRequest
+from taktus.components.process.domain.model import ProcessVersion
 from taktus.components.run.application.service import (
     ConfirmSteps,
     DecideSteps,
@@ -45,6 +46,7 @@ from taktus.components.run.application.service import (
     RunEngine,
 )
 from taktus.components.run.domain.model import Run, RunState, StepState
+from taktus.composition.levels import VersionStatements
 
 from .test_software_operations import (
     REPOSITORY,
@@ -126,6 +128,8 @@ class RepositoryWorld(World):
             anchors=self.decisions.anchors,
             decisions=self.decisions.requests,
             levels=self.decisions.levels,
+            # Its review carries the exactness statement of its version (ADR-0226).
+            statements=VersionStatements(self.persistence, self.of(ProcessVersion)),
         )
 
     async def ready(self) -> RepositoryWorld:

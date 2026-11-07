@@ -33,7 +33,7 @@ from taktus.components.governance.domain.model import (
     StageView,
 )
 from taktus.components.governance.ports import Identities, RunningLevel
-from taktus.components.process.domain.model import Process, ProcessVersion
+from taktus.components.process.domain.model import Process, ProcessVersion, TakeoverTrial
 from taktus.components.process.ports import StageCeiling
 from taktus.components.reporting.application.service import (
     ChannelOf,
@@ -66,11 +66,13 @@ class LevelsOfTheProcess:
         versions: Repository[ProcessVersion],
         work: UnitOfWork,
         corrections: Corrections,
+        trials: Repository[TakeoverTrial] | None = None,
     ) -> None:
         self._processes = processes
         self._versions = versions
         self._work = work
         self._corrections = corrections
+        self._trials = trials
 
     async def running(self, tenant: Tenant, process_id: str) -> RunningLevel | None:
         async with self._work.transaction(tenant):
@@ -80,15 +82,17 @@ class LevelsOfTheProcess:
                 if process is None or process.active_version is None
                 else await self._versions.get(tenant, f"{process_id}@{process.active_version}")
             )
+            trials = [] if self._trials is None else list(await self._trials.list(tenant))
         if version is None:
             return None
+        tried = any(t.passed and t.process_version == version.ref for t in trials)
         lowered = await self._corrections.lowered(tenant, version.ref)
         level = (
             version.autonomy.level
             if lowered.level is None
             else min(version.autonomy.level, lowered.level)
         )
-        return RunningLevel(process_version=version.ref, level=level)
+        return RunningLevel(process_version=version.ref, level=level, tried=tried)
 
 
 class InstructionsOfTheVersion:
@@ -150,6 +154,7 @@ class StageReportsOfTheChannel:
                         "" if before is None else f": the stage {before.stage.id!r} before it holds"
                     ),
                     *figures,
+                    *_untried(stage),
                 ],
                 steps=[
                     "Read the figures; every one was counted from the ledger by rule.",
@@ -212,6 +217,17 @@ class StageReportsOfTheChannel:
         return (self._clock.now() + timedelta(days=DUE_DAYS)).date()
 
 
+def _untried(view: StageView) -> list[str]:
+    """What a report says of a process the stage raises to level 3 or 4 that no person has yet
+    run by hand from its takeover instructions (UC-6.3 §2, ADR-0180 §3)."""
+    return [
+        f"{p.process} would run at level {p.granted}, untried by hand: no person has yet run "
+        f"{p.version} from its takeover instructions (taktusctl takeover trial)"
+        for p in view.processes
+        if p.untried
+    ]
+
+
 def _figures(view: StageView) -> list[str]:
     found = view.figures
     if found is None:
@@ -268,7 +284,9 @@ def stage_wiring(
         ledger,
         work,
         clock,
-        levels=LevelsOfTheProcess(of(Process), of(ProcessVersion), work, corrections),
+        levels=LevelsOfTheProcess(
+            of(Process), of(ProcessVersion), work, corrections, of(TakeoverTrial)
+        ),
         instructions=InstructionsOfTheVersion(of(Process), of(ProcessVersion), work),
         identities=identities,
         reports=StageReportsOfTheChannel(channel, raising, clock),

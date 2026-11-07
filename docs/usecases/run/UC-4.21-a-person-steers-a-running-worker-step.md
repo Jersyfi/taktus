@@ -4,7 +4,7 @@ title: A person steers a running worker step
 component: run
 epic: E4
 serves: [P5, P10, P14]
-state: built
+state: verified
 version: 0.6.0
 tests: [tests/components/run/test_steering.py::test_a_message_reaches_the_worker_and_is_an_input_of_the_step, tests/components/run/test_steering.py::test_a_message_is_handed_once_whatever_the_renewals, tests/components/run/test_steering.py::test_a_worker_that_declares_no_steering_is_refused_and_nothing_is_written, tests/components/run/test_steering.py::test_a_step_that_is_not_running_or_not_a_worker_step_is_refused, tests/components/run/test_steering.py::test_a_message_never_changes_the_frame_or_the_limits, tests/components/run/test_steering.py::test_no_figure_counts_messages_by_person, tests/adapters/rest/test_steering.py::test_a_message_is_handed_to_the_engine_as_the_person, tests/adapters/rest/test_steering.py::test_a_refusal_names_why, tests/adapters/rest/test_steering.py::test_a_run_one_may_not_see_is_answered_as_none_and_the_engine_is_not_asked, tests/adapters/rest/test_agent_surface.py::test_a_running_step_is_sent_a_message_by_the_agent_only_with_the_right, tests/composition/test_takeover_in_channel.py::test_a_message_to_a_running_step_is_read_back_and_sent_only_on_yes, tests/composition/test_takeover_in_channel.py::test_a_message_the_worker_cannot_take_is_refused_with_its_reason, tests/adapters/queue/test_queue.py::test_a_message_is_placed_only_on_a_job_a_runner_holds_and_handed_once, tests/integration/test_connected_worker.py::test_a_restart_of_the_instance_the_worker_is_connected_to_resumes_the_step, tests/workers/test_script_extensions.py::test_a_tool_a_message_asks_for_is_refused_outside_the_frame]
 adrs: {ADR-0021: dc801ddd1c47, ADR-0131: 7b1cf7e37d35, ADR-0139: b287482752f5, ADR-0156: 117468c0bc06}
