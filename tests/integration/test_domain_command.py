@@ -67,13 +67,16 @@ def test_a_domain_is_instantiated_in_dialogue_from_the_command_line(tmp_path: Pa
 
     started = shown(cli(state, "start", *blueprint))
     instance = started["id"]
-    assert [q["kind"] for q in started["questions"]] == ["capability", "owner"]
-    [asked] = [q for q in started["questions"] if q["kind"] == "capability"]
-    assert asked["subject"] == "knowledge.documents" and asked["options"]
+    # The blueprint calls two capabilities: the documents, and the conversation K-02 answers in.
+    assert [q["kind"] for q in started["questions"]] == ["capability", "capability", "owner"]
+    asked = {q["subject"]: q for q in started["questions"] if q["kind"] == "capability"}
+    assert set(asked) == {"knowledge.documents", "channel.chat"}
+    assert all(q["options"] for q in asked.values())
 
-    answered = shown(
-        cli(state, "answer", instance, "knowledge.documents", asked["options"][0], *blueprint)
-    )
+    for capability, question in sorted(asked.items()):
+        answered = shown(
+            cli(state, "answer", instance, capability, question["options"][0], *blueprint)
+        )
     assert [q["kind"] for q in answered["questions"]] == ["owner"]
 
     refused = cli(state, "propose", instance, *blueprint)
