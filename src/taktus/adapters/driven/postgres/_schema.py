@@ -530,6 +530,29 @@ takeover_trial = Table(
 """One row per trial of a version's takeover instructions (ADR-0180 §3); a role, never a
 person; never changed."""
 
+
+def _document_table(name: str) -> Table:
+    return Table(
+        name,
+        metadata,
+        _tenant(),
+        Column("id", Text, nullable=False),
+        _at("created_at"),
+        Column("document", JSONB, nullable=False),
+        PrimaryKeyConstraint("tenant", "id"),
+    )
+
+
+connection_grant = _document_table("connection_grant")
+"""One row per grant made on a connection (ADR-0262); withdrawn by a later row, never deleted."""
+
+knowledge_entry = _document_table("knowledge_entry")
+"""One row per place of a connected source that was read (ADR-0265): its reference, link and
+digest, never its content."""
+
+domain_instance = _document_table("domain_instance")
+"""One row per domain instantiated from a blueprint (ADR-0263)."""
+
 subject_request = Table(
     "subject_request",
     metadata,
