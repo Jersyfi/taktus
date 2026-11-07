@@ -116,6 +116,7 @@ from taktus.components.identity.domain.model import (
 from taktus.components.knowledge.application.service import PublishGuidesHandler
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.deactivate import DeactivateProcessHandler
+from taktus.components.process.application.service.packages import ProcessPackages
 from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
@@ -831,6 +832,13 @@ class LocalWiring:
                     clock=clock,
                     identifiers=ids,
                     skills=skill_lifecycle.of_version,
+                ),
+                packages=ProcessPackages(
+                    stores.of(Process),
+                    stores.of(ProcessVersion),
+                    ledger=ledger,
+                    work=stores.work,
+                    skills=skill_lifecycle.files_of_version,
                 ),
             )
             telemetry.shutdown()

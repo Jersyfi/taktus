@@ -45,6 +45,7 @@ from taktus.components.governance.application.service import (
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.knowledge.application.service import PublishGuidesHandler
 from taktus.components.process.application.service.deactivate import DeactivateProcessHandler
+from taktus.components.process.application.service.packages import ProcessPackages
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
@@ -273,6 +274,9 @@ class Services:
     instructions: TakeoverTrials | None = None
     """A process's takeover instructions shown, and a trial of them recorded
     (`taktusctl takeover`, ADR-0180)."""
+    packages: ProcessPackages | None = None
+    """A process version exported as one package of plain files (`taktusctl process export`,
+    ADR-0285)."""
     exports: TenantExportActs | None = None
     """A tenant exported, and an export imported and checked (`taktusctl tenant export` and
     `import`, ADR-0221); None where the state is files."""
