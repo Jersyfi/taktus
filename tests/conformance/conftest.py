@@ -34,6 +34,7 @@ import httpx
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from fakes import customer_reviews_service, review_replies_service
 from fakes.ports import free_port
 
 from taktus.adapters.driven.clock import SystemClock
@@ -1109,8 +1110,13 @@ class BusinessConnector:
     args: tuple[str, ...] = ()
     pair: bool = False
     """The credential is a key pair, `<id>:<secret>`, as a provider that signs takes one."""
+    key: Callable[[], str] | None = None
+    """The credential is a signing key the fake must verify against: its maker, from the fake's
+    module, whose value the fake is started with (ADR-0207)."""
 
     def value(self) -> str:
+        if self.key is not None:
+            return self.key()
         if self.pair:
             return f"key-{secrets.token_hex(6)}:sig-{secrets.token_hex(12)}"
         return "tok-" + secrets.token_hex(12)
@@ -1124,6 +1130,12 @@ BUSINESS: dict[str, BusinessConnector] = {
     "anthropic": BusinessConnector(
         "anthropic", FAKES / "cost_report_service.py", "MODEL_COSTS_TOKEN"
     ),
+    "appstore": BusinessConnector(
+        "appstore",
+        FAKES / "customer_reviews_service.py",
+        "STORE_REVIEWS_KEY",
+        key=customer_reviews_service.credential,
+    ),
     "aws": BusinessConnector("aws", FAKES / "cloud_billing_service.py", "BILLING_KEY", pair=True),
     "calendar": BusinessConnector("calendar", FAKES / "calendar_service.py", "CALENDAR_TOKEN"),
     "einvoice": BusinessConnector(
@@ -1132,6 +1144,13 @@ BUSINESS: dict[str, BusinessConnector] = {
     "expiry": BusinessConnector("expiry", FAKES / "expiry_service.py", "EXPIRY_TOKEN"),
     "freshdesk": BusinessConnector(
         "freshdesk", FAKES / "support_desk_service.py", "HELPDESK_TOKEN"
+    ),
+    "googleplay": BusinessConnector(
+        "googleplay",
+        FAKES / "review_replies_service.py",
+        "STORE_REVIEWS_KEY",
+        ("--token-url", "/token"),
+        key=review_replies_service.credential,
     ),
     "kubernetes": BusinessConnector("kubernetes", FAKES / "workload_cluster.py", "WORKLOADS_TOKEN"),
     "openai": BusinessConnector("openai", FAKES / "model_costs_service.py", "MODEL_COSTS_TOKEN"),
