@@ -360,8 +360,10 @@ class OwnViews:
 
     async def set(self, tenant: Tenant, reader: str, document: Mapping[str, Any]) -> OwnView:
         held = await self.settings(tenant, reader)
+        kept = {} if held is None else held.model_dump(mode="json")
         view = OwnView.model_validate(
             {
+                **kept,
                 **{k: v for k, v in document.items() if k not in ("id", "tenant", "reader")},
                 "id": reader,
                 "tenant": tenant,

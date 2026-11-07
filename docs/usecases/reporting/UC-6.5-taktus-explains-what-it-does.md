@@ -4,10 +4,10 @@ title: Taktus explains what it does
 component: reporting
 epic: E6
 serves: [P2, P7]
-state: specified
+state: verified
 version: 0.5.0
-tests: []
-adrs: {ADR-0004: ffdb1f1537f5, ADR-0006: a5960785aee4, ADR-0021: dc801ddd1c47, ADR-0029: 37c061ef032a}
+tests: [tests/adapters/rest/test_figures.py::test_an_explanation_states_what_the_records_hold_at_the_depth_of_the_role, tests/components/reporting/test_views_and_reports.py::test_a_short_explanation_is_a_part_of_the_full_one_and_both_are_grounded, tests/components/reporting/test_views_and_reports.py::test_an_explanation_with_a_figure_the_records_do_not_hold_fails, tests/components/reporting/test_views_and_reports.py::test_both_languages_give_every_sentence]
+adrs: {ADR-0004: ffdb1f1537f5, ADR-0006: a5960785aee4, ADR-0021: dc801ddd1c47, ADR-0029: 37c061ef032a, ADR-0243: 34c9a7b157bd}
 supersedes: null
 ---
 
@@ -53,3 +53,12 @@ ADR-0004); the ledger and the provenance record (ADR-0006, ADR-0021); views and 
 (UC-6.4); the `reporting` component, which owns the explanation given on request (ADR-0029). Definition
 `UC-6.5`. The roadmap names no version; `0.3.0`, with the web app and its live representation, is the
 session's proposal.
+
+## 5. What is proven so far
+
+Built (ADR-0243). By the named tests: a step's explanation states what was done, by which
+method and why, what was rejected, what it cost and what came out, from the process version,
+the run, the provenance record and accounting's spend; two roles get the same facts, each at
+its depth and language; a short explanation is part of the full one; a text with a number the
+records do not hold fails; a run of another tenant is answered as one that does not exist; the
+summary of a period uses the value component's figures.

@@ -4,10 +4,10 @@ title: The bus-factor index
 component: value
 epic: E6
 serves: [P6, P13, P14]
-state: specified
+state: verified
 version: 0.5.0
-tests: []
-adrs: {ADR-0013: 1da224cdeaf4, ADR-0029: 37c061ef032a, ADR-0030: 232318604b2d}
+tests: [tests/components/value/test_figures.py::test_the_bus_factor_index_reads_recorded_results_only, tests/components/value/test_figures.py::test_a_deterioration_names_the_test_that_failed_and_what_restores_it, tests/adapters/rest/test_figures.py::test_the_value_basis_is_set_by_owner_and_its_figures_say_who_set_it_when]
+adrs: {ADR-0013: 1da224cdeaf4, ADR-0029: 37c061ef032a, ADR-0030: 232318604b2d, ADR-0244: 0e3d5ef324fa}
 supersedes: null
 ---
 
@@ -58,3 +58,11 @@ The takeover test (UC-6.3, ADR-0013 B); the removal test and its four verdicts (
 passed (UC-15.5); proposals (UC-4.4); views (UC-6.4) and the transformation view (UC-9.2). Filed in
 `value` as a figure computed from test results, which the views show (ADR-0029). Definition `UC-6.7`,
 new in version 2. The roadmap's `0.5.0`: principles 6 and 13 measured rather than asserted.
+
+## 5. What is proven so far
+
+Built (ADR-0244). By the named tests: the index is computed from recorded takeover trials and
+removal verdicts; changing one record changes it with nothing else touched; an untested verdict
+is unknown, never passed; it counts without Taktus, per role and per supplier, per value stream,
+with the trend per day and the graph; a deterioration produces a proposal naming the test and
+what restores it.

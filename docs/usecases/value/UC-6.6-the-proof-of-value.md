@@ -4,10 +4,10 @@ title: The proof of value
 component: value
 epic: E6
 serves: [P7, P8, P14]
-state: specified
+state: verified
 version: 0.5.0
-tests: []
-adrs: {ADR-0006: a5960785aee4, ADR-0010: e381de241d4a, ADR-0015: 3a42705e5561, ADR-0021: dc801ddd1c47, ADR-0029: 37c061ef032a}
+tests: [tests/components/value/test_figures.py::test_the_proof_of_value_sums_the_balances_and_names_its_basis, tests/components/value/test_figures.py::test_the_balance_rests_on_the_stated_basis_and_says_so, tests/components/value/test_figures.py::test_a_rate_is_set_per_role_and_no_field_takes_a_person, tests/adapters/rest/test_figures.py::test_the_value_basis_is_set_by_owner_and_its_figures_say_who_set_it_when, tests/adapters/rest/test_figures.py::test_every_figure_a_view_shows_is_in_the_export_with_the_same_definition_and_value]
+adrs: {ADR-0006: a5960785aee4, ADR-0010: e381de241d4a, ADR-0015: 3a42705e5561, ADR-0021: dc801ddd1c47, ADR-0029: 37c061ef032a, ADR-0244: 0e3d5ef324fa}
 supersedes: null
 ---
 
@@ -52,3 +52,10 @@ ADR-0029, which files the proof of value with its figures; the value balance and
 (UC-9.3); the ledger as the single source of every metric (ADR-0006); consumption in Takt and money
 (ADR-0010); result defects caught before they leave (ADR-0021); export (UC-5.7). Definition `UC-6.6`.
 The roadmap's `0.5.0`, *value and dependency measurable*.
+
+## 5. What is proven so far
+
+Built (ADR-0244). By the named tests: every figure names its method and basis — the runs, the
+period, the basis version with who set it and when; a figure resting on the basis is marked as
+an assumption; time saved is the value balance's figure; an error avoided is a result a check
+refused; a rate is per role and a rate per person is refused; every figure is in the export.

@@ -4,10 +4,10 @@ title: Role-based views
 component: reporting
 epic: E6
 serves: [P7, P14]
-state: specified
+state: verified
 version: 0.5.0
-tests: []
-adrs: {ADR-0015: 3a42705e5561, ADR-0029: 37c061ef032a}
+tests: [tests/adapters/rest/test_figures.py::test_a_figure_reaches_only_the_roles_entitled_to_it_and_a_view_never_widens_that, tests/adapters/rest/test_figures.py::test_every_figure_a_view_shows_is_in_the_export_with_the_same_definition_and_value, tests/adapters/rest/test_figures.py::test_a_view_that_groups_by_person_or_names_an_unknown_figure_is_refused, tests/adapters/rest/test_figures.py::test_what_taktus_took_off_a_role_one_person_holds_is_withheld_elsewhere, tests/components/reporting/test_views_and_reports.py::test_the_default_gives_the_owner_every_figure_and_nobody_else_any, tests/components/reporting/test_views_and_reports.py::test_a_view_grouped_by_person_is_refused]
+adrs: {ADR-0015: 3a42705e5561, ADR-0029: 37c061ef032a, ADR-0241: 7ef4e139d151}
 supersedes: null
 ---
 
@@ -57,3 +57,11 @@ and roles of the identity component (definition `UC-1.4`); the protective rule o
 response times. Definition `UC-6.4`, whose acceptance asks for views configurable per role and per
 person, restored in the migration's fourth step (NTC-0063); the roadmap places role-based views in
 `0.5.0`.
+
+## 5. What is proven so far
+
+Built (ADR-0241). By the named tests: a view is defined for roles and given to persons by
+configuration; a person with two roles sees the union and nothing more; a view given to a
+person shows only what their roles are entitled to; a figure reaches only the roles declared
+for it; a view grouped by person is refused; every figure shown is in the export. The shipped
+default gives every figure to `owner` and nobody else.

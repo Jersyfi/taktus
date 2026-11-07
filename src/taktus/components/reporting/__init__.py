@@ -63,6 +63,12 @@ how many of their runs work and wait by the run component's own definitions, and
 running now (ADR-0067). And the origin of a result: the path from a step's result back through
 the steps and sources that produced it, drawn from the provenance records, across runs (ADR-0068).
 
+Views, the export, reports for a role and explanations (ADR-0241 to ADR-0243): who sees which
+figure, which every owner computes and the composition hands in (`domain/service/views.py`);
+what a report for a role carries and when it is due (`domain/service/reports.py`); a step's
+explanation from its records, held to them (`domain/service/explaining.py`); and a person's own
+view, theirs to share (`domain/service/own.py`, ADR-0245).
+
 Which connector carries a message, how a decision answer is kept and which values are secret are
 asked through `ports/`, and answered by the composition root, because components never import
 each other.
