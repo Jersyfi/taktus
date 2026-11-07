@@ -419,6 +419,7 @@ class LocalWiring:
                     traces=stores.traces,
                     masking=known_secrets(os.environ),
                     stops=stops,
+                    tenant_budget=decisions.budget_of_the_run,
                     messages=decisions.messages,
                     statements=VersionStatements(
                         stores.work, stores.of(ProcessVersion), CorrectionRates(ledger, stores.work)
@@ -604,6 +605,7 @@ class LocalWiring:
                 stages=staged.ceilings,
                 structure=identities,
                 rights=identities,
+                domains=decisions.domains,
             )
             findings = ProductFindings(
                 RunBlocks(BlockedTime(ledger, objects, stores.work, runs)),
@@ -773,6 +775,7 @@ class LocalWiring:
                     stops=RuleStops(stops),
                 ),
                 residency=decisions.residency,
+                budget=decisions.budget,
                 sources=decisions.sources,
                 messages=decisions.messages.tenant,
                 org_units=decisions.org_units,

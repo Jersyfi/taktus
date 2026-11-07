@@ -40,6 +40,7 @@ from taktus.components.governance.application.service import (
     TenantResidency,
     TenantSources,
 )
+from taktus.components.governance.application.service.tenant_budget import TenantBudgets
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.knowledge.application.service import PublishGuidesHandler
 from taktus.components.process.application.service.deactivate import DeactivateProcessHandler
@@ -236,6 +237,8 @@ class Services:
     defect`, ADR-0153)."""
     residency: TenantResidency | None = None
     """The tenant's residency rule, shown and set (`taktusctl residency`, ADR-0116)."""
+    budget: TenantBudgets | None = None
+    """The tenant's monthly budget across all its runs (`taktusctl budget`, ADR-0260)."""
     sources: TenantSources | None = None
     """The tenant's declaration of its sources, shown and changed (`taktusctl sources`,
     ADR-0130)."""

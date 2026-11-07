@@ -476,6 +476,28 @@ scoped_stop = Table(
 never deleted: its state moves on. Kept apart from `adapter_stop`, which the previous release
 reads (ADR-0093)."""
 
+domain = Table(
+    "domain",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("owner", Text, nullable=True),  # None while the domain has no owner (ADR-0259)
+    Column("domain", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per domain a tenant instantiated, with its owner (ADR-0259). A row is never
+deleted: its owner moves on."""
+
+tenant_month_budget = Table(
+    "tenant_month_budget",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("budget", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per tenant that set a monthly budget across all its runs (ADR-0260)."""
+
 working_time = Table(
     "working_time",
     metadata,

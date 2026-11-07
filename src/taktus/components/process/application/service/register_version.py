@@ -61,6 +61,10 @@ identity holding `autonomy.set` — the approving person, or whoever registers w
 approves. A version an identity lacks a right for is refused, and `process.refused` records it
 with the right it lacked as its outcome (UC-7.3, ADR-0257).
 
+Registering is where a domain without an owner holds its processes' levels: a version that
+raises a level of a process whose domain has no owner now is refused with `RaiseRefused`, and
+`autonomy.refused` records it with outcome `no_owner` (UC-15.5, ADR-0259 §2).
+
 Registering is where a person's step must name its role once the tenant has a structure: a
 `human` step, or a fallback to a person, without a role, or naming a role no identity of the
 tenant holds, is refused (UC-4.20, ADR-0146). While no identity holds a role, nothing is
@@ -99,6 +103,7 @@ from taktus.components.process.domain.service import autonomy, evaluation, exact
 from taktus.components.process.domain.service import takeover as instructed
 from taktus.components.process.domain.service.quality import QUALITY
 from taktus.components.process.ports import (
+    DomainOwners,
     FreeSources,
     LoweredLevels,
     LoweredVersions,
@@ -165,7 +170,11 @@ class RegisterProcessVersionHandler:
         stages: StageCeilings | None = None,
         structure: RoleStructure | None = None,
         rights: ProcessRights | None = None,
+        domains: DomainOwners | None = None,
     ) -> None:
+        self._domains = domains
+        """Which processes belong to a domain without an owner (ADR-0259). None: no domain
+        holds a level."""
         self._rights = rights
         """Who holds the rights of a process (ADR-0257). None: no right is asked for."""
         self._structure = structure
@@ -222,6 +231,11 @@ class RegisterProcessVersionHandler:
         capped: str | None = None
         lowerings = await self._lowerings(tenant, version)
         lacking = await self._lacking(tenant, version, lowerings, command)
+        ownerless = (
+            None
+            if self._domains is None
+            else await self._domains.ownerless(tenant, version.process_id)
+        )
         if lacking:
             async with self._work.transaction(tenant):
                 for right, _, actor in lacking:
@@ -251,7 +265,18 @@ class RegisterProcessVersionHandler:
                 for r in autonomy.raises(self._running(old, lowerings), version.autonomy)
                 if old.ref != version.ref
             ]
-            if raised:
+            if raised and ownerless is not None:
+                refused = autonomy.RaiseVerdict(
+                    admitted=False,
+                    findings=(
+                        f"{version.process_id} belongs to the domain {ownerless!r}, which has "
+                        "no owner now: nothing in it is raised in autonomy until a person is "
+                        "named its owner (UC-15.5, ADR-0259)",
+                    ),
+                    refusal="no_owner",
+                )
+                await self._record(tenant, version, "autonomy.refused", "no_owner", command)
+            elif raised:
                 verdict = await self._verdict(tenant, version, replaced, raised, command)
                 if verdict.admitted:
                     await self._record(tenant, version, "autonomy.raised", "raised", command)

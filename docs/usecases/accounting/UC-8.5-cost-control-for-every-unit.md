@@ -6,8 +6,8 @@ epic: E8
 serves: [P7, P8, P14]
 state: building
 version: 0.2.0
-tests: [tests/components/accounting/test_cost.py::test_a_run_costs_what_its_tokens_cost_at_the_table_it_was_held_to, tests/components/accounting/test_cost.py::test_a_run_costs_its_tokens_plus_its_compute_seconds_at_the_table_it_was_held_to, tests/components/run/test_engine.py::test_admission_counts_what_earlier_steps_used, tests/components/run/test_budget.py::test_the_margin_absorbs_an_overrun_and_nothing_beyond_it, tests/components/run/test_budget.py::test_money_reported_per_assignment_is_held_as_an_estimate, tests/components/run/test_estimates.py::test_the_budget_says_what_it_can_promise_when_it_is_set, tests/components/run/test_estimates.py::test_a_step_whose_compute_at_the_table_would_cross_what_remains_is_not_admitted, tests/components/accounting/test_takt.py::test_a_run_is_weighed_at_the_table_in_force_when_it_started, tests/components/accounting/test_takt.py::test_the_takte_stand_beside_the_money_and_say_uncalibrated, tests/components/accounting/test_takt.py::test_another_table_recomputes_the_takte_from_the_ledger, tests/components/accounting/test_takt.py::test_what_the_table_does_not_weigh_is_named_never_counted_as_zero, tests/components/accounting/test_takt.py::test_the_takt_rate_of_a_tenant_is_its_takte_per_hour_over_the_window]
-adrs: {ADR-0005: 0ea928e2016b, ADR-0010: e381de241d4a, ADR-0015: 3a42705e5561}
+tests: [tests/components/accounting/test_cost.py::test_a_run_costs_what_its_tokens_cost_at_the_table_it_was_held_to, tests/components/accounting/test_cost.py::test_a_run_costs_its_tokens_plus_its_compute_seconds_at_the_table_it_was_held_to, tests/components/run/test_engine.py::test_admission_counts_what_earlier_steps_used, tests/components/run/test_budget.py::test_the_margin_absorbs_an_overrun_and_nothing_beyond_it, tests/components/run/test_budget.py::test_money_reported_per_assignment_is_held_as_an_estimate, tests/components/run/test_estimates.py::test_the_budget_says_what_it_can_promise_when_it_is_set, tests/components/run/test_estimates.py::test_a_step_whose_compute_at_the_table_would_cross_what_remains_is_not_admitted, tests/components/accounting/test_takt.py::test_a_run_is_weighed_at_the_table_in_force_when_it_started, tests/components/accounting/test_takt.py::test_the_takte_stand_beside_the_money_and_say_uncalibrated, tests/components/accounting/test_takt.py::test_another_table_recomputes_the_takte_from_the_ledger, tests/components/accounting/test_takt.py::test_what_the_table_does_not_weigh_is_named_never_counted_as_zero, tests/components/accounting/test_takt.py::test_the_takt_rate_of_a_tenant_is_its_takte_per_hour_over_the_window, tests/components/run/test_tenant_budget.py::test_a_reached_month_budget_holds_every_run_of_the_tenant_at_its_boundary, tests/components/run/test_tenant_budget.py::test_the_month_s_turn_lets_the_waiting_runs_go_on, tests/components/run/test_tenant_budget.py::test_a_tenant_without_a_budget_is_held_by_none]
+adrs: {ADR-0005: 0ea928e2016b, ADR-0010: e381de241d4a, ADR-0015: 3a42705e5561, ADR-0260: d26cc3cb308b}
 supersedes: null
 ---
 
@@ -112,3 +112,8 @@ organisation, alerts, policies other than halting, forecasts and anomalies are n
 Takt of every run at the table in force when it started, recomputed at another table, with what
 it leaves out named and "uncalibrated" beside it, and the tenant's rate, by the named tests
 (#81).
+
+A monthly budget for the tenant as a whole (ADR-0260), by the named tests in
+`test_tenant_budget.py`: once what the tenant's runs of the month cost reaches the amount the
+tenant set, every run of it waits at its next boundary, the role the budget names is told once by
+the incident `budget.reached`, and a raised budget or the month's turn lets the runs go on.

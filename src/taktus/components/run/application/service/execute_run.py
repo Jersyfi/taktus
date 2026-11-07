@@ -312,6 +312,7 @@ from taktus.components.run.ports import (
     Verdict,
     WorkerPool,
 )
+from taktus.components.run.ports.tenant_budget import MonthBudget, TenantBudget
 from taktus.ports.administration import Administration
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.connector import (
@@ -795,6 +796,7 @@ class RunEngine:
         traces: Traces | None = None,
         masking: Masking | None = None,
         stops: Stops | None = None,
+        tenant_budget: TenantBudget | None = None,
         messages: Messages | None = None,
         statements: Statements | None = None,
         guidance: Guidance | None = None,
@@ -848,6 +850,9 @@ class RunEngine:
         (ADR-0135). None: no trace is kept."""
         self._masking = masking
         self._stops = stops
+        self._tenant_budget = tenant_budget
+        """The tenant's monthly budget across all its runs (ADR-0260). None: no such budget
+        parks a run."""
         """The tenant's stops of adapters (ADR-0138). None: no adapter is stopped, and a stop
         reaches a run only by its own identifier."""
         self._messages = messages
@@ -2466,6 +2471,13 @@ class RunEngine:
                 return await self._end(
                     run, RunState.HALTED, Cause.STOP, _stopped_by(covering), span
                 )
+            over = await self._over_tenant_budget(run)
+            if over is not None:
+                # The tenant's month is spent: every run waits at its boundary (ADR-0260).
+                run, waiting = await self._at_tenant_budget(run, step_run, over)
+                return await self._end(run, RunState.HALTED, Cause.PARKED, waiting, span)
+            if step_run.block is not None and step_run.block.cause == block.AT_TENANT_BUDGET:
+                run, step_run = await self._close_block(run, step_run)
             step = run.step(step_run.step_id)
             run, step_run = await self._step_or_failed(run, step, step_run)
             asked = self._taking_over.get(run.id)
@@ -4109,6 +4121,80 @@ class RunEngine:
             )
         return await self._unit_budget_ends(run, run.step_run(held_up.step_id))
 
+    async def _over_tenant_budget(
+        self, run: Run
+    ) -> tuple[MonthBudget, str, dict[str, float], list[str]] | None:
+        """Whether what the tenant's runs of this month cost reached its monthly budget: the
+        budget, the month, the sums, and the currencies reached. A rule over the runs' records,
+        priced at the instance's table (ADR-0260); a rehearsal costs nothing and is never held."""
+        if self._tenant_budget is None or run.rehearsal:
+            return None
+        budget = await self._tenant_budget.month_budget(run.tenant)
+        if budget is None:
+            return None
+        month = f"{self._clock.now():%Y-%m}"
+        async with self._work.transaction(run.tenant):
+            runs = list(await self._runs.list(run.tenant))
+        spent: dict[str, float] = {}
+        for each in runs:
+            if each.rehearsal or f"{each.created_at:%Y-%m}" != month:
+                continue
+            for currency, amount in (self._cost(each).currency or {}).items():
+                spent[currency] = spent.get(currency, 0.0) + float(amount)
+        reached = [c for c, limit in budget.amounts.items() if spent.get(c, 0.0) >= limit]
+        return (budget, month, spent, reached) if reached else None
+
+    def _cost(self, run: Run) -> ConsumptionQuantities:
+        """What the run used, with the money of its tokens and compute at the instance's table
+        where it has one: what the run cost, whatever budget it was held to."""
+        consumed = run.consumed()
+        table = self._options.prices
+        if table is None:
+            return consumed
+        tokens, _ = run.tokens_without_money()
+        consumed = budgeting.with_token_money(consumed, tokens, table)[0]
+        return budgeting.with_money(consumed, run.compute_by_class(), table)[0]
+
+    async def _at_tenant_budget(
+        self,
+        run: Run,
+        held_up: StepRun,
+        over: tuple[MonthBudget, str, dict[str, float], list[str]],
+    ) -> tuple[Run, str]:
+        """The run waits at its boundary until the next check or the month's turn, its role is
+        told once a month, and the facts are booked."""
+        budget, month, spent, reached = over
+        now = self._clock.now()
+        check_at = min(now + timedelta(seconds=budget.check_every_seconds), _next_month(now))
+        facts = {
+            "month": month,
+            "spent": {c: round(v, 6) for c, v in sorted(spent.items())},
+            "limits": dict(budget.amounts),
+            "reached": reached,
+            "role": budget.role,
+        }
+        digest = await self._objects.put(_canonical(facts))
+        if self._tenant_budget is not None:
+            await self._tenant_budget.reached(run.tenant, month, spent, budget, run.process_version)
+        run, held_up = await self._open_block(run, held_up, "limit.budget", block.AT_TENANT_BUDGET)
+        if held_up.block is not None:
+            held_up = held_up.model_copy(
+                update={"block": held_up.block.model_copy(update={"next_check_at": check_at})}
+            )
+        run = await self._commit(
+            run.with_step_run(held_up),
+            TENANT_BUDGET_HELD,
+            step=held_up,
+            outcome="budget",
+            digest=digest,
+        )
+        reason = (
+            f"the tenant's runs of {month} cost what its monthly budget allows in "
+            f"{', '.join(reached)}; every run waits at its boundary until a person raises the "
+            f"budget or the month turns, and is tried again at {check_at.isoformat()} (ADR-0260)"
+        )
+        return run, reason
+
     async def _unit_budget_ends(self, run: Run, step_run: StepRun) -> Run:
         if step_run.block is None or step_run.block.cause != block.AT_UNIT_BUDGET:
             return run
@@ -5528,7 +5614,9 @@ class RunEngine:
         chain = [] if models is None else await models.chain(work.purpose)
         permitted: Permitted = "anywhere"
         if self._residency is not None:
-            permitted = await self._residency.permitted(run.tenant, work.data_class)
+            permitted = await self._residency.permitted(
+                run.tenant, work.data_class, process_of(run.process_version)
+            )
         needs = routing.Needs(
             purpose=work.purpose,
             exactness=step.exactness,
@@ -6026,7 +6114,9 @@ class RunEngine:
     ) -> tuple[Run, StepRun]:
         permitted: Permitted = "anywhere"
         if self._residency is not None:
-            permitted = await self._residency.permitted(run.tenant, work.data_class)
+            permitted = await self._residency.permitted(
+                run.tenant, work.data_class, process_of(run.process_version)
+            )
         outside: tuple[str, str] | None = None
         try:
             resolved = await self._worker_pool(run).resolve(step.required_capabilities, permitted)
@@ -7353,6 +7443,8 @@ SAMPLED = "check.sampled"
 ORG_UNIT_ADMITTED = "org_unit.admitted"
 """A run committed its budget to its organisational unit's budget quota (ADR-0166)."""
 ORG_UNIT_HELD = "org_unit.held"
+TENANT_BUDGET_HELD = "budget.held"
+"""A run waits at its boundary because the tenant's monthly budget is reached (ADR-0260)."""
 """A run held before its first step by its unit's budget quota, outcome `budget` or
 `no_amount` (ADR-0166)."""
 

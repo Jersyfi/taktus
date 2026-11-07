@@ -293,11 +293,17 @@ role it would tie the core to a model stack and the removal test would be lost.
   statement names from the process component (ADR-0215). It reaches the tenant's anchors, and the ceilings its
   risk classes set on a level, the same way, and `taktusctl anchors set` stores both in one
   document, the column `anchor_configuration.levels` holding the ceilings (ADR-0170). It reaches the tenant's residency rule,
-  `TenantResidency`, the same way, and `taktusctl residency` shows and sets it. The run and
+  `TenantResidency`, the same way, and `taktusctl residency` shows and sets it, narrowed per
+  data class and per process; the run asks it with the run's process (ADR-0258). The run and
   registration reach the tenant's declaration of its sources, `TenantSources`, the same way,
   and `taktusctl sources` shows and changes it (ADR-0130). Registration reaches the roles the tenant's
   identities hold, `RoleStructure`, from the identity component's `IdentityDirectory`
-  directly, and the process level reads a step's role from the version (ADR-0146).
+  directly, and the process level reads a step's role from the version (ADR-0146). It reaches the
+  rights of a process, `ProcessRights`, from the same directory (ADR-0257). The governance
+  component's `TenantDomains` answers registration's `DomainOwners` and reads the takeover and
+  removal tests through `composition/domains.py`, and `AnchorsInForce` reads the domains to scope
+  the anchors (ADR-0259). Its `TenantBudgets` answers the run's `TenantBudget` through
+  `BudgetOfTheRun` in `composition/decisions.py`, and `taktusctl budget` sets it (ADR-0260).
   `composition/acting.py`'s `ActingReads` gathers what acts for a tenant, what depends on it and
   how a process really runs from the catalog's maturity records, the pools, the process
   versions, the residency rule, the stops, the blocks, the provenance store and the identities'

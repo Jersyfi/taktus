@@ -688,6 +688,7 @@ async def wire(
                     traces=trace_store,
                     masking=secrets,
                     stops=stops,
+                    tenant_budget=decisions.budget_of_the_run,
                     messages=decisions.messages,
                     statements=VersionStatements(
                         persistence,
@@ -883,6 +884,7 @@ async def wire(
                 stages=staged.ceilings,
                 structure=identities,
                 rights=identities,
+                domains=decisions.domains,
             )
             moves = MethodMoves(
                 versions=PostgresRepository(persistence, ProcessVersion),

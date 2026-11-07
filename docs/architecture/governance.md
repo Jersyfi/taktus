@@ -297,6 +297,12 @@ never to a person. Once a role of the tenant holds one, registration asks for th
 version an identity lacks a right for is refused with `process.refused` naming the right
 (ADR-0257).
 
+Every domain a tenant instantiates has exactly one owner, an identity of the tenant, and a
+jurisdiction. Without an owner nothing in it is raised. An anchor scoped to a domain or a
+jurisdiction holds for that domain's processes, and no configuration may leave a domain without
+a legal anchor in force (ADR-0259). A tenant's monthly money budget across all its runs holds
+every run of it at its next boundary once the month's runs cost it (ADR-0260).
+
 Shared agents run strictly in the permission, credential and cost context of the *calling user*,
 never of their author. No user sees another's mailbox, data or secrets.
 

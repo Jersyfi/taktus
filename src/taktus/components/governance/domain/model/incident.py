@@ -69,6 +69,9 @@ class IncidentKind(StrEnum):
     RESULT_DEFECT = "result.defect"
     """A result that counted is wrong: a person corrected it, or judged a sample of it wrong. Its
     facts are what the rule of ADR-0023 read and decided (ADR-0153)."""
+    BUDGET = "budget.reached"
+    """What the tenant's runs of a month cost reached its monthly budget: every run waits at its
+    boundary, and the budget's role is told, once a month (ADR-0260)."""
 
 
 class IncidentState(StrEnum):

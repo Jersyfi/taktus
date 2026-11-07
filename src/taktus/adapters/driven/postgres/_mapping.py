@@ -1671,6 +1671,51 @@ class AdapterStopMapper:
         return [dict(row.stop) for row in [*rows, *scoped]]
 
 
+class DomainMapper:
+    """One row per domain of a tenant (ADR-0259): the domain as a document, its owner beside it."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.domain, tenant, id)
+        return None if row is None else dict(row.domain)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.domain,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "owner": document.get("owner"),
+                "domain": document,
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.domain, tenant, s.domain.c.id)
+        return [dict(row.domain) for row in rows]
+
+
+class TenantMonthBudgetMapper:
+    """One row per tenant's monthly budget (ADR-0260); the budget stays a document."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.tenant_month_budget, tenant, id)
+        return None if row is None else dict(row.budget)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.tenant_month_budget,
+            ("tenant", "id"),
+            {"tenant": tenant, "id": document["id"], "budget": document},
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.tenant_month_budget, tenant, s.tenant_month_budget.c.id)
+        return [dict(row.budget) for row in rows]
+
+
 class WorkingTimeMapper:
     """One row per tenant that set its working time; the working time stays a document."""
 
@@ -2124,6 +2169,8 @@ MAPPERS: dict[str, Mapper] = {
     "value_stream": ValueStreamMapper(),
     "deadline": DeadlineMapper(),
     "adapter_stop": AdapterStopMapper(),
+    "domain": DomainMapper(),
+    "tenant_month_budget": TenantMonthBudgetMapper(),
     "working_time": WorkingTimeMapper(),
     "correction_limits": CorrectionLimitsMapper(),
     "residency_rule": ResidencyRuleMapper(),
