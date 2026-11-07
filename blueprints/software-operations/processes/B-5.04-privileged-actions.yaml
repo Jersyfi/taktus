@@ -1,0 +1,192 @@
+# B-5.04 Auditing privileged actions — UC-03 §4.5: unusual patterns among the privileged actions
+# are reported: an escalation of rights, an action outside the organisation-wide time window, a
+# mass change. The investigation stays with a person.
+#
+# **A rule on the action, never a profile of a person** (principle 14, ADR-0015, DEC-0199). The
+# actions of the past day are read through `audit.events` (ADR-0209), and three fixed rules
+# mark them, `filter`, `exact` (ADR-0192 §1):
+#
+# - **escalation**: an action the connector reads as one that grants rights (`escalation`), as
+#   the audit log's own documentation names those actions;
+# - **outside the time window**: an action in an hour of the day before 06:00 or from 21:00
+#   UTC, the organisation's window, one for everybody;
+# - **mass change**: an action of one kind taken fifty times or more in the day, counted per
+#   action by the connector and never per account that acted.
+#
+# No model, no learned baseline: what is unusual is stated here, the same for every account.
+# No figure is made per person; the actor stays in an event's record for the person who
+# investigates, and no rule counts by it.
+#
+# The tenant's version may set its own window (the hours in `outside-window`), its own size of
+# a mass change (the count in `mass-changes`), and the hours read, in its trigger's input, to
+# its schedule. A day missed by the scheduler is a missed run, and its incident (UC-4.16).
+#
+# The judgement is the tenant's corridors on the three steps' `count`; one mark is red:
+#
+#     uv run taktusctl signal configure audit.escalations --process b-5-04 --step escalations \
+#         --select count --bounds fixed --direction above --yellow 0.25 --red 0.5 \
+#         --fresh 26h --role <role> --case <where privileged actions are investigated>
+#
+# and the same for `audit.outside_window` on the step `outside-window`, and for
+# `audit.mass_changes` on the step `mass-changes`.
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-5.04-privileged-actions.yaml \
+#         --input hours=24
+#
+# Switching it off (`taktusctl deactivate --process b-5-04`) changes nothing: it only reads.
+
+id: b-5-04
+version: "1"
+name: B-5.04 Auditing privileged actions
+autonomy:
+  level: 1
+  reason: >
+    the process only reads the audit log and marks actions by three fixed rules; nothing leaves
+    the system, so at level 1 every step runs and none acts; a mark reaches a person as an
+    incident, and the investigation stays with that person; UC-03 keeps this process at level 1
+  toward_next: >
+    none: UC-03 sets level 1 as its target, because what follows a mark is an investigation of
+    what people did, which stays with a person (principle 14)
+author: the repository
+reason: an escalation of rights, an action at night or a mass change reaches a person the next morning without anyone reading the audit log (UC-03 B-5.04)
+
+# Every morning, through the elected scheduler (ADR-0035), over the day before.
+triggers:
+  - schedule: "15 6 * * *"
+    inputs:
+      hours: 24
+
+inputs:
+  hours:
+    description: the actions of the past this many hours are read; the schedule's interval
+    example: 24
+
+limits:
+  quota: { units: 120 }
+
+steps:
+  - id: events
+    method: rule
+    reason: the privileged actions are read as the audit log holds them; nothing to judge
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving audit.events is unavailable
+      to: human
+      role: owner
+    work:
+      rule: connector
+      operation: audit.events.list
+      input:
+        hours: { $input: hours }
+        limit: 10000
+      credentials:
+        - { name: AUDIT_TOKEN, injected_as: env }
+      expect:
+        - select: complete
+          equals: true
+          says: the audit log answered only part of the period; a partial list would miss marks
+
+  - id: escalations
+    method: rule
+    reason: whether an action grants rights is a field of its record, kept by a fixed rule
+    rejected:
+      - method: llm
+        why: a field is read, not judged
+      - method: ml
+        why: a learned profile of what people usually do is what principle 14 forbids
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the actions that granted rights }
+    depends_on: [events]
+    work:
+      rule: filter
+      items: { $from: events, $select: output.events }
+      all:
+        - { field: escalation, equals: true }
+
+  - id: outside-window
+    method: rule
+    reason: an action's hour against the organisation's window, one for everybody, is a comparison of two numbers
+    rejected:
+      - method: statistics
+        why: a usual hour learned per account would profile the person behind it (principle 14)
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the actions outside the time window }
+    depends_on: [events]
+    work:
+      rule: filter
+      items: { $from: events, $select: output.events }
+      any:
+        - { field: hour, at_most: 5 }
+        - { field: hour, at_least: 21 }
+
+  - id: mass-changes
+    method: rule
+    reason: how often one kind of action was taken is a count per action, compared with a fixed bound
+    rejected:
+      - method: statistics
+        why: a deviation from a learned baseline would need a history per account (principle 14)
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the actions taken fifty times or more }
+    depends_on: [events]
+    work:
+      rule: filter
+      items: { $from: events, $select: output.actions }
+      all:
+        - { field: count, at_least: 50 }
+
+takeover:
+  sequence: >
+    The process runs every morning at a quarter past six UTC, on its own schedule, over the
+    past day; whoever looks after the security of the business's systems takes it over. The
+    steps run in order: read the audit log of the past day, mark every action that granted
+    rights, mark every action before six or from nine in the evening UTC, and mark every kind of
+    action taken fifty times or more. Every mark is red and goes to the role the tenant named,
+    who investigates. Nothing is counted per person, and the process changes nothing.
+  steps:
+    events:
+      system: the audit log in the administration of the organisation's systems
+      do: >
+        export the actions of the past day, each with when it happened, the action, the account
+        that acted and what it acted on. Make sure the export covers the whole day
+      expertise: searching and exporting the audit log by date
+      credentials:
+        - parameter: AUDIT_TOKEN
+          where: >
+            the operator's secret store, under the parameter Audit log credential of the
+            requesting identity described in CREDENTIALS.md; a person signs in with their own
+            administrator account that may read the audit log
+      done: every action of the past day is in the export
+    escalations:
+      system: the export, in a spreadsheet
+      do: >
+        keep every action that grants rights — adding a member, an administrator, a billing or
+        application manager, a role or a privilege, installing or approving an application,
+        lowering a security requirement; count them. One or more is red: report them to the
+        role the tenant named
+      expertise: knowing which of the audit log's actions grant rights
+      credentials: []
+      done: the actions that granted rights are listed, counted and reported
+    outside-window:
+      system: the export, in a spreadsheet
+      do: >
+        keep every action whose time in UTC is before 06:00 or from 21:00; count them. One or
+        more is red: report them to the role the tenant named
+      expertise: filtering a table by the hour of a time
+      credentials: []
+      done: the actions outside the window are listed, counted and reported
+    mass-changes:
+      system: the export, in a spreadsheet
+      do: >
+        count the actions of each kind, never of each account; keep every kind counted fifty
+        times or more. One or more is red: report them to the role the tenant named
+      expertise: counting a table's rows by one column
+      credentials: []
+      done: the kinds of action taken fifty times or more are listed and reported
