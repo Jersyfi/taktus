@@ -62,6 +62,7 @@ from taktus.components.reporting.application.service import (
     FindingsIntake,
     LiveChanges,
     ProductFindings,
+    StepQueries,
     StepTraces,
 )
 from taktus.components.reporting.domain.model import BackupState, Corridor, Judged
@@ -413,6 +414,21 @@ class Services:
             ledger=self.ledger,
             clock=self.clock,
         )
+
+    @property
+    def queries(self) -> StepQueries:
+        """The queries a step sent, over this world's stores (ADR-0262 §3)."""
+        return StepQueries(
+            records=self.levels.records,
+            ledger=self.ledger,
+            objects=self.objects,
+            work=self.persistence,
+        )
+
+    @property
+    def connection_grants(self) -> Any:
+        """Writing on a connection, granted by a person (ADR-0262 §2)."""
+        return self.decisions.connections
 
     @property
     def answer_decision(self) -> AnswerRequestHandler:

@@ -73,7 +73,7 @@ class Tokens:
             except (ValueError, KeyError, TypeError):
                 continue
             self._public[str(key["client_email"])] = private.public_key()
-        self._issued: set[str] = set()
+        self._issued: dict[str, tuple[str, str]] = {}
         self._lock = threading.Lock()
         self.grants = 0
 
@@ -96,12 +96,17 @@ class Tokens:
             return 400, {"error": "invalid_grant", "error_description": "invalid claims"}
         token = "ya29.fake-" + secrets.token_hex(16)
         with self._lock:
-            self._issued.add(token)
+            self._issued[token] = (str(claims["iss"]), str(claims["scope"]))
             self.grants += 1
         return 200, {"access_token": token, "expires_in": 3599, "token_type": "Bearer"}
 
     def admits(self, authorization: str | None) -> bool:
+        return self.holder(authorization) is not None
+
+    def holder(self, authorization: str | None) -> tuple[str, str] | None:
+        """The service account a token was issued to and the scope it was issued for; None for
+        a token the fake did not issue."""
         if not authorization or not authorization.startswith("Bearer "):
-            return False
+            return None
         with self._lock:
-            return authorization[len("Bearer ") :] in self._issued
+            return self._issued.get(authorization[len("Bearer ") :])

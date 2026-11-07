@@ -57,6 +57,7 @@ from taktus.adapters.driving.rest import (
     agent_surface,
     autonomy,
     catalogue,
+    connections,
     deprecation,
     evaluations,
     findings,
@@ -198,6 +199,7 @@ def build_app(
         app.include_router(spend.router(services, _authenticated), prefix=base)
         app.include_router(trials.router(services, _authenticated), prefix=base)
         app.include_router(subjects.router(services, _authenticated), prefix=base)
+        app.include_router(connections.router(services, _authenticated), prefix=base)
         # A person's own agent, over MCP, with a key of its own (ADR-0131).
         app.router.routes.append(
             Route(

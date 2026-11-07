@@ -8,7 +8,17 @@
       "query": "SELECT step, users FROM signups_funnel ORDER BY users DESC"
     }
   },
-  "writes": [],
+  "writes": [
+    {
+      "operation": "warehouse.queries.change",
+      "input": {
+        "query": "INSERT INTO conformance_marks (mark) VALUES (@mark)",
+        "parameters": {
+          "mark": "conformance-{{unique}}"
+        }
+      }
+    }
+  ],
   "invalid": {
     "operation": "warehouse.queries.run",
     "input": {

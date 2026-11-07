@@ -44,6 +44,10 @@ Registering is where a step's frame must hold: a scope names its subject from th
 inputs, and an analytic step reaches its source only, which the tenant declares free of
 personal fields (UC-7.7, ADR-0130, `domain.service.frame`).
 
+Registering is where a figure a query computed must go where it may: a query a model or a
+worker wrote feeds no step of class `exact` or `sourced`, and an exact step is fed only by a
+query fixed in the version (UC-5.6, ADR-0262 §4, `domain.service.queries`).
+
 Registering is where a declared evaluation must hold: its scorers score steps that produce a
 result, each by a rule or by a judge that says why no rule can and names its fallback, and its
 cases give the inputs the version requires (UC-4.18, ADR-0134 §1).
@@ -87,7 +91,13 @@ from taktus.components.process.domain.model.exactness import (
     ExactnessStatement,
     InvalidStatement,
 )
-from taktus.components.process.domain.service import autonomy, evaluation, exactness, frame
+from taktus.components.process.domain.service import (
+    autonomy,
+    evaluation,
+    exactness,
+    frame,
+    queries,
+)
 from taktus.components.process.domain.service import takeover as instructed
 from taktus.components.process.domain.service.quality import QUALITY
 from taktus.components.process.ports import (
@@ -512,6 +522,7 @@ def parse_bundle(bundle: Document) -> ProcessVersion:
         )
     refused.extend(evaluation.findings(version.steps, version.work))
     refused.extend(frame.findings(version.steps, version.work, version.inputs))
+    refused.extend(queries.findings(version.steps, version.work))
     try:
         exactness.statement(version.ref, version.name, version.steps)
     except InvalidStatement as error:

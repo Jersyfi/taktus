@@ -24,14 +24,27 @@ How the API's answers map to the contract's causes:
 | 404: no such project, dataset or table | `invalid` |
 | 401: the token is not admitted | `unauthenticated` |
 | 403: the service account may not run jobs or read the table | `forbidden` |
+| 409 to a change's job: a job of that identifier exists, a repeat | read it, `replayed` |
 | 429, 5xx, no connection, no answer in time, a job not done in time | `unavailable`, retryable |
 | any other status, a body that is not the API's | `unexpected` |
 
 The API's own `message` stays out of the error's `detail`: it can quote the query.
+
+**A change, once (ADR-0262).** `warehouse.queries.change` runs one statement that begins with
+INSERT, UPDATE, DELETE or MERGE, and that the warehouse's dry run calls one of those, as a job:
+`POST /bigquery/v2/projects/<project>/jobs` (jobs.insert) with a `jobReference.jobId` derived
+from the call's idempotency key. A job identifier is unique in its project, so a repeat of the
+call is answered 409 `duplicate`; the connector then reads the job with
+`GET /bigquery/v2/projects/<project>/jobs/<jobId>` (jobs.get) and reports `replayed`. It
+follows the job until its `status.state` is `DONE` and reads `statistics.query`. Its token asks
+for the scope that may write; a query keeps the read-only scope. Whether the call may write at
+all is the run's question, asked before it is made: a connection reads until a person grants
+writing.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import time
@@ -47,6 +60,10 @@ type Json = dict[str, Any]
 
 TARGET = "https://bigquery.googleapis.com"
 SCOPE = "https://www.googleapis.com/auth/bigquery.readonly"
+WRITE_SCOPE = "https://www.googleapis.com/auth/bigquery"
+"""The narrowest scope jobs.insert lists that may change data."""
+CHANGES = ("INSERT", "UPDATE", "DELETE", "MERGE")
+"""The statements `warehouse.queries.change` runs: the data manipulation the API names."""
 LIMIT = 1000
 MAX_LIMIT = 10000
 MAX_QUERY = 100_000
@@ -77,6 +94,10 @@ class Config:
         return token_endpoint(self.target, TARGET, self.token_endpoint)
 
 
+class _Duplicate(Exception):
+    """409 `duplicate`: a job of that identifier exists already."""
+
+
 def _unexpected(detail: str) -> TargetError:
     return TargetError("unexpected", "none", False, detail)
 
@@ -99,6 +120,15 @@ def _query(input: Json) -> str:
         raise invalid(f"query must be a statement of at most {MAX_QUERY} characters")
     if leading_word(query) not in ("SELECT", "WITH"):
         raise invalid("query must be a SELECT: it begins with SELECT or WITH")
+    return query
+
+
+def _change(input: Json) -> str:
+    query = input.get("query")
+    if not isinstance(query, str) or not query.strip() or len(query) > MAX_QUERY:
+        raise invalid(f"query must be a statement of at most {MAX_QUERY} characters")
+    if leading_word(query) not in CHANGES:
+        raise invalid("a change is one statement that begins with " + ", ".join(CHANGES))
     return query
 
 
@@ -166,6 +196,8 @@ async def _request(
         )
     if status == 403:
         raise TargetError("forbidden", "none", False, "the identity may not run this query")
+    if status == 409:
+        raise _Duplicate()
     if status == 404:
         raise invalid("the warehouse knows no such project, dataset or table")
     if status == 400:
@@ -283,4 +315,98 @@ async def run(config: Config, call: Call, input: Json) -> Outcome:
     return Outcome(output=output, effect={"kind": "read"})
 
 
-OPERATIONS = {"warehouse.queries.run": run}
+def job_id(key: str) -> str:
+    """The job's identifier for an idempotency key: letters, digits and underscores, as a job
+    identifier must be, and the same for every repeat of the call."""
+    return "taktus_" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:48]
+
+
+def _job_failed(job: Json) -> TargetError | None:
+    failed = (job.get("status") or {}).get("errorResult")
+    if not failed:
+        return None
+    reason = failed.get("reason") if isinstance(failed, dict) else None
+    if reason in ("accessDenied", "insufficientPermissions"):
+        return TargetError("forbidden", "none", False, "the identity may not run this change")
+    if reason in ("invalidQuery", "invalid", "notFound"):
+        return invalid("the warehouse refused the change")
+    return _unexpected(f"the change's job ended with {reason or 'an error it does not name'}")
+
+
+async def change(config: Config, call: Call, input: Json) -> Outcome:
+    query = _change(input)
+    parameters = _parameters(input)
+    _configured(config)
+    request: Json = {
+        "query": query,
+        "useLegacySql": False,
+        "defaultDataset": {"projectId": config.project, "datasetId": config.dataset},
+    }
+    if parameters:
+        request["parameterMode"] = "NAMED"
+        request["queryParameters"] = parameters
+    path = f"/bigquery/v2/projects/{config.project}"
+    token = await access_token(call, WRITE_SCOPE, config.timeout, config.token())
+    dry_run: Json = {**request, "dryRun": True}
+    if config.location:
+        dry_run["location"] = config.location
+    dry = await _request(config, call, token, "POST", f"{path}/queries", body=dry_run)
+    statement = dry.get("statementType")
+    if statement not in CHANGES:
+        raise TargetError(
+            "forbidden",
+            "none",
+            False,
+            f"the warehouse calls the statement {statement or 'nothing it names'}; "
+            "only " + ", ".join(CHANGES) + " is run as a change",
+        )
+    job = job_id(call.key)
+    reference: Json = {"projectId": config.project, "jobId": job}
+    params: Json = {}
+    if config.location:
+        reference["location"] = config.location
+        params["location"] = config.location
+    replayed = False
+    try:
+        found = await _request(
+            config,
+            call,
+            token,
+            "POST",
+            f"{path}/jobs",
+            body={"jobReference": reference, "configuration": {"query": request}},
+        )
+    except _Duplicate:
+        # A job of this identifier exists: the call was made before. Read it; never run again.
+        replayed = True
+        found = await _request(config, call, token, "GET", f"{path}/jobs/{job}", params=params)
+    deadline = time.monotonic() + config.timeout
+    while (found.get("status") or {}).get("state") != "DONE":
+        if time.monotonic() >= deadline:
+            # The job exists and may yet change data: a repeat finds it by its identifier.
+            raise TargetError(
+                "unavailable", "unknown", True, "the change did not complete within the timeout"
+            )
+        found = await _request(config, call, token, "GET", f"{path}/jobs/{job}", params=params)
+    failed = _job_failed(found)
+    if failed is not None:
+        raise failed
+    statistics = (found.get("statistics") or {}).get("query") or {}
+    try:
+        affected: int | None = int(statistics.get("numDmlAffectedRows"))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        affected = None
+    output = {
+        "statement_type": statistics.get("statementType") or statement,
+        "affected_rows": affected,
+        "job": job,
+    }
+    effect = {
+        "kind": "write",
+        "replayed": replayed,
+        "records": [{"kind": "warehouse.job", "id": job}],
+    }
+    return Outcome(output=output, effect=effect)
+
+
+OPERATIONS = {"warehouse.queries.run": run, "warehouse.queries.change": change}

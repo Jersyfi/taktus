@@ -431,6 +431,7 @@ class LocalWiring:
                         load_personal_credentials(self._configuration)
                     ),
                     citations=IndexedCitations(stores.of(KnowledgeEntry), stores.work),
+                    grants=decisions.connections,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)

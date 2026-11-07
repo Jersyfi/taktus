@@ -8,7 +8,10 @@ from taktus_connectors import serving
 from taktus_connectors.bigquery import declaration, operations
 from taktus_connectors.bigquery.operations import Config
 
-FAULTS = dict(serving.COMMON_FAULTS)
+FAULTS = {
+    **serving.COMMON_FAULTS,
+    "C-05": "the idempotency key is ignored: every change runs as a job of its own",
+}
 
 
 def served(config: Config, fault: str | None = None) -> serving.Served:

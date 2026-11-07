@@ -96,6 +96,7 @@ from taktus.components.decision.application.service import (
 )
 from taktus.components.decision.domain.model import Request
 from taktus.components.governance.application.service import (
+    ConnectionGrants,
     Corrections,
     Drifts,
     ExpectedRuns,
@@ -150,6 +151,7 @@ from taktus.components.reporting.application.service import (
     LiveChanges,
     ProductFindings,
     SignalWatch,
+    StepQueries,
     StepTraces,
 )
 from taktus.components.reporting.domain.model import OwnerChannel, PendingAct
@@ -373,6 +375,8 @@ class Wired:
     traces: StepTraces
     """The trace inside a worker's step, read and shared by role, and erased by the scheduler
     when its retention ends (ADR-0135)."""
+    queries: StepQueries
+    """The queries a step sent, read by a person entitled to the step (ADR-0262 §3)."""
     """What the MCP surface needs beyond the HTTP surface's services (ADR-0131)."""
     moves: MethodMoves | None = None
     """An accepted proposal to move a step applied, and a move rolled back (ADR-0114)."""
@@ -442,6 +446,11 @@ class Wired:
         if self.subjects is None:
             raise RuntimeError("the daemon wires the data-protection requests")
         return self.subjects
+
+    @property
+    def connection_grants(self) -> ConnectionGrants:
+        """Writing on a connection, granted and withdrawn by a person (ADR-0262 §2)."""
+        return self.decisions.connections
 
     @property
     def processing_evidence(self) -> ProcessingEvidence:
@@ -703,6 +712,7 @@ async def wire(
                     citations=IndexedCitations(
                         PostgresRepository(persistence, KnowledgeEntry), persistence
                     ),
+                    grants=decisions.connections,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -1142,6 +1152,9 @@ async def wire(
                     work=persistence,
                     ledger=ledger,
                     clock=clock,
+                ),
+                queries=StepQueries(
+                    records=levels.records, ledger=ledger, objects=objects, work=persistence
                 ),
                 proposals=proposals,
                 proposal_acts=proposal_acts,

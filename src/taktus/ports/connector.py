@@ -49,6 +49,14 @@ IDEMPOTENCY_KEY_PATTERN = r"^[A-Za-z0-9_.:-]{16,128}$"
 CREDENTIAL_NAME_PATTERN = r"^[A-Z][A-Z0-9_]*$"
 EVENT_PATTERN = r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$"
 
+QUERYING: frozenset[Capability] = frozenset({"warehouse.queries"})
+"""The capabilities whose operations run a statement in a query language that computes their
+answer: the warehouse's (ADR-0262 §3, §4). Every query sent through one is recorded by
+reference, and where a figure it computed may go is a rule of registration."""
+READ_UNLESS_GRANTED: frozenset[Capability] = frozenset({"warehouse.queries"})
+"""The capabilities whose connection reads until a person grants writing (ADR-0262 §2): an
+outward operation of one is refused before the call unless the tenant's grant is in force."""
+
 
 class ConnectorError(Exception):
     """The connector did not answer, or answered with something the contract does not allow.

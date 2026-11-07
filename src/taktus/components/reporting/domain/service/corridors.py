@@ -3,7 +3,8 @@
 **A value counts** only when its step finished with outcome `succeeded`, its method is `rule`
 or `statistics`, its exactness `exact` or `sourced`, and a provenance record of the step run
 says so (§1). The number stands at the corridor's `select` in the result. A boolean is no
-number.
+number; a text that is a decimal number is that number, as a warehouse answers its figures
+(ADR-0262 §5).
 
 **The thresholds** (§2). For `median`, each is a multiple of the median of the admissible values
 within the window before the value judged; with fewer than the corridor's minimum, the corridor
@@ -21,6 +22,7 @@ the recorded attempts and the time in, the judgement out.
 from __future__ import annotations
 
 import math
+import re
 import statistics
 from collections.abc import Iterable, Sequence
 from datetime import datetime
@@ -37,6 +39,8 @@ from taktus.components.reporting.domain.model.signal import (
     Unmeasured,
 )
 
+DECIMAL = re.compile(r"^[+-]?[0-9]+(\.[0-9]+)?$")
+"""A decimal number written as text: digits, an optional sign and fraction, nothing else."""
 DAILY_PREFIX = "signals-"
 RED_PREFIX = "signal-red-"
 
@@ -63,6 +67,9 @@ def number(result: Any, select: str | None) -> float | None:
             value = value[int(part)]
         else:
             return None
+    if isinstance(value, str) and DECIMAL.fullmatch(value.strip()):
+        # A source that answers its figures as text — a warehouse's rows (ADR-0262 §5).
+        value = float(value.strip())
     if isinstance(value, bool) or not isinstance(value, int | float):
         return None
     return float(value) if math.isfinite(value) else None
