@@ -394,6 +394,12 @@ async def test_nobody_but_the_person_reads_their_own_view_until_they_share_it(
     assert shared.status_code == 200, shared.text
     seen = await http.get(theirs, headers=bearer(keys["idn_cy"]))
     assert seen.status_code == 200 and seen.json()["goals"][0]["reached"] is True
+    assert is_problem(await http.get(theirs, headers=bearer(keys["idn_owner"])), 404), (
+        "shared with a role the owner does not hold: still not the owner's (principle 14)"
+    )
+    assert is_problem(await http.get(theirs, headers=bearer(keys["idn_bo"])), 404), (
+        "a colleague of the same role does not read it either"
+    )
     await http.put(
         f"{base}/me/relief/settings", headers=bearer(keys["idn_ada"]), json={"shared_with": []}
     )
