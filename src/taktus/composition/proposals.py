@@ -79,15 +79,20 @@ class ProposalActs:
         ids: Identifiers,
         change_process: str | None = None,
         evaluations: Evaluations | None = None,
+        describe_process: str | None = None,
     ) -> None:
         """`change_process` is the process that turns a request in words into a proposal, as
         the operator names it (`TAKTUS_CHANGE_PROCESS`); None, the default: no request in words
-        is taken, and a changed bundle is handed over instead. Which process does it is a
-        tenant's bundle, never the product's default (ADR-0092). `evaluations` holds a change
-        to the process's evaluation cases (ADR-0134); None holds it to none."""
+        is taken, and a changed bundle is handed over instead. `describe_process` is the one
+        that turns a description of a process the tenant does not have yet into a proposal for
+        its first version (`TAKTUS_DESCRIBE_PROCESS`, ADR-0251); None, the default: a process is
+        created from its bundle only. Which process does either is a tenant's bundle, never the
+        product's default (ADR-0092). `evaluations` holds a change to the process's evaluation
+        cases (ADR-0134); None holds it to none."""
         self._proposals = proposals
         self._evaluations = evaluations
         self._change_process = change_process
+        self._describe_process = describe_process
         self._processes = processes
         self._versions = versions
         self._runs = runs
@@ -103,40 +108,78 @@ class ProposalActs:
     async def ask(self, tenant: Tenant, process_id: str, request: str, by: str) -> Run:
         """A change asked for in words: a run of the configured change process for the process
         (ADR-0091 §2), which keeps a proposal once the model's bundle passes validation. The run
-        acts for whoever asked."""
-        changing = self._change_process
+        acts for whoever asked. For a process the tenant does not have yet, the words are its
+        description, and the configured describe process builds its first version
+        (ADR-0251 §1); without one, such a process is unknown."""
         async with self._work.transaction(tenant):
             target = await self._processes.get(tenant, process_id)
-            change = None if changing is None else await self._processes.get(tenant, changing)
-            version = (
-                None
-                if change is None or change.active_version is None
-                else await self._versions.get(tenant, f"{change.id}@{change.active_version}")
-            )
         if target is None or target.active_version is None:
-            raise ProposalError("unknown", f"no process {process_id!r}")
-        if changing is None:
+            if self._describe_process is None:
+                raise ProposalError("unknown", f"no process {process_id!r}")
+            return await self._started(
+                tenant,
+                self._describe_process,
+                "TAKTUS_DESCRIBE_PROCESS",
+                {"process": process_id, "description": request},
+                request,
+                by,
+                recognised="process.describe",
+                goal=f"propose the process {process_id} from its description",
+                instead="hand over the bundle of the new process instead",
+            )
+        if self._change_process is None:
             raise ProposalError(
                 "unavailable",
                 "no process turns a request in words into a proposal on this instance "
                 "(TAKTUS_CHANGE_PROCESS): hand over the changed bundle instead",
             )
+        return await self._started(
+            tenant,
+            self._change_process,
+            "TAKTUS_CHANGE_PROCESS",
+            {"process": process_id, "request": request},
+            request,
+            by,
+            recognised="process.change",
+            goal=f"propose a change to {process_id}",
+            instead="hand over the changed bundle instead",
+        )
+
+    async def _started(
+        self,
+        tenant: Tenant,
+        process: str,
+        setting: str,
+        inputs: dict[str, Any],
+        words: str,
+        by: str,
+        *,
+        recognised: str,
+        goal: str,
+        instead: str,
+    ) -> Run:
+        """A run of the named process, acting for whoever asked, submitted to the queue."""
+        async with self._work.transaction(tenant):
+            found = await self._processes.get(tenant, process)
+            version = (
+                None
+                if found is None or found.active_version is None
+                else await self._versions.get(tenant, f"{found.id}@{found.active_version}")
+            )
         if version is None or version.limits is None:
             raise ProposalError(
                 "unavailable",
-                f"{changing} is not registered on this instance: hand over the changed bundle "
-                "instead",
+                f"{process} ({setting}) is not registered on this instance: {instead}",
             )
         placed = await self._identities.identity(tenant, by)
         if placed is None:
             raise ProposalError("unknown", f"the identity {by!r} is not known to {tenant!r}")
-        inputs = {"process": process_id, "request": request}
         command = Command(
             id=self._ids.new("cmd"),
             channel=CHANNEL,
             identity=placed.identity,
             org_path=placed.org_path,
-            intent=Intent(raw=request, recognised="process.change"),
+            intent=Intent(raw=words, recognised=recognised),
             context={"inputs": inputs},
             reply_to=ReplyTo(channel=CHANNEL, address="ledger"),
             received_at=self._clock.now(),
@@ -145,7 +188,7 @@ class ProposalActs:
             CommissionPlan(
                 command=command,
                 tenant=tenant,
-                goal=f"propose a change to {process_id}",
+                goal=goal,
                 autonomy_level=version.autonomy_level,
                 steps=version.ordered(),
             )

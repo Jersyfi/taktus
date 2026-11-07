@@ -5579,7 +5579,7 @@ class RunEngine:
         await self._not_stopped(run, resolved.adapter)
         scope = await self._frame(run, step_run.step_id, resolved, operation)
         if run.rehearsal and operation.outward and not self._replaying(run):
-            return await self._rehearsed(run, resolved, operation, read)
+            return await self._rehearsed(run, resolved, operation, read, input)
         sent: Digest | None = None
         if operation.outward and not run.rehearsal:
             input, sent = await self._labelled(run, step_run.step_id, work, operation, input)
@@ -5675,11 +5675,13 @@ class RunEngine:
         resolved: ResolvedConnector,
         operation: Operation,
         read: tuple[ProvenanceInput, ...],
+        input: Mapping[str, Any],
     ) -> tuple[Any, Trace, Consumption | None, str]:
         """An outward operation in a rehearsal: nothing is sent. The step answers with the
         recorded response of the most recent real call of the operation through the adapter,
-        reads it as that run's result, and consumes nothing. Without a recording the step
-        fails: the process cannot be rehearsed past it."""
+        reads it as that run's result, and consumes nothing. Its result says what a real run
+        would have sent, under `would_send`: the operation and its input as resolved (ADR-0251
+        §3). Without a recording the step fails: the process cannot be rehearsed past it."""
         found = await self._recordings.response(run.tenant, resolved.adapter, operation.name)
         if found is None:
             raise _StepFailed(
@@ -5701,6 +5703,7 @@ class RunEngine:
         replayed = {
             **document,
             "rehearsed_from": {"run_id": recording.run_id, "step_id": recording.step_id},
+            "would_send": {"operation": operation.name, "input": dict(input)},
         }
         trace = Trace(inputs=(*read, recorded), adapter_version=resolved.version, rehearsed=True)
         return replayed, trace, None, resolved.adapter

@@ -4,10 +4,10 @@ title: A process from a description
 component: process
 epic: E4
 serves: [P2, P8]
-state: specified
+state: verified
 version: 0.4.0
-tests: []
-adrs: {ADR-0004: ffdb1f1537f5, ADR-0011: f25413d512b9, ADR-0014: 6611f7833deb, ADR-0018: 17c99e0eaa3c, ADR-0026: ccc4bd1f5423}
+tests: [tests/composition/test_process_from_a_description.py::test_a_description_becomes_a_proposal_for_a_first_version_and_nothing_is_registered, tests/composition/test_process_from_a_description.py::test_a_method_guessed_against_its_class_leaves_no_proposal_and_goes_to_a_person, tests/composition/test_process_from_a_description.py::test_the_rehearsal_sends_nothing_and_says_what_it_would_have_sent, tests/composition/test_process_from_a_description.py::test_only_the_persons_commissioning_registers_the_process_and_it_is_recorded]
+adrs: {ADR-0004: ffdb1f1537f5, ADR-0011: f25413d512b9, ADR-0014: 6611f7833deb, ADR-0018: 17c99e0eaa3c, ADR-0026: ccc4bd1f5423, ADR-0251: aad75bb537be}
 supersedes: null
 ---
 
@@ -55,3 +55,16 @@ exactness classes (ADR-0014, ADR-0018); the bundle format (ADR-0011, `0.3.0`); a
 reason (ADR-0026); the removal test's rehearsal mode, which runs a process with nothing leaving.
 Definition `UC-4.1`. The version is `0.3.0`, where the roadmap requires that a process can be
 created from the web app and from chat.
+
+## 5. What is proven so far
+
+Every condition, by the named tests (ADR-0251). A description of a process the tenant does not
+have is a request in words that the process the operator names (`TAKTUS_DESCRIBE_PROCESS`, the
+repository's S-08) turns into a proposal for a first version; it is kept only once it passes
+registration's validation, and nothing is registered. A method guessed against its exactness
+class leaves no proposal and sends the run to a person; a step no admissible method fits is a
+`human` step. The rehearsal acts on nothing outside, and each outward step's result says what it
+would have sent. Commissioning is the person's act, recorded, and only then does the process
+exist. The proposal is the bundle in the open format. An outward operation never called for real
+on the instance has no recording, and a proposal using it cannot be rehearsed past it
+(ADR-0251, *Where this promise ends*).

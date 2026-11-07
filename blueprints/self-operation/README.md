@@ -13,6 +13,7 @@ first process is the check of the product's own central claim.
 | **S-05 Guides** — the administration guide and the guide for users, rendered from the repository and put into the knowledge system; a hand edit is kept and reported | **runs** daily | [`processes/S-05-guides.yaml`](processes/S-05-guides.yaml) |
 | **S-06 Maturation** — every step measured, and a step on a language model proposed a trained model where the evidence holds; never applied | **runs** weekly | [`processes/S-06-maturation.yaml`](processes/S-06-maturation.yaml) |
 | **S-07 Change in dialogue** — a request in a person's own words becomes a proposal for a changed process; nothing is registered | **runs** when a person asks, from the web app or the chat | [`processes/S-07-change-in-dialogue.yaml`](processes/S-07-change-in-dialogue.yaml) |
+| **S-08 Process from a description** — a description in a person's own words becomes a proposal for a new process; nothing is registered | **runs** when a person describes a process the tenant does not have, from the web app or the chat | [`processes/S-08-process-from-a-description.yaml`](processes/S-08-process-from-a-description.yaml) |
 
 ## S-01 Removal test
 
@@ -457,3 +458,43 @@ under `blueprints/` or `GET /levels/processes/{id}` — change it, give it a new
 hand it over: `POST /processes/{id}/proposals` with the changed bundle keeps the proposal with
 its difference, as S-07 would, and registers nothing. Without Taktus, the bundle is a YAML file:
 registering the changed file with `taktusctl submit` is the same change, made directly.
+
+## S-08 Process from a description
+
+UC-4.1 asks that a person describes in their own words what should happen, and Taktus builds the
+process. ADR-0251 makes the building a process of Taktus's own, as S-07 is for a change: the one
+variable step is visible, and the rest are rules.
+
+**What one run does:**
+
+1. **propose** — a language model, for the purpose `reasoning`, is given the identifier the new
+   process is to have and the person's description, and answers with the complete bundle as one
+   JSON object. Every step carries its method, the reason, the methods rejected, a fallback and an
+   exactness class; a step no admissible method fits is a person's.
+2. **keep** — the instance validates the bundle as registration would and keeps the proposal,
+   made against no version. A bundle that would not register — a method guessed against its
+   exactness class among them — is kept nowhere: the step fails with every finding, and the run
+   goes to a person.
+
+**Started by a person.** It has no trigger. `POST /processes/{id}/proposals` with the words, for
+an identifier the tenant has no process under, starts one run; so does `change process <id>:
+<words>` in the owner's chat. The instance starts it only where its operator names it:
+`TAKTUS_DESCRIBE_PROCESS=s08-process-from-a-description` (ADR-0092). The proposal is then
+rehearsed — nothing leaves, and each outward step's result says under `would_send` what a real
+run would have sent — and commissioned by the person, as any proposal (ADR-0091 §3, §4).
+
+`tests/composition/test_process_from_a_description.py` runs it end to end with a scripted model.
+
+### Its autonomy, with the reason
+
+Level 3: the one value a language model produces is a proposed bundle, and it leaves its step
+only through registration's validation; nothing is registered, and commissioning is the person's
+act at every level. Toward level 4: a quarter of proposals commissioned without a rewrite by
+hand; then Taktus proposes the raise with that evidence (M3.9).
+
+### By hand — the takeover test of this process
+
+A person does the same without the model (ADR-0013 B). Copy a bundle of `examples/`, write the
+new process into it, and hand it over: `POST /processes/{id}/proposals` with the bundle keeps
+the proposal, as S-08 would, and registers nothing. Without Taktus, the bundle is a YAML file:
+`taktusctl submit` registers it directly.

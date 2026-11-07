@@ -1187,6 +1187,11 @@ class Settings:
     proposal (UC-4.15, ADR-0091 §2), by its identifier. None, the default: no request in words
     is taken, and a person hands over the changed bundle. Which process does it is a tenant's
     bundle, never a default of the product (ADR-0092)."""
+    describe_process: str | None
+    """`TAKTUS_DESCRIBE_PROCESS`: the process that turns a description in words of a process
+    the tenant does not have yet into a proposal for its first version (UC-4.1, ADR-0251), by
+    its identifier. None, the default: a new process is created from its bundle only. A tenant's
+    bundle, never a default of the product (ADR-0092)."""
     state_dir: Path
     """Where artifact bytes are written with the object store `filesystem`."""
     object_store: ObjectStoreSettings
@@ -1256,6 +1261,7 @@ class Settings:
             *self.findings.effective(),
             ("TAKTUS_BACKUP_EXPECTED_HOURS", str(self.backup_expected_hours or "")),
             ("TAKTUS_CHANGE_PROCESS", self.change_process or ""),
+            ("TAKTUS_DESCRIBE_PROCESS", self.describe_process or ""),
             ("TAKTUS_PLATFORM", self.administration.platform or ""),
             (
                 "TAKTUS_ADMINISTERS",
@@ -1327,6 +1333,7 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         findings=load_findings(configuration),
         backup_expected_hours=load_backup_expected_hours(configuration),
         change_process=reader.text("change.process", "").strip() or None,
+        describe_process=reader.text("describe.process", "").strip() or None,
         state_dir=Path(reader.text("state.dir", "~/.cache/taktus/taktusd")).expanduser(),
         object_store=load_object_store(configuration),
         object_cache_mb=reader.integer("object.cache.mb", 64, low=0),
