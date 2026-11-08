@@ -6,7 +6,7 @@ epic: E6
 serves: [P7, P9]
 state: built
 version: 0.5.0
-tests: [tests/adapters/rest/test_figures.py::test_a_report_without_a_reader_is_refused_and_one_with_one_tells_what_bears_on_it, tests/adapters/rest/test_figures.py::test_a_quiet_period_is_one_sentence, tests/components/reporting/test_views_and_reports.py::test_a_report_needs_a_reader_and_a_schedule_needs_its_hour, tests/components/reporting/test_views_and_reports.py::test_the_first_level_carries_only_what_bears_on_the_reader]
+tests: [tests/adapters/rest/test_figures.py::test_a_report_without_a_reader_is_refused_and_one_with_one_tells_what_bears_on_it, tests/adapters/rest/test_figures.py::test_a_quiet_period_is_one_sentence, tests/components/reporting/test_views_and_reports.py::test_a_report_needs_a_reader_and_a_schedule_needs_its_hour, tests/components/reporting/test_views_and_reports.py::test_the_first_level_carries_only_what_bears_on_the_reader, tests/adapters/connectors/test_chat_channel.py::test_a_reply_to_a_report_arrives_as_a_command]
 adrs: {ADR-0029: 37c061ef032a, ADR-0242: d86032064894}
 supersedes: null
 ---
@@ -53,5 +53,7 @@ Built (ADR-0242). By the named tests: a report without a reader is refused; a sc
 said in its reader's channel once per slot; its first level carries decisions waiting for the
 role, escalations and blocked work of processes the role takes part in, figures outside their
 target and, for `owner`, a process proposed to be switched off; a quiet period is one sentence;
-no line names a person. Not yet shown by a test: that a reply to a report reaches Taktus as a
-command — it arrives through the channel's intake like every message (UC-1.1).
+no line names a person. A report said in the chat by the carrier the daemon wires, through the
+chat connector against the fake of its service, is answered in its thread; the reply becomes an
+intake event and then a command through the `command` component's own handlers (UC-1.1), placed
+as the linked account and addressed back into the report's thread.

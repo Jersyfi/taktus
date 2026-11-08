@@ -9,9 +9,11 @@ nothing is applied, and the instance keeps the version it was instantiated from.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Sequence
 
 from taktus.components.catalog.domain.model.blueprint import (
+    JURISDICTION,
     Admitted,
     Binding,
     DomainBlueprint,
@@ -127,13 +129,47 @@ class DomainInstances:
             raise DomainRefused("refused", f"{owner} is not an identity of the tenant {tenant}")
         return await self._put(tenant, instance.model_copy(update={"owner": owner}))
 
+    async def name_jurisdiction(
+        self, tenant: Tenant, instance_id: str, jurisdiction: str
+    ) -> DomainInstance:
+        """The country or region whose law the domain's binding acts fall under (ADR-0289)."""
+        instance = await self.get(tenant, instance_id)
+        if re.fullmatch(JURISDICTION, jurisdiction) is None:
+            raise DomainRefused(
+                "refused", f"{jurisdiction!r} is no ISO 3166 code: name one as DE or DE-BY"
+            )
+        return await self._put(tenant, instance.model_copy(update={"jurisdiction": jurisdiction}))
+
+    async def worked_out_in(self, tenant: Tenant, instance_id: str, plan: str) -> DomainInstance:
+        """The plan draft the instance is worked out in, from now on its only way to proposals
+        (ADR-0289 §3)."""
+        instance = await self.get(tenant, instance_id)
+        return await self._put(tenant, instance.model_copy(update={"plan": plan}))
+
     async def propose(
-        self, tenant: Tenant, admitted: Admitted, instance_id: str, by: str
+        self,
+        tenant: Tenant,
+        admitted: Admitted,
+        instance_id: str,
+        by: str,
+        *,
+        commissioned: str | None = None,
+        domain_record: str | None = None,
     ) -> DomainInstance:
         """Every kept process with a bundle, not yet proposed, as a proposal at level 2 or
-        below. Refused while a question is open: the owner's first among them."""
+        below. Refused while a question is open: the owner's first among them. An instance
+        worked out in a plan is proposed only by commissioning that plan: `commissioned` names
+        it, and `domain_record` the governance domain it instantiated (ADR-0289 §3)."""
         instance = await self.get(tenant, instance_id)
         blueprint = self._same(admitted, instance)
+        if instance.plan is not None and commissioned != instance.plan:
+            raise DomainRefused(
+                "refused",
+                f"{instance.id} is worked out in the plan {instance.plan}: commissioning that "
+                "plan proposes its processes (ADR-0289)",
+            )
+        if domain_record is not None:
+            instance = instance.model_copy(update={"domain_record": domain_record})
         open_questions = self.questions(admitted, instance)
         if open_questions:
             raise DomainRefused(

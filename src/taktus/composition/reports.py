@@ -18,8 +18,9 @@ from typing import Any
 import structlog
 
 from taktus.components.accounting.application.service.spend import SpendHandler, SpendOfRun
-from taktus.components.catalog.domain.model import AdapterMaturity
+from taktus.components.catalog.domain.model import AdapterMaturity, AgentCore
 from taktus.components.decision.domain.model import Request
+from taktus.components.governance.domain.model.domains import Domain
 from taktus.components.identity.application.service import IdentityDirectory
 from taktus.components.process.application.service.streams import ValueStreams
 from taktus.components.process.domain.model import (
@@ -46,6 +47,7 @@ from taktus.components.value.application.query import ValueLedger
 from taktus.components.value.application.service import Discoveries, ValueBases
 from taktus.components.value.domain.model import DiscoveredProcess, ValueBasis
 from taktus.composition.figures import FigureReads, Gathered
+from taktus.composition.knowledge_value import KnowledgeComparison
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.persistence import ProvenanceStore, Repository, Tenant, UnitOfWork
@@ -467,6 +469,7 @@ class ReadingWiring:
     own: OwnViews
     bases: ValueBases
     discoveries: Discoveries
+    knowledge: KnowledgeComparison
 
 
 def reading_wiring(
@@ -502,6 +505,9 @@ def reading_wiring(
         ledger=ledger,
         work=work,
         clock=clock,
+        domains=of(Domain),
+        agents=of(AgentCore),
+        runs=of(Run),
     )
     return ReadingWiring(
         figures=figures,
@@ -535,6 +541,14 @@ def reading_wiring(
         ),
         bases=bases,
         discoveries=Discoveries(of(DiscoveredProcess), ledger, work, clock, identifiers),
+        knowledge=KnowledgeComparison(
+            versions=of(ProcessVersion),
+            ledger=ledger,
+            spend=spend,
+            bases=bases,
+            work=work,
+            clock=clock,
+        ),
     )
 
 

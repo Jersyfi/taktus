@@ -136,7 +136,13 @@ async def test_every_setting_is_shown_in_the_guided_mode_with_its_value_and_why(
         "commissioned",
     }
     unasked = [s for s in shown.values() if not s.asked]
-    assert {s.field for s in unasked} == {"results_in", "process_version"}
+    assert {s.field for s in unasked} == {
+        "results_in",
+        "process_version",
+        "agent",
+        "domain",
+        "describes",
+    }
     for setting in shown.values():
         assert setting.value and setting.why
     assert shown["results_in"].value == "run" and "runs once" in shown["results_in"].why

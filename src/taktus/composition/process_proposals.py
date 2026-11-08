@@ -23,6 +23,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
+from taktus.adapters.driving.rest.wiring import NoRequestPath, ProcessProposalRefused
 from taktus.components.process.domain.model import ProcessVersion
 from taktus.components.process.domain.service import proposing
 from taktus.components.process.domain.service.proposing import (
@@ -51,7 +52,7 @@ class Asking(Protocol):
     async def ask(self, tenant: Tenant, process_id: str, request: str, by: str) -> Run: ...
 
 
-class ProposalRefused(Exception):
+class ProposalRefused(ProcessProposalRefused):
     """A proposal that is not the person's to decide, or is decided already."""
 
 
@@ -107,7 +108,7 @@ class ProcessProposals:
     async def accept(self, tenant: Tenant, proposal_id: str, by: str) -> Accepted:
         proposal = await self._decidable(tenant, proposal_id, by)
         if self._asking is None:
-            raise ProposalRefused(
+            raise NoRequestPath(
                 "no request path builds a process on this instance (ADR-0251): nothing accepted"
             )
         run = await self._asking.ask(tenant, proposal.process_id, proposal.words, by)

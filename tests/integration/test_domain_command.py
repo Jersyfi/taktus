@@ -1,7 +1,9 @@
 """`taktusctl domain` end to end (ADR-0263, UC-15.1): the repository's blueprints are admitted,
 a broken one is refused with its findings, and the knowledge blueprint is instantiated in
-dialogue across invocations: its tool answered, nothing proposed before its owner, then its
-process proposed at level 2, and exported as plain files."""
+dialogue across invocations, as a plan draft (ADR-0289): its tool answered, nothing proposed
+before its owner, its jurisdiction and the date its plan is due; then the plan commissioned, the
+governance domain instantiated with its owner, its process proposed at level 2, and exported as
+plain files."""
 
 from __future__ import annotations
 
@@ -68,7 +70,16 @@ def test_a_domain_is_instantiated_in_dialogue_from_the_command_line(tmp_path: Pa
     started = shown(cli(state, "start", *blueprint))
     instance = started["id"]
     # The blueprint calls two capabilities: the documents, and the conversation K-02 answers in.
-    assert [q["kind"] for q in started["questions"]] == ["capability", "capability", "owner"]
+    assert [q["kind"] for q in started["questions"]] == [
+        "capability",
+        "capability",
+        "owner",
+        "jurisdiction",
+    ]
+    assert started["plan"]["missing"] == [
+        "the date it is due",
+        *(q["asks"] for q in started["questions"]),
+    ], "the instance's open questions are parts its plan lacks"
     asked = {q["subject"]: q for q in started["questions"] if q["kind"] == "capability"}
     assert set(asked) == {"knowledge.documents", "channel.chat"}
     assert all(q["options"] for q in asked.values())
@@ -77,16 +88,23 @@ def test_a_domain_is_instantiated_in_dialogue_from_the_command_line(tmp_path: Pa
         answered = shown(
             cli(state, "answer", instance, capability, question["options"][0], *blueprint)
         )
-    assert [q["kind"] for q in answered["questions"]] == ["owner"]
+    assert [q["kind"] for q in answered["questions"]] == ["owner", "jurisdiction"]
 
     refused = cli(state, "propose", instance, *blueprint)
     assert refused.returncode == 1 and "Who owns this domain" in refused.stderr
 
     shown(cli(state, "owner", instance, WHO, *blueprint))
+    shown(cli(state, "jurisdiction", instance, "DE", *blueprint))
+    refused = cli(state, "propose", instance, *blueprint)
+    assert refused.returncode == 1 and "the date it is due" in refused.stderr
+    assert shown(cli(state, "show", instance, *blueprint))["proposed"] == []
+    shown(cli(state, "due", instance, "2026-12-01", *blueprint))
+
     proposed = shown(cli(state, "propose", instance, *blueprint))
     [made] = proposed["proposed"]
     assert made["process_id"] == "k-01" and made["level"] == 2
-    assert proposed["questions"] == []
+    assert proposed["questions"] == [] and proposed["plan"]["commissioned"]
+    assert proposed["domain_record"] == "knowledge", "the governance domain, with its owner"
 
     show = shown(cli(state, "show", instance, *blueprint))
     assert show["figures"]["domain"] == "knowledge" and show["figures"]["runs"] == 0

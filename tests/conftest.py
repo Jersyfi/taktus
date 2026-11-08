@@ -24,6 +24,23 @@ import images
 import pytest
 
 
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """A test marked `timing` asserts a bound on wall-clock time and runs alone (ADR-0096 §7).
+    In a worker of a parallel session (`pytest-xdist`) the other workers share its cores and move
+    its measurement, so it skips there and says where it runs. `make test` deselects it already;
+    this holds the rule for a plain `pytest -n auto tests` too. A skip, not a
+    deselection: a gate that runs it in parallel (`make gate-usecases`) then fails loudly instead
+    of counting it as run."""
+    if not hasattr(config, "workerinput"):
+        return
+    alone = pytest.mark.skip(
+        reason="timing: a bound on wall-clock time runs alone, in one process (`make timing`)"
+    )
+    for item in items:
+        if item.get_closest_marker("timing") is not None:
+            item.add_marker(alone)
+
+
 def docker_available() -> str | None:
     """None when Docker can run a container, otherwise the reason it cannot."""
     if shutil.which("docker") is None:

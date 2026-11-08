@@ -45,6 +45,16 @@ NEEDS_KEY = "an account key is needed: Authorization: Bearer <key>"
 
 class OpenBody(BaseModel):
     said: str = Field(default="", max_length=2000, description="What should be achieved.")
+    agent: bool = Field(
+        default=False,
+        description="The draft works out an agent, whose role is what was said (ADR-0292).",
+    )
+    describes: str | None = Field(
+        default=None,
+        pattern=r"^[a-z][a-z0-9-]*$",
+        description="The process what was said describes: commissioning the draft hands it to "
+        "the describe process, whose run proposes the process's version (ADR-0290).",
+    )
 
 
 class AnswerBody(BaseModel):
@@ -85,6 +95,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
             return problem(400, str(error), unestimable=list(error.steps))
         if "no plan draft" in str(error):
             return problem(404, str(error))
+        findings = getattr(error, "findings", None)
+        if findings is not None:
+            return problem(400, str(error), reason=getattr(error, "reason", None), found=findings)
         return problem(400, str(error))
 
     @routes.get(
@@ -128,7 +141,14 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         who = await authenticated(services, authorization)
         if who is None:
             return problem(401, NEEDS_KEY)
-        draft = await services.planning.open(who.tenant, who.identity, who.org_path, body.said)
+        draft = await services.planning.open(
+            who.tenant,
+            who.identity,
+            who.org_path,
+            body.said,
+            agent=body.agent,
+            describes=body.describes,
+        )
         return JSONResponse(services.planning.view(draft, Mode.GUIDED), status_code=201)
 
     @routes.get(
@@ -196,7 +216,10 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         summary="Commission the current version",
         description="Commissioning is an act of its own, recorded `plan.commissioned` with the "
         "version and your identity. Refused, writing nothing, when a part is missing or a step "
-        "cannot be estimated before it starts (ADR-0237, ADR-0005).",
+        "cannot be estimated before it starts (ADR-0237, ADR-0005). An agent draft's agent is "
+        "registered in the catalogue by the same act, and named in the answer (ADR-0292). A draft "
+        "that describes a process hands its goal to the describe process, and the answer names "
+        "that run (ADR-0290).",
         responses={200: {"description": "The commissioned plan."}, **refused},
     )
     async def commission(
@@ -206,9 +229,18 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         if who is None:
             return problem(401, NEEDS_KEY)
         try:
-            plan = await services.planning.commission(who.tenant, who.identity, draft_id)
+            plan, run = await services.planning.commission_and_start(
+                who.tenant, who.identity, draft_id
+            )
+            draft = await services.planning.get(who.tenant, who.identity, draft_id)
         except PlanningError as error:
             return refusal(error)
+        if run is not None:
+            return JSONResponse({**plan.document(), "run": run.id})
+        if draft.agent is not None and draft.agent.name is not None:
+            return JSONResponse(
+                {**plan.document(), "agent": f"{draft.agent.name}@{draft.agent.version}"}
+            )
         return JSONResponse(plan.document())
 
     # --- the coach -----------------------------------------------------------------------

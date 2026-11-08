@@ -1,5 +1,5 @@
 """Who may use a shared model or connector, and with whose credential, seen from the run
-(ADR-0246, ADR-0247).
+(ADR-0246, ADR-0247, ADR-0294).
 
 The catalogue keeps the shares and every identity's own credential parameters; the composition
 root answers this port from it, because components never import each other. An entry with no
@@ -36,8 +36,15 @@ class Shares(Protocol):
         ...
 
     async def connector_call(
-        self, tenant: Tenant, identity: str, adapter: str, names: Sequence[str]
+        self,
+        tenant: Tenant,
+        identity: str,
+        adapter: str,
+        names: Sequence[str],
+        *,
+        process: str | None = None,
     ) -> CallerCall:
-        """Whether the identity may call the connector, and the credential parameters it calls
-        with. Opens its own unit of work."""
+        """Whether a run of `process` as the identity may call the connector, and the
+        credential parameters it calls with: one rule, whatever records it reads (ADR-0294).
+        Opens its own unit of work."""
         ...

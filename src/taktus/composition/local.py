@@ -94,7 +94,8 @@ from taktus.components.catalog.domain.model import (
     SkillPolicy,
     SkillVersion,
 )
-from taktus.components.command.application.service import CommissionPlanHandler
+from taktus.components.command.application.service import CommissionPlanHandler, PlanDialogue
+from taktus.components.command.domain.model import PlanDraft
 from taktus.components.decision.domain.model import Request
 from taktus.components.governance.application.service import (
     Drifts,
@@ -166,6 +167,7 @@ from taktus.composition.defects import CorrectionRequests
 from taktus.composition.domain_blueprints import (
     DeclaredAdapters,
     DomainBlueprints,
+    DomainDialogue,
     KnownPeople,
     ProposalsOfProcesses,
 )
@@ -406,7 +408,7 @@ class LocalWiring:
 
             # Who may use a shared model or connector, with whose credential (ADR-0246,
             # ADR-0247).
-            shares = shares_of(stores.of, stores.work, ledger, clock, identities)
+            shares = shares_of(stores.of, stores.work, ledger, clock, identities, structure)
             # Skills and shared agents in the catalogue, handed to a run's steps (ADR-0162,
             # ADR-0163).
             skill_catalog = SkillCatalog(
@@ -740,6 +742,47 @@ class LocalWiring:
                 clock,
                 ids,
             )
+            domain_instances = DomainInstances(
+                stores.of(DomainInstance),
+                stores.work,
+                ProposalsOfProcesses(
+                    Proposals(
+                        stores.of(ProcessVersion),
+                        stores.of(Process),
+                        stores.of(Proposal),
+                        stores.work,
+                        clock,
+                        ids,
+                        administration,
+                    ),
+                    stores.of(ProcessVersion),
+                    stores.work,
+                ),
+                KnownPeople(identities),
+                DeclaredAdapters.shipped(),
+                clock,
+                ids,
+            )
+            domain_blueprints = DomainBlueprints(
+                domain_instances,
+                runs,
+                stores.work,
+                dialogue=DomainDialogue(
+                    domain_instances,
+                    PlanDialogue(
+                        stores.of(Command),
+                        stores.of(PlanDraft),
+                        stores.of(Plan),
+                        ledger,
+                        stores.work,
+                        clock,
+                        ids,
+                    ),
+                    decisions.domains,
+                    clock,
+                    ids,
+                ),
+            )
             yield Services(
                 conformance=conformance,
                 catalogue=InstanceCatalogue(pools, maturities),
@@ -767,31 +810,7 @@ class LocalWiring:
                     versions=stores.of(ProcessVersion),
                     work=stores.work,
                 ),
-                domains=DomainBlueprints(
-                    DomainInstances(
-                        stores.of(DomainInstance),
-                        stores.work,
-                        ProposalsOfProcesses(
-                            Proposals(
-                                stores.of(ProcessVersion),
-                                stores.of(Process),
-                                stores.of(Proposal),
-                                stores.work,
-                                clock,
-                                ids,
-                                administration,
-                            ),
-                            stores.of(ProcessVersion),
-                            stores.work,
-                        ),
-                        KnownPeople(identities),
-                        DeclaredAdapters.shipped(),
-                        clock,
-                        ids,
-                    ),
-                    runs,
-                    stores.work,
-                ),
+                domains=domain_blueprints,
                 deactivate=DeactivateProcessHandler(stores.of(Process), stores.work, ledger),
                 register_version=register_version,
                 commission=commission,

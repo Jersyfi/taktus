@@ -2062,6 +2062,129 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /process-proposals:
+    get:
+      tags:
+      - process proposals
+      summary: The processes Taktus proposes to you
+      description: 'Work that recurs, found by rule in the ledger: a process you start by hand at a regular
+        cadence, shown to you alone, and a failure healed again and again, shown to everyone of the tenant.
+        Each says the work it would take over, its cost and why now; the list is ordered by how often
+        the work recurs per 30 days, and each says so (ADR-0270).'
+      operationId: listed_process_proposals_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The proposals, most often recurring first.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /process-proposals/{proposal_id}/accept:
+    post:
+      tags:
+      - process proposals
+      summary: Accept a proposal
+      description: Its words go to the request path that builds a proposal of a version, as you; the answer
+        names the run that builds it. Nothing runs for real before a person commissions the version (UC-4.1,
+        ADR-0251). Recorded `proposal.accepted`.
+      operationId: accept_process_proposals__proposal_id__accept_post
+      parameters:
+      - name: proposal_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Proposal Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The proposal, and the run that builds it.
+          content:
+            application/json:
+              schema:
+                title: Response Accept Process Proposals  Proposal Id  Accept Post
+        '400':
+          description: This instance has no request path that builds one.
+          content:
+            application/problem+json: {}
+        '404':
+          description: 'No open proposal of that identifier is shown to you: it is decided already, or
+            it is not yours.'
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /process-proposals/{proposal_id}/decline:
+    post:
+      tags:
+      - process proposals
+      summary: Decline a proposal
+      description: It is not listed again; declining costs nothing and changes nothing. Recorded `proposal.declined`.
+      operationId: decline_process_proposals__proposal_id__decline_post
+      parameters:
+      - name: proposal_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Proposal Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The proposal declined.
+          content:
+            application/json:
+              schema:
+                title: Response Decline Process Proposals  Proposal Id  Decline Post
+        '404':
+          description: 'No open proposal of that identifier is shown to you: it is decided already, or
+            it is not yours.'
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
   /gallery:
     get:
       tags:
@@ -2413,7 +2536,9 @@ paths:
       summary: Commission the current version
       description: Commissioning is an act of its own, recorded `plan.commissioned` with the version and
         your identity. Refused, writing nothing, when a part is missing or a step cannot be estimated
-        before it starts (ADR-0237, ADR-0005).
+        before it starts (ADR-0237, ADR-0005). An agent draft's agent is registered in the catalogue by
+        the same act, and named in the answer (ADR-0292). A draft that describes a process hands its goal
+        to the describe process, and the answer names that run (ADR-0290).
       operationId: commission_plans__draft_id__commission_post
       parameters:
       - name: draft_id
@@ -6073,6 +6198,51 @@ paths:
           description: A parameter or a body does not validate.
           content:
             application/problem+json: {}
+  /value/knowledge:
+    get:
+      tags:
+      - figures
+      summary: The same work with and without a knowledge source connected, compared
+      description: 'Per process whose versions read knowledge: the cockpit''s figures of the runs whose
+        knowledge read a connected source answered, of those it did not, and the difference, each with
+        its method and basis. A side without an ended run withholds its figures, never zero. A figure
+        reaches a reader entitled to the cockpit figure it compares (UC-5.5, ADR-0291).'
+      operationId: knowledge_compared_value_knowledge_get
+      parameters:
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 366
+          minimum: 1
+          description: The period, in days up to now.
+          default: 30
+          title: Days
+        description: The period, in days up to now.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The comparison.
+          content:
+            application/json:
+              schema:
+                title: Response Knowledge Compared Value Knowledge Get
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
   /value/basis:
     get:
       tags:
@@ -6096,7 +6266,8 @@ paths:
               schema:
                 title: Response Bases Value Basis Get
         '403':
-          description: Only a person holding `owner` sets it.
+          description: Only a role holding `process.steer` sets it — `owner` while no role of the tenant
+            holds it.
           content:
             application/problem+json: {}
         '401':
@@ -6140,7 +6311,8 @@ paths:
               schema:
                 title: Response Set Basis Value Basis Put
         '403':
-          description: Only a person holding `owner` sets it.
+          description: Only a role holding `process.steer` sets it — `owner` while no role of the tenant
+            holds it.
           content:
             application/problem+json: {}
         '401':
@@ -7645,6 +7817,19 @@ components:
           title: Said
           description: What should be achieved.
           default: ''
+        agent:
+          type: boolean
+          title: Agent
+          description: The draft works out an agent, whose role is what was said (ADR-0292).
+          default: false
+        describes:
+          anyOf:
+          - type: string
+            pattern: ^[a-z][a-z0-9-]*$
+          - type: 'null'
+          title: Describes
+          description: 'The process what was said describes: commissioning the draft hands it to the describe
+            process, whose run proposes the process''s version (ADR-0290).'
       type: object
       title: OpenBody
     PlaceBody:

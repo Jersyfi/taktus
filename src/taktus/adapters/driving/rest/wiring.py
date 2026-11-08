@@ -51,6 +51,7 @@ from taktus.components.process.domain.model import (
     TakeoverTrial,
     ValueStream,
 )
+from taktus.components.process.domain.service.proposing import ProcessProposal
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.application.service import (
     Alerted,
@@ -92,7 +93,7 @@ from taktus.components.reporting.domain.service.variants import VariantsView
 from taktus.components.run.application.service import HandBack, SteerStep, TakeOver
 from taktus.components.run.domain.model import Run
 from taktus.components.value.application.service import Discoveries, ValueBases
-from taktus.components.value.domain.model import ValueProposal
+from taktus.components.value.domain.model import Figure, ValueProposal
 from taktus.components.value.domain.service.figures import Facts as ValueFacts
 from taktus.components.value.domain.service.figures import Index
 from taktus.ports.clock import Clock
@@ -170,7 +171,14 @@ class PlanActs(Protocol):
     its steps from the process component."""
 
     async def open(
-        self, tenant: Tenant, identity: str, org_path: tuple[str, ...], said: str
+        self,
+        tenant: Tenant,
+        identity: str,
+        org_path: tuple[str, ...],
+        said: str,
+        *,
+        agent: bool = False,
+        describes: str | None = None,
     ) -> PlanDraft: ...
 
     async def mine(self, tenant: Tenant, identity: str) -> list[PlanDraft]: ...
@@ -193,6 +201,10 @@ class PlanActs(Protocol):
     ) -> PlanDraft: ...
 
     async def commission(self, tenant: Tenant, identity: str, draft_id: str) -> Plan: ...
+
+    async def commission_and_start(
+        self, tenant: Tenant, identity: str, draft_id: str
+    ) -> tuple[Plan, Run | None]: ...
 
     async def templates(self, tenant: Tenant) -> list[dict[str, Any]]: ...
 
@@ -296,6 +308,43 @@ class InstructionActs(Protocol):
     async def of_step(
         self, tenant: Tenant, process_version: str, step_id: str
     ) -> dict[str, Any] | None: ...
+
+
+class ProcessProposalRefused(Exception):
+    """A proposal of a process that is not the person's to decide, or is decided already, or
+    that no request path on this instance can build (ADR-0270 §5)."""
+
+
+class NoRequestPath(ProcessProposalRefused):
+    """Accepting is refused: no request path builds a process on this instance (ADR-0251)."""
+
+
+class AcceptedProposal(Protocol):
+    @property
+    def proposal(self) -> ProcessProposal: ...
+
+    @property
+    def run(self) -> Run:
+        """The run that builds the proposal of a version (UC-4.1)."""
+        ...
+
+
+class ProcessProposalActs(Protocol):
+    """The processes Taktus proposes to a person, and each accepted or declined on its own
+    (UC-4.4, ADR-0270): the composition root's, because the list reads the run component's
+    records and accepting crosses the command and run components."""
+
+    async def listed(self, tenant: Tenant, viewer: str) -> list[ProcessProposal]:
+        """What `viewer` is shown, most often recurring first, none decided already."""
+        ...
+
+    async def accept(self, tenant: Tenant, proposal_id: str, by: str) -> AcceptedProposal:
+        """`ProcessProposalRefused` when it is not `by`'s to decide."""
+        ...
+
+    async def decline(self, tenant: Tenant, proposal_id: str, by: str) -> ProcessProposal:
+        """`ProcessProposalRefused` when it is not `by`'s to decide."""
+        ...
 
 
 class StartRefused(Exception):
@@ -488,11 +537,27 @@ class FigureGathering(Protocol):
         self, reader: LiveReader, visible: frozenset[str], days: int
     ) -> GatheredFigures: ...
 
+    async def warehouse(
+        self,
+        reader: LiveReader,
+        visible: frozenset[str],
+        judged: Sequence[tuple[Corridor, Judged]],
+    ) -> list[Shown]:
+        """The warehouse figures among the signals judged now (ADR-0291 §3)."""
+        ...
+
     async def configuration(self, tenant: Tenant) -> ViewConfiguration: ...
 
     async def configure(
         self, tenant: Tenant, document: Mapping[str, Any], *, by: str
     ) -> ViewConfiguration: ...
+
+
+class KnowledgeReads(Protocol):
+    """The same work with and without a knowledge source connected, compared on the value
+    ledger's figures (ADR-0291)."""
+
+    async def figures(self, tenant: Tenant, visible: frozenset[str], days: int) -> list[Figure]: ...
 
 
 class ReportReads(Protocol):
@@ -544,6 +609,9 @@ class Reading(Protocol):
 
     @property
     def discoveries(self) -> Discoveries: ...
+
+    @property
+    def knowledge(self) -> KnowledgeReads: ...
 
 
 class RestServices(Protocol):
@@ -640,6 +708,11 @@ class RestServices(Protocol):
     @property
     def proposal_acts(self) -> ProposalActs:
         """A proposal rehearsed and commissioned, and a process rolled back (ADR-0091 §3 to §5)."""
+        ...
+
+    @property
+    def process_proposals(self) -> ProcessProposalActs:
+        """The processes Taktus proposes, to a person, from recurring work (ADR-0270)."""
         ...
 
     @property

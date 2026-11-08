@@ -244,6 +244,7 @@ from taktus.composition.owner_channel import (
 from taktus.composition.participants import ParticipantAnswers
 from taktus.composition.personal import ConfiguredPersonalCredentials
 from taktus.composition.planning import PlanActs
+from taktus.composition.process_proposals import ProcessProposals
 from taktus.composition.profiles import RoleProfiles
 from taktus.composition.proposals import InstanceChanges, ProposalActs
 from taktus.composition.reactions import Reactions, capacity_condition
@@ -392,6 +393,8 @@ class Wired:
     """A person's proposals for a changed process, never versions (ADR-0091)."""
     proposal_acts: ProposalActs
     """A proposal rehearsed and commissioned, and a process rolled back (ADR-0091 §3 to §5)."""
+    process_proposals: ProcessProposals
+    """The processes Taktus proposes to a person from recurring work (ADR-0270)."""
     evaluations: Evaluations
     """A change held to the process's evaluation cases, and drift measured on them, which the
     scheduler advances (ADR-0134)."""
@@ -720,14 +723,15 @@ async def wire(
                 ),
             )
 
-            # Who may use a shared model or connector, with whose credential (ADR-0246,
-            # ADR-0247).
+            # Who may use a shared model or connector, with whose credential, by the share and
+            # the structure's placement (ADR-0246, ADR-0247, ADR-0294).
             shares = shares_of(
                 lambda kind: PostgresRepository(persistence, kind),
                 persistence,
                 ledger,
                 clock,
                 identities,
+                structure,
             )
             # Skills and shared agents in the catalogue, handed to a run's steps (ADR-0162,
             # ADR-0163).
@@ -1129,6 +1133,17 @@ async def wire(
                 describe_process=settings.describe_process,
                 evaluations=evaluations,
             )
+            # The processes Taktus proposes from recurring work; accepting one asks the request
+            # path above (ADR-0270).
+            process_proposals = ProcessProposals(
+                ledger=ledger,
+                runs=runs,
+                versions=PostgresRepository(persistence, ProcessVersion),
+                objects=objects,
+                work=persistence,
+                clock=clock,
+                asking=proposal_acts,
+            )
             # A change in dialogue read in the owner's conversation too (ADR-0091 §6).
             owner.answers.change_with(
                 ChangeInChannel(
@@ -1317,10 +1332,20 @@ async def wire(
                 ),
                 proposals=proposals,
                 proposal_acts=proposal_acts,
+                process_proposals=process_proposals,
                 evaluations=evaluations,
                 spend=spend,
                 trials=trials,
-                workspace=workspace_of(stored, persistence, ledger, clock, ids, structure),
+                workspace=workspace_of(
+                    stored,
+                    persistence,
+                    ledger,
+                    clock,
+                    ids,
+                    structure,
+                    agents=agent_catalog,
+                    describe=None if settings.describe_process is None else proposal_acts,
+                ),
                 gallery=Gallery(
                     settings.gallery_directory,
                     proposals,

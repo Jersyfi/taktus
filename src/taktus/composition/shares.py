@@ -1,6 +1,11 @@
-"""The run's port `Shares`, answered from the catalogue's shares and the identity directory
-(ADR-0246, ADR-0247; UC-8.6, UC-8.7, UC-8.8). Components never import each other; the
-composition root joins them here.
+"""The run's port `Shares`, answered from the catalogue's shares, the identity directory and
+the organisation's structure (ADR-0246, ADR-0247, ADR-0294; UC-1.4, UC-1.6, UC-8.6, UC-8.7,
+UC-8.8). Components never import each other; the composition root joins them here.
+
+Whether a run may call a connector is one rule (`SharesOfTheRun.connector_refused`, ADR-0294):
+the run's identity is inside the catalogue's share, where there is one, and the run's process
+may use the connector by the structure, where the structure places it. Either source only
+narrows; a refusal is the same refusal whichever gave it.
 
 It also reads an entry's use per organisational unit from the ledger and the runs, with the
 viewer's own use apart and nobody else's (ADR-0246 §6).
@@ -22,6 +27,8 @@ from taktus.components.catalog.domain.model import (
     SkillVersion,
 )
 from taktus.components.catalog.domain.service import shares as rules
+from taktus.components.identity.application.service.structure import OrganisationStructure
+from taktus.components.identity.domain.model.structure import PlacedKind
 from taktus.components.run.domain.model import Run
 from taktus.components.run.ports import CallerCall
 from taktus.ports.clock import Clock
@@ -38,10 +45,18 @@ CALLS: dict[ShareKind, str] = {
 
 
 class SharesOfTheRun:
-    def __init__(self, shares: CatalogueShares, identities: IdentityResolver) -> None:
+    def __init__(
+        self,
+        shares: CatalogueShares,
+        identities: IdentityResolver,
+        structure: OrganisationStructure | None = None,
+    ) -> None:
         self.shares = shares
         """The use case itself, for the command line that shares and withdraws."""
         self._identities = identities
+        self._structure = structure
+        """Where a connector is placed and which processes may use it (ADR-0275 §5); None
+        where the instance keeps no structure, and then the share alone answers."""
 
     async def _path(self, tenant: Tenant, identity: str) -> tuple[str, ...]:
         placed = await self._identities.identity(tenant, identity)
@@ -57,15 +72,40 @@ class SharesOfTheRun:
                 unshared.add(adapter)
         return frozenset(unshared)
 
-    async def connector_call(
-        self, tenant: Tenant, identity: str, adapter: str, names: Sequence[str]
-    ) -> CallerCall:
+    async def connector_refused(
+        self, tenant: Tenant, identity: str, adapter: str, process: str | None
+    ) -> str | None:
+        """The one rule (ADR-0294 §1): None where a run of `process` as `identity` may call
+        the connector, otherwise why not, naming the record that narrowed it."""
         path = await self._path(tenant, identity)
         if not await self.shares.admits(tenant, ShareKind.CONNECTOR, adapter, identity, path):
-            return CallerCall(
-                refusal="outside_circle",
-                why=f"{adapter} is not shared with a circle {identity} is inside",
-            )
+            return f"{adapter} is not shared with a circle {identity} is inside"
+        if self._structure is None or process is None:
+            return None
+        unit = await self._structure.placed(tenant, PlacedKind.CONNECTOR, adapter)
+        if unit is None:
+            return None
+        usable = await self._structure.usable_by(tenant, process)
+        if adapter in usable[PlacedKind.CONNECTOR]:
+            return None
+        own = await self._structure.placed(tenant, PlacedKind.PROCESS, process) or tenant
+        return (
+            f"{adapter} is placed in the unit {unit}, and the process {process} is in the unit "
+            f"{own}, which is neither {unit} nor below it"
+        )
+
+    async def connector_call(
+        self,
+        tenant: Tenant,
+        identity: str,
+        adapter: str,
+        names: Sequence[str],
+        *,
+        process: str | None = None,
+    ) -> CallerCall:
+        refused = await self.connector_refused(tenant, identity, adapter, process)
+        if refused is not None:
+            return CallerCall(refusal="outside_circle", why=refused)
         resolved = await self.shares.caller_credentials(tenant, adapter, identity, names)
         if resolved is None:
             return CallerCall()
@@ -128,8 +168,10 @@ def shares_of(
     ledger: Ledger,
     clock: Clock,
     identities: IdentityResolver,
+    structure: OrganisationStructure | None = None,
 ) -> SharesOfTheRun:
-    """The catalogue's shares over the stores, answering the run's port."""
+    """The catalogue's shares and the structure's placements over the stores, answering the
+    run's port by one rule (ADR-0294)."""
     return SharesOfTheRun(
         CatalogueShares(
             of(CatalogueShare),
@@ -143,4 +185,5 @@ def shares_of(
             clock,
         ),
         identities,
+        structure,
     )

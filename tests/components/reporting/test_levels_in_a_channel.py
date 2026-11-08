@@ -1,5 +1,6 @@
 """A live representation asked for in the owner's conversation, a chat that cannot draw it
-(UC-6.10 *beyond the web app*, ADR-0069, issues #193 and #204).
+(UC-6.10 *beyond the web app*, ADR-0069, issues #193 and #204), the origin of a result among
+them.
 
 The answer is the level's text equivalent, element by element as the level hands it to the web
 app, and the link to the level live in the web app. It carries nothing its readers may not see:
@@ -28,6 +29,7 @@ from fakes.owner_channel import (
 )
 
 from taktus.components.reporting.domain.model import (
+    OriginFacts,
     OverviewFacts,
     Phrasebook,
     ProcessFacts,
@@ -42,6 +44,7 @@ from taktus.components.reporting.domain.model import (
     VersionRef,
 )
 from taktus.components.reporting.domain.service.levels import (
+    origin_level,
     overview_level,
     process_level,
     run_level,
@@ -49,7 +52,7 @@ from taktus.components.reporting.domain.service.levels import (
 from taktus.components.reporting.domain.service.reading import Asked, representation
 from taktus.ports.connector import Intake, Taken
 from taktus.ports.persistence import Tenant
-from taktus.shared.v1 import Autonomy, ConsumptionQuantities, ExactnessClass, Method
+from taktus.shared.v1 import Autonomy, ConsumptionQuantities, ExactnessClass, Method, Provenance
 
 ROOT = Path(__file__).resolve().parents[3]
 AT = datetime(2026, 10, 10, 9, 0, tzinfo=UTC)
@@ -122,8 +125,63 @@ OVERVIEW = OverviewFacts(
 )
 
 
+DIGEST = "sha256:" + "4" * 64
+
+
+def provenance(step: str, method: str, exactness: str | None, *inputs: Any) -> Provenance:
+    return Provenance.model_validate(
+        {
+            "id": f"prv_{step}",
+            "run_id": "run_1",
+            "step_id": step,
+            "process_version": "invoices@2",
+            "method": method,
+            "exactness": exactness,
+            "inputs": list(inputs),
+            "outputs": [],
+            "result_digest": DIGEST if exactness else None,
+            "ledger_seq": 1,
+            "recorded_at": AT,
+        }
+    )
+
+
+ORIGIN = OriginFacts(
+    tenant=TENANT,
+    run_id="run_1",
+    step_id="book",
+    records=(
+        provenance(
+            "book",
+            "rule",
+            "exact",
+            {
+                "kind": "result",
+                "run_id": "run_1",
+                "step_id": "read",
+                "digest": DIGEST,
+                "observed_at": AT,
+            },
+        ),
+        provenance(
+            "read",
+            "rule",
+            "exact",
+            {
+                "kind": "source",
+                "capability": "repository.files",
+                "ref": "main:prices.csv",
+                "digest": DIGEST,
+                "observed_at": AT,
+            },
+        ),
+    ),
+)
+
+
 class Records:
-    """The run, the process and the overview of the tenant `t`, and a run of another tenant."""
+    """The run, the process, the overview and the origin of a result of the tenant `t`, and a
+    run of another tenant."""
 
     def __init__(self, run: RunFacts = RUN) -> None:
         self._run = run
@@ -144,6 +202,16 @@ class Records:
 
     async def overview(self, tenant: Tenant) -> OverviewFacts:
         return OVERVIEW
+
+    async def origin(self, tenant: Tenant, run_id: str, step_id: str) -> OriginFacts | None:
+        if (run_id, step_id) == ("run_1", "book"):
+            return ORIGIN
+        if (run_id, step_id) == ("run_elsewhere", "book"):
+            records = tuple(r.model_copy(update={"run_id": run_id}) for r in ORIGIN.records)
+            return ORIGIN.model_copy(
+                update={"tenant": "other", "run_id": run_id, "records": records}
+            )
+        return None
 
 
 def message(text: str, *, address: str = ADDRESS, event: str = "Ev1") -> Intake:
@@ -223,6 +291,41 @@ async def test_the_overview_is_answered_with_every_elements_text_and_a_link_to_i
     ]
     assert "1 run working, 1 waiting" in said.text
     assert (said.channel, said.address, said.thread) == (CHANNEL, ADDRESS, "Ev1")
+
+
+async def test_the_origin_of_a_result_is_answered_with_its_path_in_words_and_a_link_to_it_live(
+    given: OwnerChannel,
+) -> None:
+    """The origin of a result, asked for with its words and `<run>/<step>`, is answered with its
+    summary, the result, each step on its path and each source read, in the order the web app
+    writes its text, and the link to the origin in the web app."""
+    taken = await ask(given, "Zeige Herkunft run_1/book")
+    assert taken is not None and taken.outcome == "shown" and taken.replied
+    [said] = given.deliveries.said
+    level = origin_level(ORIGIN)
+    assert level is not None
+    assert said.text.splitlines() == [
+        level.summary,
+        f"• {level.result.text}",
+        *(f"• {step.text}" for step in level.steps),
+        *(f"• {source.text}" for source in level.sources),
+        "",
+        f"{GERMAN.live}: {BASE}/app/#/origins/run_1/book",
+    ]
+    assert "run_1/read" in said.text and "repository.files" in said.text
+    assert (said.channel, said.address, said.thread) == (CHANNEL, ADDRESS, "Ev1")
+
+
+async def test_an_origin_the_asker_may_not_see_is_answered_as_one_that_does_not_exist(
+    given: OwnerChannel,
+) -> None:
+    answers = [
+        await ask(given, "zeige herkunft run_elsewhere/book", event="Ev1"),
+        await ask(given, "zeige herkunft run_1/nothing", event="Ev2"),
+        await ask(given, "zeige herkunft run_1/book", OUTSIDER, event="Ev3"),
+    ]
+    assert [a.outcome if a else None for a in answers] == ["not_shown"] * 3
+    assert [s.text for s in given.deliveries.said] == [GERMAN.not_shown] * 3
 
 
 async def test_the_overview_is_told_to_nobody_but_the_owner_and_whom_the_owner_named(
@@ -325,6 +428,9 @@ def test_a_request_is_the_words_and_one_identifier() -> None:
     )
     assert representation("zeige prozess p", GERMAN) == Asked(level="process", id="p")
     assert representation("  Zeige  Überblick. ", GERMAN) == Asked(level="overview")
+    assert representation("zeige herkunft run_1/book", GERMAN) == Asked(
+        level="origin", id="run_1", step="book"
+    )
     for text in (
         "zeige lauf",
         "zeige lauf run_1 run_2",
@@ -333,6 +439,10 @@ def test_a_request_is_the_words_and_one_identifier() -> None:
         "zeige überblick bitte",
         "zeige überblick t",
         "überblick",
+        "zeige herkunft run_1",
+        "zeige herkunft run_1/",
+        "zeige herkunft /book",
+        "zeige herkunft run_1/book bitte",
     ):
         assert representation(text, GERMAN) is None, text
 
@@ -342,6 +452,10 @@ def test_a_request_for_the_overview_names_nothing_and_one_for_a_run_names_it() -
         Asked(level="overview", id="run_1")
     with pytest.raises(ValueError, match="identifier"):
         Asked(level="run")
+    with pytest.raises(ValueError, match="its run and its step"):
+        Asked(level="origin", id="run_1")
+    with pytest.raises(ValueError, match="its run and its step"):
+        Asked(level="run", id="run_1", step="book")
 
 
 def test_a_phrasebook_names_all_four_or_none() -> None:
@@ -365,6 +479,37 @@ def test_the_overview_s_words_come_only_with_the_other_four_and_ask_for_one_leve
         Phrasebook.model_validate(twice)
 
 
+def test_the_origin_s_words_come_only_with_the_other_four_and_ask_for_one_level() -> None:
+    alone = GERMAN.document()
+    for name in ("show_run_words", "show_process_words", "live", "not_shown"):
+        del alone[name]
+    del alone["show_overview_words"]
+    with pytest.raises(ValueError, match="show_origin_words are given with"):
+        Phrasebook.model_validate(alone)
+    empty = GERMAN.document() | {"show_origin_words": []}
+    with pytest.raises(ValueError, match="show_origin_words are given with"):
+        Phrasebook.model_validate(empty)
+    twice = GERMAN.document() | {"show_origin_words": ["zeige überblick"]}
+    with pytest.raises(ValueError, match="two levels"):
+        Phrasebook.model_validate(twice)
+    before = GERMAN.document()
+    del before["show_origin_words"]
+    stored = Phrasebook.model_validate(before)
+    assert representation("zeige herkunft run_1/book", stored) is None
+    assert representation("zeige lauf run_1", stored) == Asked(level="run", id="run_1")
+
+
+def test_both_shipped_phrasebooks_read_the_origin() -> None:
+    for language in ("de", "en"):
+        book = Phrasebook.model_validate_json(
+            (ROOT / f"src/taktus/composition/phrasebooks/{language}.json").read_text("utf-8")
+        )
+        assert book.show_origin_words, language
+        assert representation(f"{book.show_origin_words[0]} run_1/book", book) == Asked(
+            level="origin", id="run_1", step="book"
+        )
+
+
 def test_both_shipped_phrasebooks_read_the_overview() -> None:
     for language in ("de", "en"):
         book = Phrasebook.model_validate_json(
@@ -380,5 +525,7 @@ def test_the_link_is_a_route_the_web_app_has() -> None:
     assert (routes / "runs/[id]/+page.svelte").is_file()
     assert (routes / "processes/[id]/[[version]]/+page.svelte").is_file()
     assert (routes / "+page.svelte").is_file(), "the overview is the web app's root route"
+    assert (routes / "origins/[run]/[step]/+page.svelte").is_file()
     links = (ROOT / "web/src/lib/links.ts").read_text("utf-8")
     assert "`#/runs/${" in links and "`#/processes/${" in links
+    assert "`#/origins/${" in links

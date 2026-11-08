@@ -28,6 +28,8 @@ from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.adapters.driving.rest import build_app
 from taktus.adapters.driving.rest.wiring import ProposalActs
 from taktus.components.accounting.application.service import SpendHandler
+from taktus.components.catalog.application.service import AgentCatalog
+from taktus.components.catalog.domain.model import AgentCore, RoleProfile
 from taktus.components.command.application.service import (
     CommissionPlanHandler,
     CompleteIntakeHandler,
@@ -78,6 +80,7 @@ from taktus.composition.levels import RepositoryLevelRecords
 from taktus.composition.live import LiveHub, LiveOptions, Records, state_of
 from taktus.composition.owner_channel import KnownSecrets, OwnerChannelWiring, owner_channel_wiring
 from taktus.composition.planning import PlanActs
+from taktus.composition.process_proposals import ProcessProposals
 from taktus.composition.profiles import RoleProfiles
 from taktus.composition.reports import ReadingWiring, reading_wiring
 from taktus.composition.streams import StreamReads
@@ -258,8 +261,13 @@ class Services:
     tried: Any = None
     """The model trials (ADR-0149); a test that reaches them sets them. What they do is held by
     `tests/composition/test_trials.py`."""
+    asking: Any = None
+    """The request path an accepted process proposal is handed to (ADR-0251 §1); None: this
+    instance has none, and accepting is refused."""
     built_agent: AgentSurface | None = None
     built_workspace: Workspace | None = None
+    built_agents: AgentCatalog | None = None
+    """The catalogue an agent drafted in the plan dialogue is registered in (ADR-0292)."""
     requested: Any = None
     """The data-protection requests (ADR-0176); a test that reaches them sets them. What they
     find and erase is held by `tests/composition/test_subjects.py`."""
@@ -370,8 +378,17 @@ class Services:
             def of[T: Stored](kind: type[T]) -> Repository[T]:
                 return MemoryRepository(self.persistence, kind)
 
+            self.built_agents = AgentCatalog(
+                of(AgentCore), of(RoleProfile), self.persistence, self.ledger, self.clock
+            )
             self.built_workspace = workspace_of(
-                of, self.persistence, self.ledger, self.clock, self.ids, self.identity.structure
+                of,
+                self.persistence,
+                self.ledger,
+                self.clock,
+                self.ids,
+                self.identity.structure,
+                agents=self.built_agents,
             )
         return self.built_workspace
 
@@ -541,6 +558,19 @@ class Services:
     def gallery(self) -> Any:
         assert self.chosen is not None, "this test sets the gallery it reaches"
         return self.chosen
+
+    @property
+    def process_proposals(self) -> ProcessProposals:
+        """The processes Taktus proposes, over this world's ledger and runs (ADR-0270)."""
+        return ProcessProposals(
+            ledger=self.ledger,
+            runs=self.runs,
+            versions=MemoryRepository(self.persistence, ProcessVersion),
+            objects=self.objects,
+            work=self.persistence,
+            clock=self.clock,
+            asking=self.asking,
+        )
 
     @property
     def proposals(self) -> Proposals:

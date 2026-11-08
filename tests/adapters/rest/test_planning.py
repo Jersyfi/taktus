@@ -11,6 +11,7 @@ import httpx
 from taktus.shared.v1 import Command, Intent, ReplyTo
 
 from .conftest import TENANT, Services
+from .test_agent_surface import registered
 
 type Client = tuple[httpx.AsyncClient, Services, str]
 
@@ -94,9 +95,63 @@ async def test_commissioning_a_draft_that_lacks_a_part_is_refused_naming_it(
     )
     assert refused.status_code == 400
     assert "the date it is due" in refused.json()["missing"]
+    assert "the agent's name" not in refused.json()["missing"], "a plan that is no agent"
     _, bob = await given.identity.directory.add(TENANT, "idn_eve", (TENANT,))
     foreign = await http.get(f"{base}/plans/{draft['draft']['id']}", headers=bearer(bob))
     assert foreign.status_code == 404, "a draft is its person's"
+
+
+async def test_an_agent_is_drafted_in_the_dialogue_and_registered_when_commissioned(
+    client: Client,
+) -> None:
+    http, given, base = client
+    key = await given.linked()
+    await registered(given)
+    opened = await http.post(
+        f"{base}/plans",
+        json={"said": "read the daily figures", "agent": True},
+        headers=bearer(key),
+    )
+    assert opened.status_code == 201, opened.text
+    draft = opened.json()["draft"]["id"]
+    refused = await http.post(f"{base}/plans/{draft}/commission", headers=bearer(key))
+    assert refused.status_code == 400
+    assert {"the agent's name", "the process it runs"} <= set(refused.json()["missing"])
+
+    answers = [
+        ("steps", "daily@1", None),
+        ("agent.name", "figures", None),
+        ("agent.instructions", "Read the figures and say what changed.", None),
+        ("agent.model", "summarising", None),
+        ("agent.sources", "figures", None),
+        ("due", "2026-12-01T09:00:00+00:00", None),
+        ("autonomy_level", 1, None),
+        ("autonomy_reason", "it proposes; a person reads and acts", None),
+        ("estimates", {"figure": 1, "basis": "a rule's last runs"}, "one"),
+    ]
+    for field, value, step in answers:
+        asked = await http.get(f"{base}/plans/{draft}?mode=guided", headers=bearer(key))
+        assert asked.json()["question"]["field"] == field, asked.json()["question"]
+        answered = await http.post(
+            f"{base}/plans/{draft}/answers",
+            json={"field": field, "value": value, "step_id": step},
+            headers=bearer(key),
+        )
+        assert answered.status_code == 200, answered.text
+    assert answered.json()["missing"] == [] and answered.json()["question"] is None
+
+    plan = await http.post(f"{base}/plans/{draft}/commission", headers=bearer(key))
+    assert plan.status_code == 200, plan.text
+    assert plan.json()["agent"] == "figures@1" and plan.json()["status"] == "commissioned"
+    assert given.built_agents is not None
+    core = await given.built_agents.active_core(TENANT, "figures")
+    assert core is not None and core.flow == "daily" and core.autonomy_level == 1
+    async with given.persistence.transaction(TENANT):
+        proposed = await given.ledger.of_kinds(TENANT, ("agent.core_proposed",))
+    assert [(e.refs.actor, e.refs.plan_id) for e in proposed] == [("idn_ada", plan.json()["id"])]
+
+    again = await http.post(f"{base}/plans/{draft}/commission", headers=bearer(key))
+    assert again.status_code == 400 and again.json()["reason"] == "exists"
 
 
 async def test_the_coach_shows_a_person_their_own_hints_only_and_is_switched_off(

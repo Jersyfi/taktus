@@ -12,13 +12,17 @@ authenticate by holding the instance's state, as `budget` does; `--by` names who
 
 A blueprint is named by its directory, the one that holds `blueprint.yaml`. `check` admits each
 directory named or refuses it with every finding. `export` copies an admitted blueprint's files
-into a directory, as plain files. `start` begins an instance and prints its questions; `answer`
-names the tool that serves a capability (`none` where the organisation has none), `leave-out`
-drops processes, `owner INSTANCE IDENTITY --blueprint DIR` names the instance's one owner.
-`propose` makes each kept process a proposal at level 2 or below once no question is open; a
-person commissions it. `offer` takes a
-later version of the blueprint and makes a proposal of each changed bundle: nothing is applied.
-`show` prints an instance, its open questions and its runs counted per process, as JSON.
+into a directory, as plain files. `start` begins an instance and the plan draft it is worked
+out in (ADR-0289), and prints both: the draft's missing parts are the instance's open questions.
+Every answer is a revision of the draft: `answer` names the tool that serves a capability
+(`none` where the organisation has none), `leave-out` drops processes,
+`owner INSTANCE IDENTITY --blueprint DIR` names the domain's one owner, `jurisdiction` the
+country whose law its binding acts fall under, `due` the date the plan is due. `propose`
+commissions the plan: refused while a part is missing, it instantiates the governance domain
+with its owner — the one record `create` makes, through the same service — and makes each kept
+process a proposal at level 2 or below; a person commissions each. `offer` takes a later version of the blueprint and
+makes a proposal of each changed bundle: nothing is applied. `show` prints an instance, its plan
+and its runs counted per process, as JSON.
 
 Every act names who acts with `--identity`, an identity the tenant knows.
 """
@@ -29,6 +33,7 @@ import asyncio
 import json
 import os
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -41,9 +46,17 @@ from taktus.adapters.driving.cli.run_command import (
     DEFAULT_WORKER,
     resolve_identity,
 )
-from taktus.adapters.driving.cli.wiring import DomainActs, NotOperable, Services, Wiring
+from taktus.adapters.driving.cli.wiring import (
+    DomainActs,
+    DomainDialogueActs,
+    NotOperable,
+    Services,
+    Wiring,
+)
 from taktus.components.catalog.application.service import DomainRefused
 from taktus.components.catalog.domain.model import DomainInstance
+from taktus.components.command.application.service import PlanningError
+from taktus.components.command.domain.model import PlanDraft
 from taktus.components.governance.application.service.domains import (
     DomainRefused as TenantDomainRefused,
 )
@@ -93,16 +106,34 @@ def _run[T](
     except DomainRefused as error:
         typer.echo(f"refused ({error.kind}): {error}", err=True)
         raise typer.Exit(code=EXIT_REFUSED) from error
+    except PlanningError as error:
+        typer.echo(f"refused (plan): {error}", err=True)
+        raise typer.Exit(code=EXIT_REFUSED) from error
     except (NotOperable, OSError, ValueError) as error:
         typer.echo(f"error: {error}", err=True)
         raise typer.Exit(code=EXIT_NOT_RUN) from error
 
 
-def _shown(domains: DomainActs, instance: DomainInstance, blueprint: Path) -> dict[str, Any]:
+def _shown(
+    domains: DomainActs, instance: DomainInstance, blueprint: Path, draft: PlanDraft | None = None
+) -> dict[str, Any]:
     admitted = domains.admitted(blueprint)
     document = instance.document()
     document["questions"] = [q.document() for q in domains.instances.questions(admitted, instance)]
+    if draft is not None:
+        document["plan"] = {
+            "draft": draft.id,
+            "version": draft.version,
+            "missing": list(draft.missing()),
+            "commissioned": draft.is_commissioned,
+        }
     return document
+
+
+def _dialogue(domains: DomainActs) -> DomainDialogueActs:
+    if domains.dialogue is None:
+        raise NotOperable("a domain is worked out in a plan, which these services do not wire")
+    return domains.dialogue
 
 
 def _echo(document: Any) -> None:
@@ -165,10 +196,10 @@ def start(
 
     async def act(services: Services, domains: DomainActs) -> dict[str, Any]:
         placed = await resolve_identity(services, identity, tenant)
-        instance = await domains.instances.start(
-            tenant, domains.admitted(blueprint), by=placed.identity
+        instance, draft = await _dialogue(domains).start(
+            tenant, domains.admitted(blueprint), placed.identity, placed.org_path
         )
-        return _shown(domains, instance, blueprint)
+        return _shown(domains, instance, blueprint, draft)
 
     _echo(_run(ctx, state_dir, act))
 
@@ -188,15 +219,15 @@ def answer(
 
     async def act(services: Services, domains: DomainActs) -> dict[str, Any]:
         placed = await resolve_identity(services, identity, tenant)
-        changed = await domains.instances.answer(
+        changed, draft = await _dialogue(domains).answer(
             tenant,
             domains.admitted(blueprint),
             instance,
             capability,
             None if adapter == NONE else adapter,
-            by=placed.identity,
+            placed.identity,
         )
-        return _shown(domains, changed, blueprint)
+        return _shown(domains, changed, blueprint, draft)
 
     _echo(_run(ctx, state_dir, act))
 
@@ -207,16 +238,18 @@ def leave_out(
     instance: Annotated[str, typer.Argument(help="The instance.")],
     processes: Annotated[list[str], typer.Argument(help="The blueprint's processes to drop.")],
     blueprint: Blueprint,
+    identity: Identity = None,
     tenant: Tenant = DEFAULT_TENANT,
     state_dir: StateDir = Path(DEFAULT_STATE_DIR),
 ) -> None:
     """Drop processes the organisation does not need."""
 
-    async def act(_: Services, domains: DomainActs) -> dict[str, Any]:
-        changed = await domains.instances.leave_out(
-            tenant, domains.admitted(blueprint), instance, processes
+    async def act(services: Services, domains: DomainActs) -> dict[str, Any]:
+        placed = await resolve_identity(services, identity, tenant)
+        changed, draft = await _dialogue(domains).leave_out(
+            tenant, domains.admitted(blueprint), instance, processes, placed.identity
         )
-        return _shown(domains, changed, blueprint)
+        return _shown(domains, changed, blueprint, draft)
 
     _echo(_run(ctx, state_dir, act))
 
@@ -235,17 +268,22 @@ def owner(
             help="The blueprint's directory: TARGET is an instance of it, not a domain.",
         ),
     ] = None,
+    identity: Identity = None,
     tenant: Tenant = DEFAULT_TENANT,
     by: By = "operator",
     state_dir: StateDir = Path(DEFAULT_STATE_DIR),
 ) -> None:
-    """Name a domain's owner from now on, or, with --blueprint, an instance's one owner."""
+    """Name a domain's owner from now on, or, with --blueprint, an instance's one owner: a
+    revision of its plan draft (ADR-0289)."""
     if blueprint is not None:
         named = blueprint
 
-        async def instance_owner(_: Services, domains: DomainActs) -> dict[str, Any]:
-            changed = await domains.instances.name_owner(tenant, target, person)
-            return _shown(domains, changed, named)
+        async def instance_owner(services: Services, domains: DomainActs) -> dict[str, Any]:
+            placed = await resolve_identity(services, identity, tenant)
+            changed, draft = await _dialogue(domains).name_owner(
+                tenant, domains.admitted(named), target, person, placed.identity
+            )
+            return _shown(domains, changed, named, draft)
 
         _echo(_run(ctx, state_dir, instance_owner))
         return
@@ -257,6 +295,52 @@ def owner(
     _echo(_governed(ctx, state_dir, domain_owner))
 
 
+@domain.command("jurisdiction")
+def jurisdiction(
+    ctx: typer.Context,
+    instance: Annotated[str, typer.Argument(help="The instance.")],
+    code: Annotated[str, typer.Argument(help="An ISO 3166 code, as DE or DE-BY.")],
+    blueprint: Blueprint,
+    identity: Identity = None,
+    tenant: Tenant = DEFAULT_TENANT,
+    state_dir: StateDir = Path(DEFAULT_STATE_DIR),
+) -> None:
+    """Name the country or region whose law the domain's binding acts fall under."""
+
+    async def act(services: Services, domains: DomainActs) -> dict[str, Any]:
+        placed = await resolve_identity(services, identity, tenant)
+        changed, draft = await _dialogue(domains).name_jurisdiction(
+            tenant, domains.admitted(blueprint), instance, code, placed.identity
+        )
+        return _shown(domains, changed, blueprint, draft)
+
+    _echo(_run(ctx, state_dir, act))
+
+
+@domain.command("due")
+def due(
+    ctx: typer.Context,
+    instance: Annotated[str, typer.Argument(help="The instance.")],
+    date: Annotated[str, typer.Argument(help="The date the plan is due, as 2026-12-01.")],
+    blueprint: Blueprint,
+    identity: Identity = None,
+    tenant: Tenant = DEFAULT_TENANT,
+    state_dir: StateDir = Path(DEFAULT_STATE_DIR),
+) -> None:
+    """Name the date the instance's plan is due."""
+
+    async def act(services: Services, domains: DomainActs) -> dict[str, Any]:
+        placed = await resolve_identity(services, identity, tenant)
+        when = datetime.fromisoformat(date)
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=UTC)
+        draft = await _dialogue(domains).due(tenant, instance, when, placed.identity)
+        found = await domains.instances.get(tenant, instance)
+        return _shown(domains, found, blueprint, draft)
+
+    _echo(_run(ctx, state_dir, act))
+
+
 @domain.command("propose")
 def propose(
     ctx: typer.Context,
@@ -266,15 +350,18 @@ def propose(
     tenant: Tenant = DEFAULT_TENANT,
     state_dir: StateDir = Path(DEFAULT_STATE_DIR),
 ) -> None:
-    """Make each kept process a proposal at level 2 or below. Refused while a question is
-    open. A person commissions each proposal; nothing is registered here."""
+    """Commission the instance's plan: refused while a part is missing, a question among
+    them. It instantiates the governance domain with its owner, and makes each kept process a
+    proposal at level 2 or below. A person commissions each proposal; nothing is registered
+    here."""
 
     async def act(services: Services, domains: DomainActs) -> dict[str, Any]:
         placed = await resolve_identity(services, identity, tenant)
-        changed = await domains.instances.propose(
-            tenant, domains.admitted(blueprint), instance, by=placed.identity
+        dialogue = _dialogue(domains)
+        changed, _ = await dialogue.commission(
+            tenant, domains.admitted(blueprint), instance, placed.identity
         )
-        return _shown(domains, changed, blueprint)
+        return _shown(domains, changed, blueprint, await dialogue.draft(tenant, changed))
 
     _echo(_run(ctx, state_dir, act))
 
@@ -312,7 +399,12 @@ def show(
 
     async def act(_: Services, domains: DomainActs) -> dict[str, Any]:
         found = await domains.instances.get(tenant, instance)
-        document = _shown(domains, found, blueprint)
+        draft = (
+            None
+            if found.plan is None or domains.dialogue is None
+            else await domains.dialogue.draft(tenant, found)
+        )
+        document = _shown(domains, found, blueprint, draft)
         document["figures"] = (await domains.figures(tenant, found)).document()
         return document
 

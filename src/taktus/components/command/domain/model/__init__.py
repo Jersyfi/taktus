@@ -1,4 +1,20 @@
 from taktus.components.command.domain.model.intake import IntakeEvent, IntakeStatus
-from taktus.components.command.domain.model.planning import PARTS, Estimate, PlanDraft
+from taktus.components.command.domain.model.planning import (
+    AGENT_PARTS,
+    PARTS,
+    AgentPart,
+    DomainPart,
+    Estimate,
+    PlanDraft,
+)
 
-__all__ = ["PARTS", "Estimate", "IntakeEvent", "IntakeStatus", "PlanDraft"]
+__all__ = [
+    "AGENT_PARTS",
+    "PARTS",
+    "AgentPart",
+    "DomainPart",
+    "Estimate",
+    "IntakeEvent",
+    "IntakeStatus",
+    "PlanDraft",
+]

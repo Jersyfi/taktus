@@ -60,6 +60,18 @@ TERMS = {
         "once you confirmed each step, at level 3 and 4 it acts and tells you"
     ),
     "step": "one piece of the work that ends with a result Taktus keeps, so nothing is lost",
+    "model purpose": (
+        "what the agent asks a model for, such as drafting or classifying; Taktus picks the "
+        "model that serves the purpose, so no product is named"
+    ),
+    "knowledge source": (
+        "where the agent reads what it knows, named by what it holds, such as handbook or "
+        "tickets, never by the product that keeps it"
+    ),
+    "tool": (
+        "an action the agent may take, named by capability, such as mail.read or mail.send; "
+        "it may take no other"
+    ),
     "estimate": (
         "how much a step will take — seconds, tokens or money — and what that figure is based on"
     ),
@@ -76,6 +88,16 @@ def next_question(draft: PlanDraft) -> Question | None:
             "steps",
             "Which template or process should do it? Choose one, or describe the steps.",
             f"A step is {TERMS['step']}.",
+        )
+    agent = _agent_question(draft)
+    if agent is not None:
+        return agent
+    if draft.domain is not None and draft.domain.open:
+        return Question(
+            "domain",
+            draft.domain.open[0],
+            "A capability is what a tool does, named without its product: the blueprint asks "
+            "which of your tools does it (ADR-0289).",
         )
     if draft.due is None:
         return Question("due", "By when should it be done?", "")
@@ -149,6 +171,124 @@ def settings(draft: PlanDraft) -> tuple[Setting, ...]:
             "process_version",
             shown(draft.process_version),
             "the process the chosen template registered; set by the choice, not asked",
+            asked=False,
+        ),
+        *_agent_settings(draft),
+        Setting(
+            "domain",
+            "no domain"
+            if draft.domain is None
+            else f"{draft.domain.blueprint}, instance {draft.domain.instance}",
+            "the domain blueprint the plan instantiates; set by starting its instance, not "
+            "asked (ADR-0289)",
+            asked=False,
+        ),
+        Setting(
+            "describes",
+            "no process" if draft.describes is None else draft.describes,
+            "the process the goal describes, which the describe process proposes once the "
+            "plan is commissioned; set when the plan is opened, not asked (ADR-0290)",
+            asked=False,
+        ),
+    )
+
+
+def _agent_question(draft: PlanDraft) -> Question | None:
+    """The question for the first part an agent draft's agent lacks (ADR-0292 §2)."""
+    agent = draft.agent
+    if agent is None:
+        return None
+    if agent.name is None:
+        return Question(
+            "agent.name",
+            "What should the agent be called? A short name in lowercase, such as replies.",
+            "An agent is a packaged assistant: a role, its instructions, what it reads, the "
+            "tools it may use, the model purpose it asks and its autonomy level.",
+        )
+    if agent.instructions is None:
+        return Question(
+            "agent.instructions", "What should the agent be told, every time it is called?", ""
+        )
+    if agent.model is None:
+        return Question(
+            "agent.model",
+            "What does the agent ask a model for, in one word?",
+            f"The model purpose is {TERMS['model purpose']}.",
+        )
+    if agent.tools is None:
+        return Question(
+            "agent.tools",
+            "Which tools may the agent use? Name none if it only answers.",
+            f"A tool is {TERMS['tool']}.",
+        )
+    if agent.sources is None:
+        return Question(
+            "agent.sources",
+            "What should the agent read? Name none if it reads nothing.",
+            f"A knowledge source is {TERMS['knowledge source']}.",
+        )
+    if draft.process_version is None:
+        return Question(
+            "steps",
+            "Which process should the agent run when it is called? Choose one of the templates.",
+            "An agent runs a process of Taktus's; steps described by hand name none.",
+        )
+    return None
+
+
+def _agent_settings(draft: PlanDraft) -> tuple[Setting, ...]:
+    """The agent part's settings, asked or not (ADR-0292 §2); none for a draft that is no agent."""
+    agent = draft.agent
+    whether = Setting(
+        "agent",
+        "no agent" if agent is None else "an agent, registered when the plan is commissioned",
+        "whether the plan works out an agent; chosen when it is opened, not asked",
+        asked=False,
+    )
+    if agent is None:
+        return (whether,)
+
+    def listed(values: tuple[str, ...] | None) -> str:
+        return "not set yet" if values is None else ", ".join(values) or "none"
+
+    return (
+        whether,
+        Setting("agent.name", agent.name or "not set yet", "what the agent is called by", True),
+        Setting(
+            "agent.instructions",
+            agent.instructions or "not set yet",
+            "what the agent is told every time it is called",
+            asked=True,
+        ),
+        Setting(
+            "agent.model",
+            agent.model or "not set yet",
+            "the model purpose it asks; which model serves it is Taktus's to pick",
+            asked=True,
+        ),
+        Setting(
+            "agent.tools",
+            listed(agent.tools),
+            "the tools it may use and no other; a chosen process proposes the ones it uses",
+            asked=True,
+        ),
+        Setting("agent.sources", listed(agent.sources), "what it reads and nothing else", True),
+        Setting(
+            "agent.version",
+            agent.version,
+            "the version the agent is registered as; a registered version never changes",
+            asked=False,
+        ),
+        Setting(
+            "agent.connectors",
+            listed(agent.connectors),
+            "the connectors it may call; set in the expert mode",
+            asked=False,
+        ),
+        Setting(
+            "agent.approval_limit",
+            "approves nothing" if agent.approval_limit is None else str(agent.approval_limit),
+            "up to which amount a result of it may be approved without a further person",
             asked=False,
         ),
     )

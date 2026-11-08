@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 import shutil
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -18,7 +19,13 @@ import yaml
 
 from taktus.adapters.driven.memory import MemoryRepository
 from taktus.components.catalog.application.service import DomainInstances, DomainRefused
-from taktus.components.catalog.domain.model import DomainInstance
+from taktus.components.catalog.domain.model import Admitted, DomainInstance
+from taktus.components.command.application.service import PlanDialogue, PlanIncomplete
+from taktus.components.command.domain.model import PlanDraft
+from taktus.components.command.domain.service.guided import next_question
+from taktus.components.governance.application.service.domains import TenantDomains
+from taktus.components.governance.domain.model.anchors import AnchorConfiguration
+from taktus.components.governance.domain.model.domains import Domain
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersion,
     parse_bundle,
@@ -28,6 +35,7 @@ from taktus.components.process.domain.model.proposal import OPEN
 from taktus.composition.domain_blueprints import (
     DeclaredAdapters,
     DomainBlueprints,
+    DomainDialogue,
     KnownPeople,
     ProposalsOfProcesses,
     admitted,
@@ -36,6 +44,7 @@ from taktus.composition.domain_blueprints import (
     read_all,
 )
 from taktus.composition.shipped import load
+from taktus.shared.v1 import Command, Method, Plan, PlanResult
 
 from .test_proposals import TENANT, WHO, World
 
@@ -105,6 +114,7 @@ async def instantiated(world: World, directory: Path) -> tuple[DomainBlueprints,
     with pytest.raises(DomainRefused, match="Who owns this domain"):
         await domains.instances.propose(TENANT, found, instance.id, by=WHO)
     instance = await domains.instances.name_owner(TENANT, instance.id, WHO)
+    instance = await domains.instances.name_jurisdiction(TENANT, instance.id, "DE")
     return domains, instance
 
 
@@ -220,3 +230,97 @@ def test_a_blueprint_whose_bundle_calls_an_unnamed_capability_is_refused(tmp_pat
         "the process K-01's bundle calls knowledge.documents, which requires.connectors does not "
         "name",
     )
+
+
+def dialogue_of(world: World) -> tuple[DomainBlueprints, TenantDomains]:
+    """The instances worked out as plans (ADR-0289), with the governance component's domains."""
+    plain = domains_of(world)
+    governance = TenantDomains(
+        MemoryRepository(world.persistence, Domain),
+        MemoryRepository(world.persistence, AnchorConfiguration),
+        world.identity.directory,
+        world.ledger,
+        world.persistence,
+        world.clock,
+    )
+    plans = PlanDialogue(
+        MemoryRepository(world.persistence, Command),
+        MemoryRepository(world.persistence, PlanDraft),
+        MemoryRepository(world.persistence, Plan),
+        world.ledger,
+        world.persistence,
+        world.clock,
+        world.ids,
+    )
+    dialogue = DomainDialogue(plain.instances, plans, governance, world.clock, world.ids)
+    return DomainBlueprints(plain.instances, world.runs, world.persistence, dialogue), governance
+
+
+async def answered(
+    domains: DomainBlueprints, found: Admitted, instance: DomainInstance
+) -> DomainInstance:
+    """Every capability answered with the first adapter that declares it."""
+    dialogue = domains.dialogue
+    assert dialogue is not None
+    for q in domains.instances.questions(found, instance):
+        if q.kind == "capability":
+            instance, _ = await dialogue.answer(
+                TENANT, found, instance.id, q.subject, q.options[0], WHO
+            )
+    return instance
+
+
+async def test_an_instance_is_a_plan_in_dialogue_and_its_commissioning_makes_the_owned_domain() -> (
+    None
+):
+    """UC-15.1 §2, UC-15.5, ADR-0289: the instance's questions are parts its plan lacks, asked
+    by the guided mode; nothing is commissioned or proposed while one is open; commissioning
+    instantiates the governance domain with its one owner and the plan's processes, then
+    proposes each at level 2 or below; the instance's own path to proposals is closed."""
+    world = World()
+    await world.identity.directory.add(TENANT, WHO, (TENANT, "ops"))
+    domains, governance = dialogue_of(world)
+    dialogue = domains.dialogue
+    assert dialogue is not None
+    found = admitted(BLUEPRINTS / "knowledge")
+    instance, draft = await dialogue.start(TENANT, found, WHO, (TENANT, "ops"))
+    assert draft.results_in is PlanResult.PROCESS_VERSION and draft.autonomy_level == 2
+    assert [s.id for s in draft.steps] == ["k-01"], "the processes the blueprint has a bundle for"
+    assert all(s.method is Method.RULE for s in draft.steps)
+    asked = [q.asks for q in domains.instances.questions(found, instance)]
+    assert draft.missing() == ("the date it is due", *asked)
+    question = next_question(draft)
+    assert question is not None and (question.field, question.asks) == ("domain", asked[0])
+
+    with pytest.raises(DomainRefused, match="worked out in the plan"):
+        await domains.instances.propose(TENANT, found, instance.id, by=WHO)
+    instance = await answered(domains, found, instance)
+    with pytest.raises(PlanIncomplete, match="Who owns this domain"):
+        await dialogue.commission(TENANT, found, instance.id, WHO)
+    instance, draft = await dialogue.name_owner(TENANT, found, instance.id, WHO, WHO)
+    instance, draft = await dialogue.name_jurisdiction(TENANT, found, instance.id, "DE", WHO)
+    draft = await dialogue.due(TENANT, instance.id, datetime(2026, 12, 1, tzinfo=UTC), WHO)
+    assert draft.missing() == () and draft.version == 6, "every answer is a revision"
+    assert await governance.every(TENANT) == [], "no domain before the plan is commissioned"
+
+    instance, plan = await dialogue.commission(TENANT, found, instance.id, WHO)
+    assert plan.commissioned is not None and plan.commissioned.by == WHO
+    (domain,) = await governance.every(TENANT)
+    assert (domain.id, domain.owner, domain.jurisdiction) == ("knowledge", WHO, "DE")
+    assert domain.processes == ("k-01",)
+    assert instance.domain_record == "knowledge" and instance.plan == draft.id
+    assert {p.process_id for p in instance.proposed} == {"k-01"}
+    assert all(p.level <= 2 for p in instance.proposed)
+    async with world.persistence.transaction(TENANT):
+        kinds = [e.kind for e in await world.ledger.entries(TENANT)]
+    assert kinds.index("domain.instantiated") < kinds.index("plan.commissioned")
+
+    # A second instance of the same domain is refused at commissioning, writing nothing.
+    second, _ = await dialogue.start(TENANT, found, WHO, (TENANT, "ops"))
+    second = await answered(domains, found, second)
+    await dialogue.name_owner(TENANT, found, second.id, WHO, WHO)
+    await dialogue.name_jurisdiction(TENANT, found, second.id, "DE", WHO)
+    await dialogue.due(TENANT, second.id, datetime(2026, 12, 1, tzinfo=UTC), WHO)
+    with pytest.raises(DomainRefused, match="has the domain 'knowledge' already"):
+        await dialogue.commission(TENANT, found, second.id, WHO)
+    assert not (await domains.instances.get(TENANT, second.id)).proposed

@@ -30,6 +30,7 @@ from taktus.components.catalog.domain.model.blueprint import (
 
 KIND = "Blueprint"
 OWNER = "owner"
+JURISDICTION = "jurisdiction"
 
 
 def admit(document: Any, facts_of: Callable[[str], BundleFacts]) -> BlueprintAdmission:
@@ -196,6 +197,15 @@ def questions(
                 kind="owner",
                 subject=OWNER,
                 asks="Who owns this domain? Name one identity of the tenant.",
+            )
+        )
+    if instance.jurisdiction is None:
+        found.append(
+            Question(
+                kind="jurisdiction",
+                subject=JURISDICTION,
+                asks="Under which country's law are the domain's binding acts? Name its "
+                "ISO 3166 code, as DE or DE-BY.",
             )
         )
     return tuple(found)

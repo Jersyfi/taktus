@@ -13,6 +13,7 @@ import re
 from dataclasses import dataclass
 from typing import Protocol
 
+from taktus.components.catalog.application.service import AgentCatalog
 from taktus.components.command.application.service import PlanDialogue
 from taktus.components.command.application.service.coach import Coach
 from taktus.components.command.application.service.sessions import Passage, Sessions
@@ -31,7 +32,7 @@ from taktus.components.identity.domain.model.structure import (
 )
 from taktus.components.identity.domain.service.structure import StructureRefused
 from taktus.components.process.domain.model import ProcessVersion
-from taktus.composition.planning import PlanActs
+from taktus.composition.planning import Describing, PlanActs
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.ledger import Ledger
 from taktus.ports.persistence import Repository, Stored, Tenant, UnitOfWork
@@ -161,13 +162,30 @@ def workspace_of(
     clock: Clock,
     ids: Identifiers,
     structure: OrganisationStructure,
+    *,
+    agents: AgentCatalog | None = None,
+    describe: Describing | None = None,
 ) -> Workspace:
+    """`agents`: the catalogue an agent drafted in the plan dialogue is registered in
+    (ADR-0292); None where the wiring has none. `describe`: what turns a commissioned plan's
+    goal into a proposal for the process it describes (ADR-0290); None where no describe
+    process is named."""
     commands = stored(Command)
     drafts = stored(PlanDraft)
     versions = stored(ProcessVersion)
     dialogue = PlanDialogue(commands, drafts, stored(Plan), ledger, work, clock, ids)
     return Workspace(
-        planning=PlanActs(dialogue, drafts, commands, versions, work, clock, ids),
+        planning=PlanActs(
+            dialogue,
+            drafts,
+            commands,
+            versions,
+            work,
+            clock,
+            ids,
+            agents=agents,
+            describe=describe,
+        ),
         coach=Coach(
             stored(CoachSettings),
             stored(CoachHint),

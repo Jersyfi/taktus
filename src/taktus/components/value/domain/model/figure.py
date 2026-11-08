@@ -1,7 +1,8 @@
 """A figure of the value ledger and a value proposal (ADR-0244 §3, §4).
 
-A figure's scope is the tenant, a process, a value stream, an organisational unit, a role or a
-supplier: no scope is a person (principle 14).
+A figure's scope is the tenant, a process, a value stream, an organisational unit, a role, a
+supplier, or a group of processes — a domain, a chain, an assistant (ADR-0288): no scope is a
+person (principle 14).
 """
 
 from __future__ import annotations
@@ -13,7 +14,9 @@ from pydantic import Field
 
 from taktus.shared.v1 import Value
 
-type Scope = Literal["tenant", "process", "stream", "unit", "role", "supplier"]
+type Scope = Literal[
+    "tenant", "process", "stream", "unit", "role", "supplier", "domain", "chain", "assistant"
+]
 
 
 class Figure(Value):
