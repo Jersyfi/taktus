@@ -20,9 +20,9 @@ Every answer is a revision of the draft: `answer` names the tool that serves a c
 country whose law its binding acts fall under, `due` the date the plan is due. `propose`
 commissions the plan: refused while a part is missing, it instantiates the governance domain
 with its owner — the one record `create` makes, through the same service — and makes each kept
-process a proposal at level 2 or below; a person commissions each. `offer` takes a later version of the blueprint and
-makes a proposal of each changed bundle: nothing is applied. `show` prints an instance, its plan
-and its runs counted per process, as JSON.
+process a proposal at level 2 or below; a person commissions each. `offer` takes a later version
+of the blueprint and makes a proposal of each changed bundle: nothing is applied. `show` prints
+an instance, its plan and its runs counted per process, as JSON.
 
 Every act names who acts with `--identity`, an identity the tenant knows.
 """
