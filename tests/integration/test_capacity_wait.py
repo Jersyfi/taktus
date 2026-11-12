@@ -277,7 +277,9 @@ async def test_runners_sharing_a_worker_of_two_wait_for_it_and_every_run_finishe
         assert (await a.ledger.verify(TENANT)).intact
         for run_id in run_ids:
             run = await a.runs.get(TENANT, run_id)
-            assert run is not None and run.state is RunState.FINISHED, run
+            assert run is not None
+            # The cause and the reason, not the run: its repr is cut before them (flake #520).
+            assert run.state is RunState.FINISHED, (run.state, run.cause, run.reason)
             entries: list[LedgerEntry] = list(await a.ledger.entries(TENANT, run_id))
             kinds = [e.kind for e in entries]
             assert "run.escalated" not in kinds
