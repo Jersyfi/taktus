@@ -58,9 +58,8 @@ async def test_the_guides_reach_the_wiki_and_stay_its_text(service: Service, wik
     assert (await w.report(run)).startswith(
         f"Guides at {head}: {PAGES} pages created, 0 updated, 0 kept, 0 withheld."
     )
-    books = {
-        b: n for b, n in wiki.state()["pages"].items() if b in {"Administration", "Using Taktus", "Developing"}
-    }
+    guides = {"Administration", "Using Taktus", "Developing"}
+    books = {b: n for b, n in wiki.state()["pages"].items() if b in guides}
     assert books == {"Administration": 9, "Using Taktus": 10, "Developing": 8}
     for page in wiki.pages():
         if page["name"] == "Contents":

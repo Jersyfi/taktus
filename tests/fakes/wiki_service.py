@@ -14,10 +14,10 @@ What it enforces, because the connector's checks depend on it:
   was started with (`FAKE_WIKI_TOKENS`, `value|scope,...`; scope `read` or `write`, default
   `write`). No value or an unknown one: 401. A `read` scope writing: 403. Every fault is the
   wiki's body `{"error": {"code": …, "message": …}}`.
-- **Structure.** The shelf `Taktus` holds the books `Administration`, `Using Taktus` and `Developing`; the
-  shelf `Scratch` the book `Conformance`; the shelf `Elsewhere` the book `Other`. The book
-  `Conformance` holds the page `Seeded page`, and a chapter with the page `In a chapter`.
-  Shelves and books are never created through the interface: a person makes them.
+- **Structure.** The shelf `Taktus` holds the books `Administration`, `Using Taktus` and
+  `Developing`; the shelf `Scratch` the book `Conformance`; the shelf `Elsewhere` the book
+  `Other`. The book `Conformance` holds the page `Seeded page`, and a chapter with the page
+  `In a chapter`. Shelves and books are never created through the interface: a person makes them.
 - **It changes the text it stores.** As a wiki may: line endings become `\\n`, the spaces at the
   end of every line are removed, and so are the newlines at the end of the text. A page keeps
   its tags as given, and returns them with every page.
