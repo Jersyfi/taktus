@@ -134,6 +134,7 @@ COMMANDS: dict[str, tuple[str, ...]] = {
         "gate-docs",
         "gate-decisions",
         "gate-usecases",
+        "docs-site",
     ),
     "decisions": ("gate-adrs", "gate-vision", "gate-status"),
     "contracts": ("gate-contracts", "gate-compat"),
@@ -174,6 +175,9 @@ def unclaimed(paths: list[str]) -> list[str]:
 
 DOCUMENTATION = (
     r"docs/.*",
+    # The documentation site's configuration and start page: the lane `static` builds the site
+    # from them on every change (`make docs-site`, NTC-0272).
+    r"docs-site/.*",
     r"[A-Z][A-Z_]*\.md",
     r"LICENSE",
     r"NOTICE",
