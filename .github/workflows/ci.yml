@@ -158,9 +158,10 @@ jobs:
   static:
     if: ${{ !((github.event_name == 'pull_request' && github.event.pull_request.draft) || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'taktus/'))) }}
     runs-on: ubuntu-latest
-    # A change that touches every use case runs every verified one's tests one case after
-    # another: 13.5 minutes in the gate alone for release 1.0 (#681), which met 15.
-    timeout-minutes: 30
+    # A change that touches every use case runs every verified one's tests: one case after
+    # another took 13.5 minutes in the gate alone for release 1.0 (#681) and met the limit of 15;
+    # run together, they took 2.5 minutes on ten cores instead of 11.7.
+    timeout-minutes: 20
     permissions:
       contents: read
       pull-requests: read
