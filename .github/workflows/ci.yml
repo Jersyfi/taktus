@@ -206,6 +206,11 @@ jobs:
           BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || (github.ref == 'refs/heads/main' && github.event.before || 'origin/main') }}
         run: make gate-docs BASE="$BASE"
 
+      # The documentation site builds from the guides (DEC-0234, NTC-0272); it is uploaded
+      # nowhere from here (deploy/docs/README.md).
+      - name: documentation site
+        run: make docs-site
+
       - name: decisions
         run: make gate-decisions
 

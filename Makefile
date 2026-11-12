@@ -282,6 +282,19 @@ lint: env ## Static analysis and types, of the product and of the Python tools u
 generate: env ## Regenerate what is generated and committed: api/openapi.yaml from the REST interface, the web app's test fixtures from reporting (tools/README.md)
 	$(UV) run python tools/generate.py
 
+# The documentation site (DEC-0234, NTC-0272): the guides rendered from the committed tree into
+# Markdown, then built by Zensical into static HTML files under build/docs-site/site, which git
+# ignores. deploy/docs/README.md says how the files are uploaded.
+DOCS_SITE := build/docs-site
+GUIDES_MANIFEST := docs/guides/guides.yaml
+
+.PHONY: docs-site
+docs-site: env need-git ## Build the documentation site from the guides into build/docs-site/site: static files with search in the browser
+	rm -rf $(DOCS_SITE)
+	$(UV) run taktusctl guides publish --manifest $(GUIDES_MANIFEST) --to $(DOCS_SITE)/src
+	$(UV) run python tools/docs_site.py --manifest $(GUIDES_MANIFEST) --config docs-site/mkdocs.yml --build $(DOCS_SITE)
+	$(UV) run zensical build --config-file $(DOCS_SITE)/mkdocs.yml --strict
+
 .PHONY: status
 status: need-uv ## Print what is needed from the owner, from the register: the last section of every pull request description (DEC-0026)
 	@$(UV) run tools/check_status.py --print --ask-host

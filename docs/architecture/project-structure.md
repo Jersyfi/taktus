@@ -75,7 +75,7 @@ taktus/
 │
 ├── api/openapi.yaml                 # Taktus' OWN REST interface, generated from FastAPI by `make generate`, committed, held current by a test
 ├── migrations/                      # Alembic: alembic.ini, env.py, versions/ — explicit DDL, one head
-├── deploy/{docker,k8s,backup}/   # docker/compose.yml: Taktus and PostgreSQL, `make up`; compose.reference-worker.yml: the worker layered in for development; compose.dev.yml: the development database; backup/: the image of the database backup job (ADR-0087)
+├── deploy/{docker,k8s,backup,docs}/   # docker/compose.yml: Taktus and PostgreSQL, `make up`; compose.reference-worker.yml: the worker layered in for development; compose.dev.yml: the development database; backup/: the image of the database backup job (ADR-0087); docs/: how the documentation site is uploaded to web hosting (DEC-0234)
 ├── blueprints/{dev-orchestration,it-operations,self-operation,finance}/   # README.md: the blueprints and the example domains; self-operation: what Taktus runs for itself — S-01 the removal test, weekly; finance: a description
 ├── examples/processes/              # process bundles that run as they are; each exercised by a test
 ├── web/                             # the web app: SvelteKit, TypeScript, a static build with the route after `#`, built into the image and served by the `api` role at {prefix}/app/; every link a channel carries to a report opens its page there (ADR-0120); tests beside the code; `make gate-web` (ADR-0063)
@@ -92,7 +92,8 @@ taktus/
 │   └── security/ resilience/
 │
 ├── docs/{architecture,adr,usecases,vision,decisions,runs,research,roadmap.md}   # research: dated, sourced evidence a decision rests on
-├── docs/guides/                     # guides.yaml declares the administration guide and the guide for users; the files beside it hold only the words no other document says (ADR-0065)
+├── docs/guides/                     # guides.yaml declares the guides for administrators, users and developers; the files beside it hold only the words no other document says (ADR-0065)
+├── docs-site/                       # the documentation site's configuration and start page: `make docs-site` builds the guides into static files under build/docs-site/, which git ignores (DEC-0234, NTC-0272)
 ├── tools/                           # gates, checkdocs, preflight, generators
 ├── pyproject.toml  Makefile  .importlinter  .env.example   # .env.example lists TAKTUS_* names, never values
 └── CLAUDE.md  README.md  LICENSE  NOTICE  CONTRIBUTING.md  CREDENTIALS.md
