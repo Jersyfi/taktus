@@ -63,6 +63,8 @@ sign in first is DEC-0235.
 in the vault `Development` (DEC-0224). The session checked that the item exists and that its
 fields are filled, without reading a value. The address and the item's name stay in the private
 note (section 5).
-**Confirmed by:** pending: section 7 is confirmed when the site is first uploaded, which the
-session does after asking the owner once (section 6).
-**Recorded in:** this pull request
+**Confirmed by:** section 7, on 2026-11-12. The owner agreed to the upload in conversation. The
+site was built by `make docs-site` from `main` at release 1.0 (#681) and copied over SFTP with the
+login from the vault, read into the process only. The address shows the start page over HTTPS,
+and every guide's pages answer. No reader is asked to sign in (DEC-0235).
+**Recorded in:** #681; the confirmation in the pull request that followed it
