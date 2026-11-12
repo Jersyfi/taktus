@@ -65,3 +65,13 @@ Nothing. The site is built either way; the upload waits for NEED-0043.
 
 - "DEC-0235: Option A."
 - "DEC-0235: Option B."
+
+## Outcome
+
+**Decided:** 2026-11-12
+**Answer:** Option B. "DEC-0235: Option B." (the owner's words, in conversation).
+**Reasoning given:** none; the owner chose the option that was not recommended.
+**What it changes:** The documentation site is public. No `.htaccess` is uploaded, and search
+engines may index it. `deploy/docs/README.md` keeps the password as an option an operator may
+choose, and no longer calls it the provisional answer.
+**Recorded in:** this pull request

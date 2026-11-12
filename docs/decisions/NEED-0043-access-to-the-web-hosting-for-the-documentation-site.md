@@ -55,3 +55,14 @@ an outward act), and confirms the address answers.
 
 The address of step 1 shows the documentation's start page over HTTPS. Whether a reader must
 sign in first is DEC-0235.
+
+## Outcome
+
+**Provided:** 2026-11-12
+**Provided by:** the owner: a directory and an address pointed at it, and an SFTP login stored
+in the vault `Development` (DEC-0224). The session checked that the item exists and that its
+fields are filled, without reading a value. The address and the item's name stay in the private
+note (section 5).
+**Confirmed by:** pending: section 7 is confirmed when the site is first uploaded, which the
+session does after asking the owner once (section 6).
+**Recorded in:** this pull request

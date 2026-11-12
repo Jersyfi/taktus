@@ -49,5 +49,4 @@ authentication sends the password with every request.
 Neither file is part of the build, and neither belongs in this repository. Upload them once, as
 above; `put -r` of the site leaves them in place. Removing `.htaccess` makes the site public.
 
-Whether the site asks for a password is the owner's decision (DEC-0235). Until it is answered,
-the provisional answer is that it does.
+The Taktus project's own site is public and asks for no password (DEC-0235).
