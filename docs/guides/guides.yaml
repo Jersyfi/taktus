@@ -154,9 +154,6 @@ guides:
           - file: examples/README.md
             section: Checking a bundle without an instance
             heading: Checking bundles in your own repository
-          - file: examples/README.md
-            section: The shape of a bundle
-            heading: Every field of a bundle
       - id: connectors
         title: Building a connector
         parts:

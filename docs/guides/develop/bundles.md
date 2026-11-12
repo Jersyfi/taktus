@@ -100,6 +100,10 @@ takeover:
 The `draft` step names a **purpose**, `writing`, not a model. The instance's configuration
 decides which model serves it (*Adding a model provider*).
 
+Every other field of a bundle, and the `work` each method takes, is listed in the repository's
+`examples/README.md`, section *The shape of a bundle*. The schema of a step is
+`contracts/shared/v1/Step.json`.
+
 ## Checking and registering it
 
 `taktusctl bundle check` holds the bundle to the rules registration holds it to, without an
