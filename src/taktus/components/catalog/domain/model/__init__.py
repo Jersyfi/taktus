@@ -7,6 +7,11 @@ from taktus.components.catalog.domain.model.agent import (
     profile_id,
     widening,
 )
+from taktus.components.catalog.domain.model.blueprint import (
+    Admitted,
+    DomainBlueprint,
+    DomainInstance,
+)
 from taktus.components.catalog.domain.model.catalogue import (
     COMMUNITY_HIGHEST_LEVEL,
     Admission,
@@ -37,6 +42,16 @@ from taktus.components.catalog.domain.model.maturity import (
     difference,
     judged,
 )
+from taktus.components.catalog.domain.model.shares import (
+    CallerCredential,
+    CatalogueShare,
+    Origin,
+    ShareError,
+    ShareKind,
+    ShareState,
+    credential_id,
+    share_id,
+)
 from taktus.components.catalog.domain.model.skill import (
     EXACT_FACTOR,
     FLOOR,
@@ -62,13 +77,18 @@ __all__ = [
     "NO_MANIFEST",
     "AdapterMaturity",
     "Admission",
+    "Admitted",
     "AgentCore",
     "AgentError",
+    "CallerCredential",
     "CatalogueIndex",
     "CatalogueInstallation",
+    "CatalogueShare",
     "Configuration",
     "ConformanceResult",
     "CoreState",
+    "DomainBlueprint",
+    "DomainInstance",
     "EntrySignature",
     "Family",
     "Grants",
@@ -76,6 +96,7 @@ __all__ = [
     "InvalidSkill",
     "Maturity",
     "Measurement",
+    "Origin",
     "OriginKind",
     "Outcome",
     "ProcessFinding",
@@ -84,6 +105,9 @@ __all__ = [
     "Round",
     "RoundState",
     "RunSummary",
+    "ShareError",
+    "ShareKind",
+    "ShareState",
     "SkillError",
     "SkillFile",
     "SkillOrigin",
@@ -99,9 +123,11 @@ __all__ = [
     "TrustedKey",
     "Verdict",
     "Wrapped",
+    "credential_id",
     "difference",
     "installation_id",
     "judged",
     "profile_id",
+    "share_id",
     "widening",
 ]

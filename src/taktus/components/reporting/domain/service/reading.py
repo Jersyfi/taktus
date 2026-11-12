@@ -61,18 +61,24 @@ def confirmation(text: str, book: Phrasebook) -> bool | None:
 
 
 class Asked(Value):
-    """A request for the live representation of the overview, a run or a process (ADR-0069)."""
+    """A request for the live representation of the overview, a run, a process or the origin of
+    a result (ADR-0069)."""
 
-    level: Literal["overview", "run", "process"]
+    level: Literal["overview", "run", "process", "origin"]
     id: str = Field(default="", pattern=r"^\S*$")
-    """The run's or the process's identifier; empty for the overview, which has none."""
+    """The run's or the process's identifier; for an origin, the run of the result; empty for
+    the overview, which has none."""
     version: str | None = Field(default=None, min_length=1)
     """For a process: the version named after `@`; None for the active one."""
+    step: str | None = Field(default=None, pattern=r"^\S+$")
+    """For an origin: the step whose result it is; None for every other level."""
 
     @model_validator(mode="after")
     def _named(self) -> Asked:
         if (self.level == "overview") != (self.id == ""):
             raise ValueError("a run or a process is named by its identifier; the overview is not")
+        if (self.level == "origin") != (self.step is not None):
+            raise ValueError("the origin of a result is named by its run and its step, and only it")
         return self
 
 
@@ -80,8 +86,9 @@ def representation(text: str, book: Phrasebook) -> Asked | None:
     """A message that asks for a representation: one of the phrasebook's words for a run or a
     process, then one identifier, and nothing else. The words are matched as the other words
     are — case and the punctuation around the message do not count; the identifier is taken
-    as written. The overview is one of the words standing alone. None for anything else, and
-    for a phrasebook that reads no such request."""
+    as written. The overview is one of the words standing alone. The origin of a result is one
+    of its words, then `<run>/<step>`. None for anything else, and for a phrasebook that reads
+    no such request."""
     if book.show_run_words is None or book.show_process_words is None:
         return None
     if normalised(text) in (book.show_overview_words or ()):
@@ -98,6 +105,10 @@ def representation(text: str, book: Phrasebook) -> Asked | None:
             return Asked(level="process", id=name)
         if process and version:
             return Asked(level="process", id=process, version=version)
+    if said in (book.show_origin_words or ()):
+        run, slash, step = name.partition("/")
+        if run and slash and step:
+            return Asked(level="origin", id=run, step=step)
     return None
 
 

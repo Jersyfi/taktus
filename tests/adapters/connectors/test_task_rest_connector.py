@@ -1,0 +1,255 @@
+"""The work tracker connector over a REST API: the open tasks read without their assignee,
+one task read, and a reminder written once, marked (ADR-0209, UC-03 B-5.01).
+
+Against the fake under `tests/fakes/task_rest_service.py`, in a thread of this process. The
+connector is served in-process over MCP, as an instance reaches it.
+"""
+
+from __future__ import annotations
+
+import json
+import secrets
+import threading
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Any
+
+import httpx
+import pytest
+from fakes import task_rest_service
+from fakes.ports import free_port
+from taktus_connectors.jira.operations import Config
+from taktus_connectors.jira.server import build_server
+
+from taktus.adapters.driven.connectors.mcp import McpActionConnector
+from taktus.ports.connector import CallContext, CallFailed, idempotency_key
+from taktus.ports.worker import CredentialReference
+
+TOKEN = "ops@team.example:" + secrets.token_hex(8)
+CREDENTIAL = "TASKS_TOKEN"
+
+
+@pytest.fixture(autouse=True)
+def credentials(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = tmp_path / "tasks"
+    path.write_text(TOKEN, encoding="utf-8")
+    monkeypatch.setenv(f"TAKTUS_CREDENTIAL_{CREDENTIAL}_FILE", str(path))
+
+
+@pytest.fixture
+def tracker() -> Iterator[str]:
+    server = task_rest_service.make_server("127.0.0.1", 0, {TOKEN})
+    threading.Thread(target=server.serve_forever, args=(0.05,), daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_address[1]}"
+    server.shutdown()
+    server.server_close()
+
+
+def context(attempt: int = 1, run: str = "run_tasks") -> CallContext:
+    return CallContext(
+        tenant="default",
+        identity="idn_ops",
+        run_id=run,
+        step_id="remind",
+        attempt=attempt,
+        idempotency_key=idempotency_key(run, "remind", attempt),
+        credentials=(CredentialReference(name=CREDENTIAL, injected_as="env"),),
+    )
+
+
+def tasks(url: str) -> McpActionConnector:
+    return McpActionConnector(build_server(Config(url, "TSK", timeout=5.0)))
+
+
+def replace(url: str, issues: list[dict[str, Any]]) -> None:
+    httpx.post(f"{url}/_fake/issues", content=json.dumps(issues), timeout=5.0)
+
+
+def lag(url: str) -> None:
+    httpx.post(f"{url}/_fake/lag", timeout=5.0)
+
+
+def state(url: str) -> dict[str, object]:
+    found: dict[str, object] = httpx.get(f"{url}/_fake/state", timeout=5.0).json()
+    return found
+
+
+async def test_the_open_tasks_are_listed_without_their_assignee(tracker: str) -> None:
+    result = await tasks(tracker).call("tasks.items.list", context(), {})
+    assert result.effect.kind.value == "read"
+    items = result.output["items"]
+    assert [t["key"] for t in items] == ["TSK-1", "TSK-2", "TSK-3", "TSK-4"], "done is left out"
+    assert set(items[0]) == {
+        "id", "key", "title", "due", "days_overdue", "state", "created_at", "updated_at", "url",
+    }  # fmt: skip
+    assert items[0]["days_overdue"] == 10 and items[2]["days_overdue"] == 0
+    assert items[3]["due"] is None and items[3]["days_overdue"] is None
+    assert result.output["complete"] is True
+    text = json.dumps(result.output)
+    assert "Person 1" not in text and "@team.example" not in text
+
+
+async def test_overdue_by_days_keeps_the_tasks_due_that_long_ago(tracker: str) -> None:
+    connector = tasks(tracker)
+    late = await connector.call("tasks.items.list", context(), {"overdue_by_days": 1})
+    assert [t["key"] for t in late.output["items"]] == ["TSK-1", "TSK-2"]
+    week = await connector.call("tasks.items.list", context(), {"overdue_by_days": 7})
+    assert [t["key"] for t in week.output["items"]] == ["TSK-1"]
+
+
+async def test_pages_are_followed_and_the_limit_bounds_the_answer(tracker: str) -> None:
+    many = [task_rest_service.issue(n) for n in range(1, 251)]
+    replace(tracker, many)
+    connector = tasks(tracker)
+    result = await connector.call("tasks.items.list", context(), {})
+    assert len(result.output["items"]) == 250 and result.output["complete"] is True
+    assert result.consumption.quota_units == 3, "three pages of at most 100"
+    bounded = await connector.call("tasks.items.list", context(), {"limit": 150})
+    assert len(bounded.output["items"]) == 150 and bounded.output["complete"] is False
+
+
+async def test_one_task_is_read_by_its_key(tracker: str) -> None:
+    result = await tasks(tracker).call("tasks.items.read", context(), {"id": "TSK-5"})
+    assert result.output["key"] == "TSK-5" and result.output["open"] is False
+    assert result.output["url"] == f"{tracker}/browse/TSK-5"
+
+
+async def test_a_reminder_is_written_once_and_a_repeat_finds_its_mark(tracker: str) -> None:
+    connector = tasks(tracker)
+    given = {"id": "TSK-1", "text": "This task is past its due date."}
+    first = await connector.call("tasks.items.remind", context(), given)
+    assert first.effect.kind.value == "write" and first.effect.replayed is False
+    again = await connector.call("tasks.items.remind", context(), given)
+    assert again.effect.replayed is True
+    assert again.output["comment"] == first.output["comment"]
+    [written] = state(tracker)["comments"]  # type: ignore[misc]
+    assert written["issue"] == "TSK-1"
+    last = written["body"]["content"][-1]["content"][0]["text"]
+    assert last == f"Taktus reference: {idempotency_key('run_tasks', 'remind', 1)}"
+    other = await connector.call("tasks.items.remind", context(attempt=2), given)
+    assert other.effect.replayed is False, "another key is another reminder"
+
+
+async def test_an_issue_is_created_once_and_a_repeat_finds_its_mark(tracker: str) -> None:
+    connector = tasks(tracker)
+    given = {"title": "Result defect in billing", "description": "What happened."}
+    first = await connector.call("tasks.items.create", context(), given)
+    assert first.effect.kind.value == "write" and first.effect.replayed is False
+    assert first.output["id"] == first.output["key"] == "TSK-6"
+    assert first.output["url"].endswith("/browse/TSK-6")
+    again = await connector.call("tasks.items.create", context(), given)
+    assert again.effect.replayed is True and again.output == first.output
+    [made] = state(tracker)["created"]  # type: ignore[misc]
+    assert made["fields"]["summary"] == "Result defect in billing"
+    last = made["fields"]["description"]["content"][-1]["content"][0]["text"]
+    assert last == f"Taktus reference: {idempotency_key('run_tasks', 'remind', 1)}"
+    other = await connector.call("tasks.items.create", context(attempt=2), given)
+    assert other.output["key"] == "TSK-7", "another key is another issue"
+
+
+async def test_an_issue_the_search_does_not_show_yet_is_found_by_its_key(tracker: str) -> None:
+    lag(tracker)
+    connector = tasks(tracker)
+    given = {"title": "Result defect in billing"}
+    first = await connector.call("tasks.items.create", context(), given)
+    again = await connector.call("tasks.items.create", context(), given)
+    assert again.effect.replayed is True and again.output["key"] == first.output["key"]
+    assert len(state(tracker)["created"]) == 1  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("operation", "input"),
+    [
+        ("tasks.items.read", {"id": "TSK-999"}),
+        ("tasks.items.read", {"id": "../search"}),
+        ("tasks.items.read", {"id": "OPS-1"}),
+        ("tasks.items.list", {"limit": 0}),
+        ("tasks.items.list", {"overdue_by_days": -1}),
+        ("tasks.items.remind", {"id": "TSK-1", "text": ""}),
+        ("tasks.items.create", {"title": ""}),
+        ("tasks.items.create", {"title": "two\nlines"}),
+        ("tasks.items.create", {"title": "x" * 256}),
+    ],
+)
+async def test_a_request_that_cannot_be_answered_is_invalid(
+    tracker: str, operation: str, input: dict[str, object]
+) -> None:
+    with pytest.raises(CallFailed) as failed:
+        await tasks(tracker).call(operation, context(), input)
+    assert failed.value.error.cause.value == "invalid"
+    assert "refused by the fake" not in (failed.value.error.detail or "")
+
+
+async def test_a_key_the_tracker_does_not_admit_is_unauthenticated(
+    tracker: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    wrong = tmp_path / "wrong"
+    wrong.write_text("not-the-key", encoding="utf-8")
+    monkeypatch.setenv(f"TAKTUS_CREDENTIAL_{CREDENTIAL}_FILE", str(wrong))
+    with pytest.raises(CallFailed) as failed:
+        await tasks(tracker).call("tasks.items.list", context(), {})
+    assert failed.value.error.cause.value == "unauthenticated"
+
+
+async def test_an_absent_site_is_unavailable_and_retryable() -> None:
+    with pytest.raises(CallFailed) as absent:
+        await tasks(f"http://127.0.0.1:{free_port()}").call("tasks.items.list", context(), {})
+    assert absent.value.error.cause.value == "unavailable"
+
+
+# --- UC-5.3: the fields an issue's kind requires, and the issues it belongs with -------------
+
+
+def require(url: str, fields: list[str]) -> None:
+    httpx.post(f"{url}/_fake/required", content=json.dumps(fields), timeout=5.0)
+
+
+async def test_an_issue_without_a_field_its_kind_requires_is_refused_and_not_created(
+    tracker: str,
+) -> None:
+    require(tracker, ["priority"])
+    with pytest.raises(CallFailed) as failed:
+        await tasks(tracker).call("tasks.items.create", context(), {"title": "Needs a priority"})
+    assert failed.value.error.cause.value == "invalid"
+    assert "the fields it refused: priority" in (failed.value.error.detail or "")
+    assert state(tracker)["created"] == []
+
+
+async def test_the_fields_the_kind_requires_are_carried_and_the_issue_is_created(
+    tracker: str,
+) -> None:
+    require(tracker, ["priority"])
+    given = {"title": "Has a priority", "fields": {"priority": {"name": "High"}}}
+    made = await tasks(tracker).call("tasks.items.create", context(), given)
+    assert made.output["key"] == "TSK-6"
+
+
+async def test_a_field_the_connector_sets_itself_cannot_be_given(tracker: str) -> None:
+    with pytest.raises(CallFailed) as failed:
+        await tasks(tracker).call(
+            "tasks.items.create", context(), {"title": "t", "fields": {"project": {"key": "OPS"}}}
+        )
+    assert failed.value.error.cause.value == "invalid"
+
+
+async def test_an_issue_that_belongs_with_others_is_linked_to_them_once(tracker: str) -> None:
+    connector = tasks(tracker)
+    given = {"title": "Second finding", "related": ["TSK-1", "TSK-2"]}
+    first = await connector.call("tasks.items.create", context(), given)
+    again = await connector.call("tasks.items.create", context(), given)
+    assert again.effect.replayed is True and again.output == first.output
+    assert state(tracker)["links"] == [
+        {"type": "Relates", "inward": "TSK-6", "outward": "TSK-1"},
+        {"type": "Relates", "inward": "TSK-6", "outward": "TSK-2"},
+    ]
+
+
+async def test_an_issue_related_to_one_the_site_does_not_know_is_never_created(
+    tracker: str,
+) -> None:
+    with pytest.raises(CallFailed) as failed:
+        await tasks(tracker).call(
+            "tasks.items.create", context(), {"title": "Orphan", "related": ["TSK-999"]}
+        )
+    assert failed.value.error.cause.value == "invalid"
+    assert state(tracker)["created"] == []

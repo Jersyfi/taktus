@@ -28,11 +28,15 @@ from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.adapters.driving.rest import build_app
 from taktus.adapters.driving.rest.wiring import ProposalActs
 from taktus.components.accounting.application.service import SpendHandler
+from taktus.components.catalog.application.service import AgentCatalog
+from taktus.components.catalog.domain.model import AgentCore, RoleProfile
 from taktus.components.command.application.service import (
     CommissionPlanHandler,
     CompleteIntakeHandler,
     ReceiveIntakeHandler,
 )
+from taktus.components.command.application.service.coach import Coach
+from taktus.components.command.application.service.sessions import Sessions
 from taktus.components.command.domain.model import IntakeEvent
 from taktus.components.decision.application.query import DecisionQueries
 from taktus.components.decision.application.service import (
@@ -40,9 +44,10 @@ from taktus.components.decision.application.service import (
     ConfirmRequestHandler,
 )
 from taktus.components.decision.domain.model import Request
-from taktus.components.governance.application.service import Corrections
+from taktus.components.governance.application.service import Corrections, TenantOrgUnits
 from taktus.components.governance.domain.model import Incident
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
+from taktus.components.identity.application.service.structure import OrganisationStructure
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.application.service.streams import ValueStreams
@@ -62,6 +67,7 @@ from taktus.components.reporting.application.service import (
     FindingsIntake,
     LiveChanges,
     ProductFindings,
+    StepQueries,
     StepTraces,
 )
 from taktus.components.reporting.domain.model import BackupState, Corridor, Judged
@@ -73,8 +79,12 @@ from taktus.composition.decisions import DecisionWiring, decision_wiring
 from taktus.composition.levels import RepositoryLevelRecords
 from taktus.composition.live import LiveHub, LiveOptions, Records, state_of
 from taktus.composition.owner_channel import KnownSecrets, OwnerChannelWiring, owner_channel_wiring
+from taktus.composition.planning import PlanActs
+from taktus.composition.process_proposals import ProcessProposals
 from taktus.composition.profiles import RoleProfiles
+from taktus.composition.reports import ReadingWiring, reading_wiring
 from taktus.composition.streams import StreamReads
+from taktus.composition.workspace import Workspace, workspace_of
 from taktus.ports.configuration import Secret
 from taktus.ports.connector import (
     ConnectorError,
@@ -85,7 +95,7 @@ from taktus.ports.connector import (
     Refusal,
 )
 from taktus.ports.ledger import Fact
-from taktus.ports.persistence import Queried, Repository, UnitOfWork
+from taktus.ports.persistence import Queried, Repository, Stored, UnitOfWork
 from taktus.ports.worker import ComputeLimit, Limits
 from taktus.shared.v1 import Command, ExactnessClass, LedgerRefs, Method, Plan, Step
 
@@ -251,7 +261,21 @@ class Services:
     tried: Any = None
     """The model trials (ADR-0149); a test that reaches them sets them. What they do is held by
     `tests/composition/test_trials.py`."""
+    asking: Any = None
+    """The request path an accepted process proposal is handed to (ADR-0251 §1); None: this
+    instance has none, and accepting is refused."""
     built_agent: AgentSurface | None = None
+    built_workspace: Workspace | None = None
+    built_agents: AgentCatalog | None = None
+    """The catalogue an agent drafted in the plan dialogue is registered in (ADR-0292)."""
+    requested: Any = None
+    """The data-protection requests (ADR-0176); a test that reaches them sets them. What they
+    find and erase is held by `tests/composition/test_subjects.py`."""
+    evidenced: Any = None
+    exported: Any = None
+    """A tenant's export and import (ADR-0221); None, as where the state is files. What they
+    write and check is held by `tests/integration/test_tenant_export.py`."""
+    """The processing evidence (ADR-0176 §8); a test that reaches it sets it."""
 
     @property
     def agent(self) -> AgentSurface:
@@ -345,6 +369,50 @@ class Services:
         return self.identity.directory
 
     @property
+    def workspace(self) -> Workspace:
+        """The plan dialogue, the coach, the structure and its sessions, over this world's
+        stores (ADR-0279)."""
+        if self.built_workspace is None:
+            assert self.identity.structure is not None
+
+            def of[T: Stored](kind: type[T]) -> Repository[T]:
+                return MemoryRepository(self.persistence, kind)
+
+            self.built_agents = AgentCatalog(
+                of(AgentCore), of(RoleProfile), self.persistence, self.ledger, self.clock
+            )
+            self.built_workspace = workspace_of(
+                of,
+                self.persistence,
+                self.ledger,
+                self.clock,
+                self.ids,
+                self.identity.structure,
+                agents=self.built_agents,
+            )
+        return self.built_workspace
+
+    @property
+    def planning(self) -> PlanActs:
+        return self.workspace.planning
+
+    @property
+    def coach(self) -> Coach:
+        return self.workspace.coach
+
+    @property
+    def structure(self) -> OrganisationStructure:
+        return self.workspace.structure
+
+    @property
+    def sessions(self) -> Sessions:
+        return self.workspace.sessions
+
+    @property
+    def org_units(self) -> TenantOrgUnits:
+        return self.decisions.org_units
+
+    @property
     def tenants(self) -> TenantRegistry:
         """The instance's registry: `TENANT` and `OTHER`, the same the directory serves."""
         return self.identity.tenants
@@ -383,6 +451,24 @@ class Services:
         )
 
     @property
+    def reading(self) -> ReadingWiring:
+        """Views, the export, reports, explanations, value and the own view (ADR-0241..0245),
+        over this world's stores; a report is said into `deliveries`."""
+        return reading_wiring(
+            lambda kind: MemoryRepository(self.persistence, kind),
+            ledger=self.ledger,
+            provenance=MemoryProvenanceStore(self.persistence),
+            spend=self.spend,
+            blocked=BlockedTime(self.ledger, self.objects, self.persistence, self.runs),
+            identities=self.identities,
+            levels=self.levels,
+            deliveries=self.deliveries,
+            work=self.persistence,
+            clock=self.clock,
+            identifiers=self.ids,
+        )
+
+    @property
     def takeover_instructions(self) -> TakeoverTrials:
         """The takeover instructions and their trials, over this world's stores (ADR-0180)."""
         return TakeoverTrials(
@@ -405,6 +491,21 @@ class Services:
             ledger=self.ledger,
             clock=self.clock,
         )
+
+    @property
+    def queries(self) -> StepQueries:
+        """The queries a step sent, over this world's stores (ADR-0262 §3)."""
+        return StepQueries(
+            records=self.levels.records,
+            ledger=self.ledger,
+            objects=self.objects,
+            work=self.persistence,
+        )
+
+    @property
+    def connection_grants(self) -> Any:
+        """Writing on a connection, granted by a person (ADR-0262 §2)."""
+        return self.decisions.connections
 
     @property
     def answer_decision(self) -> AnswerRequestHandler:
@@ -440,9 +541,36 @@ class Services:
         return self.tried
 
     @property
+    def subject_requests(self) -> Any:
+        assert self.requested is not None, "this test sets the requests it reaches"
+        return self.requested
+
+    @property
+    def tenant_exports(self) -> Any:
+        return self.exported
+
+    @property
+    def processing_evidence(self) -> Any:
+        assert self.evidenced is not None, "this test sets the evidence it reaches"
+        return self.evidenced
+
+    @property
     def gallery(self) -> Any:
         assert self.chosen is not None, "this test sets the gallery it reaches"
         return self.chosen
+
+    @property
+    def process_proposals(self) -> ProcessProposals:
+        """The processes Taktus proposes, over this world's ledger and runs (ADR-0270)."""
+        return ProcessProposals(
+            ledger=self.ledger,
+            runs=self.runs,
+            versions=MemoryRepository(self.persistence, ProcessVersion),
+            objects=self.objects,
+            work=self.persistence,
+            clock=self.clock,
+            asking=self.asking,
+        )
 
     @property
     def proposals(self) -> Proposals:
@@ -470,7 +598,7 @@ def services(connector: ScriptedConnector | None = None) -> Services:
     clock = FakeClock()
     scripted = connector or ScriptedConnector(ACCEPTED)
     events: Repository[IntakeEvent] = MemoryRepository(persistence, IntakeEvent)
-    identity = directory((TENANT, OTHER), persistence=persistence, clock=clock)
+    identity = directory((TENANT, OTHER), persistence=persistence, clock=clock, structured=True)
     replies = FakeReplies()
 
     def of(kind: Any) -> Any:

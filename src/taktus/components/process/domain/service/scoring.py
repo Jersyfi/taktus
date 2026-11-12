@@ -106,7 +106,28 @@ def side(side: Side, version: str, results: Iterable[CaseResult]) -> SideResult:
         score=mean(r.score for r in mine),
         cases=len(mine),
         unscored=sum(1 for r in mine if r.score is None),
+        dimensions=dimensions(mine),
     )
+
+
+def dimensions(results: Iterable[CaseResult]) -> dict[str, float | None]:
+    """Per dimension, the share of the cases scored on it that passed its gate (ADR-0217)."""
+    passed: dict[str, list[bool]] = {}
+    for result in results:
+        for scored in result.scores:
+            if scored.dimension is None:
+                continue
+            held = passed.setdefault(scored.dimension, [])
+            if scored.passed is not None:
+                held.append(scored.passed)
+    return {name: (sum(held) / len(held) if held else None) for name, held in passed.items()}
+
+
+def gated(scored: float | None, gate: float | None) -> bool | None:
+    """Whether a score passes its dimension's gate; None without a score or a gate."""
+    if scored is None or gate is None:
+        return None
+    return scored >= gate - 1e-9
 
 
 def change(active: SideResult, proposed: SideResult, tolerance: float) -> Verdict:
@@ -115,6 +136,12 @@ def change(active: SideResult, proposed: SideResult, tolerance: float) -> Verdic
         return Verdict.INCOMPLETE
     if proposed.score < active.score - tolerance - 1e-9:
         return Verdict.REGRESSED
+    for name, before in active.dimensions.items():
+        after = proposed.dimensions.get(name)
+        if before is None or after is None:
+            continue
+        if after < before - tolerance - 1e-9:
+            return Verdict.REGRESSED  # a gate passed less often: the dimension regressed
     return Verdict.PASSED
 
 
@@ -127,6 +154,41 @@ def drift(current: SideResult, previous: float | None, tolerance: float) -> Verd
     if current.score < previous - tolerance - 1e-9:
         return Verdict.DRIFT
     return Verdict.STEADY
+
+
+def step_tolerances(
+    declared: Mapping[str, float], ceilings: Mapping[str, float], tenant: float
+) -> dict[str, float]:
+    """The tolerance each scored step is held to (ADR-0250 §2): the one it declared, else the
+    tenant's within the ceiling of its class. A step only a rule or a statistic produces may
+    declare none: it does not vary, and the tenant's tolerance holds for it, never wider than
+    its class admits."""
+    return {
+        step: declared[step] if step in declared else min(tenant, ceiling)
+        for step, ceiling in sorted(ceilings.items())
+    }
+
+
+def regressed(
+    before: Mapping[str, float | None],
+    after: Mapping[str, float | None],
+    tolerances: Mapping[str, float],
+) -> tuple[str, ...]:
+    """The steps whose score fell from `before` to `after` by more than their tolerance. A step
+    without a score on either side is not compared here: the side's verdict is `incomplete`."""
+    return tuple(
+        step
+        for step, tolerance in sorted(tolerances.items())
+        if (was := before.get(step)) is not None
+        and (now := after.get(step)) is not None
+        and now < was - tolerance - 1e-9
+    )
+
+
+def step_scores(evaluation: Evaluation, side: Side = Side.ACTIVE) -> dict[str, float | None]:
+    """Every scored step's score on one side (`step_score`), by step."""
+    steps = {s.step for r in evaluation.results for s in r.scores}
+    return {step: step_score(evaluation, step, side) for step in sorted(steps)}
 
 
 def comparison(evaluation: Evaluation) -> tuple[dict[str, Any], ...]:
@@ -165,7 +227,13 @@ def _shown_side(result: CaseResult) -> dict[str, Any]:
         "models": dict(result.models),
         "left_out": result.left_out,
         "scores": [
-            {"step": s.step, "method": s.method.value, "score": s.score, "how": s.how}
+            {
+                "step": s.step,
+                "method": s.method.value,
+                "score": s.score,
+                "how": s.how,
+                **({} if s.dimension is None else {"dimension": s.dimension, "passed": s.passed}),
+            }
             for s in result.scores
         ],
     }

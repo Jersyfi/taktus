@@ -1,0 +1,128 @@
+# B-6.02 Lost webhooks — UC-03 §4.6: the events a payment provider could not deliver to the
+# business's webhook endpoint are found and named to a person (ADR-0214, ADR-0024).
+#
+# Every hour the events not yet delivered to every endpoint are read through
+# `payments.events`: those still pending and those whose every attempt failed, of the 30 days
+# the provider keeps. The rule `lost` keeps those pending an hour or more, oldest first; a
+# younger one is still in the provider's own retries. The judgement is the tenant's corridor on
+# their count; one lost event is red and an incident at once:
+#
+#     uv run taktusctl signal configure payments.lost_events --process b-6-02 \
+#         --step lost --select count --bounds fixed --direction above \
+#         --yellow 0.25 --red 0.5 --fresh 2h --role <role> --case <where the endpoint is worked>
+#
+# **Nothing is replayed.** The provider's published API names no operation that resends an
+# event; its guide tells the receiver to fetch an undelivered event and process it itself, and
+# the receiver is the business's own system. A person resends the event from the provider's
+# dashboard, or the business's endpoint processes it; the endpoint must ignore an event it has
+# already processed, so that a repeat changes nothing (ADR-0024). Only the first payment
+# provider states an event's delivery; the process runs where a connector serves
+# `payments.events`.
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-6.02-lost-webhooks.yaml
+#
+# Switching it off (`taktusctl deactivate --process b-6-02`) changes nothing at the provider: it
+# only reads.
+
+id: b-6-02
+version: "1"
+name: B-6.02 Lost webhooks
+autonomy:
+  level: 1
+  reason: >
+    the process only reads the provider's events and keeps the old undelivered ones by a fixed
+    rule; nothing leaves the system, so at level 1 every step runs and none acts; a lost event
+    reaches a person at once as an incident; it starts at level 1, observing, as UC-03 starts
+    every process at level 1 or 2 when its stage opens
+  toward_next: >
+    stage 4 of the tenant's plan open, four weeks of hourly runs whose incidents a person found
+    right, and a replay through an interface the business's endpoint offers; then Taktus
+    proposes the next level, up to level 4 in UC-03 (UC-7.1, UC-9.6)
+author: the repository
+reason: an event the business's endpoint never received is found within the hour, without a person watching the provider's delivery log (UC-03 B-6.02)
+
+triggers:
+  - schedule: "0 * * * *"
+
+limits:
+  quota: { units: 120 }
+
+steps:
+  - id: events
+    method: rule
+    reason: the events not delivered to every endpoint are read as the provider holds them; nothing to judge
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what payments.events.undelivered answered", columns: [complete, events] }
+    fallback:
+      when: the connector serving payments.events is unavailable
+      to: human
+      role: owner
+    work:
+      checking: { select: output }
+      rule: connector
+      operation: payments.events.undelivered
+      input:
+        limit: 10000
+      credentials:
+        - { name: PAYMENTS_TOKEN, injected_as: env }
+      expect:
+        - select: complete
+          equals: true
+          says: more undelivered events exist than one reading holds
+
+  - id: lost
+    method: rule
+    reason: an event still undelivered an hour after it was created is lost, a fixed rule over the provider's own moment
+    rejected:
+      - method: statistics
+        why: the hour is the business's rule, not a learned threshold
+      - method: llm
+        why: whether a number is at least one is no judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the events undelivered for an hour or more }
+    depends_on: [events]
+    work:
+      rule: filter
+      items: { $from: events, $select: output.events }
+      all:
+        - { field: hours_pending, at_least: 1 }
+      order: created
+
+takeover:
+  sequence: >
+    The process runs every hour, on its own schedule; whoever looks after the business's
+    payment integration takes it over. The steps run in order: list the events the payment
+    provider has not delivered to every webhook endpoint, and keep those undelivered for an
+    hour or more. Each such event goes at once to the role the tenant named, who resends it
+    from the provider's dashboard or has the business's endpoint process it. A repeat must
+    change nothing: the endpoint ignores an event it has already processed.
+  steps:
+    events:
+      system: the payment provider's dashboard, under its webhook endpoints' event deliveries
+      do: >
+        list every event whose delivery to an endpoint is pending or failed, with its
+        identifier, its type and the moment it was created
+      expertise: reading the event deliveries in the payment provider's dashboard
+      credentials:
+        - parameter: PAYMENTS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Payment provider key of the
+            requesting identity described in CREDENTIALS.md; a person signs in with their own
+            account that may read events
+      done: every undelivered event is listed
+    lost:
+      system: the listed events
+      do: >
+        keep the events created an hour ago or earlier, oldest first; report each to the role
+        the tenant named, with its identifier and type, and resend it from the dashboard once
+        the endpoint answers again
+      expertise: resending an event from the payment provider's dashboard
+      credentials: []
+      done: every lost event is reported, or there is none

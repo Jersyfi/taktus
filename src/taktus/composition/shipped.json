@@ -17,31 +17,74 @@
     },
     {
       "capabilities": [
+        "models.catalogue",
         "models.costs"
       ],
       "image": "taktus-connector-anthropic",
       "name": "anthropic",
       "operations": [
+        "models.catalogue.list",
         "models.costs.daily"
       ]
     },
     {
       "capabilities": [
-        "billing.costs"
+        "expiry.credentials",
+        "stores.beta",
+        "stores.releases",
+        "stores.reviews"
       ],
-      "image": "taktus-connector-aws",
-      "name": "aws",
+      "image": "taktus-connector-appstores",
+      "name": "appstores",
       "operations": [
-        "billing.costs.daily"
+        "expiry.credentials.list",
+        "stores.beta.builds",
+        "stores.beta.distribute",
+        "stores.beta.feedback",
+        "stores.releases.halt",
+        "stores.releases.raise",
+        "stores.releases.read",
+        "stores.releases.submit",
+        "stores.reviews.list",
+        "stores.reviews.read",
+        "stores.reviews.reply"
       ]
     },
     {
       "capabilities": [
+        "billing.costs",
+        "logs.query",
+        "secrets.metadata"
+      ],
+      "image": "taktus-connector-aws",
+      "name": "aws",
+      "operations": [
+        "billing.costs.daily",
+        "logs.query.entries",
+        "secrets.metadata.list"
+      ]
+    },
+    {
+      "capabilities": [
+        "warehouse.queries"
+      ],
+      "image": "taktus-connector-bigquery",
+      "name": "bigquery",
+      "operations": [
+        "warehouse.queries.change",
+        "warehouse.queries.run"
+      ]
+    },
+    {
+      "capabilities": [
+        "knowledge.documents",
         "knowledge.pages"
       ],
       "image": "taktus-connector-bookstack",
       "name": "bookstack",
       "operations": [
+        "knowledge.documents.search",
+        "knowledge.documents.versions",
         "knowledge.pages.list",
         "knowledge.pages.read",
         "knowledge.pages.write"
@@ -59,6 +102,52 @@
     },
     {
       "capabilities": [
+        "feedback.posts"
+      ],
+      "image": "taktus-connector-canny",
+      "name": "canny",
+      "operations": [
+        "feedback.posts.create",
+        "feedback.posts.list",
+        "feedback.posts.vote"
+      ]
+    },
+    {
+      "capabilities": [
+        "deployment.sites"
+      ],
+      "image": "taktus-connector-cloudfunctions",
+      "name": "cloudfunctions",
+      "operations": [
+        "deployment.sites.read",
+        "deployment.sites.release",
+        "deployment.sites.rollback"
+      ]
+    },
+    {
+      "capabilities": [
+        "deployment.workloads"
+      ],
+      "image": "taktus-connector-cloudrun",
+      "name": "cloudrun",
+      "operations": [
+        "deployment.workloads.read",
+        "deployment.workloads.release",
+        "deployment.workloads.rollback"
+      ]
+    },
+    {
+      "capabilities": [
+        "packages.licences"
+      ],
+      "image": "taktus-connector-depsdev",
+      "name": "depsdev",
+      "operations": [
+        "packages.licences.list"
+      ]
+    },
+    {
+      "capabilities": [
         "knowledge.pages"
       ],
       "image": null,
@@ -67,6 +156,16 @@
         "knowledge.pages.list",
         "knowledge.pages.read",
         "knowledge.pages.write"
+      ]
+    },
+    {
+      "capabilities": [
+        "mentions.search"
+      ],
+      "image": "taktus-connector-discourse",
+      "name": "discourse",
+      "operations": [
+        "mentions.search.query"
       ]
     },
     {
@@ -94,7 +193,47 @@
     },
     {
       "capabilities": [
+        "deployment.sites"
+      ],
+      "image": "taktus-connector-firebase",
+      "name": "firebase",
+      "operations": [
+        "deployment.sites.read",
+        "deployment.sites.release",
+        "deployment.sites.rollback"
+      ]
+    },
+    {
+      "capabilities": [
+        "helpdesk.tickets"
+      ],
+      "image": "taktus-connector-freshdesk",
+      "name": "freshdesk",
+      "operations": [
+        "helpdesk.tickets.close",
+        "helpdesk.tickets.list",
+        "helpdesk.tickets.note",
+        "helpdesk.tickets.read"
+      ]
+    },
+    {
+      "capabilities": [
+        "billing.costs",
+        "logs.query",
+        "secrets.metadata"
+      ],
+      "image": "taktus-connector-gcp",
+      "name": "gcp",
+      "operations": [
+        "billing.costs.daily",
+        "logs.query.entries",
+        "secrets.metadata.list"
+      ]
+    },
+    {
+      "capabilities": [
         "channel.repo",
+        "repository.advisories",
         "repository.branches",
         "repository.comments",
         "repository.files",
@@ -103,14 +242,18 @@
         "repository.members",
         "repository.pipelines",
         "repository.pullrequests",
-        "repository.refs"
+        "repository.ratelimit",
+        "repository.refs",
+        "repository.runners"
       ],
       "image": "taktus-connector-github",
       "name": "github",
       "operations": [
         "channel.repo.reply",
+        "repository.advisories.list",
         "repository.branches.commit",
         "repository.branches.create",
+        "repository.branches.list",
         "repository.branches.read",
         "repository.branches.update",
         "repository.comments.create",
@@ -126,8 +269,10 @@
         "repository.labels.remove",
         "repository.labels.set",
         "repository.members.list",
+        "repository.pipelines.cancel",
         "repository.pipelines.list",
         "repository.pipelines.read",
+        "repository.pipelines.rerun",
         "repository.pipelines.status",
         "repository.pipelines.trigger",
         "repository.pullrequests.files",
@@ -135,7 +280,39 @@
         "repository.pullrequests.merge",
         "repository.pullrequests.open",
         "repository.pullrequests.read",
-        "repository.refs.create"
+        "repository.ratelimit.read",
+        "repository.refs.create",
+        "repository.runners.list"
+      ]
+    },
+    {
+      "capabilities": [
+        "audit.events"
+      ],
+      "image": "taktus-connector-githubaudit",
+      "name": "githubaudit",
+      "operations": [
+        "audit.events.list"
+      ]
+    },
+    {
+      "capabilities": [
+        "analytics.reports"
+      ],
+      "image": "taktus-connector-googleanalytics",
+      "name": "googleanalytics",
+      "operations": [
+        "analytics.reports.run"
+      ]
+    },
+    {
+      "capabilities": [
+        "audit.events"
+      ],
+      "image": "taktus-connector-googleworkspace",
+      "name": "googleworkspace",
+      "operations": [
+        "audit.events.list"
       ]
     },
     {
@@ -146,6 +323,31 @@
       "name": "httpcheck",
       "operations": [
         "check.http.run"
+      ]
+    },
+    {
+      "capabilities": [
+        "crm.contacts"
+      ],
+      "image": "taktus-connector-hubspot",
+      "name": "hubspot",
+      "operations": [
+        "crm.contacts.create",
+        "crm.contacts.find",
+        "crm.contacts.note"
+      ]
+    },
+    {
+      "capabilities": [
+        "tasks.items"
+      ],
+      "image": "taktus-connector-jira",
+      "name": "jira",
+      "operations": [
+        "tasks.items.create",
+        "tasks.items.list",
+        "tasks.items.read",
+        "tasks.items.remind"
       ]
     },
     {
@@ -163,13 +365,37 @@
     },
     {
       "capabilities": [
+        "tasks.items"
+      ],
+      "image": "taktus-connector-linear",
+      "name": "linear",
+      "operations": [
+        "tasks.items.create",
+        "tasks.items.list",
+        "tasks.items.read",
+        "tasks.items.remind"
+      ]
+    },
+    {
+      "capabilities": [
+        "logs.query"
+      ],
+      "image": "taktus-connector-loki",
+      "name": "loki",
+      "operations": [
+        "logs.query.entries"
+      ]
+    },
+    {
+      "capabilities": [
         "orchestrator.changes",
         "orchestrator.conformance",
         "orchestrator.guides",
         "orchestrator.integrations",
         "orchestrator.maturation",
         "orchestrator.maturity",
-        "orchestrator.removal"
+        "orchestrator.removal",
+        "orchestrator.spend"
       ],
       "image": null,
       "name": "loopback",
@@ -187,7 +413,8 @@
         "orchestrator.maturation.measures",
         "orchestrator.maturation.propose",
         "orchestrator.maturity.record",
-        "orchestrator.removal.exercise"
+        "orchestrator.removal.exercise",
+        "orchestrator.spend.cases"
       ]
     },
     {
@@ -205,12 +432,87 @@
     },
     {
       "capabilities": [
+        "newsletter.broadcasts"
+      ],
+      "image": "taktus-connector-mailchimp",
+      "name": "mailchimp",
+      "operations": [
+        "newsletter.broadcasts.draft",
+        "newsletter.broadcasts.read",
+        "newsletter.broadcasts.send"
+      ]
+    },
+    {
+      "capabilities": [
+        "mentions.search"
+      ],
+      "image": "taktus-connector-mastodon",
+      "name": "mastodon",
+      "operations": [
+        "mentions.search.query"
+      ]
+    },
+    {
+      "capabilities": [
+        "analytics.reports"
+      ],
+      "image": "taktus-connector-mixpanel",
+      "name": "mixpanel",
+      "operations": [
+        "analytics.reports.run"
+      ]
+    },
+    {
+      "capabilities": [
+        "deployment.sites"
+      ],
+      "image": "taktus-connector-netlify",
+      "name": "netlify",
+      "operations": [
+        "deployment.sites.read",
+        "deployment.sites.release",
+        "deployment.sites.rollback"
+      ]
+    },
+    {
+      "capabilities": [
+        "models.catalogue",
         "models.costs"
       ],
       "image": "taktus-connector-openai",
       "name": "openai",
       "operations": [
+        "models.catalogue.list",
         "models.costs.daily"
+      ]
+    },
+    {
+      "capabilities": [
+        "payments.customers",
+        "payments.failures",
+        "payments.invoices",
+        "payments.subscriptions"
+      ],
+      "image": "taktus-connector-paypal",
+      "name": "paypal",
+      "operations": [
+        "payments.customers.contact",
+        "payments.customers.failures",
+        "payments.customers.subscriptions",
+        "payments.failures.list",
+        "payments.invoices.list",
+        "payments.subscriptions.list",
+        "payments.subscriptions.read"
+      ]
+    },
+    {
+      "capabilities": [
+        "bi.figures"
+      ],
+      "image": "taktus-connector-powerbi",
+      "name": "powerbi",
+      "operations": [
+        "bi.figures.query"
       ]
     },
     {
@@ -222,6 +524,63 @@
       "operations": [
         "metrics.series.query",
         "metrics.series.range"
+      ]
+    },
+    {
+      "capabilities": [
+        "channel.mail",
+        "mail.messages",
+        "newsletter.broadcasts"
+      ],
+      "image": "taktus-connector-resend",
+      "name": "resend",
+      "operations": [
+        "channel.mail.reply",
+        "mail.messages.read",
+        "mail.messages.send",
+        "newsletter.broadcasts.draft",
+        "newsletter.broadcasts.read",
+        "newsletter.broadcasts.send"
+      ]
+    },
+    {
+      "capabilities": [
+        "payments.customers",
+        "payments.failures",
+        "payments.subscriptions"
+      ],
+      "image": "taktus-connector-revenuecat",
+      "name": "revenuecat",
+      "operations": [
+        "payments.customers.failures",
+        "payments.customers.subscriptions",
+        "payments.failures.list",
+        "payments.subscriptions.list",
+        "payments.subscriptions.read"
+      ]
+    },
+    {
+      "capabilities": [
+        "website.posts"
+      ],
+      "image": "taktus-connector-sanity",
+      "name": "sanity",
+      "operations": [
+        "website.posts.draft",
+        "website.posts.publish",
+        "website.posts.read"
+      ]
+    },
+    {
+      "capabilities": [
+        "directory.accounts",
+        "directory.groups"
+      ],
+      "image": "taktus-connector-scim",
+      "name": "scim",
+      "operations": [
+        "directory.accounts.list",
+        "directory.groups.list"
       ]
     },
     {
@@ -253,14 +612,72 @@
     {
       "capabilities": [
         "payments.customers",
+        "payments.events",
+        "payments.failures",
+        "payments.invoices",
         "payments.subscriptions"
       ],
       "image": "taktus-connector-stripe",
       "name": "stripe",
       "operations": [
+        "payments.customers.contact",
+        "payments.customers.failures",
         "payments.customers.subscriptions",
+        "payments.events.undelivered",
+        "payments.failures.list",
+        "payments.invoices.list",
         "payments.subscriptions.list",
         "payments.subscriptions.read"
+      ]
+    },
+    {
+      "capabilities": [
+        "secrets.metadata"
+      ],
+      "image": "taktus-connector-vault",
+      "name": "vault",
+      "operations": [
+        "secrets.metadata.list"
+      ]
+    },
+    {
+      "capabilities": [
+        "deployment.sites"
+      ],
+      "image": "taktus-connector-vercel",
+      "name": "vercel",
+      "operations": [
+        "deployment.sites.read",
+        "deployment.sites.release",
+        "deployment.sites.rollback"
+      ]
+    },
+    {
+      "capabilities": [
+        "website.posts"
+      ],
+      "image": "taktus-connector-wordpress",
+      "name": "wordpress",
+      "operations": [
+        "website.posts.draft",
+        "website.posts.publish",
+        "website.posts.read"
+      ]
+    },
+    {
+      "capabilities": [
+        "helpcentre.articles",
+        "helpdesk.tickets"
+      ],
+      "image": "taktus-connector-zendesk",
+      "name": "zendesk",
+      "operations": [
+        "helpcentre.articles.draft",
+        "helpcentre.articles.list",
+        "helpdesk.tickets.close",
+        "helpdesk.tickets.list",
+        "helpdesk.tickets.note",
+        "helpdesk.tickets.read"
       ]
     }
   ],
@@ -269,6 +686,16 @@
       "capabilities": [],
       "image": null,
       "name": "a2a",
+      "operations": []
+    },
+    {
+      "capabilities": [
+        "browser.check",
+        "browser.headless",
+        "workspace.isolated"
+      ],
+      "image": null,
+      "name": "browser",
       "operations": []
     },
     {

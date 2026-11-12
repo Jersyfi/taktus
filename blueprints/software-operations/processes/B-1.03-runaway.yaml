@@ -29,7 +29,7 @@
 # Switching it off (`taktusctl deactivate --process b-1-03`) changes nothing at the store.
 
 id: b-1-03
-version: "1"
+version: "2"
 name: B-1.03 Runaway guard
 autonomy:
   level: 1
@@ -68,11 +68,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what metrics.series.query answered", columns: [complete, series] }
     fallback:
       when: the connector serving metrics.series is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: metrics.series.query
       input:

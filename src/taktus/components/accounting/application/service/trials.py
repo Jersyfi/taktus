@@ -202,11 +202,33 @@ class Trial(Value):
     evaluation set."""
 
 
+type Held = Literal["held", "fell", "pending"]
+
+
+class Validation(Value):
+    """What one trial says about one model on one process (ADR-0249 §1): whether the quality
+    held, step by step."""
+
+    trial: str
+    process: str
+    model: str
+    verdict: Held
+    scores: dict[str, float | None]
+    """The model's score on each step of the purpose, by step."""
+    baseline: dict[str, float | None]
+    """What the active version scored on the same step, by the same rules; 1 where the process
+    has no scored evaluation yet."""
+    tolerances: dict[str, float]
+    fell: tuple[str, ...] = ()
+
+
 class TrialRead(Value):
     trial: Trial
     report: TrialReport
     settled: bool
     """Whether every case run has gone as far as it can go without a person."""
+    validations: tuple[Validation, ...] = ()
+    """Per process and model, whether the quality held (ADR-0249 §1)."""
 
 
 class Offer(Value):

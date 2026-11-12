@@ -29,7 +29,8 @@ nothing of what you wrote.
 
 Taktus turns what you ask into work it can carry out, step by step. Some steps it does itself.
 Some it hands to a program or to a person. Where a step needs a person's decision, the work
-waits for that person. The page *When Taktus asks you to decide* says how that works.
+waits for that person. The page *When Taktus asks you to decide* says how that works. The page
+*Following and stopping your work* says how you see where it stands, and how you stop it.
 
 Everything Taktus does is written down, step by step, in a record called the **ledger**. A
 change made to the ledger afterwards would be noticed. So it can always be said what happened,

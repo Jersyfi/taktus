@@ -4,10 +4,10 @@ title: Emergency stop
 component: governance
 epic: E7
 serves: [P10, P12]
-state: building
+state: verified
 version: 0.5.0
-tests: [tests/components/run/test_engine.py::test_a_stop_mid_step_lands_on_the_worker_s_boundary_and_resume_duplicates_nothing, tests/components/run/test_engine.py::test_a_stop_requested_between_steps_takes_effect_at_the_next_boundary, tests/components/run/test_adapter_stop.py::test_a_stop_of_one_worker_halts_every_run_it_serves_and_the_others_go_on, tests/components/run/test_adapter_stop.py::test_a_held_stop_hands_no_step_to_its_adapter_until_it_is_lifted, tests/components/run/test_adapter_stop.py::test_a_stop_that_found_no_run_is_confirmed_and_says_so, tests/components/run/test_adapter_stop.py::test_a_stop_of_an_adapter_no_step_is_halted_at_is_refused, tests/components/run/test_runner.py::test_a_stop_of_an_adapter_reaches_the_runner_at_its_renewal_and_others_go_on, tests/components/run/test_adapter_stop_calls.py::test_a_stop_of_one_connector_halts_the_runs_that_would_call_it_and_others_go_on, tests/components/run/test_adapter_stop_calls.py::test_a_wait_on_a_stopped_connector_stops_between_two_checks_and_resumes_its_count, tests/components/run/test_adapter_stop_calls.py::test_a_stop_of_one_model_halts_every_run_that_would_ask_it_and_the_others_go_on, tests/components/run/test_adapter_stop_calls.py::test_a_step_whose_chain_moves_to_a_stopped_model_halts_there, tests/components/run/test_adapter_stop_calls.py::test_a_stop_may_name_every_configured_worker_connector_and_model, tests/components/run/test_open_work.py::test_a_stopped_connector_is_not_called_for_a_count_and_the_run_waits, tests/governance/test_result_defects.py::test_each_criterion_on_its_own_triggers_what_the_shipped_rule_says, tests/governance/test_result_defects.py::test_a_criterion_may_be_added_and_a_threshold_changed, tests/governance/test_result_defects.py::test_a_configuration_that_empties_the_set_is_refused]
-adrs: {ADR-0004: ffdb1f1537f5, ADR-0005: 0ea928e2016b, ADR-0008: e6a4e033abd4, ADR-0023: 949c6f4e13af, ADR-0138: a950b2e0b871, ADR-0153: f720e5930f42}
+tests: [tests/components/run/test_engine.py::test_a_stop_mid_step_lands_on_the_worker_s_boundary_and_resume_duplicates_nothing, tests/components/run/test_engine.py::test_a_stop_requested_between_steps_takes_effect_at_the_next_boundary, tests/components/run/test_adapter_stop.py::test_a_stop_of_one_worker_halts_every_run_it_serves_and_the_others_go_on, tests/components/run/test_adapter_stop.py::test_a_held_stop_hands_no_step_to_its_adapter_until_it_is_lifted, tests/components/run/test_adapter_stop.py::test_a_stop_that_found_no_run_is_confirmed_and_says_so, tests/components/run/test_adapter_stop.py::test_a_stop_of_an_adapter_no_step_is_halted_at_is_refused, tests/components/run/test_runner.py::test_a_stop_of_an_adapter_reaches_the_runner_at_its_renewal_and_others_go_on, tests/components/run/test_adapter_stop_calls.py::test_a_stop_of_one_connector_halts_the_runs_that_would_call_it_and_others_go_on, tests/components/run/test_adapter_stop_calls.py::test_a_wait_on_a_stopped_connector_stops_between_two_checks_and_resumes_its_count, tests/components/run/test_adapter_stop_calls.py::test_a_stop_of_one_model_halts_every_run_that_would_ask_it_and_the_others_go_on, tests/components/run/test_adapter_stop_calls.py::test_a_step_whose_chain_moves_to_a_stopped_model_halts_there, tests/components/run/test_adapter_stop_calls.py::test_a_stop_may_name_every_configured_worker_connector_and_model, tests/components/run/test_open_work.py::test_a_stopped_connector_is_not_called_for_a_count_and_the_run_waits, tests/governance/test_result_defects.py::test_each_criterion_on_its_own_triggers_what_the_shipped_rule_says, tests/governance/test_result_defects.py::test_a_criterion_may_be_added_and_a_threshold_changed, tests/governance/test_result_defects.py::test_a_configuration_that_empties_the_set_is_refused, tests/components/run/test_scoped_stop.py::test_a_stop_of_a_process_halts_its_run_at_the_worker_s_boundary_and_others_go_on, tests/components/run/test_scoped_stop.py::test_a_held_stop_of_a_process_hands_no_step_on_until_a_person_lifts_it, tests/components/run/test_scoped_stop.py::test_a_person_stops_the_tenant_at_every_level_without_a_reason, tests/components/run/test_scoped_stop.py::test_a_stop_of_the_instance_is_a_stop_of_each_tenant_it_serves, tests/components/run/test_scoped_stop.py::test_a_rule_s_stop_names_the_rule_and_the_incident_and_no_person, tests/governance/test_result_defects.py::test_a_rule_that_decides_stop_stops_the_process_and_records_the_rule_and_the_facts, tests/governance/test_result_defects.py::test_a_verdict_short_of_stop_stops_nothing, tests/components/governance/test_stop_incident.py::test_a_person_s_stop_that_holds_raises_one_incident_with_a_situation_package, tests/components/governance/test_stop_incident.py::test_a_stop_that_found_no_run_is_followed_by_an_incident_too_to_the_configured_role, tests/components/governance/test_stop_incident.py::test_a_rule_s_stop_raises_no_second_incident, tests/integration/test_tenant_domains_command.py::test_a_person_s_stop_is_followed_by_an_incident_and_its_situation_package]
+adrs: {ADR-0004: ffdb1f1537f5, ADR-0005: 0ea928e2016b, ADR-0008: e6a4e033abd4, ADR-0023: 949c6f4e13af, ADR-0138: a950b2e0b871, ADR-0153: f720e5930f42, ADR-0256: ca2fe7d86cac, ADR-0280: a5e932316f39}
 supersedes: null
 ---
 
@@ -95,11 +95,25 @@ naming the runs it halted; a stop that found none is confirmed and says so. A st
 asks for no reason; it is offered on the command line only, not yet over the HTTP surface, the
 web app, chat or MCP.
 
-Stopping globally, by tenant and by process, the criteria as tenant configuration, and the
-automatic trigger are not built.
+Stopping globally, by tenant and by process, by the named tests in `test_scoped_stop.py`
+(ADR-0256): a stop of a process halts its run inside a worker step at the worker's boundary and
+hands no further step on, while a run of another process goes on; a stop of the tenant halts
+every run at levels 1 to 4 and asks for no reason; a stop of the instance is a stop of each
+tenant it serves, confirmed in each. Offered on the command line (`taktusctl stop process`,
+`tenant`, `global`).
 
 The rule of ADR-0023 decides over a result reported wrong (ADR-0153): each criterion on its
 own triggers what the shipped rule says, a criterion may be added and a threshold changed, and
 a configuration under which nothing escalates is refused — by the named tests in
-`tests/governance/test_result_defects.py`. Not built: the rule stopping a process by itself;
-its decision is the incident's severity today.
+`tests/governance/test_result_defects.py`. Where it decides `stop`, it stops the process of the
+reported result before the incident is written; the stop names the rule and the incident, the
+incident the facts the rule read, its thresholds and the stop, and no person is its actor; a
+verdict short of `stop` stops nothing (ADR-0256 §3).
+
+A stop a person requested, once it holds, raises one incident of kind `stop.held` with a
+situation package addressed to the tenant's on-call role (ADR-0280, NTC-0271), by the named
+tests in `test_stop_incident.py` and `test_tenant_domains_command.py`: the incident names the stop, the
+runs it halted, their processes and domains, and no person; the package has the parts of
+UC-4.5, built by fixed sentences, and `taktusctl incident package` prints it; a stop that found
+no run is followed by one too, and a rule's stop raises no second incident. A run waiting for a
+person halts when it would next hand a step on, which is its next boundary.

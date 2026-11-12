@@ -27,7 +27,7 @@
 # the repository: what it filed stays filed.
 
 id: b-10-01
-version: "1"
+version: "2"
 name: B-10.01 Deadline calendar
 autonomy:
   level: 2
@@ -67,11 +67,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what calendar.events.list answered", columns: [complete, entries] }
     fallback:
       when: the connector serving calendar.events is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: calendar.events.list
       input:
@@ -90,11 +93,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.list answered", columns: [complete, issues] }
     fallback:
       when: the connector serving repository.issues is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.issues.list
       input:
@@ -132,6 +138,8 @@ steps:
       - method: llm
         why: a fixed composition needs no model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "Deadline" }
     depends_on: [select]
     work:
       when:
@@ -149,6 +157,8 @@ steps:
       - method: llm
         why: a fixed composition needs no model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "Filed by Taktus, process B-10\\.01 Deadline calendar, once a person confirmed it\\. Acting" }
     depends_on: [select]
     work:
       when:
@@ -185,12 +195,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.create answered", columns: [author, body, created_at, is_pull_request, labels, milestone, number, state, title, updated_at, url] }
     fallback:
       when: the connector serving repository.issues is unavailable
       to: human
       role: owner
     depends_on: [select, title, compose]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: select, $select: count }, not_matches: "^0$" }
       rule: connector

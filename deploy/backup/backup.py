@@ -44,6 +44,8 @@ Configuration, all from the environment; a secret only from a file (CREDENTIALS.
 | `TAKTUS_BACKUP_POINT_IN_TIME` | `true`: a base backup beside the dump, and the log kept for it |
 | `TAKTUS_CREDENTIAL_BACKUP_IDENTITY_FILE` | the age private key: `drill`, `fetch-wal` |
 | `TAKTUS_DRILL_RESTORE_SECONDS` | the drill fails when its restore took longer; empty: measured |
+| `TAKTUS_BACKUP_EVERY_HOURS` | `schedule`: hours between two backups; 24 by default |
+| `TAKTUS_DRILL_EVERY_DAYS` | `schedule`: days between two drills, each after a backup; 7; 0: none |
 
 At the end of every run, its outcome is recorded in the database it backs up (ADR-0106): one
 row of `backup_outcome` per tenant of the table `tenant`, with the run's time, its name, `ok` or
@@ -70,6 +72,17 @@ every tenant's ledger chain by the ledger's published rule, checks that every he
 manifest is in it with its hash, and with `--heads <file>` that every tenant's newest entry is the
 file's. It writes its report to `drills/taktus-<time>.drill.json` and keeps the drills by the
 retention.
+
+**An export of the ledger** (UC-6.1, ADR-0253). `verify-export <file>` walks a tenant's ledger
+as `GET /ledger/export` wrote it — one entry's document per line — by the same published rule,
+with no database and no instance: every finding is printed with its sequence number, and the
+exit code is 0 only for an intact chain.
+
+**The schedule** (ADR-0222). `schedule` runs on a machine without a scheduler of its own, as the
+single server's compose file starts it: a backup every `TAKTUS_BACKUP_EVERY_HOURS`, and after the
+backup of every `TAKTUS_DRILL_EVERY_DAYS` a drill of the newest backup. A drill that does not
+verify is recorded as a failed run at the step `drill`, and the instance tells the owner of it as
+of a failed backup. A failed round never ends the schedule.
 
 Exit code 0: written and the retention kept, or the drill verified. 1: the run failed, and the
 log says why.
@@ -118,8 +131,11 @@ HEADS = (
 REVISION = "SELECT coalesce(max(version_num), '') FROM alembic_version"
 
 
-STEPS = frozenset({"configuration", "database", "encryption", "objects", "store", "retention"})
-"""The steps a run can fail at: the token a failed outcome records."""
+STEPS = frozenset(
+    {"configuration", "database", "encryption", "objects", "store", "retention", "drill"}
+)
+"""The steps a run can fail at: the token a failed outcome records. `drill` is the scheduled
+drill's, recorded by `schedule` when the drill after a backup did not verify."""
 RECORD_SECONDS = "10"
 """How long the recording of an outcome waits for the database to answer."""
 
@@ -811,6 +827,24 @@ def verify_ledger(rows: Iterable[Mapping[str, object]], wanted: Iterable[int] = 
     return found
 
 
+def verify_export(path: Path) -> Chains:
+    """Walk an export of one tenant's ledger — one entry's JSON document per line, in the order
+    the export wrote them — by the published rule (UC-6.1, ADR-0253). The order is the file's: a
+    line moved is found as a sequence number that does not rise."""
+    rows: list[Mapping[str, object]] = []
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as error:
+            raise BackupError(f"{path}: line {number} is no JSON document: {error}") from error
+        if not isinstance(row, dict) or "seq" not in row or "hash" not in row:
+            raise BackupError(f"{path}: line {number} is no ledger entry")
+        rows.append(row)
+    return verify_ledger(rows)
+
+
 def held_to(chains: Chains, before: object, exact: object) -> list[str]:
     """Where a tenant's restored chain fails the digest taken before: the manifest's head must
     be in it with its hash; a head noted at the moment restored to must be its newest entry."""
@@ -1178,7 +1212,62 @@ def database_of(env: Mapping[str, str]) -> tuple[str, Mapping[str, str]] | None:
         return None
 
 
-COMMANDS = ("backup", "list", "archive-wal", "fetch-wal", "drill")
+COMMANDS = ("backup", "list", "archive-wal", "fetch-wal", "drill", "schedule", "verify-export")
+DEFAULT_EVERY_HOURS = 24
+DEFAULT_DRILL_DAYS = 7
+
+
+# --- the schedule on one machine (ADR-0222) ------------------------------------------------
+
+
+def every(env: Mapping[str, str], variable: str, default: float) -> float:
+    """A period from the environment: a number of hours or days, at least 0."""
+    given = env.get(variable, "").strip()
+    try:
+        value = float(given) if given else default
+    except ValueError:
+        raise BackupError(f"{variable} must be a number, not {given!r}") from None
+    if value < 0:
+        raise BackupError(f"{variable} must not be negative")
+    return value
+
+
+def schedule(
+    environment: Mapping[str, str],
+    *,
+    clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+    sleep: Callable[[float], None] = time.sleep,
+    rounds: int | None = None,
+) -> int:
+    """Back up every `TAKTUS_BACKUP_EVERY_HOURS` (24 by default) and, after the backup of every
+    `TAKTUS_DRILL_EVERY_DAYS` (7; 0: never), drill the newest backup: what the chart's two
+    CronJobs do, for a machine without a scheduler of its own (ADR-0222). A backup records its
+    own outcome. A drill that does not verify is recorded as a failed run at the step `drill`,
+    so that the instance tells the owner as it tells of a failed backup (ADR-0106). A round
+    that fails never ends the schedule; the next round runs at its time. `rounds` bounds the
+    loop, for a test."""
+    hours = every(environment, "TAKTUS_BACKUP_EVERY_HOURS", DEFAULT_EVERY_HOURS)
+    days = every(environment, "TAKTUS_DRILL_EVERY_DAYS", DEFAULT_DRILL_DAYS)
+    if hours == 0:
+        raise BackupError("TAKTUS_BACKUP_EVERY_HOURS must be more than 0")
+    last_drill: datetime | None = None
+    done = 0
+    while rounds is None or done < rounds:
+        started = clock()
+        main(["backup"], environment)
+        if days and (last_drill is None or clock() - last_drill >= timedelta(days=days)):
+            at = max(clock(), started + timedelta(seconds=1))
+            last_drill = at
+            if main(["drill"], environment) != 0:
+                database = database_of(environment)
+                if database is not None:
+                    record_outcome(*database, name=name_at(at), at=at, step="drill")
+        done += 1
+        if rounds is not None and done >= rounds:
+            break
+        left = (started + timedelta(hours=hours) - clock()).total_seconds()
+        sleep(max(left, 0.0))
+    return 0
 
 
 def moment(value: str) -> datetime | str:
@@ -1244,6 +1333,20 @@ def main(argv: Sequence[str] | None = None, env: Mapping[str, str] | None = None
             return 0
         if command == "drill":
             return run_drill(environment, args[1:], now)
+        if command == "verify-export":
+            if len(args) != 2:
+                raise BackupError("verify-export takes the file of the ledger's export")
+            walked = verify_export(Path(args[1]))
+            for finding in walked.findings:
+                print(finding)
+            head = "none" if walked.head is None else f"{walked.head[0]} {walked.head[1]}"
+            print(
+                f"{walked.entries} entries, newest {head}: "
+                + ("intact" if not walked.findings else f"{len(walked.findings)} findings")
+            )
+            return 0 if not walked.findings else 1
+        if command == "schedule":
+            return schedule(environment)
         s = settings(environment)
         if command == "list":
             for name in sorted(listing(s)):

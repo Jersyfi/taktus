@@ -1,0 +1,30 @@
+{
+  "credentials": {
+    "actions": "PAYMENTS_TOKEN"
+  },
+  "read": {
+    "operation": "payments.subscriptions.list",
+    "input": {
+      "status": "active",
+      "limit": 10
+    }
+  },
+  "writes": [],
+  "invalid": {
+    "operation": "payments.subscriptions.read",
+    "input": {
+      "id": "I-UNKNOWN"
+    },
+    "expected_cause": "invalid"
+  },
+  "scoped": {
+    "operation": "payments.customers.subscriptions",
+    "subject": "PAYERFAKE1",
+    "own": {
+      "customer": "PAYERFAKE1"
+    },
+    "other": {
+      "customer": "PAYERFAKE2"
+    }
+  }
+}

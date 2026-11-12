@@ -202,6 +202,9 @@ class ProcessEvidence(Value):
     incidents: int = Field(default=0, ge=0)
     last_finished: datetime | None = None
     """When a run of it last finished within the window."""
+    untried: bool = False
+    """It runs, or would run once the stage opens, at level 3 or 4, and no person has yet run
+    its active version by hand from its takeover instructions (UC-6.3 §2, ADR-0180 §3)."""
 
 
 class StageView(Value):

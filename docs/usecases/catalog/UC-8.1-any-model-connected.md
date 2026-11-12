@@ -4,10 +4,10 @@ title: Any model connected
 component: catalog
 epic: E8
 serves: [P3, P13]
-state: building
+state: built
 version: 0.4.0
-tests: [tests/conformance/test_model_v1.py::test_an_honest_endpoint_passes_every_check, tests/conformance/test_model_v1.py::test_an_invalid_declaration_fails_m01_and_calls_nothing, tests/components/run/test_llm_steps.py::test_a_purpose_without_a_model_fails_the_step_and_names_the_setting]
-adrs: {ADR-0003: d0268914fed9, ADR-0005: 0ea928e2016b, ADR-0010: e381de241d4a, ADR-0021: dc801ddd1c47}
+tests: [tests/conformance/test_model_v1.py::test_an_honest_endpoint_passes_every_check, tests/conformance/test_model_v1.py::test_an_invalid_declaration_fails_m01_and_calls_nothing, tests/components/run/test_llm_steps.py::test_a_purpose_without_a_model_fails_the_step_and_names_the_setting, tests/composition/test_own_hardware.py::test_the_same_process_runs_against_an_outside_model_by_configuration_alone, tests/composition/test_own_hardware.py::test_a_local_server_that_serves_one_model_is_asked_for_it_unnamed, tests/adapters/models/test_local_and_mistral.py::test_the_model_suite_passes_against_the_stand_in_of_mistrals_shape, tests/adapters/models/test_vertex.py::test_a_prompt_goes_out_as_contents_and_comes_back_with_its_usage, tests/adapters/models/test_vertex.py::test_configured_by_its_dialect_it_is_an_eu_member_a_residency_rule_admits]
+adrs: {ADR-0003: d0268914fed9, ADR-0005: 0ea928e2016b, ADR-0010: e381de241d4a, ADR-0021: dc801ddd1c47, ADR-0248: d75a8da26daa}
 supersedes: null
 ---
 
@@ -54,6 +54,12 @@ interface is equally valid.
 ## 5. What is proven so far
 
 The contract's checks pass against an honest endpoint and fail on an invalid
-declaration, and a purpose without a model fails its step, by the named tests. One adapter exists;
-the same process against a local and a remote model, and a trained model reached through the
-contract, are not shown.
+declaration, and a purpose without a model fails its step, by the named tests. The same process
+runs against a model on the organisation's own hardware and against an outside one by
+configuration alone, and each answer's provenance names the model that gave it (ADR-0248). A
+local server that serves one model is asked for it without a name. Two dialects are spoken:
+chat completions, which a local server and Mistral's API answer, and Vertex AI's
+`generateContent` on a regional endpoint, each proven against a stand-in of its published
+interface (DEC-0226); the model suite passes against the stand-in of Mistral's shape and does
+not run against the second dialect. A model the organisation trained itself and serves from its
+own server is reached as any local server is. No provider but the project's own is called live.

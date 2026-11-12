@@ -5,6 +5,14 @@
 #   postgres   the one mandatory dependency; its data in a named volume; not published
 #   taktus     every role in one process (TAKTUS_ROLES=all); migrations applied on start;
 #              health and readiness, intake and the read API on 127.0.0.1:8080
+#   backup     the database and the stored files backed up every day into TAKTUS_BACKUP_DIRECTORY
+#              (the volume taktus-backups unless it names a directory),
+#              and the newest backup drilled every week (deploy/backup/, ADR-0222); it holds no
+#              code of Taktus
+#
+# The images are built from this checkout, unless TAKTUS_IMAGE and TAKTUS_BACKUP_IMAGE name
+# published ones (a release's, from the registry `.github/workflows/images.yml` pushes to):
+# `make up` then pulls them and builds nothing.
 #
 # No worker is part of this file, and no worker code is part of the image (DEC-0011). A worker
 # executes foreign code; it is a separate deployable with its own image behind the worker
@@ -43,7 +51,7 @@ services:
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile
-    image: taktus:local
+    image: ${TAKTUS_IMAGE:-taktus:local}
     # The operator's own settings, TAKTUS_NAME=value per line, never a secret value; read when
     # the file exists (ignored by git). A variable named under `environment` below wins over it.
     env_file:
@@ -62,6 +70,14 @@ services:
       TAKTUS_STATE_DIR: /var/lib/taktus
       TAKTUS_SHUTDOWN_CEILING_SECONDS: ${TAKTUS_SHUTDOWN_CEILING_SECONDS:-300}
       TAKTUS_LOG_LEVEL: ${TAKTUS_LOG_LEVEL:-info}
+      # Local first (ADR-0248, UC-8.3): with no model named, every purpose is bound to the model
+      # server on this machine — any server of the chat-completions dialect, at the address
+      # below — and a model named in its place declares its TAKTUS_MODEL_LOCATION.
+      TAKTUS_MODEL_LOCAL_FIRST: ${TAKTUS_MODEL_LOCAL_FIRST:-true}
+      TAKTUS_MODEL_LOCAL_ENDPOINT: ${TAKTUS_MODEL_LOCAL_ENDPOINT:-http://host.docker.internal:11434/v1}
+    extra_hosts:
+      # The host as the container reaches it, on Linux as on the desktop engines.
+      - "host.docker.internal:host-gateway"
     secrets:
       - database_url
     volumes:
@@ -81,6 +97,39 @@ services:
     stop_grace_period: ${TAKTUS_SHUTDOWN_CEILING_SECONDS:-300}s
     restart: unless-stopped
 
+  backup:
+    build:
+      context: ../..
+      dockerfile: deploy/backup/Dockerfile
+    image: ${TAKTUS_BACKUP_IMAGE:-taktus-backup:local}
+    command: ["schedule"]
+    environment:
+      TAKTUS_DATABASE_URL_FILE: /run/secrets/database_url
+      # A directory, not an object store: put it on a disk that is not this machine's own (a
+      # mounted network share, a second disk), or the backup goes down with the machine.
+      TAKTUS_BACKUP_STORE_DIRECTORY: /backups
+      TAKTUS_BACKUP_OBJECTS_DIRECTORY: /var/lib/taktus/objects
+      TAKTUS_BACKUP_RETENTION_DAYS: ${TAKTUS_BACKUP_RETENTION_DAYS:-30}
+      TAKTUS_BACKUP_RECIPIENT: ${TAKTUS_BACKUP_RECIPIENT:-}
+      TAKTUS_BACKUP_EVERY_HOURS: ${TAKTUS_BACKUP_EVERY_HOURS:-24}
+      TAKTUS_DRILL_EVERY_DAYS: ${TAKTUS_DRILL_EVERY_DAYS:-7}
+      TAKTUS_BACKUP_WORK_DIR: /tmp
+      # Each line of a round reaches `docker compose logs` when it is printed.
+      PYTHONUNBUFFERED: "1"
+    secrets:
+      - database_url
+    volumes:
+      # A named volume by default. An absolute path instead puts the backups there; its owner
+      # must be the user 70 the program runs as (deploy/docker/README.md, Backups).
+      - ${TAKTUS_BACKUP_DIRECTORY:-taktus-backups}:/backups
+      - taktus-state:/var/lib/taktus:ro
+    # After the instance is ready: its migrations made the table the outcome is recorded in,
+    # and its state directory holds the store of objects the backup archives.
+    depends_on:
+      taktus:
+        condition: service_healthy
+    restart: unless-stopped
+
 secrets:
   postgres_password:
     file: ./secrets/postgres_password
@@ -90,3 +139,4 @@ secrets:
 volumes:
   taktus-postgres:
   taktus-state:
+  taktus-backups:

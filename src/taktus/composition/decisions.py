@@ -21,10 +21,11 @@ built over it.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Protocol
 
+from taktus.components.catalog.domain.model.maturity import AdapterMaturity
 from taktus.components.decision.application.query import DecisionQueries
 from taktus.components.decision.application.service import (
     AnswerRequestHandler,
@@ -45,6 +46,7 @@ from taktus.components.governance.application.service import (
     AnchorsInForce,
     BreachSeen,
     ConfigureAnchorsHandler,
+    ConnectionGrants,
     Corrections,
     DecisionMade,
     Repetitions,
@@ -54,9 +56,16 @@ from taktus.components.governance.application.service import (
     TenantResidency,
     TenantSources,
 )
+from taktus.components.governance.application.service.domains import TenantDomains
+from taktus.components.governance.application.service.tenant_budget import (
+    TenantBudgets,
+    TenantMonthBudget,
+)
+from taktus.components.governance.application.service.unit_limits import UnitLimits
 from taktus.components.governance.domain.model import (
     AnchorConfiguration,
     CaseAnswer,
+    ConnectionGrant,
     CorrectionLimits,
     Incident,
     MessageRules,
@@ -65,8 +74,11 @@ from taktus.components.governance.domain.model import (
     SourceDeclaration,
     WatchConfiguration,
 )
+from taktus.components.governance.domain.model.domains import Domain
+from taktus.components.governance.domain.model.unit_limits import LimitWatch, UnitLimit
 from taktus.components.identity.application.service import IdentityDirectory
-from taktus.components.process.domain.model import ProcessVersion
+from taktus.components.process.domain.model import Process, ProcessVersion
+from taktus.components.process.domain.model.takeover import TakeoverTrial
 from taktus.components.process.ports import LoweredLevels as VersionLowered
 from taktus.components.run.application.service.deadlines import DeadlineKeeper
 from taktus.components.run.domain.model import (
@@ -91,10 +103,13 @@ from taktus.components.run.ports import (
     Verdict,
 )
 from taktus.components.run.ports import MessageRules as RunMessageRules
+from taktus.components.run.ports.tenant_budget import MonthBudget
+from taktus.composition.domains import DomainTestsOfTheInstance
+from taktus.composition.unit_limits import UnitLimitsOfTheRun, placed_in
 from taktus.ports.clock import Clock
 from taktus.ports.ledger import Ledger
 from taktus.ports.persistence import Repository, Stored, Tenant, UnitOfWork
-from taktus.shared.v1 import DecisionStatus
+from taktus.shared.v1 import ClassAutonomy, DecisionStatus
 
 
 class RepositoryOf(Protocol):
@@ -192,14 +207,29 @@ class RequestsOfTheRun:
 
 class LevelsOfTheRun:
     """The run's port `Levels` and registration's `LoweredVersions`, answered from the
-    governance component's `Corrections` (ADR-0110)."""
+    governance component's `Corrections` (ADR-0110), and the classes of request a version's
+    statement names, read from the process component (ADR-0215)."""
 
-    def __init__(self, corrections: Corrections) -> None:
+    def __init__(
+        self,
+        corrections: Corrections,
+        versions: Repository[ProcessVersion] | None = None,
+        work: UnitOfWork | None = None,
+    ) -> None:
         self._corrections = corrections
+        self._versions = versions
+        self._work = work
 
     async def lowered(self, tenant: Tenant, process_version: str) -> LoweredLevels:
         found = await self._corrections.lowered(tenant, process_version)
-        return LoweredLevels(level=found.level, actions=found.actions)
+        return LoweredLevels(level=found.level, actions=found.actions, classes=found.classes)
+
+    async def classes(self, tenant: Tenant, process_version: str) -> ClassAutonomy | None:
+        if self._versions is None or self._work is None:
+            return None
+        async with self._work.transaction(tenant):
+            version = await self._versions.get(tenant, process_version)
+        return None if version is None else version.autonomy.classes
 
     async def decided(self, tenant: Tenant, decision: ProposalDecided) -> None:
         await self._corrections.decided(
@@ -210,6 +240,8 @@ class LevelsOfTheRun:
                 step_id=decision.step_id,
                 action=decision.action,
                 level=decision.level,
+                case_class=decision.case_class,
+                class_limits=decision.class_limits,
             ),
         )
 
@@ -234,7 +266,7 @@ class LoweredOfTheVersion:
 
     async def lowered(self, tenant: Tenant, process_version: str) -> VersionLowered:
         found = await self._corrections.lowered(tenant, process_version)
-        return VersionLowered(level=found.level, actions=found.actions)
+        return VersionLowered(level=found.level, actions=found.actions, classes=found.classes)
 
 
 class CapsOfTheVersion:
@@ -385,6 +417,9 @@ class DecisionWiring:
     sources: TenantSources
     """A tenant's declaration of its sources, and the run's and registration's port over it
     (ADR-0130)."""
+    connections: ConnectionGrants
+    """A tenant's grants of writing on a connection that reads until granted, and the run's
+    port `WriteGrants` over them (ADR-0262)."""
     open_work: CapsOfTheVersion
     """The run's port for a version's caps on open work (ADR-0132)."""
     repetition: RepetitionOfTheRun
@@ -398,6 +433,14 @@ class DecisionWiring:
     org_units: TenantOrgUnits
     """A tenant's quotas per organisational unit (ADR-0166); the run's port over them is
     joined with the store of what was committed where the persistence is known."""
+    domains: TenantDomains
+    """A tenant's domains and their owners, and registration's port over them (ADR-0259)."""
+    budget: TenantBudgets
+    """A tenant's monthly budget across all its runs (ADR-0260)."""
+    budget_of_the_run: BudgetOfTheRun
+    """The run's port over it."""
+    unit_limits: UnitLimitsOfTheRun
+    """A tenant's limits per unit of its structure, and the run's port over them (ADR-0282)."""
 
 
 def decision_wiring(
@@ -413,9 +456,11 @@ def decision_wiring(
     deciders = DirectoryDeciders(directory)
     rules = PrecedentRules(of(DecisionRule), register, requests, work, ledger, clock)
     corrections = Corrections(of(Incident), of(CorrectionLimits), ledger, work, clock)
+    domains: Repository[Domain] = of(Domain)
+    budgets = TenantBudgets(of(TenantMonthBudget), of(Incident), ledger, work, clock)
     return DecisionWiring(
-        anchors=AnchorsInForce(configurations, work),
-        configure=ConfigureAnchorsHandler(configurations, work, ledger, clock),
+        anchors=AnchorsInForce(configurations, work, domains),
+        configure=ConfigureAnchorsHandler(configurations, work, ledger, clock, domains),
         requests=RequestsOfTheRun(
             RaiseRequestHandler(requests, work, ledger, clock, rules), requests, work
         ),
@@ -424,10 +469,11 @@ def decision_wiring(
         queries=DecisionQueries(requests, register, work, clock, deciders),
         rules=rules,
         corrections=corrections,
-        levels=LevelsOfTheRun(corrections),
+        levels=LevelsOfTheRun(corrections, of(ProcessVersion), work),
         lowered=LoweredOfTheVersion(corrections),
         residency=TenantResidency(of(ResidencyRule), ledger, work, clock),
         sources=TenantSources(of(SourceDeclaration), ledger, work, clock),
+        connections=ConnectionGrants(of(ConnectionGrant), ledger, work, clock, directory),
         open_work=CapsOfTheVersion(of(ProcessVersion), work),
         repetition=RepetitionOfTheRun(
             Repetitions(of(Incident), of(WatchConfiguration), ledger, work, clock)
@@ -446,7 +492,55 @@ def decision_wiring(
         org_units=TenantOrgUnits(
             of(OrgUnitQuota), ledger, work, clock, lambda t, n: _is_identity(directory, t, n)
         ),
+        domains=TenantDomains(
+            domains,
+            configurations,
+            directory,
+            ledger,
+            work,
+            clock,
+            DomainTestsOfTheInstance(
+                of(Process), of(TakeoverTrial), of(AdapterMaturity), ledger, work
+            ),
+            incidents=of(Incident),
+        ),
+        budget=budgets,
+        budget_of_the_run=BudgetOfTheRun(budgets),
+        unit_limits=UnitLimitsOfTheRun(
+            UnitLimits(
+                of(UnitLimit),
+                of(LimitWatch),
+                of(Incident),
+                ledger,
+                work,
+                clock,
+                lambda t, n: _is_identity(directory, t, n),
+            ),
+            placed_in(directory),
+            clock,
+        ),
     )
+
+
+class BudgetOfTheRun:
+    """The run's port `TenantBudget`, answered from the governance component (ADR-0260)."""
+
+    def __init__(self, budgets: TenantBudgets) -> None:
+        self._budgets = budgets
+
+    async def month_budget(self, tenant: Tenant) -> MonthBudget | None:
+        found = await self._budgets.month_budget(tenant)
+        return None if found is None else MonthBudget.model_validate(found.document())
+
+    async def reached(
+        self,
+        tenant: Tenant,
+        month: str,
+        spent: Mapping[str, float],
+        budget: MonthBudget,
+        process_version: str,
+    ) -> None:
+        await self._budgets.reached(tenant, month, spent, budget, process_version)
 
 
 async def _is_identity(directory: IdentityDirectory, tenant: Tenant, name: str) -> bool:

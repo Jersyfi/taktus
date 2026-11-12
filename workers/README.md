@@ -16,6 +16,7 @@ by endpoint, as a process it starts, or as a container it starts from that image
 
 | Worker | What it is | Status |
 |---|---|---|
+| [`browser/`](browser/README.md) | web pages checked in headless Chromium: a flow typed and clicked, and what the page shows read into a report, under the capability `browser.check`; the reference worker's contract with other steps (ADR-0218) | passes the suite and two faults of the frame against a served page, where Chromium is installed; the removal test is pending, so not *verified* |
 | [`script/`](script/README.md) | a shell wrapper with no AI at all — proof case 1 of the contract, and the worker the conformance suite is proven against; it offers steering, handover and the outbound binding (ADR-0139), which the other workers do not offer yet | passes the suite in both profiles; the removal test is pending, so not *verified* |
 | [`claudecode/`](claudecode/README.md) | the first coding worker: a coding agent behind the contract, with boundaries per tool call, consumption per step, and two authentication modes | passes the suite, faults included, in both modes against its fake agent; the removal test is pending, so not *verified* |
 | [`mlbench/`](mlbench/README.md) | the ML bench: trains, evaluates and serves classical models, reproducibly — proof case 2 | passes the suite, faults included; embeddings and an accelerator are #210; the removal test is pending, so not *verified* |

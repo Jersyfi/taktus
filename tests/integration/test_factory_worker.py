@@ -49,9 +49,9 @@ from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersion,
 )
-from taktus.components.run.application.service import RunEngine, StartRun
+from taktus.components.run.application.service import EngineOptions, RunEngine, StartRun
 from taktus.components.run.domain.model import Run, RunState, StepState
-from taktus.ports.model import Permitted
+from taktus.ports.model import Location, Permitted
 from taktus.ports.worker import Limits
 from taktus.shared.v1 import (
     Commissioned,
@@ -172,11 +172,20 @@ class Rule:
     def __init__(self, own: Permitted) -> None:
         self.own = own
 
-    async def permitted(self, tenant: str, data_class: str | None) -> Permitted:
+    async def permitted(
+        self, tenant: str, data_class: str | None, process: str | None = None
+    ) -> Permitted:
         return self.own
 
 
-async def run_under(pool: StaticWorkerPool, rule: Rule, hosts: list[str]) -> Run:
+async def run_under(
+    pool: StaticWorkerPool,
+    rule: Rule,
+    hosts: list[str],
+    located: dict[str, Location] | None = None,
+) -> Run:
+    """`located`: where each host is declared to be (ADR-0281 §3); a host it does not name is
+    `elsewhere`."""
     clock = FakeClock(AT)
     persistence = MemoryPersistence()
     engine = RunEngine(
@@ -191,6 +200,7 @@ async def run_under(pool: StaticWorkerPool, rule: Rule, hosts: list[str]) -> Run
         telemetry=NoTelemetry(),
         maturities=FakeMaturities(),
         residency=rule,
+        options=EngineOptions(host_locations=located or {}),
     )
     step = Step(
         id="implement",
@@ -227,11 +237,13 @@ async def test_an_eu_tenant_is_never_handed_to_a_factory_that_stores_elsewhere(
     factories: dict[str, Running],
 ) -> None:
     abroad, inside = factories[ABROAD], factories[INSIDE]
-    hosts = [abroad.factory.host, inside.factory.host]
+    # The frame reaches only the factory inside the rule, declared where it is (ADR-0281 §3).
+    hosts = [inside.factory.host]
+    located: dict[str, Location] = {inside.factory.host: "eu"}
     pool = StaticWorkerPool(
         [(ABROAD, HttpWorker(abroad.endpoint)), (INSIDE, HttpWorker(inside.endpoint))]
     )
-    run = await run_under(pool, Rule("eu"), hosts)
+    run = await run_under(pool, Rule("eu"), hosts, located)
     assert run.state is RunState.FINISHED, run.reason
     assert abroad.factory.submissions == [], "nothing reached the factory outside the rule"
     assert len(inside.factory.submissions) == 1

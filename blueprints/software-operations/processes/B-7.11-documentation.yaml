@@ -1,0 +1,404 @@
+# B-7.11 Documentation kept current — UC-03 §4.7: the documentation and the instructions for
+# coding agents checked against the code, and what no longer holds corrected in a pull request a
+# person merges. It is P-03's coding worker given another goal than an issue (UC-01 P-03, P-06).
+# A change to a protected path is written only after a person decided it (ADR-0194). The merge
+# stays with a person at every level (UC-03 §6).
+#
+# It runs once a week; a tenant's version adds a trigger on a merge to the main branch.
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-7.11-documentation.yaml \
+#         --input repository_url=<clone URL> --input repository_host=<host> \
+#         --input coding_credential=CODING_TOKEN
+#
+# Switching it off (`taktusctl deactivate --process b-7-11`) leaves open pull requests as they are.
+id: b-7-11
+version: "2"
+name: B-7.11 Documentation kept current
+autonomy:
+  level: 2
+  reason: >
+    the change is a coding worker's, and it leaves the system as a branch and a pull request;
+    at level 2 a person confirms every step that writes, as every process of UC-03 starts at
+    level 1 or 2 when its stage opens; the merge stays with a person at every level
+  toward_next: >
+    four weeks of pull requests of this process a person merged without changing them, and
+    stage 4 of the tenant's plan open; then Taktus proposes level 3 (UC-7.1, UC-9.6). The merge
+    stays with a person at every level (UC-03 §6)
+author: the repository
+reason: the documentation and the agents' instructions kept true to the code, as a pull request a person merges (UC-03 B-7.11)
+
+triggers:
+  - schedule: "0 4 * * 3"
+    inputs:
+      repository_url: https://git.example/acme/product.git
+      repository_host: git.example
+      coding_credential: CODING_TOKEN
+
+inputs:
+  repository_url:
+    description: where the coding worker clones the repository from
+    example: https://git.example/acme/product.git
+  repository_host:
+    description: the clone's host, which the worker may reach
+    example: git.example
+  coding_credential:
+    description: the name of the credential the coding worker's authentication needs
+    example: CODING_TOKEN
+
+limits:
+  quota: { units: 300 }
+  currency: { usd: 5.0 }
+
+steps:
+  - id: implement
+    method: worker
+    reason: >
+      changing code in a repository so that its own checks still pass is multi-step work with
+      tools in an isolated clone, which is what a worker offers; the worker proposes, the
+      pipeline decides, and a person merges
+    rejected:
+      - method: llm
+        why: a single completion cannot read a repository, run its checks and revise
+      - method: rule
+        why: the core executes no code itself; that is the adapter obligation
+    exactness: tolerant
+    fallback:
+      when: the coding worker is unavailable, or the assignment fails or is stopped
+      to: human
+      role: owner
+    requires: [code.read, code.edit, code.test, shell.sandboxed]
+    work:
+      task:
+        goal: >
+          check the repository's documentation — its README files, its guides and the instructions it gives coding agents — against the code as it is, and correct every statement that no longer holds: a command, a path, an option, a name, a behaviour
+        acceptance:
+          - >
+            every statement changed is shown wrong by the code: the summary names the statement, the file and what the code does instead
+          - >
+            only documentation and agent instructions are changed; no code is changed to fit the documentation
+          - >
+            where nothing is wrong, nothing is changed and the summary says so
+          - the repository's own checks pass in the workspace; one that cannot run there is named in the summary with why
+          - no test, no pipeline definition, no security rule and no feature flag is changed to make a check pass; where only such a change would, the summary names it and says why
+          - no secret value is written into any file
+          - >
+            the summary this assignment ends with is the description of the pull request that
+            will carry the change: what it changes, why, and what a reviewer must check
+      max_steps: 60
+      workspace:
+        kind: git
+        location: { $input: repository_url }
+        ref: main
+      allowed_hosts:
+        - { $input: repository_host }
+      credentials:
+        - { name: { $input: coding_credential }, injected_as: env }
+
+  - id: protected
+    method: rule
+    reason: >
+      whether the change touches a protected path is a fixed pattern over the changeset's paths
+      (UC-03 §6, ADR-0194)
+    rejected:
+      - method: llm
+        why: a pattern over paths needs no model, and the rule that keeps cheating to green with a person must not vary
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the protected paths the change touches }
+    depends_on: [implement]
+    work:
+      rule: filter
+      items: { $from: implement, $artifact: changeset, $select: files }
+      any:
+        - field: path
+          matches: "(^|/)(tests?|spec|specs|__tests__|e2e)/|(^|/)[^/]*(_test|\\.test|\\.spec)\\.[a-z]+$|^\\.github/|^\\.gitlab-ci|(^|/)CODEOWNERS$|(?i:security|feature.?flags?|acceptance)"
+
+  - id: branch-name
+    method: rule
+    reason: the branch is named by the kind of task and the run, deterministically
+    rejected: []
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the branch name }
+    depends_on: [implement]
+    work:
+      rule: template
+      text: taktus/docs-${run}
+      values:
+        run: { $run: id }
+
+  - id: create-branch
+    method: rule
+    reason: >
+      the worker's change goes onto a new branch through the connector, on the commit the worker
+      cloned; the run writes outward, never the worker; at level 2 a person confirms it
+    rejected:
+      - method: worker
+        why: a worker that pushes has a credential to the repository and writes outward past the ledger
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.branches.create answered", columns: [base, commit_url, name, sha, url] }
+    fallback:
+      when: the connector serving repository.branches is unavailable, or the branch exists
+      to: human
+      role: owner
+    depends_on: [implement, branch-name, protected]
+    work:
+      checking: { select: output }
+      when:
+        - { value: { $from: protected, $select: count }, matches: "^0$" }
+      rule: connector
+      operation: repository.branches.create
+      input:
+        name: { $from: branch-name }
+        base: { $from: implement, $artifact: changeset, $select: source }
+        message: "docs: documentation checked against the code"
+        files: { $from: implement, $artifact: changeset, $select: files }
+        deleted: { $from: implement, $artifact: changeset, $select: deleted }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: create-branch-protected
+    method: rule
+    reason: >
+      a change that touches a protected path is written only after a person decided it: the
+      step asks at every level, and a decline writes nothing (UC-03 §6, ADR-0194)
+    rejected:
+      - method: worker
+        why: a worker that pushes has a credential to the repository and writes outward past the ledger
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.branches.create answered", columns: [base, commit_url, name, sha, url] }
+    fallback:
+      when: the connector serving repository.branches is unavailable, or the branch exists
+      to: human
+      role: owner
+    depends_on: [implement, branch-name, protected]
+    work:
+      checking: { select: output }
+      when:
+        - { value: { $from: protected, $select: count }, matches: "^[1-9]" }
+      ask:
+        question: "Write a change that touches a protected path onto ${branch}?"
+        situation: >
+          The coding worker's change changes ${count} protected path(s), the first ${path}: a
+          test, the pipeline, a security rule or a feature flag.
+        proposal: the change is written onto a new branch as the worker proposed it
+        values:
+          branch: { $from: branch-name }
+          count: { $from: protected, $select: count }
+          path: { $from: protected, $select: first.path }
+      rule: connector
+      operation: repository.branches.create
+      input:
+        name: { $from: branch-name }
+        base: { $from: implement, $artifact: changeset, $select: source }
+        message: "docs: documentation checked against the code"
+        files: { $from: implement, $artifact: changeset, $select: files }
+        deleted: { $from: implement, $artifact: changeset, $select: deleted }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: wait-for-pipeline
+    method: wait
+    reason: the pipeline runs on its own time; the run waits for its verdict, polling the state
+    rejected: []
+    fallback:
+      when: the connector serving repository.pipelines is unavailable
+      to: human
+      role: owner
+    depends_on: [create-branch, create-branch-protected]
+    work:
+      until:
+        operation: repository.pipelines.status
+        input:
+          ref: { $from: branch-name }
+        credentials:
+          - { name: REPOSITORY_TOKEN, injected_as: env }
+        select: state
+        expect: [success, failure]
+        poll_seconds: 60
+        timeout_seconds: 2400
+
+  - id: read-pipeline
+    method: rule
+    reason: >
+      whether the change is acceptable is the pipeline's verdict, never the worker's opinion of
+      its own work; the reading expects success and fails its step otherwise
+    rejected:
+      - method: llm
+        why: a judgement of test output is not a verdict; the pipeline's conclusion is
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.pipelines.status answered", columns: [state] }
+    fallback:
+      when: the connector serving repository.pipelines is unavailable, or the pipeline is red
+      to: human
+      role: owner
+    depends_on: [wait-for-pipeline]
+    work:
+      checking: { select: output }
+      rule: connector
+      operation: repository.pipelines.status
+      input:
+        ref: { $from: branch-name }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+      expect:
+        - { select: state, equals: success }
+
+  - id: open-pr
+    method: rule
+    reason: >
+      opening a pull request is an API call; a repeat after a restart finds the one opened; the
+      merge stays with a person at every level
+    rejected: []
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.pullrequests.open answered", columns: [number] }
+    fallback:
+      when: the connector serving repository.pullrequests is unavailable
+      to: human
+      role: owner
+    depends_on: [read-pipeline]
+    work:
+      checking: { select: output }
+      rule: connector
+      operation: repository.pullrequests.open
+      input:
+        head: { $from: branch-name }
+        base: main
+        title: "docs: documentation checked against the code"
+        body: { $from: implement, $artifact: summary }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: label
+    method: rule
+    reason: the pull request is marked as Taktus's, so that a reader sees who opened it
+    rejected: []
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.labels.set answered", columns: [labels, number] }
+    fallback:
+      when: the connector serving repository.labels is unavailable
+      to: human
+      role: owner
+    depends_on: [open-pr]
+    work:
+      checking: { select: output }
+      rule: connector
+      operation: repository.labels.set
+      input:
+        number: { $from: open-pr, $select: output.number }
+        labels: [taktus]
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+takeover:
+  sequence: >
+    The process runs once a week, on Wednesday at 04:00 UTC; whoever looks after the product's
+    documentation starts it. A person reads the repository's README files, its guides and the
+    instructions it gives coding agents against the code, and corrects every statement that no
+    longer holds — a command, a path, an option, a name, a behaviour. The correction goes onto a
+    new branch; once the pipeline is green a pull request is opened, which a person reviews and
+    merges. No code is changed to fit the documentation.
+  steps:
+    implement:
+      system: a clone of the repository's main branch
+      do: >
+        read the documentation and the agent instructions against the code, and correct every
+        statement the code shows wrong; change no code. Run the repository's own checks, and
+        write a description naming each statement corrected and what the code does instead
+      expertise: the product's code and its documentation
+      credentials:
+        - parameter: CODING_TOKEN
+          where: >
+            the operator's secret store, under the coding worker's parameter described in
+            CREDENTIALS.md; a person works in their own clone instead
+      done: every wrong statement is corrected in the clone, the checks pass, and the description is written
+    protected:
+      system: the changeset, in the clone
+      do: >
+        list the files the change touches. A change to a test, the pipeline's definition, a
+        security rule, a feature flag or the code owners file is written only once the owner
+        decided it
+      expertise: reading a changeset
+      credentials: []
+      done: the protected paths the change touches are written down, or none
+    branch-name:
+      system: a note
+      do: name the branch taktus/docs- followed by a name of the day, so that no other branch has it
+      expertise: none
+      credentials: []
+      done: the branch name is written down
+    create-branch:
+      system: the repository, in its web interface or with git
+      do: >
+        when the change touches no protected path, push it as one commit onto a new branch of
+        that name, made from the commit the change was made on
+      expertise: pushing a branch with git
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository token of the requesting
+            identity described in CREDENTIALS.md; a person may push with their own account
+      done: the branch exists with the change as its one commit
+    create-branch-protected:
+      system: the repository, in its web interface or with git
+      do: >
+        when the change touches a protected path, ask the owner first; push it as above only
+        once the owner agreed, and push nothing when the owner declined
+      expertise: pushing a branch with git
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository token of the requesting
+            identity described in CREDENTIALS.md
+      done: the branch exists, or the owner declined and nothing was pushed
+    wait-for-pipeline:
+      system: the repository's pipeline view
+      do: wait until the pipeline of the branch has ended, success or failure, at most forty minutes
+      expertise: reading the repository's pipeline
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository token of the requesting
+            identity described in CREDENTIALS.md; a person may read it with their own account
+      done: the pipeline of the branch has ended
+    read-pipeline:
+      system: the repository's pipeline view
+      do: >
+        read the pipeline's verdict on the branch. A red pipeline ends the task here: the branch
+        stays for the owner, and no pull request is opened
+      expertise: reading the repository's pipeline
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository token of the requesting
+            identity described in CREDENTIALS.md; a person may read it with their own account
+      done: the pipeline is green, or the task is handed to the owner with the red pipeline
+    open-pr:
+      system: the repository, in its web interface
+      do: >
+        open a pull request from the branch onto main, with the title above and the coding
+        worker's summary as its description. Nobody but a person merges it
+      expertise: opening a pull request
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository token of the requesting
+            identity described in CREDENTIALS.md
+      done: the pull request is open
+    label:
+      system: the pull request, in the repository's web interface
+      do: add the label taktus
+      expertise: labelling a pull request
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository token of the requesting
+            identity described in CREDENTIALS.md
+      done: the pull request carries the label taktus

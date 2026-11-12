@@ -30,19 +30,25 @@ from typing import Any
 import structlog
 
 from taktus.adapters.driving.cli.bundle_command import skills_below
-from taktus.components.catalog.application.service import AgentCatalog, SkillCatalog
+from taktus.components.catalog.application.service import (
+    AgentCatalog,
+    CatalogueShares,
+    SkillCatalog,
+)
 from taktus.components.catalog.domain.model import (
     InvalidSkill,
     Measurement,
     OriginKind,
     Round,
     RoundState,
+    ShareKind,
     SkillError,
     SkillOrigin,
     SkillStage,
     SkillVersion,
 )
 from taktus.components.catalog.domain.service import skills as rules
+from taktus.components.catalog.domain.service.skills import exported
 from taktus.components.governance.application.service import Drifts
 from taktus.components.process.domain.model import Process, ProcessVersion
 from taktus.components.process.domain.model.evaluation import (
@@ -56,7 +62,7 @@ from taktus.components.run.domain.model import Run, RunState
 from taktus.composition.evaluations import INTERVAL_SECONDS, Evaluations, Guide
 from taktus.composition.tenancy import this_round
 from taktus.ports.clock import Clock
-from taktus.ports.identity import ServedTenants
+from taktus.ports.identity import IdentityResolver, ServedTenants
 from taktus.ports.ledger import Ledger
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 
@@ -73,11 +79,32 @@ ROUND_EVERY_SECONDS = 86400
 class CatalogGuidance:
     """The run's `Guidance`, answered from the catalogue."""
 
-    def __init__(self, skills: SkillCatalog, agents: AgentCatalog | None = None) -> None:
+    def __init__(
+        self,
+        skills: SkillCatalog,
+        agents: AgentCatalog | None = None,
+        *,
+        shares: CatalogueShares | None = None,
+        identities: IdentityResolver | None = None,
+    ) -> None:
         self._skills = skills
         self._agents = agents
+        self._shares = shares
+        self._identities = identities
 
-    async def production(self, tenant: Tenant, names: Collection[str]) -> Mapping[str, str]:
+    async def production(
+        self, tenant: Tenant, names: Collection[str], identity: str | None = None
+    ) -> Mapping[str, str]:
+        """A skill shared with no circle the run's identity is inside is not handed to its
+        steps (ADR-0246 §3)."""
+        if self._shares is not None and self._identities is not None and identity is not None:
+            placed = await self._identities.identity(tenant, identity)
+            path = () if placed is None else placed.org_path
+            names = [
+                name
+                for name in names
+                if await self._shares.admits(tenant, ShareKind.SKILL, name, identity, path)
+            ]
         found: dict[str, str] = {}
         for name in names:
             version = await self._skills.production(tenant, name)
@@ -256,6 +283,22 @@ class SkillLifecycle:
             raise SkillError("unknown", f"the process {process_id!r} has no active version")
         by_step = await self.of_version(tenant, version)
         return [{"step": step, "skills": list(skills)} for step, skills in by_step.items()]
+
+    async def files_of_version(
+        self, tenant: Tenant, version: ProcessVersion
+    ) -> dict[str, dict[str, bytes]]:
+        """Per skill the version's steps use, its directory at its version in production, as it
+        was registered; a skill with none in production, or whose text the catalogue did not
+        keep whole, is left out, and the package names it (ADR-0285)."""
+        found: dict[str, dict[str, bytes]] = {}
+        for name in version.skills_used():
+            current = await self._catalog.production(tenant, name)
+            if current is None:
+                continue
+            files, missing = exported(current.file)
+            if not missing:
+                found[name] = files
+        return found
 
     async def of_version(
         self, tenant: Tenant, version: ProcessVersion

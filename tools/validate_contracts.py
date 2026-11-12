@@ -20,7 +20,10 @@ Checks, in order:
 5. every target has at least two valid examples;
 6. if the freeze record `contracts/FREEZE.json` exists (M3.5, the owner's act), every schema and
    OpenAPI document of a version it freezes is named in it, and the bytes of each match the
-   digest it records: a frozen contract changes not at all, compatibly or not (ADR-0171).
+   digest it records: a frozen contract changes not at all, compatibly or not (ADR-0171);
+7. whatever a schema or an OpenAPI document marks `deprecated: true` names the product major
+   that removes it, `x-taktus-removal: N.0.0`, and a deprecated operation the date it was
+   deprecated, `x-taktus-deprecated: YYYY-MM-DD` (ADR-0220 §3).
 
 The target of an examples directory is its name in kebab-case: for the shared kernel the schema
 file (`exactness-class` -> `ExactnessClass.json`), for a contract the definition
@@ -383,6 +386,58 @@ def check_freeze(report: Report, contracts: Path = CONTRACTS) -> None:
             report.fail(f"frozen {name}", "added to a frozen version; the record does not name it")
 
 
+# --- deprecations (ADR-0220) --------------------------------------------------------------------
+
+REMOVAL = re.compile(r"[1-9][0-9]*\.0\.0")
+DEPRECATED_ON = re.compile(r"\d{4}-\d{2}-\d{2}")
+OPERATIONS = frozenset({"get", "put", "post", "delete", "options", "head", "patch", "trace"})
+
+
+def deprecations(document: Any, where: str = "") -> list[tuple[str, str]]:
+    """Every place of a document marked deprecated whose removal or date is missing or not in
+    its form, as (where, what is wrong)."""
+    found: list[tuple[str, str]] = []
+    if isinstance(document, dict):
+        if document.get("deprecated") is True:
+            removal = document.get("x-taktus-removal")
+            if not isinstance(removal, str) or not REMOVAL.fullmatch(removal):
+                found.append((where or "/", "deprecated without `x-taktus-removal: N.0.0`"))
+            operation = where.rsplit("/", 1)[-1] in OPERATIONS and "/paths/" in where
+            since = document.get("x-taktus-deprecated")
+            if operation and (not isinstance(since, str) or not DEPRECATED_ON.fullmatch(since)):
+                found.append((where, "a deprecated operation without `x-taktus-deprecated`"))
+        for key, value in document.items():
+            found.extend(deprecations(value, f"{where}/{key}"))
+    elif isinstance(document, list):
+        for index, value in enumerate(document):
+            found.extend(deprecations(value, f"{where}/{index}"))
+    return found
+
+
+def check_deprecations(report: Report, contracts: Path = CONTRACTS) -> None:
+    """Hold every deprecation under `contracts/` to the form of ADR-0220 §3."""
+    print("deprecations")
+    marked = 0
+    for file in contract_files(contracts):
+        rel = file.relative_to(contracts).as_posix()
+        document = load_yaml(file) if file.suffix == ".yaml" else load_json(file)
+        for where, problem in deprecations(document):
+            report.fail(f"{rel}#{where}", problem)
+        marked += sum(1 for _ in _deprecated(document))
+    report.ok(f"{marked} deprecation(s), each naming its removal")
+
+
+def _deprecated(document: Any) -> Iterator[Any]:
+    if isinstance(document, dict):
+        if document.get("deprecated") is True:
+            yield document
+        for value in document.values():
+            yield from _deprecated(value)
+    elif isinstance(document, list):
+        for value in document:
+            yield from _deprecated(value)
+
+
 # --- main ----------------------------------------------------------------------------------------
 
 
@@ -397,6 +452,7 @@ def main() -> int:
     check_openapi(registry, report)
     check_examples(schemas, registry, report)
     check_freeze(report)
+    check_deprecations(report)
     print()
     if report.failures:
         print(f"{report.passed} passed, {len(report.failures)} failed")

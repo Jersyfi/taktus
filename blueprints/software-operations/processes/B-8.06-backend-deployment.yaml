@@ -21,7 +21,7 @@
 # Switching it off (`taktusctl deactivate --process b-8-06`) changes nothing in the cluster.
 
 id: b-8-06
-version: "1"
+version: "2"
 name: B-8.06 Backend deployment
 autonomy:
   level: 2
@@ -54,7 +54,7 @@ inputs:
     example: "0.02"
 
 limits:
-  quota: { units: 80 }
+  quota: { units: 200 }
 
 steps:
   - id: release
@@ -64,11 +64,14 @@ steps:
       - method: worker
         why: the cluster's own interface rolls the release out; nothing here needs a sandbox
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what deployment.workloads.release answered", columns: [name] }
     fallback:
       when: the connector serving deployment.workloads is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: deployment.workloads.release
       input:
@@ -114,12 +117,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what metrics.series.query answered", columns: [series] }
     fallback:
       when: the connector serving metrics.series is unavailable
       to: human
       role: owner
     depends_on: [watch]
     work:
+      checking: { select: output }
       rule: connector
       operation: metrics.series.query
       input:
@@ -152,12 +158,15 @@ steps:
       - method: worker
         why: the cluster keeps the earlier revision itself; nothing here needs a sandbox
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what deployment.workloads.rollback answered", columns: [name] }
     fallback:
       when: the connector serving deployment.workloads is unavailable
       to: human
       role: owner
     depends_on: [rise]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: rise, $select: count }, matches: "^[1-9]" }
       ask:

@@ -1,0 +1,240 @@
+# B-7.08 Daily acceptance — UC-03 §4.7: the product's end-to-end flows run in a browser every
+# day, and a flow that no longer holds filed as an issue, once (UC-01 P-07). The flows are
+# checked by the browser worker (`browser.check`, ADR-0218): each a URL, the steps a person takes
+# there and the texts the page then shows, with the digest of its visible text and of a
+# screenshot in its report.
+#
+# Compared with the day before: a flow that failed and is still failing carries the mark of its
+# open issue and is not filed again; one that holds again leaves its issue for a person to
+# close. A tenant's version adds a trigger on a merge to the main branch and its own flows.
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-7.08-daily-acceptance.yaml \
+#         --input app_host=<host> --input 'flows=[{"name": "...", "url": "...", "expect": ["..."]}]'
+#
+# Switching it off (`taktusctl deactivate --process b-7-08`) changes nothing else.
+
+id: b-7-08
+version: "2"
+name: B-7.08 Daily acceptance
+autonomy:
+  level: 2
+  reason: >
+    the flows are only read in a browser; filing an issue leaves the system, so at level 2 a
+    person confirms it, as every process of UC-03 starts at level 1 or 2 when its stage opens
+  toward_next: >
+    four weeks of issues a person confirmed without changing them, and stage 4 of the tenant's
+    plan open; then Taktus proposes level 3, the target UC-03 names (UC-7.1, UC-9.6)
+author: the repository
+reason: the product's end-to-end flows checked every day, and a broken one filed once (UC-03 B-7.08)
+
+triggers:
+  - schedule: "30 5 * * *"
+    inputs:
+      app_host: app.example
+      flows: [{ name: sign-in, url: "https://app.example/login", expect: [Sign in] }]
+
+inputs:
+  app_host:
+    description: the host of the web application whose flows are checked
+    example: app.example
+  flows:
+    description: >
+      the end-to-end flows, as checks of the browser worker: a name, a URL, the steps a person
+      takes there, the texts the page then shows and those it must not
+    example: [{ name: sign-in, url: "https://app.example/login", expect: [Sign in] }]
+
+limits:
+  quota: { units: 10 }
+  compute: { seconds: 600, resource_class: cpu.small }
+
+steps:
+  - id: accept
+    method: worker
+    reason: >
+      running a flow of a web application as a person does — typing, clicking, reading what it
+      shows — is work in a browser, which a worker offers; it reports, and a rule judges
+    rejected:
+      - method: rule
+        why: an HTTP check runs no script, types into no field and follows no click
+      - method: llm
+        why: a single completion cannot drive a browser
+    exactness: tolerant
+    fallback:
+      when: the worker serving browser.check is unavailable, or the assignment fails
+      to: human
+      role: owner
+    requires: [browser.check]
+    work:
+      task:
+        goal: run every flow given in the inputs in the browser and report what each showed
+        acceptance:
+          - a report per flow, and one that gathers them
+        inputs:
+          checks: { $input: flows }
+      max_steps: 60
+      allowed_hosts:
+        - { $input: app_host }
+
+  - id: read-filed
+    method: rule
+    reason: the open issues are read verbatim, so that a flow already filed is not filed twice
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.list answered", columns: [complete, issues] }
+    fallback:
+      when: the connector serving repository.issues is unavailable
+      to: human
+      role: owner
+    work:
+      checking: { select: output }
+      rule: connector
+      operation: repository.issues.list
+      input:
+        state: open
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the open issues were not all read" }
+
+  - id: broken
+    method: rule
+    reason: >
+      a flow that did not hold is the report's own `passed`; one an open issue carries the mark
+      of is left out; the first of the rest is taken
+    rejected:
+      - method: llm
+        why: the report's verdict is read, not judged
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the broken flow taken from the report }
+    depends_on: [accept, read-filed]
+    work:
+      rule: filter
+      items: { $from: accept, $artifact: report, $select: checks }
+      all:
+        - { field: passed, equals: false }
+      excluding: { $from: read-filed, $select: output.issues }
+      within: body
+      marker: "acceptance-flow:${name}"
+      limit: 1
+
+  - id: compose
+    method: rule
+    reason: the issue's text is the report's findings between fixed words, with the mark that keeps it from being filed twice
+    rejected:
+      - method: llm
+        why: a fixed composition needs no model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "Filed by Taktus, process B-7\\.08 Daily acceptance, once a person confirmed it\\. A fix is" }
+    depends_on: [broken]
+    work:
+      when:
+        - { value: { $from: broken, $select: count }, not_matches: "^0$" }
+      rule: template
+      text: |
+        The daily acceptance found a flow of the product that no longer holds: ${name}
+
+        - page: ${url}
+        - status: ${status}
+        - expected texts found: ${expected}
+        - texts that must not show, seen: ${absent}
+        - steps: ${steps}
+        - console errors: ${errors}
+
+        Filed by Taktus, process B-7.08 Daily acceptance, once a person confirmed it. A fix is
+        worked on this issue; the merge stays with a person.
+
+        acceptance-flow:${name}
+      values:
+        name: { $from: broken, $select: first.name }
+        url: { $from: broken, $select: first.url }
+        status: { $from: broken, $select: first.status }
+        expected: { $from: broken, $select: first.expected }
+        absent: { $from: broken, $select: first.absent }
+        steps: { $from: broken, $select: first.steps }
+        errors: { $from: broken, $select: first.console_errors }
+
+  - id: file
+    method: rule
+    reason: opening the issue is an API call; the effect leaves the system, so at level 2 a person confirms it first
+    rejected:
+      - method: worker
+        why: nothing here needs a sandbox or tools
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.create answered", columns: [author, body, created_at, is_pull_request, labels, milestone, number, state, title, updated_at, url] }
+    fallback:
+      when: the connector serving repository.issues is unavailable
+      to: human
+      role: owner
+    depends_on: [broken, compose]
+    work:
+      checking: { select: output }
+      when:
+        - { value: { $from: broken, $select: count }, not_matches: "^0$" }
+      rule: connector
+      operation: repository.issues.create
+      input:
+        title: { $from: broken, $select: first.name }
+        body: { $from: compose }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+takeover:
+  sequence: >
+    The process runs every day at 05:30 UTC; whoever looks after the product's quality starts it.
+    A person runs each end-to-end flow in a browser, then compares with the open issues: a flow
+    that no longer holds and has no open issue yet is filed as one, with what the page showed.
+    A flow still failing whose issue is open is not filed again.
+  steps:
+    accept:
+      system: a browser, in a fresh private window
+      do: >
+        open each flow's page, take its steps, and note whether the page then shows the texts it
+        should, whether a text that must not show is there, whether a step could not be done,
+        and what errors the browser's console wrote
+      expertise: using the product as a customer does
+      credentials: []
+      done: a note per flow says whether it held and what it showed
+    read-filed:
+      system: the repository's issue list
+      do: list the open issues, with their text
+      expertise: reading the repository's issues
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository token of the requesting
+            identity described in CREDENTIALS.md; a person may read them with their own account
+      done: the open issues are listed
+    broken:
+      system: the notes and the issue list
+      do: >
+        take the first flow that did not hold and whose name no open issue carries as
+        acceptance-flow followed by the name
+      expertise: none beyond reading the notes
+      credentials: []
+      done: the flow to file is named, or none
+    compose:
+      system: a text editor
+      do: >
+        write the issue's text: the flow's name and page, what the page showed against what it
+        should, and the line acceptance-flow followed by the flow's name at the end
+      expertise: describing a defect so that a developer can reproduce it
+      credentials: []
+      done: the issue's text is written
+    file:
+      system: the repository's issue list
+      do: open the issue with the flow's name as its title and the text above
+      expertise: opening an issue
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository token of the requesting
+            identity described in CREDENTIALS.md
+      done: the issue is open, or there was nothing to file

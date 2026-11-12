@@ -8,7 +8,7 @@ application layers inside. No component imports another; what they share is the 
 | `process` | process version as a validated graph: steps, edges, triggers, service level; the bundle use case |
 | `run` | run, step run, checkpoint; the engine with step atomicity and admission control; the built-in rules; the blocked-time accounts (ADR-0043) |
 | `ledger` | the content-free hash chain and its verification |
-| `command` | command → commissioned plan |
+| `command` | command → commissioned plan; the plan draft worked out in versions and commissioned as an act of its own (ADR-0237) |
 | `governance` | whether a result has left the system (ADR-0022); the capacity report — what the platform has left and the date a person must act by (`docs/architecture/platform.md`); a tenant's introduction in stages, the ceiling each keeps and its fall by rule (ADR-0137) |
 | `knowledge` | the guides beyond the repository (UC-13.6, ADR-0065): the manifest, the rendering by rule, the seven states a page in a knowledge system can be in, and the publishing through `knowledge.pages`, which never overwrites a hand edit |
 | every other | a package with its docstring; filled from the version that needs it (`docs/roadmap.md`) |

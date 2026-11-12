@@ -4,10 +4,10 @@ title: Running on the organisation's own hardware
 component: catalog
 epic: E8
 serves: [P3, P11]
-state: specified
+state: built
 version: 0.4.0
-tests: []
-adrs: {ADR-0025: cba7351885b6, ADR-0031: e81473d81850}
+tests: [tests/composition/test_own_hardware.py::test_the_example_processes_run_on_own_hardware_with_the_outside_route_closed, tests/adapters/models/test_local_and_mistral.py::test_local_first_binds_every_purpose_to_the_local_server_as_own, tests/adapters/models/test_local_and_mistral.py::test_under_local_first_an_outside_model_declares_where_it_processes]
+adrs: {ADR-0025: cba7351885b6, ADR-0031: e81473d81850, ADR-0248: d75a8da26daa}
 supersedes: null
 ---
 
@@ -44,3 +44,13 @@ a regulated environment is definition `UC-10.1`.
 The model contract (UC-8.1); residency and the location of every adapter (UC-11.1); where an instance
 may run (ADR-0025); what an instance observes of its platform (ADR-0031). Definition `UC-8.3`. The
 version is `0.4.0`, with the model hub for in-house models.
+
+## 5. What is proven so far
+
+Every example process of the gallery, and a process with a step on a model, run
+to their end on an installation whose tenant permits only `own` models, with an outside model
+configured first in the chain and never reached, by the named test. The one-machine
+installation sets `TAKTUS_MODEL_LOCAL_FIRST`: every purpose is bound to the model server on
+the organisation's own machine as `own`, and a model named in its place must declare its
+location (ADR-0248). No search for a capability available only through an outside provider has
+been run as a test; a finding of one is a finding against principle 3.

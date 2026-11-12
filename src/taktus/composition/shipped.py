@@ -50,6 +50,14 @@ def load(path: Path = LIST) -> Shipped:
     return Shipped.model_validate_json(path.read_text(encoding="utf-8"))
 
 
+def product_names(shipped: Shipped) -> frozenset[str]:
+    """The names of the shipped connectors that are not the first segment of a capability any
+    of them offers: names of products, which an agent's grants may not use (ADR-0003, UC-8.7).
+    A connector named after what it does (`accounting`) is not among them."""
+    domains = {c.split(".", 1)[0] for adapter in shipped.connectors for c in adapter.capabilities}
+    return frozenset(a.name for a in shipped.connectors if a.name not in domains)
+
+
 def _declared(package: str, name: str) -> dict[str, Any] | None:
     try:
         module = importlib.import_module(f"{package}.{name}.declaration")

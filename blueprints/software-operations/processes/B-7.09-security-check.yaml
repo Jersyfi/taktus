@@ -1,0 +1,260 @@
+# B-7.09 Security check — UC-03 §4.7: the business's own web application looked at from a fresh
+# browser context, without its source, as anybody outside sees it, and what it gives away filed
+# as an issue, once (ADR-0218, ADR-0234).
+#
+# The check is passive. The browser worker (`browser.check`, `security: true`) opens each page
+# given, within the frame's allowed hosts only, and reports what the answer says about its own
+# protection: whether it was served over TLS, which protecting response headers are missing,
+# which headers name the server's software, which cookies lack `Secure` or `HttpOnly`, and which
+# of a fixed list of well-known paths (a repository's HEAD, an environment file, a private key,
+# a server status page) answers with the content its name promises. Nothing is tried on the
+# application: no payload, no form submitted, no identifier counted up, no route guessed beyond
+# the fixed list. What an exposed path holds is matched and never copied.
+#
+# The active half of the row — reading another user's data as a test user, counting up
+# identifiers, calling admin routes — is not part of this version: it acts on the application,
+# and what it may try is a person's decision per application (blueprint README, *State*).
+#
+# A page with a finding is filed as an issue once; one an open issue carries the mark of is not
+# filed again. A finding names a weakness of the application: the issue goes where the tenant's
+# repository service keeps it from the public, which a person confirms at level 2.
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-7.09-security-check.yaml \
+#         --input app_host=<host> --input 'pages=[{"name": "start", "url": "https://<host>/"}]'
+#
+# Switching it off (`taktusctl deactivate --process b-7-09`) changes nothing else.
+
+id: b-7-09
+version: "1"
+name: B-7.09 Security check
+autonomy:
+  level: 2
+  reason: >
+    the pages are only read, passively; filing a weakness leaves the system and names it, so at
+    level 2 a person confirms it, as every process of UC-03 starts at level 1 or 2 when its stage
+    opens
+  toward_next: >
+    four weeks of issues a person confirmed without changing them, and stage 4 of the tenant's
+    plan open; then Taktus proposes level 3, the target UC-03 names (UC-7.1, UC-9.6)
+author: the repository
+reason: the web application's own exposure checked passively after a larger feature, and a weakness filed once (UC-03 B-7.09)
+
+triggers:
+  - schedule: "0 6 * * 1"
+    inputs:
+      app_host: app.example
+      pages: [{ name: start, url: "https://app.example/" }]
+
+inputs:
+  app_host:
+    description: the host of the tenant's own web application, the only host the check reaches
+    example: app.example
+  pages:
+    description: >
+      the pages to look at, as checks of the browser worker: a name and a URL on the host above;
+      each is also checked as a security check
+    example: [{ name: start, url: "https://app.example/" }]
+
+limits:
+  quota: { units: 40 }
+  compute: { seconds: 600, resource_class: cpu.small }
+
+steps:
+  - id: scan
+    method: worker
+    reason: >
+      what a page's answer says about its protection — its TLS, headers and cookies — is what a
+      browser receives, which a worker offers; it reports, and a rule judges
+    rejected:
+      - method: rule
+        why: an HTTP check reads a status and a body, not the cookies a page's scripts set
+      - method: llm
+        why: a single completion cannot open a page, and a header's presence needs no judgement
+    exactness: tolerant
+    fallback:
+      when: the worker serving browser.check is unavailable, or the assignment fails
+      to: human
+      role: owner
+    requires: [browser.check]
+    work:
+      task:
+        goal: look at every page given in the inputs as a passive security check and report what each answer gives away
+        acceptance:
+          - a report per page with its security findings, and one that gathers them
+        inputs:
+          checks: { $input: pages }
+          security: true
+      max_steps: 30
+      allowed_hosts:
+        - { $input: app_host }
+
+  - id: read-filed
+    method: rule
+    reason: the open issues are read verbatim, so that a page already filed is not filed twice
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.list answered", columns: [issues, complete] }
+    fallback:
+      when: the connector serving repository.issues is unavailable
+      to: human
+      role: owner
+    work:
+      checking: { select: output }
+      rule: connector
+      operation: repository.issues.list
+      input:
+        state: open
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the open issues were not all read" }
+
+  - id: exposed
+    method: rule
+    reason: >
+      a page with a finding is the report's own `passed`; one an open issue carries the mark of
+      is left out; the first of the rest is taken
+    rejected:
+      - method: llm
+        why: the report's verdict is read, not judged
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the page taken from the report }
+    depends_on: [scan, read-filed]
+    work:
+      rule: filter
+      items: { $from: scan, $artifact: report, $select: checks }
+      all:
+        - { field: passed, equals: false }
+      excluding: { $from: read-filed, $select: output.issues }
+      within: body
+      marker: "security-check:${name}"
+      limit: 1
+
+  - id: compose
+    method: rule
+    reason: the issue's text is the report's findings between fixed words, with the mark that keeps it from being filed twice
+    rejected:
+      - method: llm
+        why: a fixed composition needs no model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "Filed by Taktus, process B-7\\.09 Security check, once a person confirmed it" }
+    depends_on: [exposed]
+    work:
+      when:
+        - { value: { $from: exposed, $select: count }, not_matches: "^0$" }
+      rule: template
+      text: |
+        The passive security check found what a page of the application gives away: ${name}
+
+        - page: ${url}
+        - findings: ${findings}
+        - headers missing: ${missing}
+        - cookies lacking a flag: ${cookies}
+        - well-known paths answering with their content: ${exposed}
+
+        Nothing was tried on the application: the page was opened as anybody outside would
+        open it. What an exposed path holds was not copied; open it to see it.
+
+        Filed by Taktus, process B-7.09 Security check, once a person confirmed it. A fix is
+        worked on this issue; the merge stays with a person.
+
+        security-check:${name}
+      values:
+        name: { $from: exposed, $select: first.name }
+        url: { $from: exposed, $select: first.url }
+        findings: { $from: exposed, $select: first.security.findings }
+        missing: { $from: exposed, $select: first.security.headers_missing }
+        cookies: { $from: exposed, $select: first.security.cookies }
+        exposed: { $from: exposed, $select: first.security.exposed }
+
+  - id: file
+    method: rule
+    reason: opening the issue is an API call; the effect leaves the system, so at level 2 a person confirms it first
+    rejected:
+      - method: worker
+        why: nothing here needs a sandbox or tools
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.create answered", columns: [number, url] }
+    fallback:
+      when: the connector serving repository.issues is unavailable
+      to: human
+      role: owner
+    depends_on: [exposed, compose]
+    work:
+      checking: { select: output }
+      when:
+        - { value: { $from: exposed, $select: count }, not_matches: "^0$" }
+      rule: connector
+      operation: repository.issues.create
+      input:
+        title: { $from: exposed, $select: first.name }
+        body: { $from: compose }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+takeover:
+  sequence: >
+    The process runs every Monday at 06:00 UTC, and after a larger feature; whoever looks after
+    the product's security starts it. A person opens each page in a fresh private browser
+    window and notes what its answer gives away, then compares with the open issues: a page
+    with a finding and no open issue yet is filed as one. Nothing is tried on the application.
+  steps:
+    scan:
+      system: a browser, in a fresh private window, with its developer tools open
+      do: >
+        open each page and note whether it was served over TLS; which of the response headers
+        strict-transport-security, content-security-policy, x-content-type-options,
+        referrer-policy and x-frame-options (or frame-ancestors in the policy) are missing;
+        whether x-powered-by, or a server header with a version, names the server's software;
+        which cookies lack Secure or HttpOnly. Then open, on the same host, /.git/HEAD,
+        /.git/config, /.env, /.svn/entries, /.htpasswd, /.aws/credentials, /id_rsa,
+        /server-status, /phpinfo.php and /.DS_Store, and note each that shows what its name
+        promises rather than the application's own page. Copy nothing an exposed path shows.
+      expertise: reading response headers and cookies in a browser's developer tools
+      credentials: []
+      done: a note per page lists its findings, or says it has none
+    read-filed:
+      system: the repository's issue list
+      do: list the open issues, with their text
+      expertise: reading the repository's issues
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository token of the requesting
+            identity described in CREDENTIALS.md; a person may read them with their own account
+      done: the open issues are listed
+    exposed:
+      system: the notes and the issue list
+      do: >
+        take the first page with a finding whose name no open issue carries as security-check
+        followed by a colon and the name
+      expertise: none beyond reading the notes
+      credentials: []
+      done: the page to file is named, or none
+    compose:
+      system: a text editor
+      do: >
+        write the issue's text: the page's name and address, its findings, that nothing was
+        tried on the application and nothing an exposed path shows was copied, and the line
+        security-check, a colon and the page's name at the end
+      expertise: describing a weakness so that a developer can fix it
+      credentials: []
+      done: the issue's text is written
+    file:
+      system: the repository's issue list, where it is not public
+      do: open the issue with the page's name as its title and the text above
+      expertise: opening an issue
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository token of the requesting
+            identity described in CREDENTIALS.md
+      done: the issue is open, or there was nothing to file

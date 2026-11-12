@@ -1,51 +1,35 @@
-"""How the costs are asked and their answer read.
+"""How the costs are asked and their answer read, and which operation each name serves.
 
-The Cost Explorer API answers one JSON request, `POST /` with the header
+The Cost Explorer API answers `POST /` with the header
 `X-Amz-Target: AWSInsightsIndexService.GetCostAndUsage`, signed with Signature Version 4 for
-the service `ce` (`signing.py`). The connector asks for daily costs grouped by one dimension
-and reads `ResultsByTime`, page after page while the answer names a `NextPageToken`, up to ten.
+the service `ce` (`api.py`, `signing.py`). The connector asks for daily costs grouped by one
+dimension and reads `ResultsByTime`, page after page while the answer names a
+`NextPageToken`, up to ten.
 
 Every amount stays the decimal text the provider gave. A day's `total` is the exact sum of its
 groups, computed in decimal arithmetic, never in floating point: a figure a later step holds
 `exact` is built from it (CLAUDE.md §4). A day with amounts in more than one currency is not
-summed: the answer is `unexpected`, because no rule here converts.
+summed: the answer is `unexpected`, because no rule here converts. How the provider's answers
+map to the contract's causes is the table in `api.py`.
 
-How the provider's answers map to the contract's causes:
-
-| Answer | Cause |
-|---|---|
-| a refusal of the request, an error type in `INVALID` | `invalid` |
-| the key is not admitted, an error type in `UNAUTHENTICATED`, or 401 | `unauthenticated` |
-| `AccessDeniedException`, or 403 without one of the above | `forbidden` |
-| an error type in `UNAVAILABLE`, 429, 5xx, no answer in time | `unavailable`, retryable |
-| any other status, a body that is not the API's | `unexpected` |
-
-The provider's own message stays out of `detail`: only its error type is reported.
+The log query is `logs.py`, the secrets' metadata `secret_store.py`.
 """
 
 from __future__ import annotations
 
-import json
-from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-import httpx
+from taktus_connectors.aws import logs, secret_store
+from taktus_connectors.aws.api import REGION, TARGET, Config, key_of, post
+from taktus_connectors.aws.signing import Key
+from taktus_connectors.serving import Call, Outcome, TargetError, invalid
 
-from taktus_connectors.aws.signing import Key, signed_headers
-from taktus_connectors.serving import (
-    Call,
-    Outcome,
-    TargetError,
-    invalid,
-    unavailable,
-)
+__all__ = ["OPERATIONS", "REGION", "TARGET", "Config"]
 
 type Json = dict[str, Any]
 
-TARGET = "https://ce.us-east-1.amazonaws.com"
-REGION = "us-east-1"
 SERVICE = "ce"
 ACTION = "AWSInsightsIndexService.GetCostAndUsage"
 DAYS = 29
@@ -58,30 +42,6 @@ METRICS = {
     "amortized": "AmortizedCost",
     "net_unblended": "NetUnblendedCost",
 }
-INVALID = {
-    "ValidationException",
-    "DataUnavailableException",
-    "InvalidNextTokenException",
-    "BillExpirationException",
-    "RequestChangedException",
-}
-UNAUTHENTICATED = {
-    "UnrecognizedClientException",
-    "InvalidSignatureException",
-    "IncompleteSignature",
-    "ExpiredTokenException",
-    "InvalidClientTokenId",
-    "MissingAuthenticationToken",
-}
-UNAVAILABLE = {"LimitExceededException", "ThrottlingException", "ServiceUnavailable"}
-
-
-@dataclass(frozen=True)
-class Config:
-    target: str = TARGET
-    """The API's address; the provider's own, or a fake's."""
-    region: str = REGION
-    timeout: float = 30.0
 
 
 def _days(input: Json) -> int:
@@ -118,60 +78,21 @@ def _amount(text: Any) -> Decimal:
     return value
 
 
-def _error_type(response: httpx.Response) -> str:
-    kind = response.headers.get("x-amzn-errortype", "")
-    try:
-        body = response.json()
-    except ValueError:
-        body = None
-    if isinstance(body, dict):
-        kind = str(body.get("__type") or body.get("code") or kind)
-    return str(kind).split("#")[-1].split(":")[0].strip()
-
-
 async def _page(config: Config, call: Call, key: Key, body: Json) -> Json:
-    url = httpx.URL(config.target.rstrip("/") + "/")
-    data = json.dumps(body, separators=(",", ":")).encode("utf-8")
-    headers = signed_headers(
+    answer = await post(
+        config,
+        call,
         key,
-        host=url.netloc.decode("ascii"),
-        path=url.path,
-        headers={"content-type": "application/x-amz-json-1.1", "x-amz-target": ACTION},
-        body=data,
+        address=config.target,
         region=config.region,
         service=SERVICE,
-        at=datetime.now(UTC),
+        action=ACTION,
+        body=body,
+        what="the costs",
     )
-    call.count()
-    try:
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(config.timeout, connect=min(10.0, config.timeout))
-        ) as client:
-            response = await client.post(url, content=data, headers=headers)
-    except httpx.TimeoutException as error:
-        raise unavailable(f"the provider did not answer in time: {type(error).__name__}") from error
-    except httpx.HTTPError as error:
-        # The type alone: an error's text can quote the request.
-        raise unavailable(f"the provider could not be reached: {type(error).__name__}") from error
-    status = response.status_code
-    if status == 200:
-        try:
-            answer = response.json()
-        except ValueError:
-            answer = None
-        if not isinstance(answer, dict) or not isinstance(answer.get("ResultsByTime"), list):
-            raise TargetError("unexpected", "none", False, "the answer has no ResultsByTime")
-        return answer
-    kind = _error_type(response)
-    if kind in UNAUTHENTICATED or status == 401:
-        raise TargetError("unauthenticated", "none", False, "the provider does not admit the key")
-    if kind == "AccessDeniedException" or status == 403:
-        raise TargetError("forbidden", "none", False, "the key may not read the costs")
-    if kind in UNAVAILABLE or status == 429 or status >= 500:
-        raise unavailable(f"the provider answered {status} {kind}".rstrip())
-    if kind in INVALID and status == 400:
-        raise invalid(f"the provider refused the request: {kind}")
-    raise TargetError("unexpected", "none", False, f"the provider answered {status} {kind}")
+    if not isinstance(answer.get("ResultsByTime"), list):
+        raise TargetError("unexpected", "none", False, "the answer has no ResultsByTime")
+    return answer
 
 
 def _day(result: Any, metric: str) -> Json:
@@ -205,14 +126,7 @@ async def daily(config: Config, call: Call, input: Json) -> Outcome:
     end = _end(input)
     group_by = _choice(input, "group_by", GROUPS, "service")
     metric = _choice(input, "metric", METRICS, "unblended")
-    key = Key.parse(call.token)
-    if key is None:
-        raise TargetError(
-            "unauthenticated",
-            "none",
-            False,
-            "the credential is not `<access key id>:<secret access key>[:<session token>]`",
-        )
+    key = key_of(call)
     body: Json = {
         "TimePeriod": {
             "Start": (end - timedelta(days=days)).isoformat(),
@@ -261,4 +175,8 @@ async def daily(config: Config, call: Call, input: Json) -> Outcome:
     return Outcome(output=output, effect={"kind": "read"})
 
 
-OPERATIONS = {"billing.costs.daily": daily}
+OPERATIONS = {
+    "billing.costs.daily": daily,
+    "logs.query.entries": logs.entries,
+    "secrets.metadata.list": secret_store.list_,
+}

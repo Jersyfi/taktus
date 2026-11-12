@@ -17,9 +17,10 @@ UC-4.10, UC-4.11, UC-4.12, UC-6.8).
   person. The ledger records `remediation.started`, naming the incident and the new run.
 - **Delivered.** `IncidentDelivery` writes the incident into the organisation's tracking system
   through the connector that serves `repository.issues`, as an issue with its situation
-  package and its plan, and every later change — the remediation started, the incident closed
-  — as a comment on the same issue (ADR-0179 §4). Each delivery is `egress.delivery`, naming the
-  incident.
+  package and its plan — or, where none does, through one that serves `tasks.items` and
+  declares `tasks.items.create`, as a work item (ADR-0227 §4) — and every later change — the
+  remediation started, the incident closed — as a comment on the same object (ADR-0179 §4).
+  Each delivery is `egress.delivery`, naming the incident.
 
 The incident is the tenant's; nothing here corrects anything outside without a person. This is
 wiring, because the correction, the sample and the run are the run component's records, the
@@ -37,27 +38,33 @@ from typing import Any, Protocol
 import structlog
 
 from taktus.components.command.application.service import CommissionPlan, CommissionPlanHandler
+from taktus.components.decision.domain.model import Request
 from taktus.components.governance.application.service import ResultDefects
 from taktus.components.governance.application.service.result_defects import ReportDefect
 from taktus.components.governance.domain.model.defects import Found
-from taktus.components.governance.domain.model.incident import Incident, IncidentKind
+from taktus.components.governance.domain.model.incident import (
+    Incident,
+    IncidentKind,
+    IncidentState,
+)
 from taktus.components.governance.domain.service import defects as defect_rule
 from taktus.components.governance.domain.service.defects import NotRecorded
 from taktus.components.process.domain.service.autonomy import is_result_defect
 from taktus.components.run.application.service import RunEngine, StartRun
-from taktus.components.run.domain.model import Remedy, Run, RunExists, StepRun
+from taktus.components.run.domain.model import Remedy, Run, RunExists, RunState, StepRun
 from taktus.components.run.domain.service.anchoring import WRONG
-from taktus.components.run.ports import ConnectorPool
+from taktus.components.run.ports import ConnectorPool, ModelPool
 from taktus.components.run.ports.anchors import Verdict
 from taktus.composition.tenancy import this_round
 from taktus.ports.clock import Clock, Identifiers
-from taktus.ports.connector import CallContext
+from taktus.ports.connector import CallContext, ResolvedConnector
 from taktus.ports.identity import ServedTenants
 from taktus.ports.ledger import Fact, Ledger
+from taktus.ports.model import ModelError, Prompt
 from taktus.ports.objectstore import ObjectStore
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 from taktus.ports.worker import CredentialReference
-from taktus.shared.v1 import Command, Intent, LedgerEntry, LedgerRefs, ReplyTo
+from taktus.shared.v1 import Command, DecisionClass, Intent, LedgerEntry, LedgerRefs, ReplyTo
 
 log = structlog.get_logger("taktusd")
 
@@ -68,11 +75,25 @@ RAISED = "incident.raised"
 CLOSED = "incident.closed"
 REMEDIATION = "remediation.started"
 DELIVERY = "egress.delivery"
+RESIDENCY_EGRESS = "residency.egress"
+"""Beside every delivery: where the connector it went through is (ADR-0281 §5)."""
 FINISHED = "run.finished"
+BY_HAND = "incident.by_hand"
+REPORTED = "incident.reported"
+REMEDY_PREFIX = "run_remedy_"
 TRACKING = "repository.issues"
 """The capability an organisation's tracking system is reached through: its issues."""
 CREATE = "repository.issues.create"
 COMMENT = "repository.comments.create"
+TASKS = "tasks.items"
+"""The second capability a tracking system is reached through: its work items, where no
+repository's issues serve (ADR-0227 §4)."""
+TASK_CREATE = "tasks.items.create"
+TASK_COMMENT = "tasks.items.remind"
+"""A comment on a work item: the operation the task trackers' connectors declare, `marked` by
+the key on its last line (ADR-0209)."""
+REPORT_PURPOSE = "incident.report"
+"""The model purpose the narrative of an incident is written for (UC-6.8, ADR-0227 §5)."""
 TAKTUS = "taktus"
 """The identity Taktus acts as on its own behalf (ADR-0033)."""
 CHANNEL = "channel.schedule"
@@ -108,7 +129,12 @@ class Remedies:
         work: UnitOfWork,
         clock: Clock,
         ids: Identifiers,
+        *,
+        defects: ResultDefects | None = None,
     ) -> None:
+        self._defects = defects
+        """The analysis that names the runs built on a wrong result (ADR-0227 §1). None: only
+        the wrong run itself is remedied."""
         self._engine = engine
         self._runs = runs
         self._incidents = incidents
@@ -147,9 +173,92 @@ class Remedies:
                 f"nothing says what step {step} of run {wrong.id} should have been: a person "
                 "records it first (`taktusctl maturation correct`), and the remediation reads it"
             )
-        carried = _carried(wrong, step, corrected[-1] if corrected else None)
-        digest = hashlib.sha256(f"{tenant}:{incident_id}".encode()).hexdigest()[:20]
-        run_id = f"run_remedy_{digest}"
+        carried = _carried(wrong, {step}, corrected[-1] if corrected else None)
+        return await self._submit(
+            tenant,
+            incident_id,
+            wrong,
+            step,
+            carried,
+            remedy_id(tenant, incident_id),
+            "carried" if corrected else "again",
+        )
+
+    async def follow(self, tenant: Tenant) -> list[Run]:
+        """The runs built on a wrong result in another run or process, produced again once the
+        wrong run's own remediation finished (ADR-0227 §1): in each, the steps that read the
+        wrong result's closure run again with everything built on them, every other done step
+        is carried, and every outward step waits for the correction anchor's person. Each is
+        started once; the remediation runs started now."""
+        if self._defects is None:
+            return []
+        async with self._work.transaction(tenant):
+            incidents = [
+                i
+                for i in await self._incidents.list(tenant)
+                if i.kind is IncidentKind.RESULT_DEFECT and i.state is IncidentState.OPEN
+            ]
+            started = {
+                e.refs.run_id
+                for e in await self._ledger.of_kinds(tenant, (REMEDIATION,))
+                if e.refs.run_id
+            }
+        begun: list[Run] = []
+        for incident in incidents:
+            first = remedy_id(tenant, incident.id)
+            step = str(incident.facts.get("step") or "")
+            if first not in started or incident.run_id is None or not step:
+                continue
+            async with self._work.transaction(tenant):
+                primary = await self._runs.get(tenant, first)
+            if primary is None or primary.state is not RunState.FINISHED:
+                continue  # the derived runs read what the wrong run's remediation corrects
+            found = Found(str(incident.facts.get("found") or Found.CORRECTED.value))
+            try:
+                assessed = await self._defects.assess(
+                    ReportDefect(tenant=tenant, run_id=incident.run_id, step_id=step, found=found)
+                )
+            except NotRecorded:
+                continue
+            steps: dict[str, set[str]] = {}
+            for affected in assessed.analysis.affected:
+                ref = affected.result
+                if ref.run_id != incident.run_id and not ref.run_id.startswith(REMEDY_PREFIX):
+                    steps.setdefault(ref.run_id, set()).add(ref.step_id)
+            for run_id, again in steps.items():
+                derived_id = remedy_id(tenant, incident.id, run_id)
+                if derived_id in started:
+                    continue
+                async with self._work.transaction(tenant):
+                    derived = await self._runs.get(tenant, run_id)
+                if derived is None or derived.remedy is not None:
+                    continue
+                ordered = [s.id for s in derived.steps if s.id in again]
+                if not ordered:
+                    continue
+                begun.append(
+                    await self._submit(
+                        tenant,
+                        incident.id,
+                        derived,
+                        ordered[0],
+                        _carried(derived, set(ordered), None),
+                        derived_id,
+                        "derived",
+                    )
+                )
+        return begun
+
+    async def _submit(
+        self,
+        tenant: Tenant,
+        incident_id: str,
+        wrong: Run,
+        step: str,
+        carried: tuple[StepRun, ...],
+        run_id: str,
+        outcome: str,
+    ) -> Run:
         goal = f"remedy {incident_id}: step {step} of run {wrong.id} and what is built on it"
         command = Command(
             id=self._ids.new("cmd"),
@@ -204,23 +313,30 @@ class Remedies:
                         incident_id=incident_id,
                         run_id=run.id,
                     ),
-                    outcome="carried" if corrected else "again",
+                    outcome=outcome,
                 ),
             )
         return run
 
 
-def _carried(wrong: Run, step: str, corrected: str | None) -> tuple[StepRun, ...]:
+def remedy_id(tenant: Tenant, incident_id: str, run_id: str | None = None) -> str:
+    """The remediation run of an incident, derived from it so that it starts once: of the
+    wrong run itself, or of a run built on its result (`run_id`)."""
+    key = f"{tenant}:{incident_id}" if run_id is None else f"{tenant}:{incident_id}:{run_id}"
+    return f"{REMEDY_PREFIX}{hashlib.sha256(key.encode()).hexdigest()[:20]}"
+
+
+def _carried(wrong: Run, steps: set[str], corrected: str | None) -> tuple[StepRun, ...]:
     """The step runs a remediation starts from: the corrected step with the value a person
     gave, and every done step the wrong result is not built on, as the wrong run left it. The
-    wrong step without a correction, and everything built on it, run again."""
-    built_on = {step}
+    wrong steps without a correction, and everything built on them, run again."""
+    built_on = set(steps)
     for each in wrong.steps:
         if any(d in built_on for d in each.dependencies):
             built_on.add(each.id)
     carried: list[StepRun] = []
     for step_run in wrong.step_runs:
-        if step_run.step_id == step:
+        if step_run.step_id in steps:
             checkpoint = step_run.checkpoint
             if corrected is not None and checkpoint is not None:
                 again = checkpoint.model_copy(update={"result_digest": corrected})
@@ -291,6 +407,13 @@ class DefectWatch:
                         incident=incident.id,
                         reason=str(why),
                     )
+        if self._remedies is not None:
+            for run in await self._remedies.follow(tenant):
+                log.info(
+                    "a run built on a wrong result is produced again",
+                    run=run.id,
+                    remedies=None if run.remedy is None else run.remedy.run_id,
+                )
         return raised
 
     async def _found(self, tenant: Tenant, entry: LedgerEntry) -> Found | None:
@@ -354,7 +477,11 @@ class IncidentDelivery:
         ledger: Ledger,
         objects: ObjectStore,
         work: UnitOfWork,
+        *,
+        reports: IncidentReports | None = None,
     ) -> None:
+        self._reports = reports
+        """The report a model writes of each incident, delivered as a change (ADR-0227 §5)."""
         self._connectors = connectors
         self._incidents = incidents
         self._defects = defects
@@ -366,7 +493,17 @@ class IncidentDelivery:
         """Every result defect not yet delivered, delivered; every change to a delivered one
         added to it. The incidents delivered to or added to now. Nothing where no connector
         serves the tracking capability: the incident stays in Taktus, where a person reads it."""
+        if self._reports is not None:
+            await self._reports.write(tenant)
         resolved = await self._connectors.resolve(TRACKING)
+        create, comment = CREATE, COMMENT
+        if resolved is None:
+            resolved = await self._connectors.resolve(TASKS)
+            create, comment = TASK_CREATE, TASK_COMMENT
+            if resolved is not None and not any(
+                op.name == TASK_CREATE for op in resolved.declaration.operations
+            ):
+                resolved = None  # a tracker that creates no item cannot take an incident
         if resolved is None:
             return []
         async with self._work.transaction(tenant):
@@ -375,7 +512,9 @@ class IncidentDelivery:
                 for i in await self._incidents.list(tenant)
                 if i.kind is IncidentKind.RESULT_DEFECT
             ]
-            entries = await self._ledger.of_kinds(tenant, (DELIVERY, REMEDIATION, CLOSED))
+            entries = await self._ledger.of_kinds(
+                tenant, (DELIVERY, REMEDIATION, CLOSED, BY_HAND, REPORTED)
+            )
         delivered: dict[str, str] = {}
         about: dict[str, set[int]] = {}
         for entry in entries:
@@ -398,36 +537,39 @@ class IncidentDelivery:
             changes = [
                 e
                 for e in entries
-                if e.kind in (REMEDIATION, CLOSED) and e.refs.incident_id == incident.id
+                if e.kind in (REMEDIATION, CLOSED, BY_HAND, REPORTED)
+                and e.refs.incident_id == incident.id
             ]
             if incident.id not in delivered:
                 body = await self._body(tenant, incident, changes)
                 if body is None:
                     continue
                 created = await resolved.connector.call(
-                    CREATE,
+                    create,
                     _context(tenant, incident.id, 0, credentials),
-                    {"title": _title(incident), "body": body, "labels": []},
+                    {"title": _title(incident), "body": body, "labels": []}
+                    if create == CREATE
+                    else {"title": _title(incident), "description": body},
                 )
-                reference = str(created.output["number"])
-                # The first text already says every change so far.
-                covers = (0, *(c.seq for c in changes))
-                await self._record(tenant, incident, resolved.adapter, reference, covers, body)
+                reference = str(created.output.get("number") or created.output["id"])
+                # The first text already says every change so far; a report follows it.
+                covers = (0, *(c.seq for c in changes if c.kind != REPORTED))
+                await self._record(tenant, incident, resolved, reference, covers, body)
                 touched.append(incident.id)
                 continue
             reference = delivered[incident.id]
             for change in changes:
                 if change.seq in about.get(incident.id, set()):
                     continue
-                text = _update(change)
+                text = await self._update(change, incident)
                 await resolved.connector.call(
-                    COMMENT,
+                    comment,
                     _context(tenant, incident.id, change.seq, credentials),
-                    {"number": int(reference), "body": text},
+                    {"number": int(reference), "body": text}
+                    if comment == COMMENT
+                    else {"id": reference, "text": text},
                 )
-                await self._record(
-                    tenant, incident, resolved.adapter, reference, (change.seq,), text
-                )
+                await self._record(tenant, incident, resolved, reference, (change.seq,), text)
                 if incident.id not in touched:
                     touched.append(incident.id)
         return touched
@@ -448,7 +590,9 @@ class IncidentDelivery:
         except NotRecorded:
             return None
         started = [c for c in changes if c.kind == REMEDIATION]
-        tried = f"A remediation run was started: {started[-1].refs.run_id}." if started else None
+        said = [f"A remediation run was started: {c.refs.run_id}." for c in started]
+        said += [_by_hand(h) for h in incident.done_by_hand]
+        tried = " ".join(said) or None
         package = defect_rule.package(
             assessed.analysis, assessed.decision, assessed.plan, tried=tried
         )
@@ -462,35 +606,187 @@ class IncidentDelivery:
             )
         )
 
+    async def _update(self, change: LedgerEntry, incident: Incident) -> str:
+        """The comment a later change is delivered as."""
+        if change.kind == BY_HAND:
+            done = [h for h in incident.done_by_hand if h.at <= change.ts]
+            return _by_hand(done[-1]) if done else "A step was carried out by hand."
+        if change.kind == REPORTED and change.content_digest is not None:
+            content = await self._objects.get(change.content_digest)
+            if content is not None:
+                return content.decode("utf-8")
+        return _canonical_update(change)
+
     async def _record(
         self,
         tenant: Tenant,
         incident: Incident,
-        adapter: str,
+        resolved: ResolvedConnector,
         reference: str,
         covers: Sequence[int],
         text: str,
     ) -> None:
         """The delivery as `egress.delivery`, naming the incident, with the external object's
         reference, what it delivered and the changes it covers by digest: 0 for the raise, the
-        sequence number of each later entry about the incident."""
+        sequence number of each later entry about the incident. Beside it, `residency.egress`
+        names where the connector it went through is (ADR-0281 §5)."""
         document = {"reference": reference, "covers": list(covers), "text": text}
         digest = await self._objects.put(_canonical(document))
+        refs = LedgerRefs(
+            tenant=tenant,
+            process_version=incident.process_version,
+            incident_id=incident.id,
+        )
         async with self._work.transaction(tenant):
             await self._ledger.record(
                 tenant,
                 Fact(
                     kind=DELIVERY,
-                    refs=LedgerRefs(
-                        tenant=tenant,
-                        process_version=incident.process_version,
-                        incident_id=incident.id,
-                    ),
-                    adapter=adapter,
+                    refs=refs,
+                    adapter=resolved.adapter,
                     outcome="delivered" if 0 in covers else "updated",
                     content_digest=digest,
                 ),
             )
+            await self._ledger.record(
+                tenant,
+                Fact(
+                    kind=RESIDENCY_EGRESS,
+                    refs=refs,
+                    adapter=resolved.adapter,
+                    outcome=resolved.location,
+                    content_digest=digest,
+                ),
+            )
+
+
+class CorrectionRequests:
+    """Governance's port `OpenCorrections` (ADR-0227 §3): the open decision requests of class
+    `correction` that the incident's remediation runs raised, read from the ledger's
+    `remediation.started` and the decision component's requests."""
+
+    def __init__(self, ledger: Ledger, requests: Repository[Request], work: UnitOfWork) -> None:
+        self._ledger = ledger
+        self._requests = requests
+        self._work = work
+
+    async def waiting(self, tenant: Tenant, incident_id: str) -> Sequence[str]:
+        async with self._work.transaction(tenant):
+            runs = {
+                e.refs.run_id
+                for e in await self._ledger.of_kinds(tenant, (REMEDIATION,))
+                if e.refs.incident_id == incident_id and e.refs.run_id
+            }
+            requests = list(await self._requests.list(tenant)) if runs else []
+        return sorted(
+            r.id
+            for r in requests
+            if r.open
+            and r.request.class_ is DecisionClass.CORRECTION
+            and r.request.raised_by.run in runs
+        )
+
+
+class IncidentReports:
+    """The incident report a language model may write (UC-6.8, ADR-0023 §4, ADR-0227 §5): the
+    narrative a person reads, from the situation package and the plan, an artifact of class
+    `free`. It never replaces the structured incident, and it names the package it narrates by
+    digest in a line Taktus writes after the model's text."""
+
+    def __init__(
+        self,
+        models: ModelPool,
+        incidents: Repository[Incident],
+        defects: ResultDefects,
+        ledger: Ledger,
+        objects: ObjectStore,
+        work: UnitOfWork,
+    ) -> None:
+        self._models = models
+        self._incidents = incidents
+        self._defects = defects
+        self._ledger = ledger
+        self._objects = objects
+        self._work = work
+
+    async def write(self, tenant: Tenant) -> list[str]:
+        """A report for every open result defect that has none yet; the incidents written for.
+        Nothing where no model serves the purpose `incident.report`: the structured incident
+        and its package are the record, and a person reads them."""
+        resolved = await self._models.resolve(REPORT_PURPOSE)
+        if resolved is None:
+            return []
+        async with self._work.transaction(tenant):
+            incidents = [
+                i
+                for i in await self._incidents.list(tenant)
+                if i.kind is IncidentKind.RESULT_DEFECT and i.state is IncidentState.OPEN
+            ]
+            reported = {
+                e.refs.incident_id for e in await self._ledger.of_kinds(tenant, (REPORTED,))
+            }
+        written: list[str] = []
+        for incident in incidents:
+            step = str(incident.facts.get("step") or "")
+            if incident.id in reported or incident.run_id is None or not step:
+                continue
+            found = Found(str(incident.facts.get("found") or Found.CORRECTED.value))
+            try:
+                assessed = await self._defects.assess(
+                    ReportDefect(tenant=tenant, run_id=incident.run_id, step_id=step, found=found)
+                )
+            except NotRecorded:
+                continue
+            package = defect_rule.render_package(
+                defect_rule.package(assessed.analysis, assessed.decision, assessed.plan)
+            )
+            source = f"{package}\n\n{defect_rule.render(assessed.plan)}"
+            try:
+                completion = await resolved.model.complete(
+                    Prompt(
+                        system=REPORT_SYSTEM,
+                        user=f"Incident {incident.id}, rule {incident.rule}.\n\n{source}",
+                    )
+                )
+            except ModelError as error:
+                log.info("no incident report was written", incident=incident.id, reason=str(error))
+                continue
+            text = narrated(completion.text, incident.id, source)
+            digest = await self._objects.put(text.encode("utf-8"))
+            async with self._work.transaction(tenant):
+                await self._ledger.record(
+                    tenant,
+                    Fact(
+                        kind=REPORTED,
+                        refs=LedgerRefs(
+                            tenant=tenant,
+                            process_version=incident.process_version,
+                            incident_id=incident.id,
+                        ),
+                        adapter=resolved.adapter,
+                        outcome="free",
+                        content_digest=digest,
+                    ),
+                )
+            written.append(incident.id)
+        return written
+
+
+REPORT_SYSTEM = (
+    "You write the incident report a person reads. State which check fired, on which facts, "
+    "with which thresholds; the window; what is affected and what has left the system; the plan "
+    "and where it waits for a person. Use only the facts given. Name no person."
+)
+
+
+def narrated(text: str, incident_id: str, source: str) -> str:
+    """The model's report with the line that names what it narrates (ADR-0227 §5)."""
+    digest = hashlib.sha256(source.encode("utf-8")).hexdigest()
+    return (
+        f"{text.rstrip()}\n\nThis report of {incident_id} was written by a model (class free) "
+        f"from its situation package and plan, sha256:{digest[:16]}; the incident in Taktus is "
+        "the record."
+    )
 
 
 def _context(
@@ -517,11 +813,24 @@ def _title(incident: Incident) -> str:
     )
 
 
-def _update(change: LedgerEntry) -> str:
+def _by_hand(done: Any) -> str:
+    return (
+        f"Step {done.step} was carried out by hand in the role {done.role} at {done.at}: "
+        f"{done.done}"
+    )
+
+
+def _canonical_update(change: LedgerEntry) -> str:
     if change.kind == REMEDIATION:
+        derived = (
+            " It produces again a result built on the wrong one."
+            if (change.outcome == "derived")
+            else ""
+        )
         return (
-            f"A remediation run was started: {change.refs.run_id}. Its inside steps run at the "
-            "process's level; every outward step waits for the person of the correction anchor."
+            f"A remediation run was started: {change.refs.run_id}.{derived} Its inside steps run "
+            "at the process's level; every outward step waits for the person of the correction "
+            "anchor."
         )
     return "The incident was closed in Taktus."
 
@@ -579,8 +888,10 @@ def defects_tick(
 
 
 __all__ = [
+    "CorrectionRequests",
     "DefectWatch",
     "IncidentDelivery",
+    "IncidentReports",
     "RecheckWatch",
     "Remedies",
     "RemedyRefused",

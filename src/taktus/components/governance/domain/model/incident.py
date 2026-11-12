@@ -42,6 +42,7 @@ from pydantic import Field, model_validator
 
 from taktus.components.governance.domain.model.defects import SHIPPED, Rule, never_empty
 from taktus.shared.v1 import Value
+from taktus.shared.v1.step import ROLE_PATTERN
 
 
 class IncidentKind(StrEnum):
@@ -68,6 +69,25 @@ class IncidentKind(StrEnum):
     RESULT_DEFECT = "result.defect"
     """A result that counted is wrong: a person corrected it, or judged a sample of it wrong. Its
     facts are what the rule of ADR-0023 read and decided (ADR-0153)."""
+    BUDGET = "budget.reached"
+    """What the tenant's runs of a month cost reached its monthly budget: every run waits at its
+    boundary, and the budget's role is told, once a month (ADR-0260)."""
+    STOP = "stop.held"
+    """A stop a person requested holds: every run it covers reached its boundary. Its facts name
+    the stop, the runs it halted and the role it is reported to, and the incident carries a
+    situation package (ADR-0280 §1)."""
+    LIMIT_ALERT = "limit.alert"
+    """A unit limit's cost, or its forecast's upper edge, reached an alert share of its amount;
+    its role is told once per period, share and basis (ADR-0282 §3)."""
+    LIMIT_REACHED = "limit.reached"
+    """A step did not fit what remains of a unit limit; its role is told once per period
+    (ADR-0282 §3)."""
+    COST_ANOMALY = "cost.anomaly"
+    """A day's cost of a unit limit's runs lay far above the robust median of the days before
+    it (ADR-0282 §3)."""
+    LIMIT_HARMFUL = "limit.harmful"
+    """A unit limit held more runs, or longer, than the tenant's watch allows; its role is told
+    with the change recommended, its cost and its benefit, once per period (ADR-0282 §4)."""
 
 
 class IncidentState(StrEnum):
@@ -89,7 +109,7 @@ class Happening(Value):
     """One event of an incident's timeline."""
 
     at: datetime
-    what: Literal["missed", "happened", "closed", "red"]
+    what: Literal["missed", "happened", "closed", "red", "by_hand"]
     expected_at: datetime | None = None
     """For `missed`: when the run was expected. For `red`: when the red value was recorded."""
     deadline: datetime | None = None
@@ -97,6 +117,12 @@ class Happening(Value):
     run: RunSeen | None = None
     """For `happened`: the run that happened after the miss. For `red`: the run that measured
     the further red value."""
+    step: str | None = Field(default=None, min_length=1)
+    """For `by_hand`: the step of the remediation plan a person carried out by hand."""
+    role: str | None = Field(default=None, pattern=ROLE_PATTERN)
+    """For `by_hand`: the role it was carried out in, never a person (principle 14)."""
+    done: str | None = Field(default=None, min_length=1)
+    """For `by_hand`: what was done, in the words of the person who did it."""
 
 
 class Incident(Value):
@@ -140,6 +166,15 @@ class Incident(Value):
     def happened(self, run: RunSeen, at: datetime) -> Incident:
         return self._with(Happening(at=at, what="happened", run=run))
 
+    def by_hand(self, step: str, role: str, done: str, at: datetime) -> Incident:
+        """A step of the remediation plan carried out by a person, recorded on the incident
+        with the role and the time (UC-4.12 §2, ADR-0227 §2)."""
+        return self._with(Happening(at=at, what="by_hand", step=step, role=role, done=done))
+
+    @property
+    def done_by_hand(self) -> tuple[Happening, ...]:
+        return tuple(h for h in self.timeline if h.what == "by_hand")
+
     def closed(self, at: datetime) -> Incident:
         closing = self._with(Happening(at=at, what="closed"))
         return closing.model_copy(update={"state": IncidentState.CLOSED, "closed_at": at})
@@ -173,6 +208,7 @@ EMPTY_MINIMUM = 10
 REPEATED_CALLS = 3
 REPEATED_MODEL_CALLS = 3
 EVALUATION_TOLERANCE = 0.05
+ON_CALL = "operator"
 
 
 class WatchConfiguration(Value):
@@ -203,6 +239,9 @@ class WatchConfiguration(Value):
     evaluation_subjects: bool = False
     """Whether an evaluation case may keep an input that a step's scope names as its subject:
     personal data by declaration (ADR-0134 §7, NTC-0228)."""
+    on_call: str = Field(default=ON_CALL, pattern=ROLE_PATTERN)
+    """The role a stop a person requested is reported to, with its situation package (UC-7.2,
+    ADR-0280 §1, NTC-0271)."""
     configured_at: datetime | None = None
     """When it was configured; None for the shipped default, which nobody configured."""
 

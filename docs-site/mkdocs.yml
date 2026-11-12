@@ -1,0 +1,43 @@
+# The documentation site (DEC-0234, NTC-0272): the guides of docs/guides/guides.yaml as static
+# HTML files. `make docs-site` renders the guides into Markdown files, and tools/docs_site.py
+# writes the configuration Zensical builds from: this file, with the navigation taken from the
+# guides' manifest, the start page beside it and the colours taken from the web app's tokens.
+# Nothing here names a page: the manifest is the one list of pages.
+
+site_name: Taktus
+site_description: Using, administering and developing Taktus.
+copyright: The Taktus project
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.sections
+    - navigation.footer
+    - navigation.top
+    - search.highlight
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: lucide/moon
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: lucide/sun
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences

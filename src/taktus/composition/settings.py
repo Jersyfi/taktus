@@ -27,7 +27,8 @@ from taktus.conformance.contracts import contracts_root
 from taktus.ports.administration import NONE, Administration
 from taktus.ports.configuration import Configuration, ConfigurationError, Secret
 from taktus.ports.execution import variable_refusal
-from taktus.ports.model import LOCATIONS, MODEL_CLASSES, PriceTable, WeightingTable
+from taktus.ports.hardware import HardwareNeeds
+from taktus.ports.model import LOCATIONS, MODEL_CLASSES, Location, PriceTable, WeightingTable
 from taktus.ports.worker import Host
 
 
@@ -257,6 +258,10 @@ class WorkerSettings:
         ]
 
 
+MASKED_KINDS = ("email", "iban", "phone")
+"""The kinds of personal content the masking of exported spans knows (ADR-0286)."""
+
+
 @dataclass(frozen=True)
 class TelemetrySettings:
     """Where spans go. Absent endpoint: spans are real and exported nowhere — the no-op is the
@@ -270,6 +275,11 @@ class TelemetrySettings:
     that is where an authorisation token goes: `TAKTUS_OTLP_HEADERS_FILE`."""
     headers_source: str | None
     service_name: str
+    masked_attributes: tuple[str, ...] = ()
+    """Patterns of attribute names masked whole before a span leaves (ADR-0286)."""
+    masked_kinds: tuple[str, ...] = MASKED_KINDS
+    """The kinds of personal content masked wherever a text carries them before a span leaves:
+    every kind known by default."""
 
     def effective(self) -> list[tuple[str, str]]:
         headers = "" if self.headers is None else f"{self.headers} (from {self.headers_source})"
@@ -278,6 +288,8 @@ class TelemetrySettings:
             ("TAKTUS_OTLP_PROTOCOL", self.protocol),
             ("TAKTUS_OTLP_HEADERS", headers),
             ("TAKTUS_OTLP_SERVICE_NAME", self.service_name),
+            ("TAKTUS_OTLP_MASKED_ATTRIBUTES", ",".join(self.masked_attributes)),
+            ("TAKTUS_OTLP_MASKED_KINDS", ",".join(self.masked_kinds)),
         ]
 
     def parsed_headers(self) -> dict[str, str]:
@@ -303,7 +315,20 @@ def load_telemetry(configuration: Configuration) -> TelemetrySettings:
         headers=configuration.secret("otlp.headers"),
         headers_source=configuration.source("otlp.headers"),
         service_name=reader.text("otlp.service.name", "taktus"),
+        masked_attributes=reader.names("otlp.masked.attributes", ()),
+        masked_kinds=_masked_kinds(configuration, reader),
     )
+
+
+def _masked_kinds(configuration: Configuration, reader: _Reader) -> tuple[str, ...]:
+    kinds = reader.names("otlp.masked.kinds", MASKED_KINDS)
+    unknown = sorted(set(kinds) - set(MASKED_KINDS) - {"none"})
+    if unknown:
+        raise ConfigurationError(
+            configuration.name("otlp.masked.kinds"),
+            f"no masking for {', '.join(unknown)}; known: {', '.join(MASKED_KINDS)}, or none",
+        )
+    return () if kinds == ("none",) else kinds
 
 
 OBJECT_STORE_ACCESS_KEY_ID = "object.store.access.key.id"
@@ -474,6 +499,18 @@ class ModelSettings:
     cool_down_seconds: float = 60.0
     """`TAKTUS_MODEL_COOL_DOWN_SECONDS`: how long a model is passed over after a failure, or
     after a rate limit whose answer named no delay (ADR-0116 §5). The instance's alone."""
+    dialect: str = "chat_completions"
+    """`TAKTUS_MODEL_DIALECT`: how the endpoint is spoken to — `chat_completions` (the default:
+    a vendor's API, a local server, most gateways) or `generate_content` (a cloud's regional
+    endpoint of that interface, `adapters/driven/models/README.md`)."""
+    location_declared: bool = True
+    """Whether `TAKTUS_MODEL_LOCATION` was set. A `generate_content` endpoint that does not
+    declare it processes in the region its address names (ADR-0248)."""
+    needs: HardwareNeeds = field(default_factory=HardwareNeeds)
+    """`TAKTUS_MODEL_NEEDS`: what the model needs of the machine it runs on, as `key=value`
+    pairs — `processors=N`, `memory=16GiB`, `accelerator=graphics|accelerator|any`,
+    `accelerator_memory=24GiB`. Checked for a model at location `own` against the instance's
+    hardware (`taktusctl hardware`, ADR-0284); nothing declared by default."""
 
     @property
     def identifier(self) -> str:
@@ -499,6 +536,8 @@ class ModelSettings:
             (f"{prefix}_USAGE_KINDS", ",".join(self.usage_kinds)),
             (f"{prefix}_LOCATION", self.location),
             (f"{prefix}_EXACTNESS", ",".join(self.classes)),
+            (f"{prefix}_DIALECT", self.dialect),
+            (f"{prefix}_NEEDS", needs_text(self.needs)),
             (key, credential),
         ]
         if self.member is None:
@@ -644,6 +683,12 @@ def load_budget(configuration: Configuration) -> BudgetSettings:
     )
 
 
+LOCAL_ENDPOINT = "http://host.docker.internal:11434/v1"
+"""Where the one-machine installation asks its model server by default: the host's port of the
+most widely used local server's chat-completions interface (ADR-0248).
+`TAKTUS_MODEL_LOCAL_ENDPOINT` names any other server that speaks the dialect."""
+
+
 def load_model(configuration: Configuration, *, member: str | None = None) -> ModelSettings:
     """The model settings alone: `taktusctl` reads them too. `member` names a member of
     `TAKTUS_MODELS`, read through its `ModelConfiguration`."""
@@ -656,12 +701,40 @@ def load_model(configuration: Configuration, *, member: str | None = None) -> Mo
             configuration.name("model.endpoint"), f"{endpoint!r} is not an http(s) URL"
         )
     name = reader.text("model.name", "")
+    location = reader.choice("model.location", "elsewhere", LOCATIONS)
+    billing_default = "per_token"
+    if member is None and reader.choice("model.local.first", "false", ("true", "false")) == "true":
+        # The one-machine installation (ADR-0248): every purpose is bound to the model server
+        # on the organisation's own hardware unless a model is named, and a named one declares
+        # where it processes.
+        if endpoint is None:
+            endpoint = reader.text("model.local.endpoint", LOCAL_ENDPOINT)
+            location, billing_default = "own", "per_hardware_time"
+        elif configuration.get("model.location") is None:
+            raise ConfigurationError(
+                configuration.name("model.location"),
+                f"is not set; {configuration.name('model.endpoint')} names a model of its own "
+                "in place of the local one, and its location is declared: own, eu or elsewhere",
+            )
+        return _model_settings(reader, configuration, endpoint, name, location, billing_default)
     if endpoint is not None and not name:
         raise ConfigurationError(
             configuration.name("model.name"),
             f"is not set; {configuration.name('model.endpoint')} names an endpoint and needs "
             "the model to ask it for",
         )
+    return _model_settings(reader, configuration, endpoint, name, location, "per_token", member)
+
+
+def _model_settings(
+    reader: _Reader,
+    configuration: Configuration,
+    endpoint: str | None,
+    name: str,
+    location: str,
+    billing: str,
+    member: str | None = None,
+) -> ModelSettings:
     return ModelSettings(
         endpoint=endpoint,
         name=name,
@@ -669,7 +742,7 @@ def load_model(configuration: Configuration, *, member: str | None = None) -> Mo
         credential=configuration.secret(MODEL_CREDENTIAL),
         credential_source=configuration.source(MODEL_CREDENTIAL),
         billing=reader.choice(
-            "model.billing", "per_token", ("per_token", "per_window", "per_hardware_time")
+            "model.billing", billing, ("per_token", "per_window", "per_hardware_time")
         ),
         output_cap=reader.choice("model.output.cap", "soft", ("hard", "soft", "none")),
         provider_limit=reader.choice(
@@ -677,10 +750,85 @@ def load_model(configuration: Configuration, *, member: str | None = None) -> Mo
         ),
         usage_kinds=_usage_kinds(reader, configuration),
         member=member,
-        location=reader.choice("model.location", "elsewhere", LOCATIONS),
+        location=location,
         classes=_exactness_classes(reader, configuration),
         cool_down_seconds=reader.number("model.cool.down.seconds", 60.0, low=0.0),
+        dialect=reader.choice(
+            "model.dialect", "chat_completions", ("chat_completions", "generate_content")
+        ),
+        location_declared=configuration.get("model.location") is not None,
+        needs=parse_needs(configuration.name("model.needs"), reader.names("model.needs", ())),
     )
+
+
+SIZE = re.compile(r"^(\d+(?:\.\d+)?)\s*(MiB|GiB|TiB)$")
+SIZE_FACTOR = {"MiB": 1024**2, "GiB": 1024**3, "TiB": 1024**4}
+NEED_KEYS = ("processors", "memory", "accelerator", "accelerator_memory")
+WANTED_ACCELERATORS = ("graphics", "accelerator", "any")
+
+
+def _size(name: str, need: str, text: str) -> int:
+    matched = SIZE.fullmatch(text.strip())
+    if matched is None:
+        raise ConfigurationError(name, f"{need}={text!r} is not a size such as 16GiB or 512MiB")
+    return int(float(matched.group(1)) * SIZE_FACTOR[matched.group(2)])
+
+
+def parse_needs(name: str, pairs: tuple[str, ...]) -> HardwareNeeds:
+    """`TAKTUS_MODEL_NEEDS`: `key=value` pairs separated by commas (ADR-0284 §4)."""
+    given: dict[str, str] = {}
+    for pair in pairs:
+        key, separator, value = pair.partition("=")
+        key, value = key.strip(), value.strip()
+        if not separator or not value:
+            raise ConfigurationError(name, f"{pair!r} is not key=value")
+        if key not in NEED_KEYS:
+            raise ConfigurationError(name, f"{key!r} is not a need; one of {', '.join(NEED_KEYS)}")
+        if key in given:
+            raise ConfigurationError(name, f"{key} is named twice")
+        given[key] = value
+    processors: int | None = None
+    if "processors" in given:
+        try:
+            processors = int(given["processors"])
+        except ValueError:
+            raise ConfigurationError(
+                name, f"processors={given['processors']!r} is not a whole number"
+            ) from None
+        if processors < 1:
+            raise ConfigurationError(name, "processors must be at least 1")
+    accelerator = given.get("accelerator")
+    if accelerator is not None and accelerator not in WANTED_ACCELERATORS:
+        raise ConfigurationError(
+            name,
+            f"accelerator={accelerator!r} is not a kind; one of {', '.join(WANTED_ACCELERATORS)}",
+        )
+    return HardwareNeeds.model_validate(
+        {
+            "processors": processors,
+            "memory_bytes": None
+            if "memory" not in given
+            else _size(name, "memory", given["memory"]),
+            "accelerator": accelerator,
+            "accelerator_memory_bytes": None
+            if "accelerator_memory" not in given
+            else _size(name, "accelerator_memory", given["accelerator_memory"]),
+        }
+    )
+
+
+def needs_text(needs: HardwareNeeds) -> str:
+    """The declaration as it is configured, for `effective()`."""
+    parts: list[str] = []
+    if needs.processors is not None:
+        parts.append(f"processors={needs.processors}")
+    if needs.memory_bytes is not None:
+        parts.append(f"memory={needs.memory_bytes // 1024**2}MiB")
+    if needs.accelerator is not None:
+        parts.append(f"accelerator={needs.accelerator}")
+    if needs.accelerator_memory_bytes is not None:
+        parts.append(f"accelerator_memory={needs.accelerator_memory_bytes // 1024**2}MiB")
+    return ",".join(parts)
 
 
 def _exactness_classes(reader: _Reader, configuration: Configuration) -> tuple[str, ...]:
@@ -753,6 +901,41 @@ def load_connectors(configuration: Configuration) -> Mapping[str, str]:
     serves its actions as well; the run resolves an action's connector by the capabilities
     the connector declares, not by the label."""
     return _Reader(configuration).connectors()
+
+
+def load_connector_locations(configuration: Configuration) -> Mapping[str, Location]:
+    """`TAKTUS_CONNECTOR_LOCATIONS`: `channel.repo=eu,channel.chat=own` — where the system each
+    connector of `TAKTUS_CONNECTORS` reaches processes, as whoever configures it declares it
+    (ADR-0281 §1). A label `TAKTUS_CONNECTORS` does not name is refused; a connector without an
+    entry counts as `elsewhere`. `taktusctl` reads it too."""
+    reader = _Reader(configuration)
+    locations = reader.locations("connector.locations")
+    known = reader.connectors()
+    for label in locations:
+        if label not in known:
+            raise ConfigurationError(
+                configuration.name("connector.locations"),
+                f"{label!r} is not a connector of {configuration.name('connectors')}",
+            )
+    return locations
+
+
+def load_host_locations(configuration: Configuration) -> Mapping[str, Location]:
+    """`TAKTUS_HOST_LOCATIONS`: `api.example.eu=eu,10.0.0.5:8443=own` — where each host an
+    execution unit may reach processes, by the host as a frame or a worker's service hosts
+    name it (ADR-0281 §3). A host without an entry counts as `elsewhere`."""
+    reader = _Reader(configuration)
+    locations = reader.locations("host.locations")
+    for host in locations:
+        try:
+            _HOST.validate_python(host)
+        except ValidationError:
+            raise ConfigurationError(
+                configuration.name("host.locations"),
+                f"{host!r} is not a host: a lowercase host name or an IPv4 address, "
+                "optionally with a port, and no wildcard",
+            ) from None
+    return locations
 
 
 def load_execution(configuration: Configuration) -> ExecutionSettings:
@@ -965,6 +1148,12 @@ def load_knowledge_directory(configuration: Configuration) -> Path | None:
     return Path(value).expanduser() if value else None
 
 
+def load_personal_credentials(configuration: Configuration) -> Mapping[tuple[str, str], str]:
+    """`TAKTUS_PERSONAL_CREDENTIALS`: per identity, the parameter of its own credential for a
+    parameter a step on its behalf names (ADR-0264). Empty: no identity has one."""
+    return _Reader(configuration).personal_credentials()
+
+
 def load_gallery_directory(configuration: Configuration) -> Path | None:
     """`TAKTUS_GALLERY_DIRECTORY`: the directory of the gallery a person chooses a first process
     from, one directory per gallery blueprint (UC-10.4, ADR-0136 §1). None: the gallery is
@@ -1162,9 +1351,23 @@ class Settings:
     """What the capacity report is told: thresholds, the database's volume, the interval."""
     connectors: Mapping[str, str]
     """Channel capability → the MCP URL of the connector that serves its intake."""
+    connector_locations: Mapping[str, Location]
+    """`TAKTUS_CONNECTOR_LOCATIONS`: where each connector's system processes, by its label in
+    `TAKTUS_CONNECTORS` (ADR-0281 §1). A connector it does not name counts as `elsewhere`."""
+    host_locations: Mapping[str, Location]
+    """`TAKTUS_HOST_LOCATIONS`: where each host an execution unit may reach processes, by the
+    host as a frame names it (ADR-0281 §3). A host it does not name counts as `elsewhere`."""
     triage: Mapping[str, str]
     """Public channel → the process that triages an unknown sender's contribution there
     (`TAKTUS_TRIAGE`, UC-1.9, ADR-0088). A channel it does not name has no triage."""
+    rollout: Mapping[str, str]
+    """Rollout channel — a channel capability, or `<capability>/<conversation>` — → the agent
+    it serves (`TAKTUS_ROLLOUT`, UC-12.1, ADR-0261). A channel it does not name is a command
+    channel."""
+    personal_credentials: Mapping[tuple[str, str], str]
+    """(identity, parameter) → the parameter of that identity's own credential standing for it
+    (`TAKTUS_PERSONAL_CREDENTIALS`, ADR-0264): what a step on behalf of the identity reads
+    with. An identity it does not name gets nothing from a source read on its behalf."""
     administration: Administration
     """The platform this instance runs on and what each credential administers (ADR-0052)."""
     knowledge_directory: Path | None
@@ -1186,6 +1389,11 @@ class Settings:
     """`TAKTUS_CHANGE_PROCESS`: the process that turns a change asked for in words into a
     proposal (UC-4.15, ADR-0091 §2), by its identifier. None, the default: no request in words
     is taken, and a person hands over the changed bundle. Which process does it is a tenant's
+    bundle, never a default of the product (ADR-0092)."""
+    describe_process: str | None
+    """`TAKTUS_DESCRIBE_PROCESS`: the process that turns a description in words of a process
+    the tenant does not have yet into a proposal for its first version (UC-4.1, ADR-0251), by
+    its identifier. None, the default: a new process is created from its bundle only. A tenant's
     bundle, never a default of the product (ADR-0092)."""
     state_dir: Path
     """Where artifact bytes are written with the object store `filesystem`."""
@@ -1249,13 +1457,27 @@ class Settings:
             *self.budget.effective(),
             *self.capacity.effective(),
             ("TAKTUS_CONNECTORS", ",".join(f"{c}={u}" for c, u in self.connectors.items())),
+            (
+                "TAKTUS_CONNECTOR_LOCATIONS",
+                ",".join(f"{c}={w}" for c, w in self.connector_locations.items()),
+            ),
+            (
+                "TAKTUS_HOST_LOCATIONS",
+                ",".join(f"{h}={w}" for h, w in self.host_locations.items()),
+            ),
             ("TAKTUS_TRIAGE", ",".join(f"{c}={p}" for c, p in self.triage.items())),
+            ("TAKTUS_ROLLOUT", ",".join(f"{c}={a}" for c, a in self.rollout.items())),
+            (
+                "TAKTUS_PERSONAL_CREDENTIALS",
+                ",".join(f"{i}/{p}={o}" for (i, p), o in self.personal_credentials.items()),
+            ),
             ("TAKTUS_KNOWLEDGE_DIRECTORY", str(self.knowledge_directory or "")),
             ("TAKTUS_GALLERY_DIRECTORY", str(self.gallery_directory or "")),
             ("TAKTUS_FINDINGS_CONNECTOR", self.findings_connector or ""),
             *self.findings.effective(),
             ("TAKTUS_BACKUP_EXPECTED_HOURS", str(self.backup_expected_hours or "")),
             ("TAKTUS_CHANGE_PROCESS", self.change_process or ""),
+            ("TAKTUS_DESCRIBE_PROCESS", self.describe_process or ""),
             ("TAKTUS_PLATFORM", self.administration.platform or ""),
             (
                 "TAKTUS_ADMINISTERS",
@@ -1319,7 +1541,11 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         budget=load_budget(configuration),
         capacity=load_capacity(configuration),
         connectors=reader.connectors(),
+        connector_locations=load_connector_locations(configuration),
+        host_locations=load_host_locations(configuration),
         triage=reader.triage(),
+        rollout=reader.rollout(),
+        personal_credentials=reader.personal_credentials(),
         administration=load_administration(configuration),
         knowledge_directory=load_knowledge_directory(configuration),
         gallery_directory=load_gallery_directory(configuration),
@@ -1327,6 +1553,7 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         findings=load_findings(configuration),
         backup_expected_hours=load_backup_expected_hours(configuration),
         change_process=reader.text("change.process", "").strip() or None,
+        describe_process=reader.text("describe.process", "").strip() or None,
         state_dir=Path(reader.text("state.dir", "~/.cache/taktus/taktusd")).expanduser(),
         object_store=load_object_store(configuration),
         object_cache_mb=reader.integer("object.cache.mb", 64, low=0),
@@ -1444,6 +1671,28 @@ class _Reader:
             raise ConfigurationError(name, f"{value!r} names an entry twice")
         return items
 
+    def locations(self, key: str) -> dict[str, Location]:
+        """Comma-separated `name=location` pairs, each location `own`, `eu` or `elsewhere`, no
+        name twice (ADR-0281). Unset or empty: none."""
+        name, value = self._raw(key)
+        mapping: dict[str, Location] = {}
+        if value is None:
+            return mapping
+        for entry in (e.strip() for e in value.split(",") if e.strip()):
+            label, separator, location = (part.strip() for part in entry.partition("="))
+            if not separator or not label or not location:
+                raise ConfigurationError(
+                    name, f"{entry!r} is not name=location (for example channel.repo=eu)"
+                )
+            if location not in LOCATIONS:
+                raise ConfigurationError(
+                    name, f"{location!r} is not a location; one of {', '.join(LOCATIONS)}"
+                )
+            if label in mapping:
+                raise ConfigurationError(name, f"{label!r} is given twice")
+            mapping[label] = location
+        return mapping
+
     def hosts(self, key: str) -> tuple[str, ...]:
         """A comma-separated list of hosts, each as a frame names one — a lowercase host name or
         an IPv4 address, optionally with a port, no wildcard — none twice. Unset or empty: no
@@ -1533,6 +1782,59 @@ class _Reader:
             if capability in mapping:
                 raise ConfigurationError(name, f"{capability!r} is mapped twice")
             mapping[capability] = process
+        return mapping
+
+    def rollout(self) -> Mapping[str, str]:
+        """`channel.chat/C0HELP=helpdesk`: a channel capability, optionally a slash and one
+        conversation of it, an equals sign, the agent the rollout channel serves (ADR-0261)."""
+        name, value = self._raw("rollout")
+        if value is None:
+            return {}
+        mapping: dict[str, str] = {}
+        for entry in (e.strip() for e in value.split(",") if e.strip()):
+            channel, separator, agent = (part.strip() for part in entry.partition("="))
+            capability, _, conversation = channel.partition("/")
+            if not separator or not capability or not agent:
+                raise ConfigurationError(
+                    name,
+                    f"{entry!r} is not channel=agent (for example channel.chat/C0HELP=helpdesk)",
+                )
+            if "." not in capability or capability != capability.lower():
+                raise ConfigurationError(
+                    name, f"{capability!r} is not a capability (lowercase, dotted)"
+                )
+            if "/" in channel and re.fullmatch(r"[^\s/=,]+", conversation) is None:
+                raise ConfigurationError(name, f"{conversation!r} is not a conversation")
+            if re.fullmatch(r"[a-z][a-z0-9-]*", agent) is None:
+                raise ConfigurationError(name, f"{agent!r} is not an agent's name")
+            if channel in mapping:
+                raise ConfigurationError(name, f"{channel!r} is mapped twice")
+            mapping[channel] = agent
+        return mapping
+
+    def personal_credentials(self) -> Mapping[tuple[str, str], str]:
+        """`person:ada/KNOWLEDGE_TOKEN=KNOWLEDGE_TOKEN_ADA,…`: an identity, a slash, the
+        parameter a step names, an equals sign, the parameter of that identity's own
+        credential (ADR-0264). Parameters only, never a value."""
+        name, value = self._raw("personal.credentials")
+        if value is None:
+            return {}
+        mapping: dict[tuple[str, str], str] = {}
+        for entry in (e.strip() for e in value.split(",") if e.strip()):
+            left, separator, own = (part.strip() for part in entry.partition("="))
+            identity, slash, parameter = (part.strip() for part in left.rpartition("/"))
+            if not separator or not slash or not identity:
+                raise ConfigurationError(
+                    name,
+                    f"{entry!r} is not identity/PARAMETER=OWN_PARAMETER "
+                    "(for example person:ada/KNOWLEDGE_TOKEN=KNOWLEDGE_TOKEN_ADA)",
+                )
+            for part in (parameter, own):
+                if re.fullmatch(r"[A-Z][A-Z0-9_]*", part) is None:
+                    raise ConfigurationError(name, f"{part!r} is not a credential parameter")
+            if (identity, parameter) in mapping:
+                raise ConfigurationError(name, f"{identity}/{parameter} is mapped twice")
+            mapping[(identity, parameter)] = own
         return mapping
 
     def connectors(self) -> Mapping[str, str]:

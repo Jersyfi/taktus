@@ -44,7 +44,7 @@ def git(repository: Path, *args: str) -> None:
     )
 
 
-def test_this_repository_declares_both_guides_and_every_page_renders() -> None:
+def test_this_repository_declares_its_three_guides_and_every_page_renders() -> None:
     manifest = yaml.safe_load((ROOT / "docs" / "guides" / "guides.yaml").read_text("utf-8"))
     guides = {g["id"]: [p["id"] for p in g["pages"]] for g in manifest["guides"]}
     assert guides["administration"] == [
@@ -52,10 +52,13 @@ def test_this_repository_declares_both_guides_and_every_page_renders() -> None:
         "upgrading",
         "installing",
         "configuring",
+        "organising",
+        "limits",
         "operating",
         "restoring",
     ]
     assert guides["use"]
+    assert guides["develop"]
     done = cli("check", "--repository", str(ROOT), "--manifest", MANIFEST)
     assert done.returncode == 0, done.stderr
     rendered = [line.split()[0] for line in done.stdout.splitlines()[:-1]]
@@ -142,3 +145,23 @@ def test_without_a_named_manifest_nothing_is_rendered() -> None:
         env={**environment, **PLAIN},
     )
     assert done.returncode == 2 and "--manifest" in done.stderr
+
+
+def test_the_bundle_the_developing_guide_shows_would_register(tmp_path: Path) -> None:
+    """The guide's one example is a bundle registration accepts, held so by the command that
+    holds a bundle to registration's rules (DEC-0234)."""
+    text = (ROOT / "docs" / "guides" / "develop" / "bundles.md").read_text("utf-8")
+    blocks = [b.split("\n", 1)[1] for b in text.split("```")[1::2] if b.startswith("yaml\n")]
+    examples = [b for b in blocks if b.startswith("id: ")]
+    assert len(examples) == 1, "the page shows exactly one bundle"
+    bundle = tmp_path / "example.yaml"
+    bundle.write_text(examples[0], "utf-8")
+    done = subprocess.run(  # noqa: S603 — our own entry point, fixed arguments
+        [taktusctl(), "bundle", "check", str(bundle)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, **PLAIN},
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "1 would register" in done.stdout

@@ -44,6 +44,10 @@ Registering is where a step's frame must hold: a scope names its subject from th
 inputs, and an analytic step reaches its source only, which the tenant declares free of
 personal fields (UC-7.7, ADR-0130, `domain.service.frame`).
 
+Registering is where a figure a query computed must go where it may: a query a model or a
+worker wrote feeds no step of class `exact` or `sourced`, and an exact step is fed only by a
+query fixed in the version (UC-5.6, ADR-0262 §4, `domain.service.queries`).
+
 Registering is where a declared evaluation must hold: its scorers score steps that produce a
 result, each by a rule or by a judge that says why no rule can and names its fallback, and its
 cases give the inputs the version requires (UC-4.18, ADR-0134 §1).
@@ -53,10 +57,27 @@ Registering is where a version must carry its takeover instructions: a bundle wi
 a step names and its entry does not, or naming an identifier a person could not look up without
 Taktus, is refused (UC-6.3, ADR-0180 §2).
 
+Registering is where the three rights of a process hold, once a role of the tenant holds one of
+them: the first version of a process is registered only by an identity holding
+`process.create`; every version only by one holding `process.approve`, since registering
+approves it for operation; and a first version, or one that raises a level, only with an
+identity holding `autonomy.set` — the approving person, or whoever registers where none
+approves. A version an identity lacks a right for is refused, and `process.refused` records it
+with the right it lacked as its outcome (UC-7.3, ADR-0257).
+
+Registering is where a domain without an owner holds its processes' levels: a version that
+raises a level of a process whose domain has no owner now is refused with `RaiseRefused`, and
+`autonomy.refused` records it with outcome `no_owner` (UC-15.5, ADR-0259 §2).
+
 Registering is where a person's step must name its role once the tenant has a structure: a
 `human` step, or a fallback to a person, without a role, or naming a role no identity of the
 tenant holds, is refused (UC-4.20, ADR-0146). While no identity holds a role, nothing is
 required.
+
+Registering is where the tenant's residency rule holds a version: one whose step handling data
+the rule restricts would be bound to a model, a worker, a connector or a host outside the
+permitted location is refused, each finding naming the step, the data class and the adapter
+(UC-11.1, ADR-0281 §4).
 """
 
 from __future__ import annotations
@@ -70,9 +91,14 @@ from typing import Any
 from pydantic import ValidationError
 
 from taktus.components.process.domain.model import (
+    ChangeRecord,
+    Control,
+    DataContract,
     DeadlineDeclaration,
+    Escalation,
     EvaluationSpec,
     Expect,
+    Frame,
     InputDeclaration,
     InvalidProcess,
     OpenWorkCap,
@@ -87,15 +113,32 @@ from taktus.components.process.domain.model.exactness import (
     ExactnessStatement,
     InvalidStatement,
 )
-from taktus.components.process.domain.service import autonomy, evaluation, exactness, frame
+from taktus.components.process.domain.model.process import FRAME_KINDS
+from taktus.components.process.domain.service import (
+    autonomy,
+    evaluation,
+    exactness,
+    frame,
+    partners,
+    queries,
+)
 from taktus.components.process.domain.service import takeover as instructed
 from taktus.components.process.domain.service.quality import QUALITY
 from taktus.components.process.ports import (
+    DomainOwners,
     FreeSources,
     LoweredLevels,
     LoweredVersions,
+    ProcessRights,
+    ResidencyBindings,
     RoleStructure,
     StageCeilings,
+)
+from taktus.components.process.ports.rights import (
+    APPROVE,
+    CREATE,
+    OF_A_PROCESS,
+    SET_AUTONOMY,
 )
 from taktus.ports.administration import Administration
 from taktus.ports.clock import Clock
@@ -125,9 +168,8 @@ class RegisterProcessVersion:
     act for that identity."""
     approved_by: str | None = None
     """The person who approves a raise of an autonomy level this version makes, or a change of
-    its caps on open work (ADR-0132). A version that does neither needs no approval. Who holds
-    the right to approve is a right per role (UC-7.3); until it exists, any identity the tenant
-    knows may."""
+    its caps on open work (ADR-0132). A version that does neither needs no approval. Once the
+    tenant grants the rights of a process, the person holds `autonomy.set` (ADR-0257)."""
 
 
 class RegisterProcessVersionHandler:
@@ -150,7 +192,18 @@ class RegisterProcessVersionHandler:
         sources: FreeSources | None = None,
         stages: StageCeilings | None = None,
         structure: RoleStructure | None = None,
+        rights: ProcessRights | None = None,
+        domains: DomainOwners | None = None,
+        residency: ResidencyBindings | None = None,
     ) -> None:
+        self._residency = residency
+        """Which steps would be bound outside the tenant's residency rule (ADR-0281 §4). None:
+        the run alone holds a step to the rule."""
+        self._domains = domains
+        """Which processes belong to a domain without an owner (ADR-0259). None: no domain
+        holds a level."""
+        self._rights = rights
+        """Who holds the rights of a process (ADR-0257). None: no right is asked for."""
         self._structure = structure
         """Which roles the tenant's identities hold (ADR-0146). None: no role is required."""
         self._stages = stages
@@ -189,6 +242,9 @@ class RegisterProcessVersionHandler:
         unroled = await self._unroled(tenant, version)
         if unroled:
             raise InvalidProcess(tuple(unroled))
+        outside = [] if self._residency is None else await self._residency.outside(tenant, version)
+        if outside:
+            raise InvalidProcess(tuple(outside))
         above = await self._above_ceiling(tenant, version)
         if above is not None:
             async with self._work.transaction(tenant):
@@ -204,6 +260,20 @@ class RegisterProcessVersionHandler:
         refused: autonomy.RaiseVerdict | None = None
         capped: str | None = None
         lowerings = await self._lowerings(tenant, version)
+        lacking = await self._lacking(tenant, version, lowerings, command)
+        ownerless = (
+            None
+            if self._domains is None
+            else await self._domains.ownerless(tenant, version.process_id)
+        )
+        if lacking:
+            async with self._work.transaction(tenant):
+                for right, _, actor in lacking:
+                    outcome = "lacks_" + right.replace(".", "_")
+                    await self._record(
+                        tenant, version, "process.refused", outcome, command, actor=actor
+                    )
+            raise InvalidProcess(tuple(finding for _, finding, _ in lacking))
         async with self._work.transaction(tenant):
             stored = await self._versions.get(tenant, version.ref)
             # A registered version never changes: the runs that name it, their ledger and their
@@ -225,7 +295,18 @@ class RegisterProcessVersionHandler:
                 for r in autonomy.raises(self._running(old, lowerings), version.autonomy)
                 if old.ref != version.ref
             ]
-            if raised:
+            if raised and ownerless is not None:
+                refused = autonomy.RaiseVerdict(
+                    admitted=False,
+                    findings=(
+                        f"{version.process_id} belongs to the domain {ownerless!r}, which has "
+                        "no owner now: nothing in it is raised in autonomy until a person is "
+                        "named its owner (UC-15.5, ADR-0259)",
+                    ),
+                    refusal="no_owner",
+                )
+                await self._record(tenant, version, "autonomy.refused", "no_owner", command)
+            elif raised:
                 verdict = await self._verdict(tenant, version, replaced, raised, command)
                 if verdict.admitted:
                     await self._record(tenant, version, "autonomy.raised", "raised", command)
@@ -329,6 +410,53 @@ class RegisterProcessVersionHandler:
             return []
         return [f for step in version.steps if (f := unroled(step, held)) is not None]
 
+    async def _lacking(
+        self,
+        tenant: Tenant,
+        version: ProcessVersion,
+        lowerings: Mapping[str, LoweredLevels],
+        command: RegisterProcessVersion,
+    ) -> list[tuple[str, str, str | None]]:
+        """Every right of a process the act needs and its identity lacks, each with its
+        finding and the identity that lacked it (ADR-0257). Nothing while no role of the
+        tenant holds one of the rights."""
+        if self._rights is None or not await self._rights.granting(tenant, OF_A_PROCESS):
+            return []
+        async with self._work.transaction(tenant):
+            replaced = [r for r in await self._replaced(tenant, version) if r.ref != version.ref]
+            first = not replaced and await self._versions.get(tenant, version.ref) is None
+        raised = any(
+            autonomy.raises(self._running(old, lowerings), version.autonomy) for old in replaced
+        )
+        needed: list[tuple[str, str | None, str]] = []
+        if first:
+            needed.append((CREATE, command.by, f"create the process {version.process_id}"))
+        needed.append((APPROVE, command.by, f"approve {version.ref} for operation"))
+        if first or raised:
+            what = "set" if first else "raise"
+            needed.append(
+                (
+                    SET_AUTONOMY,
+                    command.approved_by or command.by,
+                    f"{what} the autonomy level of {version.process_id} to "
+                    f"{version.autonomy.level}",
+                )
+            )
+        lacking: list[tuple[str, str, str | None]] = []
+        for right, who, act in needed:
+            if who is not None and await self._rights.holds(tenant, who, right):
+                continue
+            named = "an act naming no identity" if who is None else f"{who!r}"
+            lacking.append(
+                (
+                    right,
+                    f"{named} may not {act}: it lacks the right {right}, which a role of the "
+                    "tenant holds and grants to those who hold the role (UC-7.3, ADR-0257)",
+                    who,
+                )
+            )
+        return lacking
+
     async def _lowerings(self, tenant: Tenant, version: ProcessVersion) -> dict[str, LoweredLevels]:
         """The lowered levels of every version the new one would replace, read before the
         registration's own transaction: units of work do not nest."""
@@ -344,7 +472,9 @@ class RegisterProcessVersionHandler:
         lowered = lowerings.get(version.ref)
         if lowered is None:
             return version.autonomy
-        return autonomy.lowered_to(version.autonomy, lowered.level, lowered.actions)
+        return autonomy.lowered_to(
+            version.autonomy, lowered.level, lowered.actions, lowered.classes
+        )
 
     async def _replaced(self, tenant: Tenant, version: ProcessVersion) -> list[ProcessVersion]:
         """The version the new one replaces: the process's active version where it is known;
@@ -455,6 +585,17 @@ def _names(node: Any) -> list[str]:
 
 def parse_bundle(bundle: Document) -> ProcessVersion:
     """The bundle document as a process version, or InvalidProcess with every finding."""
+    version, refused = read_bundle(bundle)
+    if refused:
+        raise InvalidProcess(tuple(refused))
+    return version
+
+
+def read_bundle(bundle: Document) -> tuple[ProcessVersion, list[str]]:
+    """The bundle as a process version, and every finding of the rules a version is held to
+    beyond its shape — exactness, takeover instructions, evaluation, the frame of its steps —
+    which `parse_bundle` refuses it for. InvalidProcess where its shape cannot be read at all.
+    A change Taktus made keeps the findings on its proposal (ADR-0255 §3)."""
     findings: list[str] = []
     steps: list[Step] = []
     work: dict[str, Mapping[str, Any]] = {}
@@ -496,7 +637,14 @@ def parse_bundle(bundle: Document) -> ProcessVersion:
             open_work=_open_work(bundle.get("open_work")),
             deadlines=_deadlines(bundle.get("deadlines")),
             evaluation=_evaluation(bundle.get("evaluation")),
+            case=bundle.get("case"),
             takeover=_takeover(bundle.get("takeover")),
+            escalation=_escalation(bundle.get("escalation")),
+            heal_limit=bundle.get("heal_limit", 3),
+            frame=_frame(bundle.get("frame")),
+            change=_change(bundle.get("change")),
+            control=_control(bundle.get("control")),
+            contracts=_contracts(bundle.get("contracts")),
             author=bundle.get("author"),
             reason=bundle.get("reason"),
         )
@@ -509,13 +657,13 @@ def parse_bundle(bundle: Document) -> ProcessVersion:
         )
     refused.extend(evaluation.findings(version.steps, version.work))
     refused.extend(frame.findings(version.steps, version.work, version.inputs))
+    refused.extend(partners.findings(version))
+    refused.extend(queries.findings(version.steps, version.work))
     try:
         exactness.statement(version.ref, version.name, version.steps)
     except InvalidStatement as error:
         refused.append(str(error))
-    if refused:
-        raise InvalidProcess(tuple(refused))
-    return version
+    return version, refused
 
 
 def statement_of(bundle: Document) -> ExactnessStatement:
@@ -711,10 +859,94 @@ def _slo(raw: Any) -> Slo | None:
         return None
     if not isinstance(raw, Mapping):
         raise InvalidProcess(("`slo` is not a mapping",))
-    return Slo(
-        freshness=_duration(raw.get("freshness")),
-        latency=_duration(raw.get("latency")),
-    )
+    try:
+        return Slo(
+            freshness=_duration(raw.get("freshness")),
+            latency=_duration(raw.get("latency")),
+            completion=raw.get("completion"),
+        )
+    except ValidationError as error:
+        raise InvalidProcess(tuple(_describe("slo", error))) from error
+
+
+def _escalation(raw: Any) -> Escalation | None:
+    """`escalation`: the `role` a failure reaches, the time to react `react_within`, and the
+    `path` (ADR-0252 §2)."""
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        raise InvalidProcess(("`escalation` is not a mapping",))
+    unknown = sorted(set(raw) - {"role", "react_within", "path"})
+    if unknown:
+        raise InvalidProcess(
+            (
+                f"`escalation` names {', '.join(map(str, unknown))}; it takes role, react_within "
+                "and path",
+            )
+        )
+    try:
+        return Escalation.model_validate(
+            {
+                "role": raw.get("role"),
+                "react_within": _duration(raw.get("react_within")),
+                "path": raw.get("path", "channel"),
+            }
+        )
+    except ValidationError as error:
+        raise InvalidProcess(tuple(_describe("escalation", error))) from error
+
+
+def _frame(raw: Any) -> Frame | None:
+    """`frame`: the `changes` Taktus may make on its own (ADR-0255 §1)."""
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping) or set(raw) - {"changes"}:
+        raise InvalidProcess(("`frame` is a mapping that takes `changes` only",))
+    try:
+        return Frame.model_validate(dict(raw))
+    except ValidationError as error:
+        raise InvalidProcess(
+            (*_describe("frame", error), f"`frame.changes` names any of {', '.join(FRAME_KINDS)}")
+        ) from error
+
+
+def _contracts(raw: Any) -> dict[str, DataContract]:
+    """`contracts`: the data contract of every exchange with a partner, by name (ADR-0273)."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, Mapping):
+        raise InvalidProcess(("`contracts` maps a name to a data contract",))
+    found: dict[str, DataContract] = {}
+    for name, given in raw.items():
+        if not isinstance(given, Mapping):
+            raise InvalidProcess((f"`contracts.{name}` is not a mapping",))
+        document = dict(given)
+        document["frequency"] = _duration(document.get("frequency"))
+        try:
+            found[str(name)] = DataContract.model_validate(document)
+        except ValidationError as error:
+            raise InvalidProcess(tuple(_describe(f"contracts.{name}", error))) from error
+    return found
+
+
+def _control(raw: Any) -> Control:
+    """`control`: `coupled`, or `{mode: decoupled, task: {...}}` (ADR-0272)."""
+    if raw is None or raw == "coupled":
+        return Control()
+    try:
+        return Control.model_validate(raw)
+    except ValidationError as error:
+        raise InvalidProcess(tuple(_describe("control", error))) from error
+
+
+def _change(raw: Any) -> ChangeRecord | None:
+    """`change`: what led Taktus to the version (ADR-0255 §3)."""
+    if raw is None:
+        return None
+    try:
+        return ChangeRecord.model_validate(raw)
+    except ValidationError as error:
+        raise InvalidProcess(tuple(_describe("change", error))) from error
 
 
 def _expect(raw: Any) -> Expect | None:
@@ -762,4 +994,4 @@ def _describe(where: str, error: ValidationError) -> list[str]:
 def _content(version: ProcessVersion) -> dict[str, Any]:
     """What a version is, without who registered it and why: the same bundle registered again
     by someone else is the same version."""
-    return version.model_dump(mode="json", exclude={"author", "reason"})
+    return version.model_dump(mode="json", exclude={"author", "reason", "change"})

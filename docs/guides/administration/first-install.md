@@ -76,7 +76,8 @@ make start
 This one command installs Taktus and makes it ready to use from the web app. It writes a random
 database password, and the address of the database that carries it, into two files under
 `deploy/docker/secrets/`. It builds the image of Taktus, which takes several minutes the first
-time. It starts two containers: PostgreSQL, the database, and Taktus. Taktus brings the
+time. It starts three containers: PostgreSQL, the database; Taktus; and the backup, which
+backs up the database and the stored files every day (page *Restoring*). Taktus brings the
 database to its schema when it starts. Once Taktus answers that it is ready, the command creates
 your tenant and your identity in it (sections 4 and 5), and prints your **account key** once,
 with the address of the web app. Keep the key like a password.
@@ -90,6 +91,10 @@ nothing about you; it is never committed. `Ctrl-C` stops the clock; Taktus keeps
 *My organisation*. Run on an instance that has a tenant already, the command creates nothing.
 `make up` does the same install without the tenant, the identity and the clock: sections 4 and
 5 are then done by hand.
+
+**From published images.** Once a release is published, its images can be pulled instead of
+built. Set `TAKTUS_IMAGE` and `TAKTUS_BACKUP_IMAGE` to the release's images before `make start`
+or `make up`; the page *Installing* says how.
 
 Check it yourself:
 
@@ -407,7 +412,7 @@ Nothing, until you configure it. An instance installed by this page:
 
 ## 9. Stop it, and start it again
 
-On one machine, `make down` stops both containers, removes them and keeps every volume. A **volume** is where
+On one machine, `make down` stops the containers, removes them and keeps every volume. A **volume** is where
 a container keeps its data. `make up` starts them again, and every run continues at the step
 where it stopped. No command of this repository removes a volume; that is always a person's
 own act.

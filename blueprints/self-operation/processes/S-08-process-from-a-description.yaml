@@ -1,0 +1,151 @@
+# S-08 Process from a description — a description in a person's words becomes a proposal for a
+# new process; nothing is registered (UC-4.1, ADR-0251).
+#
+# A person describes, from the web app or the chat, what should happen. A language model writes
+# the bundle of a new process, choosing for every step its method, the reason, the methods
+# rejected, a fallback and an exactness class, and the instance keeps the proposal only if it
+# passes what registration checks. A step for which no method admissible under its exactness
+# class fits becomes a `human` step; a bundle that guesses one does not register and leaves no
+# proposal. The person then has the proposal rehearsed — nothing leaves the system — reads what
+# each step did and what it would have sent, and commissions it, or discards it. Commissioning is
+# the person's act; this process never registers anything (ADR-0091 §4).
+#
+#     uv run taktusctl run --process blueprints/self-operation/processes/S-08-process-from-a-description.yaml \
+#         --input process=weekly-report --input 'description=every Monday, sum last week's invoices'
+#
+# The capability `orchestrator.changes` is served by the loopback connector, through which Taktus
+# reaches itself (docs/architecture/contracts.md §4).
+
+id: s08-process-from-a-description
+version: "1"
+name: S-08 Process from a description
+autonomy:
+  level: 3
+  reason: >
+    the one value a language model produces is a proposed bundle, and it leaves the step only
+    through the validation registration applies; a proposal is a record the person reads, nothing
+    is registered, and commissioning is the person's act at every level
+  toward_next: >
+    a quarter of proposals commissioned without a rewrite by hand; then Taktus proposes level 4
+    with that evidence (anchors.taktus.md M3.9)
+author: the repository
+reason: a person describes a process in their own words and Taktus builds it (UC-4.1)
+
+inputs:
+  process:
+    description: the identifier the new process is to have
+    example: weekly-report
+  description:
+    description: what should happen, in the person's own words
+    example: every Monday, sum the invoices of the past week and post the total to the team
+
+# Counted in calls of the loopback connector. The model's answer is held to its own limit below.
+limits:
+  quota: { units: 2 }
+
+steps:
+  - id: propose
+    method: llm
+    reason: >
+      which steps a description in a person's words needs, in which order and by which method,
+      is understanding language and the work described; no rule set states it
+    rejected:
+      - method: rule
+        why: the wording of a description varies too much for a rule set
+      - method: ml
+        why: no labelled corpus of descriptions and the processes they led to exists yet
+    exactness: tolerant
+    fallback:
+      when: the answer does not validate, or the model serving the purpose reasoning is unavailable
+      to: human
+      role: owner
+    work:
+      purpose: reasoning
+      system: >
+        You build a new process bundle from a person's description. Answer with the complete
+        bundle as one JSON object and nothing else, with the identifier you are given as `id`,
+        `version` "1", a `name`, and `limits`. Every step carries its `method` (one of rule,
+        statistics, ml, neural, llm, worker, human, wait), the `reason` for it, the methods
+        `rejected` with why, a `fallback` where the method is llm or worker, and an `exactness`
+        class (exact, sourced, tolerant, free) where it produces a result; human and wait steps
+        carry none. An exact result comes from rule or statistics only, and declares a check
+        such as recomputation; a sourced result declares a check. Where no method admissible
+        under the class the result needs fits, make the step a human step with a role, and
+        never guess a method. Give the process an `autonomy` with `level` 1 or 2, its `reason`
+        and what is missing to go higher under `toward_next`. Give a `takeover` section that
+        says how a person runs the process by hand: its `sequence` and, for every step, the
+        `system`, what to `do`, the `expertise`, its `credentials` and when it is `done`.
+        Name what a step reaches by capability, never by product.
+      prompt: |
+        The identifier of the new process: ${process}
+
+        The person describes it:
+        ${description}
+      values:
+        process: { $input: process }
+        description: { $input: description }
+      max_output_tokens: 8192
+      # The answer is a JSON object, fenced or not, or it does not leave; the keep step
+      # validates the rest.
+      pattern: "^\\s*(```[a-z]*\\s*)?\\{"
+
+  - id: keep
+    method: rule
+    reason: >
+      the proposed bundle is validated as registration would validate it and kept as a proposal
+      against no version; a bundle that would not register is kept nowhere, and the step fails
+      with every finding
+    rejected:
+      - method: llm
+        why: whether a bundle registers is a fixed set of rules; a model's opinion of it is not
+    exactness: exact
+    checks:
+      - { kind: recomputation, subject: "whether the bundle registers, and its difference against no version" }
+    fallback:
+      when: the bundle would not register, or the loopback connector is unavailable
+      to: human
+      role: owner
+    depends_on: [propose]
+    work:
+      rule: connector
+      operation: orchestrator.changes.propose
+      input:
+        process: { $input: process }
+        request: { $input: description }
+        bundle: { $from: propose, $select: text }
+
+# How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
+# every step the system to act in, what to do there, the expertise it needs, each credential by
+# its parameter and where an authorised person finds it, and how to tell that it is done. The
+# section "By hand" of README.md beside this directory says the same.
+takeover:
+  sequence: >
+    The process runs when a person describes a new process in their own words, from the web app
+    or the chat; that person starts it. The steps run in order: write the bundle of the new
+    process the description asks for, then check that it would register and keep it as a
+    proposal. Nothing is registered: the person who described it rehearses the proposal, reads
+    what it did, and decides whether to commission it.
+  steps:
+    propose:
+      system: a text editor, on a copy of a bundle of the repository's examples
+      do: >
+        write a bundle for the new process the description asks for. Every step carries its
+        method, the reason for it, the methods not chosen with why, a fallback where the method
+        is a language model or a worker, and an exactness class where it produces a result; an
+        exact step comes from a rule or a statistic and declares its check. Where no admissible
+        method fits a step, make it a step a person does.
+      expertise: >
+        the bundle format and the rules for a step's method, reason, fallback and exactness;
+        understanding what the person described
+      credentials: []
+      done: the bundle says what the person described and nothing more
+    keep:
+      system: a shell with the instance's command-line tool, or the instance's interface
+      do: >
+        check the bundle with the bundle check of the command-line tool and fix every finding;
+        then hand it to the instance as a proposal for the new process, which keeps it and
+        registers nothing. Without Taktus, the checked file is the proposal: give it to the
+        person who described the process.
+      expertise: reading the check's findings
+      credentials: []
+      done: the bundle would register, and the proposal is with the person who described it

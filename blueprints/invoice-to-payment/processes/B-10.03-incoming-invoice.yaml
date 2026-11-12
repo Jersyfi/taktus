@@ -29,7 +29,7 @@
 # (`taktusctl deactivate --process b-10-03-incoming-invoice`) changes nothing in the books.
 
 id: b-10-03-incoming-invoice
-version: "2"
+version: "4"
 name: B-10.03 Incoming invoice
 autonomy:
   level: 3
@@ -80,6 +80,25 @@ inputs:
 limits:
   quota: { units: 10 }
 
+# The supplier's invoice is a partner exchange under a data contract (UC-15.3, ADR-0273): the
+# business terms EN 16931 makes mandatory, read and checked before anything of it counts.
+contracts:
+  supplier-invoices:
+    partner: the organisation's suppliers
+    direction: import
+    standard: EN 16931, as UBL 2.1 or UN/CEFACT CII D16B
+    fields:
+      - { name: number, required: true }
+      - { name: issue_date, required: true }
+      - { name: currency, required: true }
+      - { name: seller, required: true }
+      - { name: totals, required: true }
+      - { name: order_reference, required: true }
+      - { name: due_date, required: false }
+    frequency: 1d
+    responsible: { ours: owner, theirs: each supplier's accounts receivable }
+    steps: [read-invoice]
+
 steps:
   - id: read-invoice
     method: rule
@@ -88,11 +107,14 @@ steps:
       - method: llm
         why: a structured invoice is read field by field; a model would only add a chance of a wrong field
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what documents.invoices.read answered", columns: [digest, number, issue_date, currency, seller, totals, order_reference] }
     fallback:
       when: the connector serving documents.invoices is unavailable, or the document is no invoice it reads
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: documents.invoices.read
       input:
@@ -107,12 +129,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what accounting.orders.read answered", columns: [account, cost_centre, currency, lines, net_invoiced, net_total, reference, supplier] }
     fallback:
       when: the invoice names no order the accounting system holds, or its connector is unavailable
       to: human
       role: owner
     depends_on: [read-invoice]
     work:
+      checking: { select: output }
       rule: connector
       operation: accounting.orders.read
       input:
@@ -169,12 +194,15 @@ steps:
       - method: worker
         why: a proposal is one call of a declared operation; a worker would add an actor where none is needed
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what accounting.bookings.propose answered", columns: [id] }
     fallback:
       when: the connector serving accounting.bookings is unavailable or refuses the proposal
       to: human
       role: owner
     depends_on: [check]
     work:
+      checking: { select: output }
       rule: connector
       operation: accounting.bookings.propose
       input:
@@ -204,12 +232,15 @@ steps:
       - method: worker
         why: a release is one call of a declared operation, and its decision is a person's, not a worker's
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what payment.release.submit answered", columns: [id, status] }
     fallback:
       when: the connector serving payment.release is unavailable or refuses the payment
       to: human
       role: owner
     depends_on: [propose-booking]
     work:
+      checking: { select: output }
       rule: connector
       operation: payment.release.submit
       input:

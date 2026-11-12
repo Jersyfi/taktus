@@ -421,56 +421,121 @@ def check_adrs(root: Path, case: UseCase) -> list[str]:
 
 
 SPREAD_FROM = 8
-"""A use case naming this many tests or more has them run in four processes. Starting the
-processes costs about a second, which a handful of tests does not repay; a suite such as the
-worker conformance one, run once per fault, takes minutes alone and is run again by every case
-of the gate's self-test (`tools/gate_selftest.py`)."""
+"""When the use cases are run one by one, a case naming this many tests or more has them run in
+four processes. Starting the processes costs about a second, which a handful of tests does not
+repay."""
 
 
 def _spread(refs: list[str]) -> list[str]:
     return ["-n", "4"] if len(refs) >= SPREAD_FROM else []
 
 
+def _pytest(root: Path, args: list[str], report: Path) -> None:
+    # A fixed interpreter and arguments assembled here from checked test references.
+    subprocess.run(  # noqa: S603
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            f"--junitxml={report}",
+            *args,
+        ],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def _key(ref: str) -> tuple[str, str]:
+    """A reference `tests/a/test_b.py::test_c` as pytest's report names it: module, function."""
+    path, _, name = ref.partition("::")
+    return path.removesuffix(".py").replace("/", "."), name
+
+
+def _outcomes(report: Path) -> dict[tuple[str, str], list[str]] | None:
+    """Every test of a pytest report with its outcomes; None if pytest wrote no report."""
+    if not report.exists():
+        return None
+    outcomes: dict[tuple[str, str], list[str]] = {}
+    root = ET.parse(report).getroot()  # noqa: S314 — pytest's own report, written just now
+    for case in root.iter("testcase"):
+        key = (case.get("classname", ""), case.get("name", "").split("[", 1)[0])
+        if case.find("failure") is not None:
+            outcome = "failed"
+        elif case.find("error") is not None:
+            outcome = "error"
+        elif case.find("skipped") is not None:
+            outcome = "skipped"
+        else:
+            outcome = "passed"
+        outcomes.setdefault(key, []).append(outcome)
+    return outcomes
+
+
+def _verdict(refs: list[str], outcomes: dict[tuple[str, str], list[str]]) -> tuple[bool, str]:
+    """Green only if every named test ran, and every run of it passed."""
+    missing = [r for r in refs if not outcomes.get(_key(r))]
+    if missing:
+        return False, f"no test was collected for {missing[0]}"
+    ran = [o for r in dict.fromkeys(refs) for o in outcomes[_key(r)]]
+    failed, errors, skipped = (ran.count(k) for k in ("failed", "error", "skipped"))
+    if failed or errors or skipped:
+        return False, (
+            f"{len(ran)} run: {failed} failed, {errors} errors, "
+            f"{skipped} skipped — a skipped test is not a green one"
+        )
+    return True, f"{len(ran)} test(s) green"
+
+
 def run_tests(root: Path, refs: list[str]) -> tuple[bool, str]:
-    """Run the named tests; green only if every one ran and passed."""
+    """Run one use case's named tests on their own; green only if every one ran and passed."""
     try:
         import pytest  # noqa: F401
     except ImportError:
         return False, "pytest is not importable; run through `make gate-usecases`"
     with tempfile.TemporaryDirectory() as tmp:
         report = Path(tmp) / "report.xml"
-        # A fixed interpreter and arguments assembled here from checked test references.
-        subprocess.run(  # noqa: S603
-            [
-                sys.executable,
-                "-m",
-                "pytest",
-                "-q",
-                "-p",
-                "no:cacheprovider",
-                f"--junitxml={report}",
-                *_spread(refs),
-                *refs,
-            ],
-            cwd=root,
-            capture_output=True,
-            text=True,
-            check=False,
+        _pytest(root, [*_spread(refs), *refs], report)
+        outcomes = _outcomes(report)
+    if outcomes is None:
+        return False, "pytest produced no report"
+    return _verdict(refs, outcomes)
+
+
+def run_all(root: Path, cases: list[UseCase]) -> dict[str, tuple[bool, str]]:
+    """Run the named tests of every case together, and give each case its verdict.
+
+    One case after another, each its own pytest, took 13.5 minutes in CI when a change touched
+    every use case (#681). Together, a test named by several cases runs once, and the tests
+    spread over every core. A test marked `timing` runs alone, in a second session of one
+    process, as `make timing` runs it (ADR-0096 §7). Where pytest writes no report — it could
+    not start — every case is run on its own, so that the failure is named where it is."""
+    try:
+        import pytest  # noqa: F401
+    except ImportError:
+        return {
+            c.id: (False, "pytest is not importable; run through `make gate-usecases`")
+            for c in cases
+        }
+    refs = sorted({r for c in cases for r in c.tests})
+    with tempfile.TemporaryDirectory() as tmp:
+        spread, alone = Path(tmp) / "spread.xml", Path(tmp) / "alone.xml"
+        _pytest(
+            root,
+            ["-n", "auto", "-m", "not timing", "--continue-on-collection-errors", *refs],
+            spread,
         )
-        if not report.exists():
-            return False, "pytest produced no report"
-        suite = ET.parse(report).getroot()  # noqa: S314 — pytest's own report, written just now
-        if suite.tag == "testsuites":
-            suite = suite[0]
-        counts = {k: int(suite.get(k, "0")) for k in ("tests", "failures", "errors", "skipped")}
-    if counts["tests"] == 0:
-        return False, "no test was collected"
-    if counts["failures"] or counts["errors"] or counts["skipped"]:
-        return False, (
-            f"{counts['tests']} run: {counts['failures']} failed, {counts['errors']} errors, "
-            f"{counts['skipped']} skipped — a skipped test is not a green one"
-        )
-    return True, f"{counts['tests']} test(s) green"
+        _pytest(root, ["-m", "timing", "--continue-on-collection-errors", *refs], alone)
+        together, timed = _outcomes(spread), _outcomes(alone)
+    if together is None or timed is None:
+        return {c.id: run_tests(root, c.tests) for c in cases}
+    for key, outcomes in timed.items():
+        together.setdefault(key, []).extend(outcomes)
+    return {c.id: _verdict(c.tests, together) for c in cases}
 
 
 # --- the diff ------------------------------------------------------------------------------------
@@ -694,8 +759,9 @@ def main(argv: list[str] | None = None) -> int:
         verified = [c for c in verified if c.path.as_posix() in touched]
     if verified:
         print("verified means green")
+    verdicts = run_all(root, verified) if verified else {}
     for case in verified:
-        green, what = run_tests(root, case.tests)
+        green, what = verdicts[case.id]
         if green:
             report.ok(f"{case.id}: {what}")
         else:

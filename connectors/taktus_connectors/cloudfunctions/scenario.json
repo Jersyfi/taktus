@@ -1,0 +1,27 @@
+{
+  "credentials": {
+    "actions": "SITES_TOKEN"
+  },
+  "read": {
+    "operation": "deployment.sites.read",
+    "input": {
+      "name": "web"
+    }
+  },
+  "writes": [
+    {
+      "operation": "deployment.sites.release",
+      "input": {
+        "name": "web",
+        "version": "example-sources/web/1.1.0.tar.gz#1730000000000002"
+      }
+    }
+  ],
+  "invalid": {
+    "operation": "deployment.sites.read",
+    "input": {
+      "name": "Not A Function"
+    },
+    "expected_cause": "invalid"
+  }
+}

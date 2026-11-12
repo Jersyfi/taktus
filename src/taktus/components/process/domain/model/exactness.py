@@ -92,6 +92,14 @@ CATALOGUE: dict[CheckKind, Row] = {
         does_not_cover="a value wrong inside a source of the right shape",
         needs="the columns or the pattern the step was written for (DEC-0223)",
     ),
+    CheckKind.DISTRIBUTION: Row(
+        name="distribution against the moving median",
+        covers="the result lies within a band around the median of the step's earlier "
+        "results, with the same sign: a monthly total ten times the previous eleven is found",
+        does_not_cover="a wrong value inside the band, and a series that drifts slowly",
+        needs="how many earlier results the median is taken over, and the band (ADR-0271); it "
+        "marks the result suspect after it counted, and stops nothing",
+    ),
 }
 """Every kind of the shared kernel has its row; `tests/exactness` holds the two together."""
 
@@ -99,6 +107,25 @@ NOT_YET_MEASURED = (
     "The measured rate — how many results a person corrected after the checks passed, per "
     "hundred — is not yet measured: the value ledger does not count it yet."
 )
+
+NONE_COUNTED = (
+    "The measured rate — how many results a person corrected after the checks passed, per "
+    "hundred — is not yet measured: no result of a checked step of this version has counted yet."
+)
+
+
+def measured_rate(corrected: int, counted: int) -> str:
+    """The residual risk's last line once the value ledger counts it (ADR-0226): the figure as
+    counted, never estimated."""
+    if counted <= 0:
+        return NONE_COUNTED
+    rate = 100 * corrected / counted
+    return (
+        f"The measured rate: a person corrected {corrected} of {counted} counted results of "
+        f"its checked steps after the checks passed, {rate:.1f} per hundred, as the value ledger "
+        "counts them."
+    )
+
 
 FORBIDDEN = re.compile(r"guarant", re.IGNORECASE)
 """A statement says what was checked against what. It never says "guaranteed" (UC-6.9 §2)."""

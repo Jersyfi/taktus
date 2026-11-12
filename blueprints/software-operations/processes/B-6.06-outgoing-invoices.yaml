@@ -1,0 +1,158 @@
+# B-6.06 Outgoing invoices — UC-03 §4.6: the month's outgoing invoices collected from the
+# payment provider for the bookkeeping, and every one still owed named (ADR-0214).
+#
+# On the first of every month the invoices of the month before are read through
+# `payments.invoices`, each with its number, status, total, tax, paid and remaining amount in
+# minor units. The rule `issued` keeps the invoices that count for the books — open, paid,
+# uncollectible or refunded, not drafts or voided ones — and the rule `owed` those with an
+# amount still remaining. The run's result is the month's list, which the bookkeeping takes.
+#
+# **The export is not built.** The accounting connector proposes bookings of incoming invoices
+# and the documents connector reads incoming EN 16931 invoices; neither takes an outgoing one,
+# and a business's own bookkeeping has no open interface (UC-03 §8). A person exports the list
+# from the run's result, or the provider's own export, into the books. Incoming invoices are the
+# invoice-to-payment blueprint's (B-10.03). Taktus keeps no books.
+#
+# The tenant's corridor on `owed` sends invoices still owed to its role:
+#
+#     uv run taktusctl signal configure payments.invoices_owed --process b-6-06 \
+#         --step owed --select count --bounds fixed --direction above \
+#         --yellow 0.25 --red 0.5 --fresh 32d --role <role> --case <where receivables are worked>
+#
+# By hand, for another month:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-6.06-outgoing-invoices.yaml \
+#         --input month=2026-10
+#
+# Switching it off (`taktusctl deactivate --process b-6-06`) changes nothing at the provider: it
+# only reads.
+
+id: b-6-06
+version: "1"
+name: B-6.06 Outgoing invoices
+autonomy:
+  level: 1
+  reason: >
+    the process only reads the provider's invoices and keeps them by fixed rules; nothing leaves
+    the system, so at level 1 every step runs and none acts; it starts at level 1, observing, as
+    UC-03 starts every process at level 1 or 2 when its stage opens
+  toward_next: >
+    stage 3 of the tenant's plan open, three monthly runs whose lists a person found complete
+    against the provider's own export, and an export into the books through an interface the
+    bookkeeping offers; then Taktus proposes the next level, up to level 3 in UC-03 (UC-7.1,
+    UC-9.6)
+author: the repository
+reason: the month's outgoing invoices are collected for the bookkeeping without a person exporting them by hand (UC-03 B-6.06)
+
+triggers:
+  - schedule: "0 6 1 * *"
+
+inputs:
+  month:
+    description: the month whose invoices are read, YYYY-MM; without it the month before the run
+    example: "2026-10"
+    required: false
+
+limits:
+  quota: { units: 120 }
+
+steps:
+  - id: invoices
+    method: rule
+    reason: the month's invoices are read as the payment provider holds them; nothing to judge
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what payments.invoices.list answered", columns: [complete, invoices] }
+    fallback:
+      when: the connector serving payments.invoices is unavailable
+      to: human
+      role: owner
+    work:
+      checking: { select: output }
+      rule: connector
+      operation: payments.invoices.list
+      input:
+        month: { $input: month, $otherwise: null }
+        status: all
+        limit: 10000
+      credentials:
+        - { name: PAYMENTS_TOKEN, injected_as: env }
+      expect:
+        - select: complete
+          equals: true
+          says: more invoices exist than one reading holds; a partial list would leave invoices out of the books
+
+  - id: issued
+    method: rule
+    reason: an invoice counts for the books when it was issued and not voided, a fixed rule over the provider's status
+    rejected:
+      - method: llm
+        why: a status is a field, not a judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the invoices issued in the month }
+    depends_on: [invoices]
+    work:
+      rule: filter
+      items: { $from: invoices, $select: output.invoices }
+      all:
+        - { field: status, matches: "^(open|paid|uncollectible|refunded)$" }
+      order: issued_at
+
+  - id: owed
+    method: rule
+    reason: an issued invoice with an amount remaining is still owed, a fixed rule over the provider's amounts
+    rejected:
+      - method: llm
+        why: whether a number is above zero is no judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the invoices of the month still owed }
+    depends_on: [issued]
+    work:
+      rule: filter
+      items: { $from: issued, $select: items }
+      all:
+        - { field: remaining, at_least: 1 }
+      order: issued_at
+
+takeover:
+  sequence: >
+    The process runs on the first of every month at six UTC; whoever looks after the
+    bookkeeping takes it over. The steps run in order: export the invoices of the month before
+    from the payment provider, keep those issued and not voided, and among them those with an
+    amount still owed. The issued invoices go into the books by hand; those still owed go to
+    the role the tenant named.
+  steps:
+    invoices:
+      system: the payment provider's dashboard, under invoices
+      do: >
+        export every invoice of the month, with its number, status, total, tax, amount paid and
+        amount remaining. Make sure the export is complete
+      expertise: exporting invoices from the payment provider's dashboard
+      credentials:
+        - parameter: PAYMENTS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Payment provider key of the
+            requesting identity described in CREDENTIALS.md; a person signs in with their own
+            account that may read invoices
+      done: every invoice of the month is in the export
+    issued:
+      system: a spreadsheet, on the export
+      do: >
+        keep the invoices that are open, paid, uncollectible or refunded, and leave out drafts
+        and voided ones; hand the kept list to the bookkeeping
+      expertise: filtering a table in a spreadsheet
+      credentials: []
+      done: the month's issued invoices are listed and handed over
+    owed:
+      system: the spreadsheet
+      do: >
+        among the issued invoices, keep those with an amount remaining above zero, and report
+        them to the role the tenant named
+      expertise: filtering a table in a spreadsheet
+      credentials: []
+      done: the invoices still owed are reported, or there is none

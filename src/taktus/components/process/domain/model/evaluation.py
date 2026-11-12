@@ -16,6 +16,16 @@ produced: the active version beside a proposal (`change`), or the active version
 
 A **corrected case** is a case proposed from a person's correction of a step's result. It
 enters the process's set only once a person confirmed its target (§7).
+
+A scorer may score one **dimension** of a result — whether it answers, whether it is correct,
+its tone — with a **gate**: a case passes the dimension where its score reaches the gate. A
+side's figure per dimension is the share of its scored cases that passed, and a change whose
+share in any dimension falls beyond the tolerance is a regression (ADR-0217).
+
+Every variable step an evaluation scores declares its **tolerance**: how far its own score may
+fall before its result no longer counts as equivalent. The step's exactness class bounds it
+(`TOLERANCE_CEILING`), so that room for creativity exists only where the class is `free`
+(ADR-0250, UC-8.4).
 """
 
 from __future__ import annotations
@@ -36,6 +46,15 @@ CASE_ID = r"^[a-z0-9][a-z0-9._-]*$"
 SCORING_METHODS = frozenset({Method.RULE, Method.LLM})
 """A scorer is a rule, or a language model as judge where no rule can score (ADR-0134 §2)."""
 JUDGE_FALLBACKS = frozenset({Method.RULE, Method.HUMAN})
+TOLERANCE_CEILING: Mapping[ExactnessClass, float] = {
+    ExactnessClass.EXACT: 0.0,
+    ExactnessClass.SOURCED: 0.05,
+    ExactnessClass.TOLERANT: 0.25,
+    ExactnessClass.FREE: 1.0,
+}
+"""The widest tolerance a step of each class may declare (ADR-0250 §1). An `exact` result is
+the same or it is wrong; a `sourced` one says what its source says, in other words at most; a
+`tolerant` one may differ in form; only a `free` one has room for creativity."""
 
 
 class ScoringRule(Value):
@@ -74,10 +93,19 @@ class Scorer(Value):
     """For a judge: the purpose of the model it asks."""
     criterion: str | None = Field(default=None, min_length=1)
     """For a judge: what it asks the model to judge the result by."""
+    dimension: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_]*$")
+    """The dimension of the result this scorer scores (ADR-0217); None for the result whole."""
+    gate: float | None = Field(default=None, ge=0, le=1)
+    """For a dimension: the score a case must reach to pass it, yes or no."""
 
     @model_validator(mode="after")
     def _a_method_of_its_own(self) -> Scorer:
         findings: list[str] = []
+        if (self.dimension is None) != (self.gate is None):
+            findings.append(
+                "a scorer of a dimension names its `gate`, the score a case passes it at, and a "
+                "gate belongs to a dimension (ADR-0217)"
+            )
         if self.method not in SCORING_METHODS:
             findings.append(
                 f"a scorer is a rule, or a language model as judge where no rule can score, "
@@ -137,9 +165,15 @@ class EvaluationSpec(Value):
     scorers: tuple[Scorer, ...] = Field(min_length=1)
     schedule: str | None = Field(default=None, min_length=1)
     """When the cases run without a change; a schedule as a trigger names one (ADR-0035)."""
+    tolerances: Mapping[StepId, float] = Field(default_factory=dict)
+    """Per scored step, how far its score may fall before its result is no longer an
+    equivalent one, a share from 0 to 1 (ADR-0250 §1)."""
 
     @model_validator(mode="after")
     def _sound(self) -> EvaluationSpec:
+        for step_id, share in self.tolerances.items():
+            if not 0 <= share <= 1:
+                raise ValueError(f"the tolerance of {step_id!r} is a share from 0 to 1")
         ids = [case.id for case in self.cases]
         if len(set(ids)) != len(ids):
             raise ValueError("an evaluation names every case once")
@@ -251,6 +285,10 @@ class Score(Value):
     score: float | None = Field(default=None, ge=0, le=1)
     """None where a judge fell back to a person."""
     how: Literal["rule", "judge", "fallback", "person", "no result"]
+    dimension: str | None = None
+    """The dimension the scorer scores (ADR-0217); None for the result whole."""
+    passed: bool | None = None
+    """For a dimension: whether the score reached its gate; None without a score."""
 
 
 class CaseResult(Value):
@@ -277,6 +315,9 @@ class SideResult(Value):
     """The mean of its cases' scores; None while one has none."""
     cases: int = Field(ge=0)
     unscored: int = Field(ge=0)
+    dimensions: Mapping[str, float | None] = Field(default_factory=dict)
+    """Per dimension, the share of the side's cases scored on it that passed its gate; None
+    where none was scored (ADR-0217)."""
 
 
 class Override(Value):
@@ -315,6 +356,15 @@ class Evaluation(Value):
     sides: tuple[SideResult, ...] = ()
     verdict: Verdict | None = None
     tolerance: float | None = Field(default=None, ge=0, le=1)
+    declared: Mapping[str, float] = Field(default_factory=dict)
+    """The tolerance each scored step declared when it started (ADR-0250 §1)."""
+    ceilings: Mapping[str, float] = Field(default_factory=dict)
+    """The widest tolerance each scored step's class admits, when it started."""
+    step_tolerances: Mapping[str, float] = Field(default_factory=dict)
+    """The tolerance each scored step was held to when it was scored: its declared one, or
+    the tenant's within its class's ceiling for a step that produces without varying."""
+    regressed_steps: tuple[str, ...] = ()
+    """The steps whose own score fell beyond their tolerance (ADR-0250 §2)."""
     compared_with: str | None = None
     """For drift: the earlier evaluation the score was compared with."""
     previous_score: float | None = Field(default=None, ge=0, le=1)

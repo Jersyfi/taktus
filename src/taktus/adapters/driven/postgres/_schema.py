@@ -100,6 +100,13 @@ process_version = Table(
     Column("deadlines", JSONB),  # the deadlines of each run, by name (ADR-0133)
     Column("evaluation", JSONB),  # the cases, the scorers and their schedule (ADR-0134)
     Column("takeover", JSONB),  # how a person runs it without Taktus (ADR-0180)
+    Column("case_input", Text),  # the input that names a run's case (ADR-0216)
+    Column("escalation", JSONB),  # whom a failure's escalation reaches, and how soon (ADR-0252)
+    Column("heal_limit", Integer),  # the heals before a failure is said; null is three (ADR-0254)
+    Column("frame", JSONB),  # what Taktus may change on its own (ADR-0255)
+    Column("change_record", JSONB),  # what led Taktus to a version within the frame (ADR-0255)
+    Column("control", JSONB),  # where the control sits; null is Taktus's (ADR-0272)
+    Column("contracts", JSONB),  # the data contract of every partner exchange (ADR-0273)
     Column("inputs", JSONB, nullable=False),
     Column("author", Text),
     Column("reason", Text),
@@ -342,6 +349,31 @@ role_profile = Table(
     PrimaryKeyConstraint("tenant", "id"),
 )
 
+catalogue_share = Table(
+    "catalogue_share",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("subject", Text, nullable=False),
+    Column("state", Text, nullable=False),
+    _at("shared_at"),
+    Column("share", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+
+caller_credential = Table(
+    "caller_credential",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("identity", Text, nullable=False),
+    Column("name", Text, nullable=False),
+    Column("suffix", Text, nullable=False),
+    _at("bound_at"),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+
 corrected_case = Table(
     "corrected_case",
     metadata,
@@ -458,6 +490,65 @@ adapter_stop = Table(
 """One row per stop of an adapter a person requested (ADR-0138). A row is never deleted: its
 state moves on."""
 
+scoped_stop = Table(
+    "scoped_stop",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("scope", Text, nullable=False),  # process, tenant (ADR-0256)
+    Column("process", Text, nullable=True),
+    Column("state", Text, nullable=False),  # holding, confirmed, lifted
+    _at("requested_at"),
+    Column("stop", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+    Index("scoped_stop_state", "tenant", "state"),
+)
+"""One row per stop of a process or of a tenant, by a person or a rule (ADR-0256). A row is
+never deleted: its state moves on. Kept apart from `adapter_stop`, which the previous release
+reads (ADR-0093)."""
+
+domain = Table(
+    "domain",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("owner", Text, nullable=True),  # None while the domain has no owner (ADR-0259)
+    Column("domain", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per domain a tenant instantiated, with its owner (ADR-0259). A row is never
+deleted: its owner moves on."""
+
+tenant_month_budget = Table(
+    "tenant_month_budget",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("budget", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per tenant that set a monthly budget across all its runs (ADR-0260)."""
+
+unit_limit = Table(
+    "unit_limit",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("unit_limit", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per limit of a unit of the structure, under its name; never deleted (ADR-0282)."""
+
+limit_watch = Table(
+    "limit_watch",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("watch", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per tenant that set its watch over limits that do harm (ADR-0282 §4)."""
+
 working_time = Table(
     "working_time",
     metadata,
@@ -528,6 +619,158 @@ takeover_trial = Table(
 )
 """One row per trial of a version's takeover instructions (ADR-0180 §3); a role, never a
 person; never changed."""
+
+run_steering = Table(
+    "run_steering",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),  # the run's identifier
+    Column("kind", Text, nullable=False),  # pause, cancel
+    Column("state", Text, nullable=False),  # asked, took_effect, confirmed
+    _at("requested_at"),
+    Column("steering", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per run a person asked to pause or cancel: the request asked last (ADR-0236)."""
+
+plan_draft = Table(
+    "plan_draft",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("version", Integer, nullable=False),
+    _at("changed_at"),
+    Column("draft", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per plan worked out in dialogue, at its current version (ADR-0237); the versions
+before it are named by the ledger's `plan.revised` and, once commissioned, kept as plans."""
+
+coach_settings = Table(
+    "coach_settings",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),  # the identity the settings belong to
+    Column("settings", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per person who has a coach (ADR-0240); read and changed only by that person."""
+
+coach_hint = Table(
+    "coach_hint",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("identity", Text, nullable=False),
+    Column("state", Text, nullable=False),  # offered, dismissed, accepted
+    _at("offered_at"),
+    Column("hint", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per hint offered to a person (ADR-0240); never deleted, its state moves on."""
+
+coach_policy = Table(
+    "coach_policy",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("policy", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per tenant that configured the coach's period (ADR-0240)."""
+
+org_structure = Table(
+    "org_structure",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("structure", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""A tenant's named levels (ADR-0275)."""
+
+structure_unit = Table(
+    "structure_unit",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("unit", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One unit of a tenant's structure, a project among them (ADR-0275, ADR-0276)."""
+
+placement = Table(
+    "placement",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("placement", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One object in one unit (ADR-0275)."""
+
+filing = Table(
+    "filing",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("filing", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""Where something Taktus set up is documented (ADR-0275 §7)."""
+
+knowledge_home = Table(
+    "knowledge_home",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("home", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""A unit's knowledge system, the record of its documentation (ADR-0275 §7)."""
+
+project_session = Table(
+    "project_session",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("session", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One participant's session in one project (ADR-0277)."""
+
+configuration_change = Table(
+    "configuration_change",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("change", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One change a commissioned plan makes in a target system (ADR-0278)."""
+
+
+def _created_document_table(name: str) -> Table:
+    return Table(
+        name,
+        metadata,
+        _tenant(),
+        Column("id", Text, nullable=False),
+        _at("created_at"),
+        Column("document", JSONB, nullable=False),
+        PrimaryKeyConstraint("tenant", "id"),
+    )
+
+
+connection_grant = _created_document_table("connection_grant")
+"""One row per grant made on a connection (UC-5.6); withdrawn by a later row, never deleted."""
+
+knowledge_entry = _created_document_table("knowledge_entry")
+"""One row per place of a connected source that was read (UC-5.5): its reference, link and
+digest, never its content."""
+
+domain_instance = _created_document_table("domain_instance")
+"""One row per domain instantiated from a blueprint (UC-15.1)."""
 
 subject_request = Table(
     "subject_request",
@@ -775,7 +1018,10 @@ run = Table(
     Column("skills", JSONB),  # the skill versions the run pinned (ADR-0162)
     Column("profile", Text),  # the role profile of a shared agent it serves (ADR-0163)
     Column("org_unit", Text),  # the unit it runs for (ADR-0166)
+    Column("org_path", JSONB),  # where it is attributed in the structure (ADR-0282)
     Column("org_unit_month", Text),  # the month it committed its budget to its unit's quota
+    Column("classes", JSONB),  # the levels per class of request it took on (ADR-0215)
+    Column("case_class", Text),  # the class its class step named (ADR-0215)
     Column("state", Text, nullable=False),
     Column("cause", Text),
     Column("reason", Text),
@@ -1066,3 +1312,27 @@ transaction of its own."""
 RELAY_SETTING = "taktus.relay"
 """The session setting the relay's own policy reads (migration 0087, ADR-0156): `on`, and the
 outbound binding's tables are visible. Only the relay store sets it, in transactions of its own."""
+
+
+def _document_table(name: str) -> Table:
+    return Table(
+        name,
+        metadata,
+        _tenant(),
+        Column("id", Text, nullable=False),
+        _at("at"),
+        Column("document", JSONB, nullable=False),
+        PrimaryKeyConstraint("tenant", "id"),
+    )
+
+
+view_configuration = _document_table("view_configuration")
+"""One row per tenant that configured its views and entitlements (ADR-0241 §2)."""
+report_definition = _document_table("report_definition")
+"""One row per report definition: reader role, trigger, channel (ADR-0242 §1)."""
+own_view = _document_table("own_view")
+"""One row per person who set their own view; read for that person alone (ADR-0245 §1)."""
+value_basis = _document_table("value_basis")
+"""One row per version of a tenant's value basis, written once (ADR-0244 §2)."""
+discovered_process = _document_table("discovered_process")
+"""One row per discovered process, at its stage (ADR-0245 §2)."""

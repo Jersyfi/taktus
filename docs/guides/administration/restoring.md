@@ -2,9 +2,33 @@ Restoring means bringing an instance back to an earlier state, from a backup, wi
 doing it. Taktus must be repairable by a person when Taktus itself is broken. The way to do it
 must be written down and practised (ADR-0013, requirement C).
 
-**On one machine**, a backup is two files taken by hand: the database and the stored files. The
-page *Upgrading* gives the commands that take them (its section 1) and the commands that bring
-them back (its section 5). Nothing takes such a backup on a schedule yet.
+**On one machine**, the service `backup` of the compose file takes a backup every 24 hours: the
+database's dump, the stored files and a manifest with every tenant's ledger head, in the volume
+`taktus-backups` or the directory `TAKTUS_BACKUP_DIRECTORY` names (`deploy/docker/README.md`,
+*Backups*). Every seventh day it restores the newest backup into a database of its own and checks
+every tenant's chain against the heads the manifest noted: the restore drill. A failed backup and
+a failed drill each reach the owner. To restore by hand, without Taktus:
+
+```bash
+docker compose -f deploy/docker/compose.yml run --rm backup list        # the backups kept
+docker compose -f deploy/docker/compose.yml stop taktus
+docker compose -f deploy/docker/compose.yml run --rm --entrypoint sh -v "$PWD:/out" backup \
+  -c 'cp /backups/<name>.dump /backups/<name>.objects.tar.gz /out/'   # decrypt with age -d first if encrypted
+```
+
+Then bring the database back as the page *Upgrading* does in its section 5, with `<name>.dump`
+in place of its dump. Bring the stored files back into the directory of objects, which the
+archive holds flat:
+
+```bash
+docker compose -f deploy/docker/compose.yml run --rm --no-deps -T --entrypoint tar taktus \
+  -xzf - -C /var/lib/taktus/objects < <name>.objects.tar.gz
+make up
+```
+
+Compare every tenant's newest ledger entry with the heads in `<name>.json`; the drill makes the
+same comparison on its own. A backup taken by hand before an upgrade
+(*Upgrading*, section 1) is restored the same way.
 
 **On a cluster**, the chart's scheduled backup writes the database and the stored files to an
 object store, and a person restores them by hand. The commands are in `deploy/k8s/README.md`,
@@ -17,14 +41,15 @@ works again.
 
 | Installation | Recovery point objective | Recovery time objective |
 |---|---|---|
-| One machine | everything since the last backup taken by hand: nothing takes one on a schedule, so there is no bound until the operator schedules one | 2 hours: the steps of *Upgrading*, section 5, for the two files of a backup |
+| One machine | 24 hours: one backup per `TAKTUS_BACKUP_EVERY_HOURS`, 24 by default; a shorter period bounds it shorter | 2 hours: the steps above and of *Upgrading*, section 5, for the two files of a backup |
 | A cluster, daily backup | 24 hours | 4 hours |
 | A cluster, with point-in-time recovery | 5 minutes by default | 4 hours |
 | A cluster, highly available profile | that of its external database and its standby | minutes for a failover, 4 hours for a restore |
 
 The time a person needs to notice a failure and decide is part of the objective and is not
-measured. The machine's part is measured on a cluster: the restore drill restores the newest
-backup every week, checks every tenant's ledger, and fails when it took longer than its limit.
+measured. The machine's part is measured by the restore drill, on a cluster and on one machine
+alike: it restores the newest backup every week, checks every tenant's ledger, and reports how
+long its restore took; on a cluster it also fails when that took longer than its limit.
 `deploy/k8s/README.md`, section 2, *Which profile*, gives each figure with the setting it follows
 from.
 

@@ -57,6 +57,8 @@ def bundle_of(
             )
             if value is not None
         }
+        if version.slo.completion is not None:
+            slo["completion"] = version.slo.completion
         if slo:
             bundle["slo"] = slo
     if version.expect is not None:
@@ -75,8 +77,34 @@ def bundle_of(
         }
     if version.evaluation is not None:
         bundle["evaluation"] = version.evaluation.document()
+    if version.case is not None:
+        bundle["case"] = version.case
     if version.takeover is not None:
         bundle["takeover"] = version.takeover.document()
+    if version.heal_limit != 3:
+        bundle["heal_limit"] = version.heal_limit
+    if version.contracts:
+        bundle["contracts"] = {
+            name: {
+                **contract.model_dump(mode="json", exclude_none=True, exclude={"frequency"}),
+                **(
+                    {}
+                    if contract.frequency is None
+                    else {"frequency": contract.frequency.total_seconds()}
+                ),
+            }
+            for name, contract in version.contracts.items()
+        }
+    if version.control.task is not None:
+        bundle["control"] = version.control.document()
+    if version.frame is not None:
+        bundle["frame"] = {"changes": list(version.frame.changes)}
+    if version.escalation is not None:
+        bundle["escalation"] = {
+            "role": version.escalation.role,
+            "react_within": version.escalation.react_within.total_seconds(),
+            "path": version.escalation.path,
+        }
     return bundle
 
 

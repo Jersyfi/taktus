@@ -8,6 +8,7 @@ schema lives in `_schema.py` and is created by the migrations; the two are held 
 test.
 """
 
+from taktus.adapters.driven.postgres.archive import PostgresTenantArchive
 from taktus.adapters.driven.postgres.backup_log import PostgresBackupLog
 from taktus.adapters.driven.postgres.leadership import PostgresLeadership
 from taktus.adapters.driven.postgres.ledger_store import PostgresLedgerStore
@@ -37,6 +38,7 @@ __all__ = [
     "PostgresQueue",
     "PostgresRelay",
     "PostgresRepository",
+    "PostgresTenantArchive",
     "PostgresTenantStore",
     "PostgresTraceStore",
     "SchemaOutOfDate",

@@ -20,8 +20,11 @@ pattern without one, or with `:*`, matches the capability with any qualifier or 
 A risk class's **level** is a ceiling (ADR-0170): `ceilings` names, for each tool action a
 risk class with a level covers, the lowest such level and the class that sets it.
 
-Scope: an anchor's `domain` and `jurisdiction` are not evaluated until domains exist (UC-15.5).
-Meanwhile such an anchor holds everywhere in the tenant: never less than configured.
+Scope: an anchor's `domain` and `jurisdiction` select the domains it holds in (ADR-0259). An
+anchor scoped to a domain holds for the processes of that domain; one scoped to a jurisdiction
+holds for the processes of a domain under it — `DE` covers `DE-BY`. An anchor scoped to a domain
+the tenant has not instantiated, or to a jurisdiction no domain of it is under, holds everywhere
+in the tenant: never less than configured.
 """
 
 from __future__ import annotations
@@ -29,7 +32,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from taktus.components.governance.domain.model.anchors import AnchorConfiguration
-from taktus.shared.v1 import Anchor
+from taktus.components.governance.domain.model.domains import Domain
+from taktus.shared.v1 import Anchor, AnchorClass
 
 
 def matches(pattern: str, action: str) -> bool:
@@ -76,14 +80,66 @@ def applies(
 
 
 def applying(
-    configuration: AnchorConfiguration, *, process: str, actions: Sequence[str]
+    configuration: AnchorConfiguration,
+    *,
+    process: str,
+    actions: Sequence[str],
+    domains: Sequence[Domain] = (),
 ) -> tuple[Anchor, ...]:
-    """The anchors that name the step's act, in the configuration's order."""
+    """The anchors that name the step's act, in the configuration's order, within the scope
+    the tenant's domains give them."""
     return tuple(
         a
         for a in configuration.anchors
         if applies(a, configuration, process=process, actions=actions)
+        and in_scope(a, process, domains)
     )
+
+
+def covers(scoped: str, given: str) -> bool:
+    """Whether a jurisdiction of an anchor covers a domain's: the same, or its country."""
+    return given == scoped or given.startswith(f"{scoped}-")
+
+
+def in_scope(anchor: Anchor, process: str, domains: Sequence[Domain]) -> bool:
+    """Whether the anchor's scope holds for a step of the process (ADR-0259). A scope that
+    names a domain or a jurisdiction the tenant has none of holds everywhere."""
+    scope = anchor.scope
+    if scope is None or (scope.domain is None and scope.jurisdiction is None):
+        return True
+    known = [
+        d
+        for d in domains
+        if (scope.domain is None or d.id == scope.domain)
+        and (scope.jurisdiction is None or covers(scope.jurisdiction, d.jurisdiction))
+    ]
+    if not known:
+        return True
+    return any(process in d.processes for d in known)
+
+
+def legal_for(configuration: AnchorConfiguration, domain: Domain) -> tuple[Anchor, ...]:
+    """The legal anchors in force for the domain: unscoped ones, and those whose scope names
+    the domain or a jurisdiction covering it (UC-15.5 §2)."""
+    found: list[Anchor] = []
+    for anchor in configuration.anchors:
+        if anchor.class_ is not AnchorClass.LEGAL:
+            continue
+        scope = anchor.scope
+        if scope is not None and scope.domain is not None and scope.domain != domain.id:
+            continue
+        if (
+            scope is not None
+            and scope.jurisdiction is not None
+            and not covers(scope.jurisdiction, domain.jurisdiction)
+        ):
+            continue
+        if anchor.applies_to.processes is not None and not set(anchor.applies_to.processes) & set(
+            domain.processes
+        ):
+            continue
+        found.append(anchor)
+    return tuple(found)
 
 
 def ceilings(

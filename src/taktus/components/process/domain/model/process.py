@@ -12,7 +12,7 @@ from typing import Any, Literal
 from pydantic import Field, model_validator
 
 from taktus.components.process.domain.model.errors import InvalidProcess
-from taktus.components.process.domain.model.evaluation import EvaluationSpec
+from taktus.components.process.domain.model.evaluation import TOLERANCE_CEILING, EvaluationSpec
 from taktus.components.process.domain.model.event import (
     KINDS,
     Condition,
@@ -25,6 +25,8 @@ from taktus.components.process.domain.service import schedule
 from taktus.components.process.domain.service.autonomy import actions_used
 from taktus.components.process.domain.service.validation import topological_order, validate_graph
 from taktus.shared.v1 import Autonomy, AutonomyLevel, ExactnessClass, Step, StepId, Value
+from taktus.shared.v1.autonomy import depending_on
+from taktus.shared.v1.method import VARIABLE
 
 # What a step does when it runs — the task for a worker, the rule to evaluate, what to wait for.
 # Its shape belongs to the process bundle format, which arrives at 0.3.0 (ADR-0011,
@@ -204,10 +206,129 @@ class Trigger(Value):
 
 
 class Slo(Value):
-    """The service level a process promises: how fresh its result is, how long a run may take."""
+    """The service level a process promises: how fresh its result is, how long a run may take,
+    and the share of its runs that complete (ADR-0252 §4)."""
 
     freshness: timedelta | None = None
     latency: timedelta | None = None
+    completion: float | None = Field(default=None, gt=0, le=1)
+    """The least share of its ended runs that finish, over the window of the last
+    `COMPLETION_WINDOW` ended runs. None: the share is not an objective."""
+
+
+class Escalation(Value):
+    """Who a failure's escalation reaches, by which path, and how soon a reaction is due
+    (UC-4.5, ADR-0252 §2). A role, never a person (principle 14)."""
+
+    role: str = Field(pattern=r"^[a-z][a-z0-9-]*$")
+    react_within: timedelta
+    """The time to react: an escalation still unanswered past it is recorded as overdue."""
+    path: Literal["channel", "ledger"] = "channel"
+    """`channel`: the situation package is a report in the tenant's owner-facing channel, to
+    the role. `ledger`: it is recorded only, and read where the run is read."""
+
+    @model_validator(mode="after")
+    def _a_time(self) -> Escalation:
+        if self.react_within <= timedelta(0):
+            raise ValueError("`escalation.react_within` is a time longer than nothing")
+        return self
+
+
+FRAME_KINDS = ("work", "step_added", "checks_added", "takeover")
+"""The kinds of change a process's owner may let Taktus make on its own (ADR-0255 §1)."""
+
+type FrameKind = Literal["work", "step_added", "checks_added", "takeover"]
+
+
+class Frame(Value):
+    """What Taktus may change in the process on its own (UC-4.3, ADR-0255 §1). The owner's: a
+    change of it is always outside it. Empty: every change is outside."""
+
+    changes: tuple[FrameKind, ...] = ()
+
+
+class ChangeRecord(Value):
+    """Why a version Taktus registered within the frame exists (UC-4.3, ADR-0255 §3): what was
+    observed, on what, the version it replaces, and what changed against it."""
+
+    observed: Literal["failure", "interface", "run"]
+    on: str = Field(min_length=1)
+    """The run or the operation it was observed on."""
+    said: str = Field(min_length=1)
+    """What was observed, in words: the failure, the changed interface."""
+    predecessor: str = Field(min_length=1)
+    """The version it replaces, as `process@version`."""
+    changes: tuple[str, ...] = Field(min_length=1)
+    """Every change against the predecessor, in words."""
+
+
+class ContractField(Value):
+    name: str = Field(min_length=1)
+    required: bool = True
+
+
+class Responsible(Value):
+    ours: str = Field(pattern=r"^[a-z][a-z0-9-]*$")
+    """The role on the organisation's side. Never a person."""
+    theirs: str = Field(min_length=1)
+    """Who is responsible on the partner's side, in words."""
+
+
+class DataContract(Value):
+    """The documented contract of an exchange with a partner (UC-15.3, ADR-0273): with whom, in
+    which direction, after which open standard or why a proprietary format, the fields and
+    which are required, how often, who is responsible, and the steps that exchange under it."""
+
+    partner: str = Field(min_length=1)
+    direction: Literal["import", "export"]
+    standard: str | None = Field(default=None, min_length=1)
+    proprietary: str | None = Field(default=None, min_length=1)
+    """Why a proprietary format: the partner offers nothing else."""
+    fields: tuple[ContractField, ...] = Field(min_length=1)
+    frequency: timedelta | None = None
+    responsible: Responsible
+    steps: tuple[StepId, ...] = Field(min_length=1)
+
+    @property
+    def required(self) -> tuple[str, ...]:
+        return tuple(f.name for f in self.fields if f.required)
+
+
+class TaskState(Value):
+    """Where a decoupled process's task stands in the external tool that holds control
+    (UC-5.2, ADR-0272): the read that answers it, the part of the answer that is its state, and
+    the states that mean the tool withdrew it. Named by capability, never by product."""
+
+    operation: str = Field(pattern=r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
+    """A `read` operation of a connector: `<capability>.<operation>`."""
+    input: Mapping[str, Any] = Field(default_factory=dict)
+    """What the read is given: fixed values, or `{$input: <name>}` for an input of the run."""
+    select: str = Field(min_length=1)
+    """The dotted path to the task's state in the answer."""
+    withdrawn: tuple[str, ...] = Field(min_length=1)
+    """The states in which the tool withdrew the task."""
+
+    @property
+    def capability(self) -> str:
+        return self.operation.rsplit(".", 1)[0]
+
+
+class Control(Value):
+    """Where the control of the process sits (UC-5.2, ADR-0272). `coupled`: Taktus decides the
+    order and timing of the steps. `decoupled`: an external tool does, Taktus works the task and
+    writes back, and the tool's state of the task is the authority."""
+
+    mode: Literal["coupled", "decoupled"] = "coupled"
+    task: TaskState | None = None
+
+    @model_validator(mode="after")
+    def _task_where_decoupled(self) -> Control:
+        if (self.mode == "decoupled") != (self.task is not None):
+            raise ValueError(
+                "a decoupled process names `control.task`, where its task's state is read; a "
+                "coupled one names none"
+            )
+        return self
 
 
 class Expect(Value):
@@ -362,9 +483,27 @@ class ProcessVersion(Value):
     evaluation: EvaluationSpec | None = None
     """The process's evaluation cases, its scorers and the schedule they run on without a
     change (ADR-0134 §1). None: a change is held to no cases, and nothing measures drift."""
+    case: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_]*$")
+    """The input that names a run's case — the support message, the pull request — by which
+    its spend is grouped (ADR-0216). None: the process's runs are counted per run alone."""
     takeover: TakeoverInstructions | None = None
     """How a person runs this version without Taktus (UC-6.3, ADR-0180). Registration requires
     it; None only on a version stored before it was required, which is read as it is."""
+    escalation: Escalation | None = None
+    """Who a failure's escalation reaches, by which path, and the time to react (ADR-0252).
+    None: the tenant's owner, through the owner-facing channel, without a time to react."""
+    heal_limit: int = Field(default=3, ge=1)
+    """How often the same failure of a step is healed before Taktus says it is a design fault
+    of the process (UC-4.6, ADR-0254 §2). At least one: it cannot be switched off."""
+    frame: Frame | None = None
+    """What Taktus may change in it on its own (ADR-0255 §1). None: nothing."""
+    change: ChangeRecord | None = None
+    """For a version Taktus registered within the frame: what led to it (ADR-0255 §3)."""
+    contracts: Mapping[str, DataContract] = Field(default_factory=dict)
+    """The data contract of every exchange with a partner, by name (ADR-0273)."""
+    control: Control = Field(default_factory=Control)
+    """Where its control sits: Taktus (`coupled`, the default) or an external tool (ADR-0272).
+    A move between them is a new version; no run in progress changes mode."""
     author: str | None = None
     reason: str | None = None
 
@@ -373,6 +512,7 @@ class ProcessVersion(Value):
         findings = validate_graph(self.steps)
         findings.extend(self._evaluation_findings())
         findings.extend(self._skill_findings())
+        findings.extend(self._screen_findings())
         findings.extend(
             f"`open_work` names the kind {kind!r}; a kind is a lowercase token such as "
             "pull_requests"
@@ -411,6 +551,35 @@ class ProcessVersion(Value):
             "this process uses: the level would never apply (ADR-0039)"
             for action in sorted(set(self.autonomy.action_levels) - used)
         )
+        if self.control.task is not None:
+            unknown_inputs = sorted(
+                str(given["$input"])
+                for given in self.control.task.input.values()
+                if isinstance(given, Mapping)
+                and "$input" in given
+                and given["$input"] not in self.inputs
+            )
+            findings.extend(
+                f"`control.task` reads its input from {name!r}, which the process does not "
+                "declare under `inputs`"
+                for name in unknown_inputs
+            )
+        if self.case is not None and self.case not in self.inputs:
+            findings.append(
+                f"the case is named by the input {self.case!r}, which the process does not "
+                "declare under `inputs` (ADR-0216)"
+            )
+        classes = self.autonomy.classes
+        if classes is not None and classes.step not in ids:
+            findings.append(
+                f"the autonomy statement reads the class of request from {classes.step!r}, "
+                "which is not a step of this process (ADR-0215)"
+            )
+        elif classes is not None and not depending_on(self.steps, classes.step):
+            findings.append(
+                f"no step depends on {classes.step!r}, whose result names the class of request: "
+                "the levels per class would never apply (ADR-0215)"
+            )
         for trigger in self.triggers:
             findings.extend(trigger.findings())
             if trigger.schedule is not None:
@@ -434,6 +603,18 @@ class ProcessVersion(Value):
         if findings:
             raise InvalidProcess(tuple(findings))
         return self
+
+    def _screen_findings(self) -> list[str]:
+        """An input check is never `exact` (UC-7.9): its patterns name what they look for, and
+        what they do not find is not declared safe."""
+        return [
+            f"the step {step.id!r} is an input check (`rule: screen`) classed exact; a check "
+            "names what it looks for, and what it does not find is not declared safe: it is "
+            "classed tolerant at best (UC-7.9)"
+            for step in self.steps
+            if step.exactness is ExactnessClass.EXACT
+            and (self.work.get(step.id) or {}).get("rule") == "screen"
+        ]
 
     def _skill_findings(self) -> list[str]:
         """A step names its skills as a list of skill names, each once (ADR-0113 §2)."""
@@ -479,6 +660,7 @@ class ProcessVersion(Value):
             if scorer.step not in producing
         ]
         scored = self.evaluation.scored_steps
+        found.extend(self._tolerance_findings(scored))
         required = {name for name, given in self.inputs.items() if given.required}
         for case in self.evaluation.cases:
             where = f"`evaluation`: the case {case.id!r}"
@@ -497,6 +679,47 @@ class ProcessVersion(Value):
             if missing:
                 found.append(f"{where} gives no value for the input(s) {', '.join(missing)}")
         return found
+
+    def _tolerance_findings(self, scored: frozenset[str]) -> list[str]:
+        """Every variable step the evaluation scores declares its tolerance, within what its
+        class admits; a tolerance names a scored step (ADR-0250 §1)."""
+        if self.evaluation is None:
+            return []
+        found: list[str] = []
+        declared = self.evaluation.tolerances
+        steps = {step.id: step for step in self.steps}
+        for step_id, share in sorted(declared.items()):
+            step = steps.get(step_id)
+            if step is None or step_id not in scored or step.exactness is None:
+                found.append(f"`evaluation.tolerances` names {step_id!r}, which no scorer scores")
+                continue
+            ceiling = TOLERANCE_CEILING[ExactnessClass(step.exactness)]
+            if share > ceiling + 1e-9:
+                found.append(
+                    f"`evaluation.tolerances`: {step_id!r} is {step.exactness} and admits a "
+                    f"tolerance of at most {ceiling:g}, not {share:g}; room for creativity "
+                    "exists only where the class is `free`"
+                )
+        for step_id in sorted(scored):
+            step = steps.get(step_id)
+            if step is not None and step.method in VARIABLE and step_id not in declared:
+                found.append(
+                    f"`evaluation`: the {step.method} step {step_id!r} varies and declares its "
+                    "tolerance under `evaluation.tolerances`: what counts as an equivalent result"
+                )
+        return found
+
+    def tolerance_bounds(self) -> tuple[dict[str, float], dict[str, float]]:
+        """Per scored step, the tolerance it declared, and the widest its class admits."""
+        if self.evaluation is None:
+            return {}, {}
+        steps = {step.id: step for step in self.steps}
+        ceilings: dict[str, float] = {}
+        for step_id in self.evaluation.scored_steps:
+            exactness = steps[step_id].exactness if step_id in steps else None
+            if exactness is not None:
+                ceilings[step_id] = TOLERANCE_CEILING[ExactnessClass(exactness)]
+        return dict(self.evaluation.tolerances), ceilings
 
     @property
     def expected_schedules(self) -> tuple[str, ...]:

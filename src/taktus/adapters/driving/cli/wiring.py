@@ -8,30 +8,45 @@ adapter or the composition root (docs/architecture/project-structure.md §3).
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
 
 from taktus.components.accounting.application.service import (
+    BottlenecksHandler,
     CostOfRunHandler,
     SpendHandler,
     TaktRateHandler,
 )
 from taktus.components.catalog.application.service import (
     AgentCatalog,
+    CatalogueShares,
+    DomainInstances,
     RunConformanceHandler,
     SkillCatalog,
 )
-from taktus.components.catalog.domain.model import InvalidSkill, Round, SkillVersion
+from taktus.components.catalog.domain.model import (
+    Admitted,
+    DomainInstance,
+    InvalidSkill,
+    Round,
+    ShareKind,
+    SkillVersion,
+)
+from taktus.components.catalog.domain.model.blueprint import DomainFigures
+from taktus.components.catalog.domain.service.shares import Use
 from taktus.components.command.application.service import CommissionPlanHandler
+from taktus.components.command.domain.model import PlanDraft
 from taktus.components.governance.application.service import (
     AnchorsInForce,
     ConfigureAnchorsHandler,
     Corrections,
     ExpectedRuns,
     ReportCapacityHandler,
+    ReportHardwareHandler,
     ResultDefects,
     Stages,
     SubjectRequests,
@@ -40,9 +55,18 @@ from taktus.components.governance.application.service import (
     TenantResidency,
     TenantSources,
 )
+from taktus.components.governance.application.service.domains import (
+    ConformityEvidence,
+    TenantDomains,
+)
+from taktus.components.governance.application.service.stop_incidents import StopIncidents
+from taktus.components.governance.application.service.tenant_budget import TenantBudgets
+from taktus.components.governance.application.service.unit_limits import UnitLimits
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
+from taktus.components.identity.application.service.structure import OrganisationStructure
 from taktus.components.knowledge.application.service import PublishGuidesHandler
 from taktus.components.process.application.service.deactivate import DeactivateProcessHandler
+from taktus.components.process.application.service.packages import ProcessPackages
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
@@ -70,7 +94,8 @@ from taktus.components.run.application.service.stops import Stops
 from taktus.components.run.domain.model import Run
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.ledger import Ledger
-from taktus.ports.persistence import Repository, Tenant, UnitOfWork
+from taktus.ports.persistence import Repository, Tenant, TenantImported, UnitOfWork
+from taktus.shared.v1 import Plan
 
 
 class NotOperable(Exception):
@@ -141,6 +166,70 @@ class CatalogueIndexActs(Protocol):
     ) -> Any: ...
 
 
+class DomainDialogueActs(Protocol):
+    """An instance worked out as a plan draft and instantiated by commissioning it
+    (ADR-0289). Each act answers the instance and the draft as it now stands."""
+
+    async def start(
+        self, tenant: Tenant, admitted: Admitted, by: str, org_path: tuple[str, ...]
+    ) -> tuple[DomainInstance, PlanDraft]: ...
+
+    async def answer(
+        self,
+        tenant: Tenant,
+        admitted: Admitted,
+        instance_id: str,
+        capability: str,
+        adapter: str | None,
+        by: str,
+    ) -> tuple[DomainInstance, PlanDraft]: ...
+
+    async def leave_out(
+        self,
+        tenant: Tenant,
+        admitted: Admitted,
+        instance_id: str,
+        processes: Iterable[str],
+        by: str,
+    ) -> tuple[DomainInstance, PlanDraft]: ...
+
+    async def name_owner(
+        self, tenant: Tenant, admitted: Admitted, instance_id: str, owner: str, by: str
+    ) -> tuple[DomainInstance, PlanDraft]: ...
+
+    async def name_jurisdiction(
+        self, tenant: Tenant, admitted: Admitted, instance_id: str, jurisdiction: str, by: str
+    ) -> tuple[DomainInstance, PlanDraft]: ...
+
+    async def due(self, tenant: Tenant, instance_id: str, due: datetime, by: str) -> PlanDraft: ...
+
+    async def draft(self, tenant: Tenant, instance: DomainInstance) -> PlanDraft: ...
+
+    async def commission(
+        self, tenant: Tenant, admitted: Admitted, instance_id: str, by: str
+    ) -> tuple[DomainInstance, Plan]: ...
+
+
+class DomainActs(Protocol):
+    """What `taktusctl domain` asks of the domain blueprints the composition root wires
+    (ADR-0263): a blueprint's directory read and admitted, exported, and its instances, worked
+    out in a plan where the dialogue is wired (ADR-0289)."""
+
+    @property
+    def instances(self) -> DomainInstances: ...
+
+    @property
+    def dialogue(self) -> DomainDialogueActs | None: ...
+
+    def read(self, directory: Path) -> Any: ...
+
+    def admitted(self, directory: Path) -> Admitted: ...
+
+    def export(self, directory: Path, target: Path) -> list[Path]: ...
+
+    async def figures(self, tenant: Tenant, instance: DomainInstance) -> DomainFigures: ...
+
+
 class CatalogueAuthor(Protocol):
     """What an author signs an index with (`taktusctl catalogue sign`, `key`). The seed is
     read from a file by the command and never printed."""
@@ -180,6 +269,9 @@ class Services:
     takt_rate: TaktRateHandler | None = None
     """A tenant's Takt consumption and rate over the window of the table in force
     (`taktusctl cost` without a run)."""
+    bottlenecks: BottlenecksHandler | None = None
+    """What a higher limit would have bought, the recommendations, the waits on people by role
+    or department, and the ways to wait less on them (`taktusctl bottlenecks`, ADR-0283)."""
     configure_anchors: ConfigureAnchorsHandler | None = None
     """A tenant's anchors, configured (`taktusctl anchors set`, ADR-0042)."""
     anchors: AnchorsInForce | None = None
@@ -205,6 +297,9 @@ class Services:
     """Every configured adapter with its maturity (`taktusctl conformance list`, ADR-0117)."""
     catalogue_index: CatalogueIndexActs | None = None
     """The catalogue's entries, verified and installed (`taktusctl catalogue`, ADR-0175)."""
+    domains: DomainActs | None = None
+    """Domain blueprints admitted, instantiated in dialogue and exported (`taktusctl domain`,
+    ADR-0263)."""
     deactivate: DeactivateProcessHandler | None = None
     """A process is switched off: its triggers no longer start runs (`taktusctl deactivate`)."""
     measures: StepMeasures | None = None
@@ -236,6 +331,8 @@ class Services:
     defect`, ADR-0153)."""
     residency: TenantResidency | None = None
     """The tenant's residency rule, shown and set (`taktusctl residency`, ADR-0116)."""
+    budget: TenantBudgets | None = None
+    """The tenant's monthly budget across all its runs (`taktusctl budget`, ADR-0260)."""
     sources: TenantSources | None = None
     """The tenant's declaration of its sources, shown and changed (`taktusctl sources`,
     ADR-0130)."""
@@ -245,11 +342,26 @@ class Services:
     org_units: TenantOrgUnits | None = None
     """The tenant's quotas per organisational unit, shown and set (`taktusctl units`,
     ADR-0166)."""
+    structure: OrganisationStructure | None = None
+    """The organisation's structure and its projects, shown and shaped (`taktusctl
+    structure`, ADR-0275, ADR-0276)."""
+    unit_limits: UnitLimits | None = None
+    """The tenant's limits per unit of its structure, set, shown and watched (`taktusctl units
+    limit`, ADR-0282)."""
     deadlines: DeadlineKeeper | None = None
     """The tenant's open deadlines and its working time (`taktusctl deadline`, ADR-0133)."""
     stops: Stops | None = None
     """The tenant's stops of adapters, requested, shown and lifted (`taktusctl stop`,
     ADR-0138)."""
+    stop_incidents: StopIncidents | None = None
+    """The incidents and situation packages of the stops a person requested (`taktusctl
+    incident package`, ADR-0280)."""
+    tenant_domains: TenantDomains | None = None
+    """The tenant's domains, their owners, their duties and the conformity evidence of their
+    catalogue (`taktusctl domain`, ADR-0259, ADR-0280)."""
+    conformity: ConformityEvidence | None = None
+    """The conformity evidence of the tenant's domains (`taktusctl domain evidence`,
+    ADR-0280 §4)."""
     traces: StepTraces | None = None
     """How long the tenant keeps the trace inside a step, shown and set (`taktusctl trace`,
     ADR-0135)."""
@@ -271,6 +383,34 @@ class Services:
     instructions: TakeoverTrials | None = None
     """A process's takeover instructions shown, and a trial of them recorded
     (`taktusctl takeover`, ADR-0180)."""
+    packages: ProcessPackages | None = None
+    """A process version exported as one package of plain files (`taktusctl process export`,
+    ADR-0285)."""
+    exports: TenantExportActs | None = None
+    """A tenant exported, and an export imported and checked (`taktusctl tenant export` and
+    `import`, ADR-0221); None where the state is files."""
+    shares: CatalogueShares | None = None
+    """Entries of the catalogue shared with circles, withdrawn, and the callers' own
+    credentials bound (`taktusctl catalogue share`, ADR-0246, ADR-0247)."""
+    catalogue_use: CatalogueUseActs | None = None
+    """An entry's use per organisational unit and the viewer's own (`taktusctl catalogue use`,
+    ADR-0246 §6)."""
+
+
+class CatalogueUseActs(Protocol):
+    async def of(self, tenant: Tenant, kind: ShareKind, subject: str, viewer: str) -> Use:
+        """An entry's calls per organisational unit, and the viewer's own (ADR-0246 §6)."""
+        ...
+
+
+class TenantExportActs(Protocol):
+    async def export(self, tenant: Tenant, *, by: str) -> bytes:
+        """The tenant's export document."""
+        ...
+
+    async def import_(self, content: bytes, *, by: str) -> TenantImported:
+        """An export written into this instance, its chains checked here."""
+        ...
 
 
 class Evidence(Protocol):
@@ -355,6 +495,12 @@ class Wiring(Protocol):
         """Open the capacity report against the state where it is configured — no worker, no
         connector: looking at the platform starts nothing. Raises `NotOperable` as
         `services` does."""
+        ...
+
+    def hardware(self) -> ReportHardwareHandler:
+        """The hardware report: the machine this process runs on and every configured model
+        with its declared needs (ADR-0284). No state, no database. Raises `NotOperable` when
+        the models' configuration cannot be read."""
         ...
 
     def catalogue_author(self) -> CatalogueAuthor:

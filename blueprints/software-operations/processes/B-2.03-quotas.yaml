@@ -16,8 +16,13 @@
 #         --yellow 0.8 --red 0.95 --fresh 2d \
 #         --role <role> --case <where a quota is worked>
 #
-# Not built here: a quota that only the service's own API reports and no exporter writes to the
-# store; it needs a connector of that service. Changing a plan stays with a person (UC-03 §4.2).
+# The repository service's own rate limits are read through `repository.ratelimit` (ADR-0201),
+# and the fullest is taken by the step `fullest-repository-limit` by its `used_share`, decimal
+# text, judged by a corridor on its own step.
+#
+# Not built here: a quota that only another service's own API reports and no exporter writes to
+# the store; it needs a connector of that service. Changing a plan stays with a person (UC-03
+# §4.2).
 #
 # By hand:
 #
@@ -27,7 +32,7 @@
 # Switching it off (`taktusctl deactivate --process b-2-03`) changes nothing at the store.
 
 id: b-2-03
-version: "1"
+version: "3"
 name: B-2.03 Quotas
 autonomy:
   level: 1
@@ -56,7 +61,7 @@ inputs:
     example: max by (service) (quota_used / quota_limit)
 
 limits:
-  quota: { units: 2 }
+  quota: { units: 3 }
 
 steps:
   - id: read-quotas
@@ -66,11 +71,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what metrics.series.query answered", columns: [complete, series] }
     fallback:
       when: the connector serving metrics.series is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: metrics.series.query
       input:
@@ -103,6 +111,47 @@ steps:
       descending: true
       limit: 1
 
+  - id: read-repository-limit
+    method: rule
+    reason: the repository service's own rate limits are read verbatim, each share used as decimal text
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.ratelimit.read answered", columns: [resources] }
+    fallback:
+      when: the connector serving repository.ratelimit is unavailable
+      to: human
+      role: owner
+    depends_on: [fullest]
+    work:
+      checking: { select: output }
+      rule: connector
+      operation: repository.ratelimit.read
+      input: {}
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: fullest-repository-limit
+    method: rule
+    reason: the repository service's fullest limit is a fixed ordering of its own figures
+    rejected:
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the repository service's limit with the highest share used }
+    depends_on: [read-repository-limit]
+    work:
+      rule: filter
+      items: { $from: read-repository-limit, $select: output.resources }
+      all:
+        - { field: used_share, at_least: 0 }
+      order: used_share
+      descending: true
+      limit: 1
+
 # How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
 # every step the system to act in, what to do there, the expertise it needs, each credential by
 # its parameter and where an authorised person finds it, and how to tell that it is done.
@@ -111,7 +160,8 @@ takeover:
     The process runs every day at 07:00 UTC; whoever watches the business's outside services
     starts it. The steps run in order: run the tenant's query for the share of each outside
     service's quota that is used, such as mail sending, payments, data services or the
-    repository hosting service's rate limits, then take the fullest one. A share of 0.8 or more
+    repository hosting service's rate limits, then take the fullest one; read the repository hosting service's own rate limits and
+    take the fullest of them too. A share of 0.8 or more
     is yellow and 0.95 or more red, as the bundle proposes for the tenant's corridor. Changing a
     plan stays with a person.
   steps:
@@ -140,3 +190,23 @@ takeover:
       expertise: sorting a table and the tenant's corridor for quotas
       credentials: []
       done: the fullest service and its share are written down and judged
+    read-repository-limit:
+      system: the repository hosting service's rate limit status
+      do: >
+        read the requesting identity's rate limits and note, for each resource, its limit, what
+        is used and the share used, rounded down to four decimal places.
+      expertise: reading the repository hosting service's rate limit status
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md
+      done: every resource's limit and share used are noted
+    fullest-repository-limit:
+      system: the noted limits
+      do: >
+        take the resource with the highest share used and judge it as the fullest quota is
+        judged: 0.8 for yellow, 0.95 for red.
+      expertise: the tenant's corridor for quotas
+      credentials: []
+      done: the fullest of the repository service's limits is written down and judged

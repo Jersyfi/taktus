@@ -19,6 +19,7 @@ from typing import Any, Literal
 
 from pydantic import Field
 
+from taktus.components.process.domain.model.process import ChangeRecord
 from taktus.shared.v1 import Autonomy, Step, Value
 
 
@@ -86,6 +87,12 @@ class Proposal(Value):
     evaluation: str | None = None
     """The evaluation on the process's cases its rehearsal started, where it needs one
     (ADR-0134 §4)."""
+    change: ChangeRecord | None = None
+    """For a change Taktus proposes (ADR-0255 §3): the observation that led to it, and every
+    change in words."""
+    findings: tuple[str, ...] = ()
+    """Why it is not a version: the changes outside the frame, and every finding registration
+    gave. A proposal with a finding registration gave is changed before it is rehearsed."""
 
     @property
     def base_ref(self) -> str | None:

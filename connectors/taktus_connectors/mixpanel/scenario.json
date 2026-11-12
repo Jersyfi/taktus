@@ -1,0 +1,27 @@
+{
+  "credentials": {
+    "actions": "ANALYTICS_KEY"
+  },
+  "read": {
+    "operation": "analytics.reports.run",
+    "input": {
+      "events": ["sign up"],
+      "dimensions": ["week"],
+      "metrics": ["unique"],
+      "start": "56daysAgo",
+      "end": "yesterday"
+    }
+  },
+  "writes": [],
+  "invalid": {
+    "operation": "analytics.reports.run",
+    "input": {
+      "events": ["sign up"],
+      "dimensions": ["day"],
+      "metrics": ["sessions"],
+      "start": "7daysAgo",
+      "end": "today"
+    },
+    "expected_cause": "invalid"
+  }
+}

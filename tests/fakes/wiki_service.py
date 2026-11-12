@@ -14,23 +14,35 @@ What it enforces, because the connector's checks depend on it:
   was started with (`FAKE_WIKI_TOKENS`, `value|scope,...`; scope `read` or `write`, default
   `write`). No value or an unknown one: 401. A `read` scope writing: 403. Every fault is the
   wiki's body `{"error": {"code": …, "message": …}}`.
-- **Structure.** The shelf `Taktus` holds the books `Administration` and `Using Taktus`; the
-  shelf `Scratch` the book `Conformance`; the shelf `Elsewhere` the book `Other`. The book
-  `Conformance` holds the page `Seeded page`, and a chapter with the page `In a chapter`.
-  Shelves and books are never created through the interface: a person makes them.
+- **Structure.** The shelf `Taktus` holds the books `Administration`, `Using Taktus` and
+  `Developing`; the shelf `Scratch` the book `Conformance`; the shelf `Elsewhere` the book
+  `Other`. The book `Conformance` holds the page `Seeded page`, and a chapter with the page
+  `In a chapter`. Shelves and books are never created through the interface: a person makes them.
 - **It changes the text it stores.** As a wiki may: line endings become `\\n`, the spaces at the
   end of every line are removed, and so are the newlines at the end of the text. A page keeps
   its tags as given, and returns them with every page.
 - **Listings** page by `count` and `offset`, with `total`; a listing of pages carries neither
   Markdown nor tags, as the wiki's does. Filters: `filter[name]` on shelves, `filter[book_id]` on
   pages, matched case-insensitively as the wiki's database does.
+- **Search** (`GET /api/search`, `query`, `page`, `count` of at most 100) finds the books whose
+  name and the pages whose name or text hold every word of the query, case-insensitively, and
+  answers each as the wiki's search does: `id`, `name`, `slug`, `book_id`, `type`, `url` built
+  from the book's and the page's slugs, `tags`, `preview_html`, and `book`; a page also
+  `chapter_id`, `draft` and `template`. The real search ranks by its own index; the fake by the
+  order the pages were made.
+- **What a token may view.** A token may be limited to some books (`views` of `make_server`,
+  or `POST /_fake/views`). The wiki then shows it no other: a shelf lists only those books, a
+  listing of pages and a search find only their pages, and a page of another book is 404, as
+  the wiki answers content its user may not view.
 
 Test-only endpoints under `/_fake/`: `GET /_fake/state` counts the pages of every book and the
 requests made to the interface; `GET /_fake/pages` lists every page with its Markdown and tags;
 `POST /_fake/edit` with `{"id": …, "markdown": …}` is a person editing a page (`"html"` instead
 edits it in the visual editor, which empties its Markdown); `POST /_fake/pages` with `{"book":
 …, "name": …}` puts in a page a person made; `POST /_fake/books` with `{"shelf": …, "name": …}`
-adds a book, and the shelf where none is of that name; `POST /_fake/reset` empties the store
+adds a book, and the shelf where none is of that name; `POST /_fake/delete` with `{"id": …}` is
+a person deleting a page; `POST /_fake/views` with `{"token": …, "books": […]}` limits what a
+token may view, `"books": null` lifts the limit; `POST /_fake/reset` empties the store
 back to its seed; `POST /_fake/outage` with `{"on": true}` makes every other request answer 503
 until switched off. Standard library only; runnable as
 `python3 tests/fakes/wiki_service.py --port 9202`.
@@ -71,6 +83,10 @@ def stored(markdown: str) -> str:
 @dataclass
 class Store:
     tokens: dict[str, str]  # value -> scope
+    views: dict[str, set[str]] = field(default_factory=dict)
+    """Token value -> the names of the books it may view; a token not named views every book.
+    What it was started with; a reset returns to it."""
+    viewing: dict[str, set[str]] = field(default_factory=dict)
     shelves: list[Json] = field(default_factory=list)
     books: list[Json] = field(default_factory=list)
     chapters: list[Json] = field(default_factory=list)
@@ -85,10 +101,11 @@ class Store:
 
     def reset(self) -> None:
         self.shelves, self.books, self.chapters, self.pages = [], [], [], []
+        self.viewing = {token: set(books) for token, books in self.views.items()}
         self.sequence = 0
         self.requests = 0
         taktus = self.shelf("Taktus")
-        for name in ("Administration", "Using Taktus"):
+        for name in ("Administration", "Using Taktus", "Developing"):
             self.book(taktus, name)
         conformance = self.book(self.shelf("Scratch"), "Conformance")
         self.book(self.shelf("Elsewhere"), "Other")
@@ -132,9 +149,17 @@ class Store:
             "html": f"<p>{stored(markdown)}</p>",
             "tags": list(tags or []),
             "revision_count": 1,
+            "created_at": now(),
+            "updated_at": now(),
         }
         self.pages.append(page)
         return page
+
+    def viewable(self, token: str, book_id: int) -> bool:
+        books = self.viewing.get(token)
+        if books is None:
+            return True
+        return any(b["id"] == book_id and b["name"] in books for b in self.books)
 
     def state(self) -> Json:
         counts = {
@@ -188,11 +213,12 @@ class Handler(BaseHTTPRequestHandler):
             return {}
         return body if isinstance(body, dict) else {}
 
-    def _scope(self) -> str | None:
+    def _token(self) -> str:
         header = self.headers.get("Authorization", "")
-        if not header.startswith("Token "):
-            return None
-        return self.store.tokens.get(header[6:].strip())
+        return header[6:].strip() if header.startswith("Token ") else ""
+
+    def _scope(self) -> str | None:
+        return self.store.tokens.get(self._token()) if self._token() else None
 
     def do_GET(self) -> None:
         url = urlparse(self.path)
@@ -228,12 +254,20 @@ class Handler(BaseHTTPRequestHandler):
                     if "tags" in body:
                         page["tags"] = list(body["tags"])
                     page["revision_count"] += 1
+                    page["updated_at"] = now()
                 elif url.path == "/_fake/pages":
                     book = next(b for b in store.books if b["name"] == body["book"])
                     store.page(book, str(body["name"]), str(body.get("markdown", "By hand.")))
                 elif url.path == "/_fake/books":
                     shelf = next((s for s in store.shelves if s["name"] == body["shelf"]), None)
                     store.book(shelf or store.shelf(str(body["shelf"])), str(body["name"]))
+                elif url.path == "/_fake/delete":
+                    store.pages = [p for p in store.pages if p["id"] != int(body["id"])]
+                elif url.path == "/_fake/views":
+                    if body.get("books") is None:
+                        store.viewing.pop(str(body["token"]), None)
+                    else:
+                        store.viewing[str(body["token"])] = {str(b) for b in body["books"]}
                 else:
                     self._fault(404, "unknown")
                     return
@@ -271,6 +305,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _route(self, verb: str, route: list[str], query: Json, body: Json) -> tuple[int, Json]:
         store = self.store
+        token = self._token()
         if verb == "GET" and route == ["shelves"]:
             shelves = [
                 {k: v for k, v in s.items() if k != "books"}
@@ -282,18 +317,25 @@ class Handler(BaseHTTPRequestHandler):
             shelf = next((s for s in store.shelves if str(s["id"]) == route[1]), None)
             if shelf is None:
                 return 404, {"message": "Shelf not found"}
-            books = [listed(b) for b in store.books if b["id"] in shelf["books"]]
+            books = [
+                listed(b)
+                for b in store.books
+                if b["id"] in shelf["books"] and store.viewable(token, b["id"])
+            ]
             return 200, {**{k: v for k, v in shelf.items() if k != "books"}, "books": books}
         if verb == "GET" and route == ["pages"]:
             pages = [
                 listed(p)
                 for p in store.pages
-                if "filter[book_id]" not in query or str(p["book_id"]) == query["filter[book_id]"]
+                if ("filter[book_id]" not in query or str(p["book_id"]) == query["filter[book_id]"])
+                and store.viewable(token, p["book_id"])
             ]
             return 200, window(pages, query)
+        if verb == "GET" and route == ["search"]:
+            return self._search(token, query)
         if len(route) == 2 and route[0] == "pages":
             page = next((p for p in store.pages if str(p["id"]) == route[1]), None)
-            if page is None:
+            if page is None or not store.viewable(token, page["book_id"]):
                 return 404, {"message": "Page not found"}
             if verb == "GET":
                 return 200, json.loads(json.dumps(page))
@@ -302,6 +344,58 @@ class Handler(BaseHTTPRequestHandler):
         if verb == "POST" and route == ["pages"]:
             return self._create(body)
         return 404, {"message": "Not found"}
+
+    def _search(self, token: str, query: Json) -> tuple[int, Json]:
+        store = self.store
+        words = str(query.get("query", "")).lower().split()
+        if not words:
+            return 422, {"message": "The given data was invalid."}
+        try:
+            count = int(query.get("count", "100"))
+            number = int(query.get("page", "1"))
+        except ValueError:
+            return 422, {"message": "The given data was invalid."}
+        if not 1 <= count <= 100 or number < 1:
+            return 422, {"message": "The given data was invalid."}
+        base = f"http://{self.headers.get('Host', '127.0.0.1')}"
+        found: list[Json] = []
+        for book in store.books:
+            if store.viewable(token, book["id"]) and all(w in book["name"].lower() for w in words):
+                found.append(
+                    {
+                        "id": book["id"],
+                        "name": book["name"],
+                        "slug": book["slug"],
+                        "type": "book",
+                        "url": f"{base}/books/{book['slug']}",
+                        "tags": [],
+                        "preview_html": {"name": book["name"], "content": ""},
+                    }
+                )
+        for page in store.pages:
+            book = next(b for b in store.books if b["id"] == page["book_id"])
+            text = f"{page['name']}\n{page['markdown'] or page['html']}".lower()
+            if store.viewable(token, book["id"]) and all(w in text for w in words):
+                found.append(
+                    {
+                        "id": page["id"],
+                        "name": page["name"],
+                        "slug": page["slug"],
+                        "book_id": book["id"],
+                        "chapter_id": page["chapter_id"],
+                        "draft": page["draft"],
+                        "template": False,
+                        "created_at": page["created_at"],
+                        "updated_at": page["updated_at"],
+                        "type": "page",
+                        "url": f"{base}/books/{book['slug']}/page/{page['slug']}",
+                        "tags": [dict(t, order=i) for i, t in enumerate(page["tags"])],
+                        "preview_html": {"name": page["name"], "content": page["markdown"][:80]},
+                        "book": {"id": book["id"], "name": book["name"], "slug": book["slug"]},
+                    }
+                )
+        start = (number - 1) * count
+        return 200, {"data": found[start : start + count], "total": len(found)}
 
     def _tags(self, body: Json) -> list[Json] | None:
         tags = body.get("tags", [])
@@ -334,6 +428,7 @@ class Handler(BaseHTTPRequestHandler):
             page["markdown"] = stored(body["markdown"])
             page["html"] = f"<p>{page['markdown']}</p>"
             page["revision_count"] += 1
+            page["updated_at"] = now()
         if "tags" in body:
             tags = self._tags(body)
             if tags is None:
@@ -351,8 +446,10 @@ def tokens_from_environment() -> dict[str, str]:
     return tokens
 
 
-def make_server(host: str, port: int, tokens: dict[str, str]) -> ThreadingHTTPServer:
-    store = Store(tokens=tokens)
+def make_server(
+    host: str, port: int, tokens: dict[str, str], views: dict[str, set[str]] | None = None
+) -> ThreadingHTTPServer:
+    store = Store(tokens=tokens, views=dict(views or {}))
 
     class Bound(Handler):
         pass

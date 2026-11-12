@@ -8,8 +8,13 @@ from taktus.components.run.ports.anchors import (
     NotRaised,
     Verdict,
 )
+from taktus.components.run.ports.citations import Citations
 from taktus.components.run.ports.connectors import ConnectorPool
+from taktus.components.run.ports.control import ExternalControl
 from taktus.components.run.ports.deadlines import DeclaredDeadlines
+from taktus.components.run.ports.departments import Departments
+from taktus.components.run.ports.evaluated import Evaluated
+from taktus.components.run.ports.grants import WriteGrants
 from taktus.components.run.ports.guidance import Guidance
 from taktus.components.run.ports.levels import Breach, Levels, LoweredLevels, ProposalDecided
 from taktus.components.run.ports.maturity import Maturities, Standing
@@ -17,6 +22,7 @@ from taktus.components.run.ports.messages import MessageRules, Messages, QuietHo
 from taktus.components.run.ports.models import ModelPool
 from taktus.components.run.ports.open_work import Cap, CountReading, OpenWork
 from taktus.components.run.ports.org_units import OrgUnitBudget, OrgUnits
+from taktus.components.run.ports.personal import PersonalCredentials
 from taktus.components.run.ports.repetition import (
     Repeated,
     Repetition,
@@ -25,6 +31,7 @@ from taktus.components.run.ports.repetition import (
 from taktus.components.run.ports.replay import Replay
 from taktus.components.run.ports.residency import Residency
 from taktus.components.run.ports.scores import EvaluationScores
+from taktus.components.run.ports.shares import CallerCall, Shares
 from taktus.components.run.ports.sources import Sources
 from taktus.components.run.ports.statements import Statements
 from taktus.components.run.ports.workers import WorkerPool
@@ -32,14 +39,19 @@ from taktus.components.run.ports.workers import WorkerPool
 __all__ = [
     "Anchors",
     "Breach",
+    "CallerCall",
     "Cap",
+    "Citations",
     "ConnectorPool",
     "CountReading",
     "Decisions",
     "DeclaredDeadlines",
+    "Departments",
     "Draft",
     "DraftOption",
+    "Evaluated",
     "EvaluationScores",
+    "ExternalControl",
     "Guidance",
     "Levels",
     "LoweredLevels",
@@ -51,6 +63,7 @@ __all__ = [
     "OpenWork",
     "OrgUnitBudget",
     "OrgUnits",
+    "PersonalCredentials",
     "ProposalDecided",
     "QuietHours",
     "Repeated",
@@ -58,9 +71,11 @@ __all__ = [
     "RepetitionLimits",
     "Replay",
     "Residency",
+    "Shares",
     "Sources",
     "Standing",
     "Statements",
     "Verdict",
     "WorkerPool",
+    "WriteGrants",
 ]

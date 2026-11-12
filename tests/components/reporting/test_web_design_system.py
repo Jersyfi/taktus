@@ -131,7 +131,7 @@ def test_no_page_writes_a_colour_of_its_own() -> None:
 def test_every_page_belongs_to_one_destination_of_the_navigation() -> None:
     navigation = (WEB / "src" / "lib" / "navigation.ts").read_text(encoding="utf-8")
     prefixes = re.findall(
-        r"'(/[a-z/]*)'", " ".join(re.findall(r"routes: \[([^\]]*)\]", navigation))
+        r"'(/[a-z/-]*)'", " ".join(re.findall(r"routes: \[([^\]]*)\]", navigation))
     )
     assert prefixes
     routes = WEB / "src" / "routes"

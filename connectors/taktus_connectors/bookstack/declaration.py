@@ -1,13 +1,16 @@
 """What the wiki connector declares about itself: the document served as the resource
 `taktus://connector/v1/capabilities`, in the shape of `Connector.json#/$defs/Capabilities`.
 
-The three operations of the capability `knowledge.pages`, as ADR-0065 §4 states them. Each
+The three operations of the capability `knowledge.pages`, as ADR-0065 §4 states them, and the
+two of `knowledge.documents`, the wiki as a knowledge source that is searched (ADR-0265). Each
 declares its `demand`: the most requests to the wiki one call makes, which is what a run
 reserves before calling it (ADR-0005). A place is found in two requests — the shelf by its name,
 then its books. The pages of a book are listed `PAGE` entries at a time, in at most
 `MAX_LISTINGS` requests. A list then reads every page it names, at most `MAX_PAGES` of them. A
 write reads the page it replaces and writes once. It writes the page's tags a second time only
-where the wiki changed the text it stored (`operations.py`).
+where the wiki changed the text it stored (`operations.py`). A search asks the wiki's search
+once and reads every page it found, at most `MAX_FOUND`; a reading of versions reads each page
+named, at most `MAX_FOUND`.
 """
 
 from __future__ import annotations
@@ -23,6 +26,10 @@ LIST = f"{CAPABILITY}.list"
 READ = f"{CAPABILITY}.read"
 WRITE = f"{CAPABILITY}.write"
 
+DOCUMENTS = "knowledge.documents"
+SEARCH = f"{DOCUMENTS}.search"
+VERSIONS = f"{DOCUMENTS}.versions"
+
 ACTIONS_CREDENTIAL = "KNOWLEDGE_TOKEN"
 
 PAGE = 500
@@ -34,10 +41,15 @@ MAX_BOOKS = 4
 MAX_PAGES = 60
 """How many pages one list reads, at most; a place with more is refused, never cut short."""
 
+MAX_FOUND = 10
+"""How many documents one search reads, and one reading of versions names, at most."""
+
 FIND = 2  # the shelf by its name, then its books
 LIST_DEMAND = FIND + MAX_BOOKS * MAX_LISTINGS + MAX_PAGES
 READ_DEMAND = FIND + MAX_LISTINGS + 1
 WRITE_DEMAND = FIND + MAX_LISTINGS + 4  # the page read, the write, a read-back, the tags
+SEARCH_DEMAND = 1 + MAX_FOUND  # the search, then every page it found
+VERSIONS_DEMAND = MAX_FOUND
 
 OPERATIONS: list[Json] = [
     {
@@ -66,6 +78,23 @@ OPERATIONS: list[Json] = [
         "page there has the expected digest, or none is there when none is expected. The key "
         "is kept in the page's tags; a repeat finds it there and writes nothing.",
     },
+    {
+        "name": SEARCH,
+        "capability": DOCUMENTS,
+        "effect": "read",
+        "demand": {"quota_units": SEARCH_DEMAND},
+        "summary": "The pages the wiki's search finds for a query and shows the credential "
+        "named, at most count of them: each with its identifier, title, the link that opens "
+        "it, the version the wiki holds, the digest of its text and the text.",
+    },
+    {
+        "name": VERSIONS,
+        "capability": DOCUMENTS,
+        "effect": "read",
+        "demand": {"quota_units": VERSIONS_DEMAND},
+        "summary": "For pages read before, by identifier: the version and the digest the wiki "
+        "holds now, or absent where it no longer shows the page to the credential named.",
+    },
 ]
 
 
@@ -73,7 +102,7 @@ def capabilities() -> Json:
     return {
         "contract": CONTRACT,
         "version": VERSION,
-        "capabilities": [CAPABILITY],
+        "capabilities": [DOCUMENTS, CAPABILITY],
         "operations": [dict(op) for op in OPERATIONS],
         "credentials": [{"name": ACTIONS_CREDENTIAL, "purpose": "actions"}],
         "consumption": {"kinds": ["quota"], "unit": "requests", "window_seconds": 60},

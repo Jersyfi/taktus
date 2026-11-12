@@ -1,0 +1,27 @@
+{
+  "credentials": {
+    "actions": "WEBSITE_TOKEN"
+  },
+  "read": {
+    "operation": "website.posts.read",
+    "input": {
+      "id": 1
+    }
+  },
+  "writes": [
+    {
+      "operation": "website.posts.draft",
+      "input": {
+        "title": "conformance {{unique}}",
+        "content": "<p>A draft the conformance suite wrote. Nothing is published.</p>"
+      }
+    }
+  ],
+  "invalid": {
+    "operation": "website.posts.read",
+    "input": {
+      "id": "not a number"
+    },
+    "expected_cause": "invalid"
+  }
+}

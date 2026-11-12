@@ -21,7 +21,7 @@
 # Switching it off (`taktusctl deactivate --process b-7-05`) changes nothing in the repository.
 
 id: b-7-05
-version: "1"
+version: "3"
 name: B-7.05 Review
 autonomy:
   level: 2
@@ -55,11 +55,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.pullrequests.read answered", columns: [state, title] }
     fallback:
       when: the connector serving repository.pullrequests is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.pullrequests.read
       input:
@@ -76,12 +79,15 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.pullrequests.files answered", columns: [additions, complete, count, deletions, files] }
     fallback:
       when: the connector serving repository.pullrequests is unavailable
       to: human
       role: owner
     depends_on: [read-pull]
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.pullrequests.files
       input:
@@ -147,6 +153,8 @@ steps:
       - method: llm
         why: a fixed composition and a count need no model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "Written by Taktus, process B-7\\.05 Review, once a person confirmed it\\. It approves and" }
     depends_on: [read-files, review, cut]
     work:
       rule: template
@@ -159,6 +167,8 @@ steps:
 
         Written by Taktus, process B-7.05 Review, once a person confirmed it. It approves and
         merges nothing.
+
+        ${statement}
       values:
         review: { $from: review, $select: text }
         count: { $from: read-files, $select: output.count }
@@ -166,6 +176,7 @@ steps:
         deletions: { $from: read-files, $select: output.deletions }
         complete: { $from: read-files, $select: output.complete }
         cut: { $from: cut, $select: count }
+        statement: { $run: exactness }
 
   - id: comment
     method: rule
@@ -174,12 +185,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.comments.create answered", columns: [author, body, created_at, id, url] }
     fallback:
       when: the connector serving repository.comments is unavailable
       to: human
       role: owner
     depends_on: [compose]
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.comments.create
       input:

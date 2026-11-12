@@ -1,0 +1,216 @@
+# B-10.04 Licences of dependencies — UC-03 §4.10: the licence of every dependency the product
+# ships checked, and every conflict reported (UC-01 P-10, ADR-0232).
+#
+# Every morning the dependency manifest is read from the repository through `repository.files`
+# — the lockfile, which pins every version, direct and transitive — and the licence a public
+# package index states for each pinned version is read through `packages.licences`. Two rules
+# judge the shipped dependencies, those that are not only for development: `conflicts` keeps a
+# licence of the families a closed product cannot ship without conditions — strong and network
+# copyleft, and terms that restrict commercial use — and `unknown` keeps a version the index
+# knows no licence for, or a licence that is no standard expression. A version that is not
+# pinned is named by the index's reading as `unpinned` and never guessed.
+#
+# The families are this bundle's literals, a default; what a business may ship is its own
+# policy, and a tenant sets the pattern in a version of its own. The manifest is the tenant's
+# too: `package-lock.json` by default, `uv.lock` and `requirements.txt` read as well.
+#
+# The judgement is the tenant's corridor on the count of conflicts; one is red and an incident:
+#
+#     uv run taktusctl signal configure licences.conflicts --process b-10-04 \
+#         --step conflicts --select count --bounds fixed --direction above \
+#         --yellow 0.25 --red 0.5 --fresh 26h --role <role> --case <where licences are worked>
+#
+# An exception stays with a person (UC-03 §6). **The attribution file is not kept here**: writing
+# it is a change of the repository, which the implementation process makes on a filed issue, and
+# its form is the business's own.
+#
+# By hand, for another manifest:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-10.04-dependency-licences.yaml \
+#         --input manifest_path=uv.lock --input format=uv.lock
+#
+# Switching it off (`taktusctl deactivate --process b-10-04`) changes nothing: it only reads.
+
+id: b-10-04
+version: "1"
+name: B-10.04 Licences of dependencies
+autonomy:
+  level: 1
+  reason: >
+    the process only reads the repository's manifest and a public index, and keeps licences by
+    fixed rules; nothing leaves the system, so at level 1 every step runs and none acts; a
+    conflict reaches a person at once as an incident; it starts at level 1, observing, as UC-03
+    starts every process at level 1 or 2 when its stage opens
+  toward_next: >
+    stage 4 of the tenant's plan open, its own licence policy in a version of its own, and four
+    weeks of runs whose conflicts a person found right; then Taktus proposes the next level, up
+    to level 4 in UC-03 (UC-7.1, UC-9.6)
+author: the repository
+reason: every dependency the product ships has its licence checked, without a person reading the lockfile (UC-03 B-10.04)
+
+triggers:
+  - schedule: "15 6 * * *"
+    inputs:
+      manifest_path: package-lock.json
+      format: package-lock.json
+      ref: main
+
+inputs:
+  manifest_path:
+    description: the path of the dependency manifest in the repository, a lockfile that pins every version
+    example: package-lock.json
+  format:
+    description: the manifest's format, package-lock.json, uv.lock or requirements.txt
+    example: package-lock.json
+  ref:
+    description: the branch whose manifest is read, the one the product ships from
+    example: main
+
+limits:
+  quota: { units: 2100 }
+
+steps:
+  - id: manifest
+    method: rule
+    reason: the manifest is read as the repository holds it on the branch the product ships from; nothing to judge
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.files.read answered", columns: [content] }
+    fallback:
+      when: the connector serving repository.files is unavailable
+      to: human
+      role: owner
+    work:
+      checking: { select: output }
+      rule: connector
+      operation: repository.files.read
+      input:
+        path: { $input: manifest_path }
+        ref: { $input: ref }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: licences
+    method: rule
+    reason: each pinned version's licence is read as the public index states it; nothing to judge
+    rejected:
+      - method: llm
+        why: a model could invent a licence; the index's own record is the source
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what packages.licences.list answered", columns: [complete, packages] }
+    fallback:
+      when: the connector serving packages.licences is unavailable
+      to: human
+      role: owner
+    depends_on: [manifest]
+    work:
+      checking: { select: output }
+      rule: connector
+      operation: packages.licences.list
+      input:
+        manifest: { $from: manifest, $select: output.content }
+        format: { $input: format }
+        limit: 2000
+      credentials:
+        - { name: PACKAGES_TOKEN, injected_as: env }
+      expect:
+        - select: complete
+          equals: true
+          says: the manifest pins more packages than one reading holds; a partial check would miss a conflict
+
+  - id: conflicts
+    method: rule
+    reason: whether a shipped dependency's licence is of a family the policy names is a pattern over the index's expression, a fixed rule
+    rejected:
+      - method: llm
+        why: a model could read a licence as compatible that is not; the policy is a list
+      - method: ml
+        why: nothing is learned; the families are named
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the shipped dependencies whose licence the policy names }
+    depends_on: [licences]
+    work:
+      rule: filter
+      items: { $from: licences, $select: output.packages }
+      all:
+        - { field: dev, equals: false }
+        - { field: licences, matches: "(?i)\\b(A?GPL|LGPL|SSPL|EUPL|OSL|CPAL|CC-BY-NC|BUSL|Commons-Clause)" }
+      order: name
+
+  - id: unknown
+    method: rule
+    reason: a shipped dependency whose licence the index does not state, or states as no standard expression, is named for a person, a fixed rule
+    rejected:
+      - method: llm
+        why: a licence that is not known is not guessed
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the shipped dependencies without a known licence }
+    depends_on: [licences]
+    work:
+      rule: filter
+      items: { $from: licences, $select: output.packages }
+      all:
+        - { field: dev, equals: false }
+      any:
+        - { field: licences, matches: "^\\[\\]$" }
+        - { field: licences, matches: "non-standard" }
+      order: name
+
+takeover:
+  sequence: >
+    The process runs every morning at a quarter past six UTC; whoever looks after the product's
+    licences takes it over. The steps run in order: open the dependency manifest on the
+    branch the product ships from, look up the licence of every pinned version in the public
+    package index, and among the dependencies that are not only for development note those
+    whose licence is of a family the policy names and those without a known licence. A conflict
+    goes at once to the role the tenant named; an exception is that role's decision.
+  steps:
+    manifest:
+      system: the repository service, in a browser
+      do: >
+        open the dependency manifest the run was started with on the branch it names and
+        download it
+      expertise: finding a file in the repository
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md; a person signs in with their own
+            account that may read the repository
+      done: the manifest is downloaded
+    licences:
+      system: the public package index's website, deps.dev, or each package's registry page
+      do: >
+        for every exact version the manifest pins, note its licence as the index states it, and
+        that none is stated where none is; note too the requirements that pin no exact version
+      expertise: reading a lockfile and a package's licence
+      credentials:
+        - parameter: PACKAGES_TOKEN
+          where: >
+            the operator's secret store, under the parameter Package index token of the
+            requesting identity described in CREDENTIALS.md; a person needs no account, the
+            index is public
+      done: every pinned version has its licence noted
+    conflicts:
+      system: the noted licences
+      do: >
+        among the dependencies that are not only for development, note those whose licence
+        names GPL, AGPL, LGPL, SSPL, EUPL, OSL, CPAL, CC-BY-NC, BUSL or the Commons Clause, and
+        report them to the role the tenant named
+      expertise: reading an SPDX licence expression
+      credentials: []
+      done: every conflict is reported, or there is none
+    unknown:
+      system: the noted licences
+      do: >
+        among the dependencies that are not only for development, note those whose licence is
+        not stated or is no standard expression, and report them with the conflicts
+      expertise: reading an SPDX licence expression
+      credentials: []
+      done: every such dependency is reported, or there is none

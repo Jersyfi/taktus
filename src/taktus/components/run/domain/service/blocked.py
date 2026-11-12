@@ -49,6 +49,7 @@ RECORD_FIELDS = (
     "on",
     "role",
     "lacking",
+    "short",
 )
 """What every record carries. A record may carry more about its cause — the worker asked, how
 often — and the sums read none of it."""
@@ -71,6 +72,9 @@ class Block(Value):
     """The role a wait on a person was addressed to, where it was addressed to one."""
     lacking: str | None = Field(default=None, min_length=1)
     """For a lack (ADR-0046): what no configured adapter offered."""
+    short: dict[str, float] | None = None
+    """For a refusal by admission: by how much the reservation exceeded what was left, per
+    quantity, when the block began (ADR-0283)."""
 
     @property
     def process(self) -> str:
@@ -143,6 +147,8 @@ def record(
         document["lacking"] = block.lacking
     if block.retry_after_seconds is not None:
         document["retry_after_seconds"] = block.retry_after_seconds
+    if block.short is not None:
+        document["short"] = dict(sorted(block.short.items()))
     return document
 
 
@@ -251,6 +257,89 @@ def sums(
                 steps_held_up=len(steps[key]),
                 runs=active_runs,
                 share=len(runs[key]) / active_runs,
+            )
+        )
+    return tuple(result)
+
+
+type Grouping = Literal["role", "department"]
+
+UNADDRESSED = "unaddressed"
+"""The group of a wait on a person addressed to no role: a confirmation at level 2 or a
+performance at level 1 (UC-7.3)."""
+UNPLACED = "unplaced"
+"""The group of a wait whose answerer's department is not known."""
+
+
+class GroupedWait(Value):
+    """The waits on a person of one role or one department, in one period. No person is a key.
+
+    A group that fewer than `MINIMUM_PERSONS` persons answered carries its key and why it is
+    withheld, and no figure of the wait (ADR-0015, protective rule; NTC-0168)."""
+
+    grouping: Grouping
+    group: str = Field(min_length=1)
+    period: str = Field(min_length=1)
+    seconds: float | None = Field(default=None, ge=0)
+    blocks: int | None = Field(default=None, ge=1)
+    runs_held_up: int | None = Field(default=None, ge=1)
+    withheld: str | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def _figures_or_the_reason(self) -> GroupedWait:
+        figures = (self.seconds, self.blocks, self.runs_held_up)
+        if self.withheld is None and any(f is None for f in figures):
+            raise ValueError("a group shown carries every figure")
+        if self.withheld is not None and any(f is not None for f in figures):
+            raise ValueError("a group withheld carries no figure of the wait")
+        return self
+
+
+def grouped(
+    blocks: Iterable[tuple[Block, str | None, str | None]],
+    grouping: Grouping,
+    period: Period,
+) -> tuple[GroupedWait, ...]:
+    """The waits on a person per role or per department, and per period (ADR-0283 §4). Each
+    block comes with the person who answered it and that person's department, or None; the
+    person is counted, never kept. Only `wait.human` is grouped. The order is by group and
+    period, never by a figure."""
+    seconds: dict[tuple[str, str], float] = defaultdict(float)
+    count: dict[tuple[str, str], int] = defaultdict(int)
+    runs: dict[tuple[str, str], set[str]] = defaultdict(set)
+    persons: dict[tuple[str, str], set[str]] = defaultdict(set)
+    for block, person, department in blocks:
+        if block.account != PERSON_ACCOUNT:
+            continue
+        group = (block.role or UNADDRESSED) if grouping == "role" else (department or UNPLACED)
+        key = (group, period_of(block.until, period))
+        seconds[key] += block.seconds
+        count[key] += 1
+        runs[key].add(block.run_id)
+        if person is not None:
+            persons[key].add(person)
+    result: list[GroupedWait] = []
+    for key in sorted(seconds):
+        group, at = key
+        if len(persons[key]) < MINIMUM_PERSONS:
+            result.append(
+                GroupedWait(
+                    grouping=grouping,
+                    group=group,
+                    period=at,
+                    withheld=f"fewer than {MINIMUM_PERSONS} persons answered: the figure "
+                    "would be one person's (ADR-0015)",
+                )
+            )
+            continue
+        result.append(
+            GroupedWait(
+                grouping=grouping,
+                group=group,
+                period=at,
+                seconds=seconds[key],
+                blocks=count[key],
+                runs_held_up=len(runs[key]),
             )
         )
     return tuple(result)

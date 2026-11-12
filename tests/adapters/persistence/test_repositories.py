@@ -11,17 +11,23 @@ from adapters.persistence.conftest import Backend
 from taktus.components.catalog.domain.model import (
     AdapterMaturity,
     AgentCore,
+    CallerCredential,
     CatalogueInstallation,
+    CatalogueShare,
     RoleProfile,
     SkillOwnership,
     SkillPolicy,
     SkillVersion,
 )
-from taktus.components.command.domain.model import IntakeEvent
+from taktus.components.command.domain.model import IntakeEvent, PlanDraft
+from taktus.components.command.domain.model.coach import CoachHint, CoachPolicy, CoachSettings
+from taktus.components.command.domain.model.configuration import ConfigurationChange
+from taktus.components.command.domain.model.session import ProjectSession
 from taktus.components.decision.domain.model import DecisionRule, RegisterEntry, Request
 from taktus.components.governance.domain.model import (
     AnchorConfiguration,
     CaseAnswer,
+    ConnectionGrant,
     CorrectionLimits,
     Incident,
     MessageRules,
@@ -38,6 +44,14 @@ from taktus.components.identity.domain.model import (
     LinkCode,
     RoleRights,
 )
+from taktus.components.identity.domain.model.structure import (
+    Filing,
+    KnowledgeHome,
+    OrgStructure,
+    Placement,
+    StructureUnit,
+)
+from taktus.components.knowledge.domain.model import KnowledgeEntry
 from taktus.components.process.domain.model import (
     CorrectedCase,
     Evaluation,
@@ -48,14 +62,21 @@ from taktus.components.process.domain.model import (
     ValueStream,
 )
 from taktus.components.reporting.domain.model import Corridor, OwnerChannel, Report
+from taktus.components.reporting.domain.model.views import (
+    OwnView,
+    ReportDefinition,
+    ViewConfiguration,
+)
 from taktus.components.run.domain.model import (
     AdapterStop,
     Deadline,
     Run,
     RunState,
+    RunSteering,
     StepState,
     WorkingTime,
 )
+from taktus.components.value.domain.model import DiscoveredProcess, ValueBasis
 from taktus.ports.persistence import WrongTenant
 from taktus.shared.v1 import Command, Plan
 
@@ -87,6 +108,7 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (CorrectionLimits, samples.correction_limits),
     (ResidencyRule, samples.residency_rule),
     (SourceDeclaration, samples.source_declaration),
+    (ConnectionGrant, samples.connection_grant),
     (MessageRules, samples.message_rules),
     (OrgUnitQuota, samples.org_unit_quota),
     (CatalogueInstallation, samples.catalogue_installation),
@@ -94,6 +116,7 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (Deadline, samples.deadline),
     (StagePlan, samples.stage_plan),
     (TakeoverTrial, samples.takeover_trial),
+    (KnowledgeEntry, samples.knowledge_entry),
     (ValueStream, samples.value_stream),
     (WorkingTime, samples.working_time),
     (AdapterStop, samples.adapter_stop),
@@ -104,6 +127,25 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (SkillPolicy, samples.skill_policy),
     (AgentCore, samples.agent_core),
     (RoleProfile, samples.role_profile),
+    (RunSteering, samples.run_steering),
+    (PlanDraft, samples.plan_draft),
+    (CoachSettings, samples.coach_settings),
+    (CoachHint, samples.coach_hint),
+    (CoachPolicy, samples.coach_policy),
+    (CatalogueShare, samples.catalogue_share),
+    (CallerCredential, samples.caller_credential),
+    (ViewConfiguration, samples.view_configuration),
+    (ReportDefinition, samples.report_definition),
+    (OwnView, samples.own_view),
+    (ValueBasis, samples.value_basis),
+    (DiscoveredProcess, samples.discovered_process),
+    (OrgStructure, samples.org_structure),
+    (StructureUnit, samples.structure_unit),
+    (Placement, samples.placement),
+    (Filing, samples.filing),
+    (KnowledgeHome, samples.knowledge_home),
+    (ProjectSession, samples.project_session),
+    (ConfigurationChange, samples.configuration_change),
 ]
 
 
@@ -149,6 +191,23 @@ async def test_a_run_comes_back_with_its_step_runs_checkpoints_and_artifacts(
     assert stored.step_run("prepare-commands").checkpoint is not None
     assert stored.step_run("prepare-commands").checkpoint.result_digest == samples.DIGEST
     assert stored.next_step_run() is not None and stored.next_step_run().step_id == "compute"
+
+
+def test_the_sample_version_leaves_no_field_at_its_default() -> None:
+    """The guard on the round trip above: a field added to the version and not declared by the
+    sample would come back at its default from a mapper that does not store it, and pass
+    (DEC-0233). Declare it in `samples.process_version`, and store it in the mapper."""
+    version = samples.process_version()
+    defaulted = [
+        name
+        for name, field in ProcessVersion.model_fields.items()
+        if getattr(version, name) == field.get_default(call_default_factory=True)
+    ]
+    assert defaulted == UNDECLARED, f"declare {defaulted} in samples.process_version"
+
+
+UNDECLARED: list[str] = []
+"""The fields the sample leaves at their default: none."""
 
 
 async def test_put_replaces_what_was_there(backend: Backend) -> None:

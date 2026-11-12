@@ -31,6 +31,10 @@ class Resolution(Value):
     org_path: tuple[str, ...] = Field(min_length=1)
     roles: tuple[str, ...] = ()
     """The roles the identity holds (ADR-0042)."""
+    unseen: tuple[str, ...] = ()
+    """The processes the organisation's structure places where the identity does not see, in
+    its default context (ADR-0275 §4). Empty where nothing is placed: the tenant's boundary
+    alone holds."""
 
 
 class UnknownSenderAnswer(Value):
@@ -40,6 +44,15 @@ class UnknownSenderAnswer(Value):
 
     reply: str = Field(min_length=1)
     linked: Resolution | None = None
+
+
+class Sight(Protocol):
+    """What the organisation's structure keeps from an identity's sight (ADR-0275 §4)."""
+
+    async def unseen(self, tenant: Tenant, identity: str) -> tuple[str, ...]:
+        """The processes placed where the identity's default context does not see; empty
+        for an identity the tenant does not hold, or where nothing is placed."""
+        ...
 
 
 class IdentityResolver(Protocol):

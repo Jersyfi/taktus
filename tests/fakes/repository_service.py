@@ -52,7 +52,8 @@ What it enforces, because the connector's checks depend on it:
   "failure"}`, or `{"pending": true}` for a run that never completes), so that a process can
   read the pipeline's verdict for a branch it created. `POST /_fake/run` with `{"repository",
   "branch", "conclusion"}` records one completed `ci` run for the head of an existing branch, as
-  a push to it would — how `main` turns red or green (#481).
+  a push to it would — how `main` turns red or green (#481); with `"status": "in_progress"` a run
+  still running, and `"minutes_ago"` one created that long ago (ADR-0201).
 
 - **Keeping a pull request mergeable** (ADR-0193). A pull request is read with the commit at
   its head. `GET …/compare/<base>...<head>` answers `ahead_by` and `behind_by` from the commit
@@ -62,6 +63,18 @@ What it enforces, because the connector's checks depend on it:
   changed one path differently; `PUT …/pulls/<n>/merge` merges a pull request at the head `sha`
   names, 409 for another head, 405 for one closed or conflicting. A branch moved by `PATCH` gets
   a pipeline run, as a push does. `GET …/actions/runs?status=` lists the runs in one status.
+
+- **The repository's infrastructure** (ADR-0201). Every run carries `run_attempt`. `POST
+  …/actions/runs/<id>/rerun-failed-jobs` answers 201 for a completed run and makes it queued
+  again under the next attempt; for one not completed it answers 403 — the service's own answer
+  for that case is not documented, and the connector never asks it. `POST …/cancel` answers 202
+  and completes the run as `cancelled`, 409 for a run completed already. `GET …/actions/runners`
+  lists the runners `POST /_fake/runner` added (`{"repository", "name", "status", "busy"}`).
+  `GET …/branches` lists every branch with its head and `protected` (`POST /_fake/protect`
+  with `{"repository", "branch"}`), 100 to a page at most. `GET /rate_limit` answers the
+  resources `core`, `search` and `graphql`, `core` with the requests this fake answered.
+  `GET …/dependabot/alerts` lists the alerts `POST /_fake/alert` added, filtered by `state` and
+  `severity`, newest first, each with a dismisser and assignees the connector must never copy.
 
 Test-only endpoints under `/_fake/`: `GET /_fake/state` counts what exists, `POST /_fake/reset`
 empties the store, `POST /_fake/outage` with `{"on": true}` makes every other request answer 503
@@ -91,7 +104,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
@@ -140,6 +153,9 @@ class Repository:
             collaborator("fake-reviewer", 2, "write"),
         ]
     )
+    runners: list[Json] = field(default_factory=list)
+    protected: set[str] = field(default_factory=set)
+    alerts: list[Json] = field(default_factory=list)
     next_number: int = 1
     next_comment: int = 1
     next_run: int = 1
@@ -177,6 +193,7 @@ class Store:
     ci_conclusion: str = "success"
     ci_pending: bool = False
     issue_list_lag: float = 0.0  # seconds an issue stays out of the issue list
+    answered: int = 0  # reads answered under a credential, as `GET /rate_limit` counts them
     lock: threading.Lock = field(default_factory=threading.Lock)
 
     def repository(self, owner: str, name: str) -> Repository:
@@ -220,6 +237,7 @@ class Store:
             "status": status,
             "conclusion": conclusion,
             "head_sha": head_sha,
+            "run_attempt": 1,
             "html_url": f"{self.base_url}/{repo.full_name}/actions/runs/{repo.next_run}",
             "created_at": now(),
         }
@@ -265,6 +283,7 @@ class Store:
             "head": {"ref": head, "label": f"{repo.owner}:{head}"},
             "base": {"ref": base, "label": f"{repo.owner}:{base}"},
             "merged": False,
+            "merged_at": None,
             "draft": draft,
             "merge_commit_sha": None,
         }
@@ -427,6 +446,20 @@ class Handler(BaseHTTPRequestHandler):
         if payload:
             self.wfile.write(payload)
 
+    def _paged(self, path: str, query: Json, items: list[Json]) -> None:
+        per_page = max(1, min(100, int(query.get("per_page", 30))))
+        page = max(1, int(query.get("page", 1)))
+        headers = {}
+        if page * per_page < len(items):
+            rest = "".join(
+                f"{k}={v}&" for k, v in sorted(query.items()) if k not in ("page", "per_page")
+            )
+            headers["Link"] = (
+                f"<{self.store.base_url}{path}?{rest}per_page={per_page}"
+                f'&page={page + 1}>; rel="next"'
+            )
+        self._send(200, items[(page - 1) * per_page : page * per_page], headers)
+
     def _body(self) -> Json:
         length = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(length) if length else b""
@@ -583,10 +616,14 @@ class Handler(BaseHTTPRequestHandler):
             with self.store.lock:
                 repo = self.store.repository(*str(body["repository"]).split("/", 1))
                 head = repo.refs[str(body["branch"])]
-                conclusion = str(body.get("conclusion") or "success")
-                run = self.store.create_run(
-                    repo, "ci", head, status="completed", conclusion=conclusion
+                status = str(body.get("status") or "completed")
+                conclusion = (
+                    None if status != "completed" else str(body.get("conclusion") or "success")
                 )
+                run = self.store.create_run(repo, "ci", head, status=status, conclusion=conclusion)
+                if body.get("minutes_ago"):
+                    moment = datetime.now(UTC) - timedelta(minutes=int(body["minutes_ago"]))
+                    run["created_at"] = moment.strftime("%Y-%m-%dT%H:%M:%SZ")
             self._send(201, run)
             return
         if url.path == "/_fake/reset":
@@ -634,6 +671,28 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/_fake/hang":
             self.store.hang_seconds = float(body.get("seconds") or 0)
             self._send(200, {"hang_seconds": self.store.hang_seconds})
+            return
+        if url.path in ("/_fake/runner", "/_fake/protect", "/_fake/alert"):
+            with self.store.lock:
+                repo = self.store.repository(*str(body["repository"]).split("/", 1))
+                if url.path == "/_fake/runner":
+                    runner = {
+                        "id": 100 + len(repo.runners),
+                        "name": str(body["name"]),
+                        "os": "Linux",
+                        "status": str(body.get("status") or "online"),
+                        "busy": bool(body.get("busy")),
+                        "labels": [{"id": 1, "name": "self-hosted", "type": "read-only"}],
+                    }
+                    repo.runners.append(runner)
+                    self._send(201, runner)
+                elif url.path == "/_fake/protect":
+                    repo.protected.add(str(body["branch"]))
+                    self._send(200, {"protected": sorted(repo.protected)})
+                else:
+                    alert = alert_of(self.store.base_url, repo, body)
+                    repo.alerts.append(alert)
+                    self._send(201, alert)
             return
         if url.path == "/_fake/ci":
             self.store.ci_conclusion = str(body.get("conclusion") or "success")
@@ -729,6 +788,7 @@ class Handler(BaseHTTPRequestHandler):
             changes = {
                 "state": "closed",
                 "merged": True,
+                "merged_at": now(),
                 "merge_commit_sha": sha,
                 "updated_at": now(),
             }
@@ -787,6 +847,47 @@ class Handler(BaseHTTPRequestHandler):
 
     def _get(self, path: str, query: Json) -> None:
         store = self.store
+        store.answered += 1
+        if path == "/rate_limit":
+            reset = int(time.time()) + 1800
+            used = store.answered
+            resources = {
+                "core": {"limit": 5000, "used": used, "remaining": 5000 - used, "reset": reset},
+                "search": {"limit": 30, "used": 0, "remaining": 30, "reset": reset},
+                "graphql": {"limit": 5000, "used": 0, "remaining": 5000, "reset": reset},
+            }
+            self._send(200, {"resources": resources, "rate": resources["core"]})
+            return
+        if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/actions/runners", path):
+            repo = store.repository(m.group(1), m.group(2))
+            self._send(200, {"total_count": len(repo.runners), "runners": repo.runners})
+            return
+        if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/branches", path):
+            repo = store.repository(m.group(1), m.group(2))
+            branches = [
+                {"name": n, "commit": {"sha": sha}, "protected": n in repo.protected}
+                for n, sha in sorted(repo.refs.items())
+            ]
+            if "protected" in query:
+                wanted = query["protected"] == "true"
+                branches = [b for b in branches if b["protected"] is wanted]
+            self._paged(path, query, branches)
+            return
+        if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/dependabot/alerts", path):
+            repo = store.repository(m.group(1), m.group(2))
+            states = str(query.get("state") or "open,fixed,dismissed,auto_dismissed").split(",")
+            severities = query.get("severity")
+            alerts = [
+                a
+                for a in reversed(repo.alerts)
+                if a["state"] in states
+                and (
+                    severities is None
+                    or a["security_vulnerability"]["severity"] in str(severities).split(",")
+                )
+            ]
+            self._paged(path, query, alerts)
+            return
         if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/milestones", path):
             repo = store.repository(m.group(1), m.group(2))
             state = query.get("state", "open")
@@ -988,6 +1089,27 @@ class Handler(BaseHTTPRequestHandler):
     def _post(self, path: str, body: Json) -> None:
         store = self.store
         login = self._login()
+        run_act = r"/repos/([^/]+)/([^/]+)/actions/runs/(\d+)/(rerun-failed-jobs|cancel)"
+        if m := re.fullmatch(run_act, path):
+            repo = store.repository(m.group(1), m.group(2))
+            run = repo.runs.get(int(m.group(3)))
+            if run is None:
+                self._send(404, {"message": "Not Found"})
+                return
+            if m.group(4) == "cancel":
+                if run["status"] == "completed":
+                    self._send(409, {"message": "Cannot cancel a workflow run that is completed."})
+                    return
+                run.update(status="completed", conclusion="cancelled")
+                self._send(202, {})
+                return
+            if run["status"] != "completed":
+                self._send(403, {"message": "This workflow is already running"})
+                return
+            attempt = int(run.get("run_attempt", 1)) + 1
+            run.update(status="queued", conclusion=None, run_attempt=attempt)
+            self._send(201, {})
+            return
         if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/issues/(\d+)/comments", path):
             repo = store.repository(m.group(1), m.group(2))
             number = int(m.group(3))
@@ -1229,6 +1351,43 @@ class Handler(BaseHTTPRequestHandler):
             self._send(204, None)
             return
         self._send(404, {"message": "Not Found"})
+
+
+def alert_of(base_url: str, repo: Repository, body: Json) -> Json:
+    """A dependency alert in the service's shape, with the people the connector leaves out."""
+    number = len(repo.alerts) + 1
+    package = {"ecosystem": str(body.get("ecosystem") or "pip"), "name": str(body["package"])}
+    severity = str(body.get("severity") or "high")
+    patched = body.get("patched")
+    return {
+        "number": number,
+        "state": str(body.get("state") or "open"),
+        "dependency": {
+            "package": package,
+            "manifest_path": str(body.get("manifest") or "requirements.txt"),
+            "scope": "runtime",
+            "relationship": "direct",
+        },
+        "security_advisory": {
+            "ghsa_id": str(body.get("ghsa_id") or f"GHSA-fake-{number:04d}-xxxx"),
+            "cve_id": body.get("cve_id"),
+            "summary": str(body.get("summary") or f"A flaw in {package['name']}"),
+            "description": "A longer description.",
+            "severity": severity,
+        },
+        "security_vulnerability": {
+            "package": package,
+            "severity": severity,
+            "vulnerable_version_range": str(body.get("vulnerable") or "< 2.0.0"),
+            "first_patched_version": None if patched is None else {"identifier": str(patched)},
+        },
+        "url": f"{base_url}/repos/{repo.full_name}/dependabot/alerts/{number}",
+        "html_url": f"{base_url}/{repo.full_name}/security/dependabot/{number}",
+        "created_at": str(body.get("created_at") or now()),
+        "updated_at": now(),
+        "dismissed_by": {"login": "a-person", "id": 7, "name": "A Person"},
+        "assignees": [{"login": "another-person", "id": 8}],
+    }
 
 
 def kind_of(login: str) -> str:

@@ -4,10 +4,10 @@ title: Remediation plan
 component: run
 epic: E4
 serves: [P6, P10, P11, P12]
-state: building
+state: verified
 version: 0.5.0
-tests: [tests/governance/test_result_defects.py::test_a_plan_for_results_inside_the_system_runs_without_a_halt, tests/governance/test_result_defects.py::test_every_result_that_left_gets_an_outward_correction_after_it_is_produced_again, tests/governance/test_result_defects.py::test_every_plan_step_says_what_a_person_needs_to_carry_it_out_without_taktus, tests/governance/test_result_defects.py::test_a_correction_that_cannot_be_made_at_once_says_so, tests/governance/test_anchors.py::test_a_level_four_run_halts_at_each_anchor_with_a_decision_request, tests/governance/test_remediation_run.py::test_a_plan_inside_the_system_runs_again_without_a_halt_and_names_the_correction, tests/governance/test_remediation_run.py::test_an_outward_correction_halts_with_a_request_of_class_correction_at_level_4, tests/governance/test_remediation_run.py::test_without_a_correction_anchor_that_names_the_act_the_outward_step_is_not_made, tests/governance/test_remediation_run.py::test_a_result_defect_starts_its_remediation_run_once_from_the_correction]
-adrs: {ADR-0008: e6a4e033abd4, ADR-0013: 1da224cdeaf4, ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0153: f720e5930f42, ADR-0160: 34e64cb9d5ce, ADR-0179: b70d264ab655}
+tests: [tests/governance/test_result_defects.py::test_a_plan_for_results_inside_the_system_runs_without_a_halt, tests/governance/test_result_defects.py::test_every_result_that_left_gets_an_outward_correction_after_it_is_produced_again, tests/governance/test_result_defects.py::test_every_plan_step_says_what_a_person_needs_to_carry_it_out_without_taktus, tests/governance/test_result_defects.py::test_a_correction_that_cannot_be_made_at_once_says_so, tests/governance/test_anchors.py::test_a_level_four_run_halts_at_each_anchor_with_a_decision_request, tests/governance/test_remediation_run.py::test_a_plan_inside_the_system_runs_again_without_a_halt_and_names_the_correction, tests/governance/test_remediation_run.py::test_an_outward_correction_halts_with_a_request_of_class_correction_at_level_4, tests/governance/test_remediation_run.py::test_without_a_correction_anchor_that_names_the_act_the_outward_step_is_not_made, tests/governance/test_remediation_run.py::test_a_result_defect_starts_its_remediation_run_once_from_the_correction, tests/governance/test_remediation_derived.py::test_a_run_built_on_the_wrong_result_runs_again_after_the_wrong_run_s_remedy, tests/composition/test_incident_remainders.py::test_a_step_done_by_hand_is_recorded_on_the_incident_with_its_role_and_time]
+adrs: {ADR-0008: e6a4e033abd4, ADR-0013: 1da224cdeaf4, ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0153: f720e5930f42, ADR-0160: 34e64cb9d5ce, ADR-0179: b70d264ab655, ADR-0227: d9554d421f29}
 supersedes: null
 ---
 
@@ -90,6 +90,8 @@ be made at once says so. The plan runs on the engine as a remediation run of the
 on carried as it was, everything built on it run again at the process's level without a halt; every
 step that acts outward halts first with a request of class `correction`, at level 4 too, and is not
 made where no correction anchor names its act. The steps run again get provenance records of their
-own that name the corrected result; the wrong run and its records stay — by the named tests. Not
-built: a derived result in another run or process produced again by the engine; the steps a person
-executed by hand recorded in the incident.
+own that name the corrected result; the wrong run and its records stay. Once the wrong run's
+remediation finished, every run built on its result in another run or process is remedied the
+same way; a step a person executed by hand is recorded in the incident with its role and time,
+and the identity that recorded it is the actor of its ledger entry (ADR-0227) — by the named
+tests.

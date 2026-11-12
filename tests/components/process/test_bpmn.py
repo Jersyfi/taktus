@@ -90,6 +90,7 @@ def fill(document: dict[str, Any]) -> dict[str, Any]:
     """The person's answers to every question of the model's draft."""
     answers: dict[str, dict[str, Any]] = {
         "read-invoice": {"method": "worker", "exactness": "sourced",
+                         "checks": [{"kind": "sampling", "share": 0.1, "role": "accounting"}],
                          "fallback": {"when": "the document cannot be read", "to": "human"}},
         "check-invoice": {"method": "human"},
         "approve-payment": {"method": "human",
@@ -287,3 +288,44 @@ def test_the_command_line_drafts_completes_and_exports_without_an_instance(
     unreadable = tmp_path / "bad.bpmn"
     unreadable.write_bytes(b"<!DOCTYPE x><x/>")
     assert runner.invoke(bpmn_cli, ["draft", str(unreadable)]).exit_code == 2
+
+
+TASKS = frozenset({"task", "serviceTask", "userTask", "businessRuleTask", "receiveTask"})
+"""The elements a step is drawn as; gateways and the start and end events are not steps."""
+
+
+def _local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+@pytest.mark.parametrize("path", BUNDLES, ids=lambda p: p.stem)
+def test_the_diagram_of_every_bundle_draws_each_step_exactly_once(path: Path) -> None:
+    """UC-4.2: the diagram of a version shows each of its steps once, as a node and a shape, no
+    step it does not have, and every step after the steps it depends on."""
+    import xml.etree.ElementTree as ET
+
+    version = parse_bundle(yaml.safe_load(path.read_text(encoding="utf-8")))
+    root = ET.fromstring(drafts.export(version))  # noqa: S314 — the export's own output
+    steps = [s.id for s in version.steps]
+    nodes = [e.get("id") for e in root.iter() if _local_name(e.tag) in TASKS]
+    shapes = [e.get("bpmnElement") for e in root.iter() if _local_name(e.tag) == "BPMNShape"]
+    assert sorted(n or "" for n in nodes) == sorted(steps)
+    for step in steps:
+        assert shapes.count(step) == 1, step
+    leads: dict[str, set[str]] = {}
+    for flow in (e for e in root.iter() if _local_name(e.tag) == "sequenceFlow"):
+        leads.setdefault(flow.get("sourceRef") or "", set()).add(flow.get("targetRef") or "")
+
+    def after(node: str) -> set[str]:
+        seen: set[str] = set()
+        ahead = [node]
+        while ahead:
+            for following in leads.get(ahead.pop(), ()):
+                if following not in seen:
+                    seen.add(following)
+                    ahead.append(following)
+        return seen
+
+    for step in version.steps:
+        for dependency in step.dependencies:
+            assert step.id in after(dependency), (dependency, step.id)

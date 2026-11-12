@@ -188,6 +188,8 @@ from taktus.components.run.domain.model import (
     PROCEED,
     RESUMABLE,
     RUN_ENDED,
+    WAITING,
+    AdapterStop,
     Anchoring,
     Ask,
     BacklogRule,
@@ -195,6 +197,7 @@ from taktus.components.run.domain.model import (
     Checkpoint,
     CheckRead,
     CheckRule,
+    CitationRule,
     ClaimLost,
     ClassificationRule,
     CommitTitleRule,
@@ -214,9 +217,11 @@ from taktus.components.run.domain.model import (
     MlWork,
     NoConnector,
     NoWorker,
+    OutsideResidency,
     ParticipantWork,
     ReadyRule,
     ReceivedMessage,
+    RecurringRule,
     Remedy,
     RoadmapRule,
     RuleFailed,
@@ -224,8 +229,12 @@ from taktus.components.run.domain.model import (
     RunError,
     RunExists,
     RunState,
+    RunSteering,
     ScreenRule,
     SpamRule,
+    SteeringKind,
+    SteeringReply,
+    SteeringState,
     StepRun,
     StepState,
     Takeover,
@@ -251,6 +260,7 @@ from taktus.components.run.domain.model import (
 )
 from taktus.components.run.domain.model.block import Account, Awaited, OpenBlock
 from taktus.components.run.domain.model.run import IN_FLIGHT, TAKEOVER_RESULT, TAKEOVER_STATE
+from taktus.components.run.domain.model.stop import process_of
 from taktus.components.run.domain.model.work import PREDICT, SKILLS
 from taktus.components.run.domain.service import (
     anchoring,
@@ -266,6 +276,7 @@ from taktus.components.run.domain.service import (
     participants,
     prediction,
     provenance,
+    recurring,
     repetition,
     routing,
     rules,
@@ -286,9 +297,12 @@ from taktus.components.run.ports import (
     Anchors,
     Breach,
     Cap,
+    Citations,
     ConnectorPool,
     Decisions,
     Draft,
+    Evaluated,
+    ExternalControl,
     Guidance,
     Levels,
     Maturities,
@@ -298,19 +312,26 @@ from taktus.components.run.ports import (
     NotRaised,
     OpenWork,
     OrgUnits,
+    PersonalCredentials,
     ProposalDecided,
     Repeated,
     Repetition,
     Replay,
     Residency,
+    Shares,
     Sources,
     Statements,
     Verdict,
     WorkerPool,
+    WriteGrants,
 )
+from taktus.components.run.ports.tenant_budget import MonthBudget, TenantBudget
+from taktus.components.run.ports.unit_limits import AppliedLimit, UnitLimitsPort
 from taktus.ports.administration import Administration
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.connector import (
+    QUERYING,
+    READ_UNLESS_GRANTED,
     CallContext,
     CallFailed,
     CaseScope,
@@ -329,12 +350,15 @@ from taktus.ports.connector import (
 from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.model import (
     Calculability,
+    Location,
     ModelAtLimit,
     ModelError,
     Permitted,
     PriceTable,
     Prompt,
     WeightingTable,
+    admits,
+    host_location,
     price,
 )
 from taktus.ports.objectstore import ObjectStore
@@ -358,6 +382,7 @@ from taktus.ports.worker import (
     Callback,
     ConsumptionReported,
     Context,
+    CredentialReference,
     Event,
     Frame,
     HandoverRequest,
@@ -390,11 +415,13 @@ from taktus.shared.v1 import (
     Consumption,
     ConsumptionQuantities,
     Digest,
+    ExactnessClass,
     InputKind,
     LedgerEntry,
     LedgerRefs,
     Method,
     Plan,
+    PlanStatus,
     PriceKinds,
     ProvenanceInput,
     ProvenanceRoute,
@@ -403,12 +430,15 @@ from taktus.shared.v1 import (
     Value,
     add_tokens_by_model,
 )
+from taktus.shared.v1.autonomy import depending_on
 from taktus.shared.v1.consumption import MODEL_NAME_PATTERN
 
 RECOUNTS = 5
 """How often a run counts its process's open work again when other runs of it pass at the same
 moment, before it waits a check instead (ADR-0132 §2)."""
 
+RESIDENCY_EGRESS = "residency.egress"
+"""Beside every egress entry: the location the effect went to, as outcome (ADR-0281 §5)."""
 CLAIM_LOST = "run.claim_lost"
 """The ledger kind a runner's lost claim is recorded under (ADR-0106 §2)."""
 
@@ -442,6 +472,9 @@ NO_RESULT = b"null"
 SOURCE_REF_LENGTH = 200
 """How much of an operation and its input a provenance source reference keeps (ADR-0021 §4
 bounds an input to 384 bytes)."""
+
+QUERY_SENT = "query.sent"
+"""A query a step sent through a querying capability, its request by digest (ADR-0262 §3)."""
 
 
 @dataclass(frozen=True)
@@ -586,6 +619,31 @@ class SteerStep:
 
 
 @dataclass(frozen=True)
+class AskSteering:
+    """A person asks a run to pause or to be cancelled (ADR-0236, UC-1.5). Who may is decided
+    by the surface the person uses (`taktus.composition.steering`); the engine records the ask
+    and lands it at the run's boundary."""
+
+    run_id: str
+    tenant: Tenant
+    kind: SteeringKind
+    actor: str
+    """The identity that asked; named as the actor of the ledger entry."""
+    reply: SteeringReply | None = None
+    """Where the message that it took effect is said; None where the surface waits itself."""
+
+
+@dataclass(frozen=True)
+class SteeringAsked:
+    """What the ask found: the run as it is now, the request as recorded, and whether it took
+    effect at once because the run was at a boundary already."""
+
+    run: Run
+    steering: RunSteering
+    at_once: bool
+
+
+@dataclass(frozen=True)
 class HandBack:
     """The person who took a step over hands its result back (ADR-0128 §5)."""
 
@@ -630,6 +688,8 @@ PROPOSAL_DECIDED = "proposal.decided"
 """A person's decision on a step proposed at level 1 or 2 (ADR-0110)."""
 RUN_LOWERED = "run.lowered"
 """A run took on a level its version was lowered to by rule (ADR-0110)."""
+RUN_CLASSIFIED = "run.classified"
+"""The run's class step named the class of request its dependants run at (ADR-0215)."""
 RETRIED = "step.retried"
 """A step admitted again after it failed: a retry, as a fact of its own (ADR-0147 §4)."""
 
@@ -643,6 +703,7 @@ class _Decision:
     level: AutonomyLevel
     action: str | None
     corrected: Mapping[str, Any] | None = None
+    case_class: str | None = None
 
 
 @dataclass(frozen=True)
@@ -692,6 +753,9 @@ class Trace:
     message: Digest | None = None
     """For a message step that sent: the digest of its record, which `message.sent` names
     beside the egress entry (ADR-0142 §10)."""
+    location: Location | None = None
+    """For a step whose effect left the system: where the connector it went through is, which
+    `residency.egress` names beside the egress entry (ADR-0281 §5)."""
 
 
 @dataclass(frozen=True)
@@ -737,6 +801,9 @@ class EngineOptions:
     `parked`, and its runner defers the job to the wait's next check, holding no place
     meanwhile (ADR-0103). None waits inline, where no runner resumes a halted run — a run
     executed from the command line."""
+    host_locations: Mapping[str, Location] = field(default_factory=dict)
+    """Where each host an execution unit may reach processes (`TAKTUS_HOST_LOCATIONS`); a host
+    it does not name is `elsewhere` (ADR-0281 §3)."""
 
 
 @dataclass(frozen=True)
@@ -787,12 +854,48 @@ class RunEngine:
         traces: Traces | None = None,
         masking: Masking | None = None,
         stops: Stops | None = None,
+        tenant_budget: TenantBudget | None = None,
         messages: Messages | None = None,
         statements: Statements | None = None,
         guidance: Guidance | None = None,
         org_units: OrgUnits | None = None,
+        steering: Repository[RunSteering] | None = None,
+        shares: Shares | None = None,
+        evaluated: Evaluated | None = None,
+        control: ExternalControl | None = None,
+        personal: PersonalCredentials | None = None,
+        citations: Citations | None = None,
+        grants: WriteGrants | None = None,
+        unit_limits: UnitLimitsPort | None = None,
     ) -> None:
+        self._steering = steering
+        """Where a person's pause or cancellation of a run waits for its next boundary
+        (ADR-0236). None: no run is paused or cancelled at a boundary."""
+        self._evaluated = evaluated
+        """Which models passed a trial on the cases of a step's process (ADR-0249). None: every
+        member of a chain may serve every step, as before."""
+        self._shares = shares
+        """Who may use a shared model or connector, and with whose credential (ADR-0246,
+        ADR-0247). None: nothing is shared, and a call names what its work names."""
+        self._control = control
+        """Where the control of a run's process sits (UC-5.2, ADR-0272). None: every run is
+        controlled by Taktus, and nothing outside it withdraws one."""
+        self._citations = citations
+        """Where an answer drawn from knowledge is cited and its readings indexed (ADR-0265).
+        None: a step of the rule `citation` fails, and its answer leaves it for nothing."""
+        self._grants = grants
+        """Whether a person granted writing on a connection that reads until granted
+        (ADR-0262 §2). None: no grant is in force, and every such write is refused."""
+        self._own = personal
+        """Where a step on behalf of a person finds that person's own credential (ADR-0264).
+        None: no identity has one, and every such step gets nothing from its source."""
         self._org_units = org_units
+        self._unit_limits = unit_limits
+        """The tenant's limits per unit of its structure (ADR-0282). None: no unit limit holds
+        a step, and a run records no path."""
+        self._unit_held: dict[str, str] = {}
+        """Runs whose current step a unit limit refused, with the policy that applies: they
+        halt with cause `parked` for `wait`, `limit` for `halt` (ADR-0282 §2)."""
         """The tenant's quotas per organisational unit and what each unit's runs committed
         (ADR-0166). None: no run commits to a unit's budget quota."""
         self._held_since: ContextVar[datetime | None] = ContextVar("held_since", default=None)
@@ -840,6 +943,9 @@ class RunEngine:
         (ADR-0135). None: no trace is kept."""
         self._masking = masking
         self._stops = stops
+        self._tenant_budget = tenant_budget
+        """The tenant's monthly budget across all its runs (ADR-0260). None: no such budget
+        parks a run."""
         """The tenant's stops of adapters (ADR-0138). None: no adapter is stopped, and a stop
         reaches a run only by its own identifier."""
         self._messages = messages
@@ -883,6 +989,8 @@ class RunEngine:
         self._inflight_step: dict[str, StepId] = {}
         """The step each run in `_inflight` is inside."""
         self._inflight_adapter: dict[str, tuple[Tenant, str]] = {}
+        self._inflight_process: dict[str, str] = {}
+        """The process of each run inside a worker step, for a stop of the process (ADR-0256)."""
         """The tenant and the adapter of the step each run in `_inflight` is inside: a stop of
         that adapter stops the step at its boundary (ADR-0138)."""
         self._message_digests: dict[str, str] = {}
@@ -988,6 +1096,8 @@ class RunEngine:
                 run, declined = await self._apply_decisions(run)
                 if declined is not None:
                     return await self._end(run, RunState.HALTED, Cause.DECLINED, declined, span)
+            if run.state is RunState.HALTED and run.cause is Cause.CANCELLED:
+                raise RunError(f"run {run.id!r} was cancelled and never resumes (ADR-0236)")
             if run.state in RESUMABLE:
                 run = await self._commit(
                     run.to(RunState.RUNNING), "run.resumed", actor=command.actor
@@ -1001,6 +1111,16 @@ class RunEngine:
             return await self._execute(run, command.stop_after, span)
 
     async def _create(self, command: StartRun, *, enqueue: bool = False) -> Run:
+        if command.plan.status is not PlanStatus.COMMISSIONED:
+            # Nothing runs from a plan nobody commissioned (UC-1.2, ADR-0237).
+            raise RunError(
+                f"plan {command.plan.id!r} is {command.plan.status}: only a commissioned plan runs"
+            )
+        org_unit = command.org_unit
+        if self._org_units is not None:
+            # A run is in its process's unit, where the structure places one (ADR-0275 §2).
+            process = command.process_version.rsplit("@", 1)[0]
+            org_unit = await self._org_units.placed(command.tenant, process) or org_unit
         now = self._clock.now()
         run = Run(
             id=command.run_id or self._ids.new("run"),
@@ -1010,6 +1130,9 @@ class RunEngine:
             identity=command.identity,
             autonomy_level=command.plan.autonomy_level,
             actions=dict(command.actions),
+            classes=None
+            if self._levels is None
+            else await self._levels.classes(command.tenant, command.process_version),
             budget=command.budget,
             margin=self._options.margin if command.margin is None else command.margin,
             steps=command.plan.steps,
@@ -1022,7 +1145,8 @@ class RunEngine:
             bindings=dict(command.bindings),
             skills=await self._pinned(command),
             profile=command.profile,
-            org_unit=command.org_unit,
+            org_unit=org_unit,
+            org_path=await self._placed(command.tenant, command.identity, command.org_unit),
             remedy=command.remedy,
             created_at=now,
             updated_at=now,
@@ -1076,7 +1200,7 @@ class RunEngine:
         found: Mapping[str, str] = {}
         rest = [name for name in named if name not in bound]
         if rest and self._guidance is not None:
-            found = await self._guidance.production(command.tenant, rest)
+            found = await self._guidance.production(command.tenant, rest, command.actor)
         pinned = {name: version for name, version in bound.items() if version is not None}
         pinned.update({name: found[name] for name in rest if name in found})
         return pinned
@@ -1247,6 +1371,62 @@ class RunEngine:
                 ),
             )
 
+    async def ask_steering(self, command: AskSteering) -> SteeringAsked:
+        """Record a pause or a cancellation of a run (ADR-0236). A run that waits — for a
+        person, after a halt or an escalation — is at its boundary: it halts at once with the
+        request's cause, and a waiting run's pause is that halt. A run that executes, or is
+        about to, keeps the request until its next step boundary, where `_execute` reads it; the
+        step it is inside may finish up to its ceiling. Refused with `RunError`, writing
+        nothing, for a run that ended, was cancelled, or — for a pause — is halted already."""
+        if self._steering is None:
+            raise RunError("no steering store is wired: a run cannot be paused or cancelled")
+        now = self._clock.now()
+        asked = RunSteering(
+            id=command.run_id,
+            tenant=command.tenant,
+            kind=command.kind,
+            requested_by=command.actor,
+            requested_at=now,
+            reply=command.reply,
+        )
+        cause = Cause.CANCELLED if command.kind is SteeringKind.CANCEL else Cause.PAUSED
+        async with self._work.transaction(command.tenant):
+            run = await self._runs.get(command.tenant, command.run_id)
+        if run is None:
+            raise UnknownRun(command.run_id)
+        if run.state is RunState.FINISHED:
+            raise RunError(f"run {run.id!r} has finished: there is nothing to {command.kind}")
+        if run.state is RunState.HALTED and run.cause is Cause.CANCELLED:
+            raise RunError(f"run {run.id!r} was cancelled already")
+        at_boundary = run.state is RunState.WAITING_HUMAN or (
+            command.kind is SteeringKind.CANCEL and run.state in WAITING
+        )
+        if run.state in (RunState.HALTED, RunState.ESCALATED) and not at_boundary:
+            raise RunError(
+                f"run {run.id!r} is {run.state} already: it waits for a person to resume it"
+            )
+        kind = f"run.{command.kind}_asked"
+        if not at_boundary:
+            async with self._work.transaction(command.tenant):
+                await self._steering.put(command.tenant, asked)
+                await self._record(run, kind, outcome="asked", actor=command.actor)
+            return SteeringAsked(run=run, steering=asked, at_once=False)
+        took = asked.model_copy(update={"state": SteeringState.TOOK_EFFECT, "took_effect_at": now})
+        reason = f"{command.kind} asked by {command.actor}, while the run waited"
+        run = await self._commit(
+            run.to(RunState.HALTED, cause, reason),
+            "run.halted",
+            outcome=str(cause),
+            actor=command.actor,
+            before=({"kind": kind, "outcome": "asked", "actor": command.actor},),
+            inside=lambda: self._put_steering(command.tenant, took),
+        )
+        return SteeringAsked(run=run, steering=took, at_once=True)
+
+    async def _put_steering(self, tenant: Tenant, steering: RunSteering) -> None:
+        if self._steering is not None:
+            await self._steering.put(tenant, steering)
+
     async def confirm(self, command: ConfirmSteps) -> Run:
         """A person's answer to steps the run waits for, each recorded with the person as its
         actor; then the run continues. Refused, changing nothing, when the run does not wait,
@@ -1370,6 +1550,7 @@ class RunEngine:
             level=level,
             action=held.action,
             corrected=corrected,
+            case_class=held.case_class,
         )
         if command.rejected:
             return (
@@ -1430,7 +1611,9 @@ class RunEngine:
             work[step.id] = dict(decision.corrected)
         return run if work == dict(run.work) else run.model_copy(update={"work": work})
 
-    async def _decision_record(self, run: Run, decision: _Decision) -> tuple[str, str | None, str]:
+    async def _decision_record(
+        self, run: Run, decision: _Decision
+    ) -> tuple[str, str | None, str, str | None]:
         """The outcome, the action class and the digest of the decision's document: the
         proposal as `step.awaiting` put it down, and for a correction the version the person
         released, so that the change can be seen (UC-7.5 §2)."""
@@ -1459,11 +1642,12 @@ class RunEngine:
             "outcome": decision.outcome,
             "level": decision.level,
             "action": decision.action,
+            "case_class": decision.case_class,
             "proposal": proposed,
             "released": released,
         }
         digest = await self._objects.put(_canonical(record))
-        return decision.outcome, decision.action, digest
+        return decision.outcome, decision.action, digest, decision.case_class
 
     async def _counted(self, run: Run, decision: _Decision) -> None:
         """The governance component applies its rule to the decision (ADR-0110)."""
@@ -1477,6 +1661,8 @@ class RunEngine:
                 step_id=decision.step_id,
                 action=decision.action,
                 level=decision.level,
+                case_class=decision.case_class,
+                class_limits=None if run.classes is None else run.classes.limits,
             ),
         )
 
@@ -1512,7 +1698,45 @@ class RunEngine:
 
     def _held(self, run: Run, step: Step) -> autonomy.Held:
         work = parse_work(step, run.work.get(step.id), run.inputs)
-        return autonomy.held(run.autonomy_level, run.actions, autonomy.actions_of(step, work))
+        return self._held_using(run, step, autonomy.actions_of(step, work))
+
+    @staticmethod
+    def _held_using(run: Run, step: Step, used: Sequence[str]) -> autonomy.Held:
+        """The level a step runs at: the process's, its actions' and its class's (ADR-0215)."""
+        return autonomy.held(
+            run.autonomy_level,
+            run.actions,
+            used,
+            autonomy.class_of(run.classes, run.steps, step.id, run.case_class),
+        )
+
+    async def _classified(self, run: Run, step: Step) -> Run:
+        """The run with the class of request its class step named, once a step that depends on
+        that step comes to its boundary (ADR-0215 §2). Read once from the class step's result
+        and recorded as `run.classified`; a result that names no class the statement knows is
+        recorded `unnamed`, and its dependants run at the default level."""
+        classes = run.classes
+        if classes is None or run.case_class is not None:
+            return run
+        if step.id not in depending_on(run.steps, classes.step):
+            return run
+        if any(e.kind == RUN_CLASSIFIED for e in await self._entries(run)):
+            return run
+        try:
+            source = run.step_run(classes.step)
+        except KeyError:
+            return run
+        checkpoint = source.checkpoint
+        if source.state is not StepState.SUCCEEDED or checkpoint is None:
+            return run
+        digest = checkpoint.result_digest
+        stored = None if digest is None else await self._objects.get(digest)
+        value = None if stored is None else json.loads(stored)
+        named = autonomy.class_named(classes, value)
+        run = run.model_copy(update={"case_class": named})
+        return await self._commit(
+            run, RUN_CLASSIFIED, outcome="named" if named else "unnamed", case_class=named
+        )
 
     async def decide(self, command: DecideSteps) -> Run:
         """Continue a run whose anchored steps were decided. A run that does not wait, or whose
@@ -1891,13 +2115,20 @@ class RunEngine:
         if inside is None or run_id in self._stop_requested:
             return False
         tenant, adapter = inside
-        if adapter not in await self._held_stops(tenant):
+        process = self._inflight_process.get(run_id)
+        covered = process is not None and await self._covering(tenant, process) is not None
+        if not covered and adapter not in await self._held_stops(tenant):
             return False
         await self.request_stop(run_id)
         return True
 
     async def _held_stops(self, tenant: Tenant) -> frozenset[str]:
         return frozenset() if self._stops is None else await self._stops.held(tenant)
+
+    async def _covering(self, tenant: Tenant, process: str) -> AdapterStop | None:
+        """The held stop of the process or the tenant that halts a run of the process at its
+        next boundary (ADR-0256 §1); None while none does."""
+        return None if self._stops is None else await self._stops.covering(tenant, process)
 
     async def _not_stopped(
         self, run: Run, adapter: str, consumption: Consumption | None = None
@@ -2396,6 +2627,29 @@ class RunEngine:
         run = capped
         completed_now = 0
         while (step_run := run.runnable()) is not None:
+            # The boundary before the next step: a pause or a cancellation lands here (ADR-0236).
+            steered = await self._steered(run)
+            if steered is not None:
+                return await self._halt_steered(run, steered, span)
+            withdrawn = await self._withdrawn(run)
+            if withdrawn is not None:
+                # Decoupled: the external tool withdrew the task, and its state is the
+                # authority; the run goes no further than this boundary (UC-5.2, ADR-0272).
+                run = await self._commit(run, WITHDRAWN, outcome="withdrawn")
+                return await self._end(run, RunState.HALTED, Cause.STOP, withdrawn, span)
+            covering = await self._covering(run.tenant, process_of(run.process_version))
+            if covering is not None:
+                # A stop of the process or the tenant: no step is handed on (ADR-0256 §1).
+                return await self._end(
+                    run, RunState.HALTED, Cause.STOP, _stopped_by(covering), span
+                )
+            over = await self._over_tenant_budget(run)
+            if over is not None:
+                # The tenant's month is spent: every run waits at its boundary (ADR-0260).
+                run, waiting = await self._at_tenant_budget(run, step_run, over)
+                return await self._end(run, RunState.HALTED, Cause.PARKED, waiting, span)
+            if step_run.block is not None and step_run.block.cause == block.AT_TENANT_BUDGET:
+                run, step_run = await self._close_block(run, step_run)
             step = run.step(step_run.step_id)
             run, step_run = await self._step_or_failed(run, step, step_run)
             asked = self._taking_over.get(run.id)
@@ -2426,9 +2680,12 @@ class RunEngine:
                     cause = Cause.REPEATED
                 elif run.id in self._immature:
                     cause = Cause.MATURITY
+                elif run.id in self._unit_held:
+                    cause = Cause.PARKED if self._unit_held[run.id] == "wait" else Cause.LIMIT
                 else:
                     cause = Cause.NO_ESTIMATE if step_run.estimate is None else Cause.LIMIT
                 self._immature.discard(run.id)
+                self._unit_held.pop(run.id, None)
                 self._administering.discard(run.id)
                 self._repeating.discard(run.id)
                 self._declining.discard(run.id)
@@ -2502,11 +2759,18 @@ class RunEngine:
                 )
         return await self._end(run, RunState.FINISHED, None, None, span)
 
+    async def _withdrawn(self, run: Run) -> str | None:
+        """Why the run stops at this boundary because the external tool withdrew its task; None
+        where it goes on. A rehearsal acts on nothing outside, and is never withdrawn."""
+        if self._control is None or run.rehearsal:
+            return None
+        return await self._control.withdrawn(run)
+
     async def _healing(self, run: Run, step: Step, step_run: StepRun) -> healing.Healing:
         """Whether Taktus heals the step that failed: at level 4, a known failure inside the
         frame (ADR-0160, `domain.service.healing`)."""
         work = parse_work(step, run.work.get(step.id), run.inputs)
-        held = autonomy.held(run.autonomy_level, run.actions, autonomy.actions_of(step, work))
+        held = self._held_using(run, step, autonomy.actions_of(step, work))
         if held.level < healing.UNATTENDED or run.rehearsal:
             return healing.Healing(heals=False)
         healed = sum(
@@ -2584,6 +2848,29 @@ class RunEngine:
         self._administering.discard(run.id)
         self._repeating.discard(run.id)
         return run
+
+    async def _steered(self, run: Run) -> RunSteering | None:
+        """The pause or cancellation a person asked of the run and that has not taken effect
+        yet, read at the boundary; None without one, or without a store to ask (ADR-0236)."""
+        if self._steering is None:
+            return None
+        async with self._work.transaction(run.tenant):
+            asked = await self._steering.get(run.tenant, run.id)
+        return asked if asked is not None and asked.pending else None
+
+    async def _halt_steered(self, run: Run, asked: RunSteering, span: Span) -> Run:
+        """The run halts at this boundary with the request's cause, and the request is marked
+        as having taken effect, so that a resume does not halt it again (ADR-0236)."""
+        cause = Cause.CANCELLED if asked.kind is SteeringKind.CANCEL else Cause.PAUSED
+        reason = f"{asked.kind} asked by {asked.requested_by}, at the step boundary"
+        ended = await self._end(run, RunState.HALTED, cause, reason, span)
+        if self._steering is not None:
+            took = asked.model_copy(
+                update={"state": SteeringState.TOOK_EFFECT, "took_effect_at": self._clock.now()}
+            )
+            async with self._work.transaction(run.tenant):
+                await self._steering.put(run.tenant, took)
+        return ended
 
     async def _end(
         self, run: Run, state: RunState, cause: Cause | None, reason: str | None, span: Span
@@ -2691,7 +2978,8 @@ class RunEngine:
             if refusal is not None:
                 return await self._refuse_administering(run, step_run, refusal, span)
             used = autonomy.actions_of(step, work)
-            held = autonomy.held(run.autonomy_level, run.actions, used)
+            run = await self._classified(run, step)
+            held = self._held_using(run, step, used)
             span.set_attribute("autonomy.level", held.level)
             control = control_of(step, run.work.get(step.id), run.inputs)
             work = await self._guided(run, work, control)
@@ -2810,11 +3098,26 @@ class RunEngine:
             if lower < min(actions.get(action, level), level):
                 actions[action] = lower
                 changes.append((action, lower))
-        if not changes:
+        classes = run.classes
+        named: list[tuple[str, AutonomyLevel]] = []
+        if classes is not None:
+            levels = dict(classes.levels)
+            for name, lower in sorted(lowered.classes.items()):
+                own = levels.get(name)
+                if own is not None and lower < own.level:
+                    levels[name] = own.model_copy(update={"level": lower})
+                    named.append((name, lower))
+            if named:
+                classes = classes.model_copy(update={"levels": levels})
+        if not changes and not named:
             return run
-        run = run.model_copy(update={"autonomy_level": level, "actions": actions})
+        run = run.model_copy(
+            update={"autonomy_level": level, "actions": actions, "classes": classes}
+        )
         for held_by, lower in changes:
             run = await self._commit(run, RUN_LOWERED, outcome=f"level_{lower}", action=held_by)
+        for name, lower in named:
+            run = await self._commit(run, RUN_LOWERED, outcome=f"level_{lower}", case_class=name)
         return run
 
     async def _breach(self, run: Run, step: Step, step_run: StepRun) -> None:
@@ -3409,7 +3712,9 @@ class RunEngine:
             "step_id": step.id,
             "method": str(step.method),
             "level": held.level,
-            "held_by": held.action or "process",
+            "held_by": held.action
+            or (None if held.case_class is None else f"class {held.case_class}")
+            or "process",
             "awaits": awaited,
             "work": dict(run.work.get(step.id) or {}),
         }
@@ -4021,6 +4326,80 @@ class RunEngine:
             )
         return await self._unit_budget_ends(run, run.step_run(held_up.step_id))
 
+    async def _over_tenant_budget(
+        self, run: Run
+    ) -> tuple[MonthBudget, str, dict[str, float], list[str]] | None:
+        """Whether what the tenant's runs of this month cost reached its monthly budget: the
+        budget, the month, the sums, and the currencies reached. A rule over the runs' records,
+        priced at the instance's table (ADR-0260); a rehearsal costs nothing and is never held."""
+        if self._tenant_budget is None or run.rehearsal:
+            return None
+        budget = await self._tenant_budget.month_budget(run.tenant)
+        if budget is None:
+            return None
+        month = f"{self._clock.now():%Y-%m}"
+        async with self._work.transaction(run.tenant):
+            runs = list(await self._runs.list(run.tenant))
+        spent: dict[str, float] = {}
+        for each in runs:
+            if each.rehearsal or f"{each.created_at:%Y-%m}" != month:
+                continue
+            for currency, amount in (self._cost(each).currency or {}).items():
+                spent[currency] = spent.get(currency, 0.0) + float(amount)
+        reached = [c for c, limit in budget.amounts.items() if spent.get(c, 0.0) >= limit]
+        return (budget, month, spent, reached) if reached else None
+
+    def _cost(self, run: Run) -> ConsumptionQuantities:
+        """What the run used, with the money of its tokens and compute at the instance's table
+        where it has one: what the run cost, whatever budget it was held to."""
+        consumed = run.consumed()
+        table = self._options.prices
+        if table is None:
+            return consumed
+        tokens, _ = run.tokens_without_money()
+        consumed = budgeting.with_token_money(consumed, tokens, table)[0]
+        return budgeting.with_money(consumed, run.compute_by_class(), table)[0]
+
+    async def _at_tenant_budget(
+        self,
+        run: Run,
+        held_up: StepRun,
+        over: tuple[MonthBudget, str, dict[str, float], list[str]],
+    ) -> tuple[Run, str]:
+        """The run waits at its boundary until the next check or the month's turn, its role is
+        told once a month, and the facts are booked."""
+        budget, month, spent, reached = over
+        now = self._clock.now()
+        check_at = min(now + timedelta(seconds=budget.check_every_seconds), _next_month(now))
+        facts = {
+            "month": month,
+            "spent": {c: round(v, 6) for c, v in sorted(spent.items())},
+            "limits": dict(budget.amounts),
+            "reached": reached,
+            "role": budget.role,
+        }
+        digest = await self._objects.put(_canonical(facts))
+        if self._tenant_budget is not None:
+            await self._tenant_budget.reached(run.tenant, month, spent, budget, run.process_version)
+        run, held_up = await self._open_block(run, held_up, "limit.budget", block.AT_TENANT_BUDGET)
+        if held_up.block is not None:
+            held_up = held_up.model_copy(
+                update={"block": held_up.block.model_copy(update={"next_check_at": check_at})}
+            )
+        run = await self._commit(
+            run.with_step_run(held_up),
+            TENANT_BUDGET_HELD,
+            step=held_up,
+            outcome="budget",
+            digest=digest,
+        )
+        reason = (
+            f"the tenant's runs of {month} cost what its monthly budget allows in "
+            f"{', '.join(reached)}; every run waits at its boundary until a person raises the "
+            f"budget or the month turns, and is tried again at {check_at.isoformat()} (ADR-0260)"
+        )
+        return run, reason
+
     async def _unit_budget_ends(self, run: Run, step_run: StepRun) -> Run:
         if step_run.block is None or step_run.block.cause != block.AT_UNIT_BUDGET:
             return run
@@ -4048,6 +4427,368 @@ class RunEngine:
             outcome=outcome,
             digest=digest,
         )
+
+    # --- limits per unit of the structure (ADR-0282) ---------------------------------------
+
+    async def _placed(self, tenant: Tenant, identity: str, org_unit: str | None) -> tuple[str, ...]:
+        """Where the run is attributed: where its identity sits below the tenant now, or the
+        department the command named where the identity sits outside it or is unknown."""
+        named = () if org_unit is None else (org_unit,)
+        if self._unit_limits is None:
+            return named
+        path = await self._unit_limits.placed(tenant, identity)
+        if path is None or (org_unit is not None and path[:1] != (org_unit,)):
+            return named
+        return path
+
+    @staticmethod
+    def _path(run: Run) -> tuple[str, ...]:
+        if run.org_path:
+            return run.org_path
+        return () if run.org_unit is None else (run.org_unit,)
+
+    @staticmethod
+    def _lines(quantities: ConsumptionQuantities, compute: Mapping[str, float]) -> dict[str, float]:
+        """Quantities as a unit limit's lines: money per currency, compute seconds, tokens."""
+        lines = {f"money.{c}": float(v) for c, v in (quantities.currency or {}).items()}
+        seconds = sum(compute.values())
+        if seconds:
+            lines["compute_seconds"] = float(seconds)
+        tokens = (quantities.tokens_in or 0) + (quantities.tokens_out or 0)
+        if not tokens and quantities.tokens_by_model:
+            tokens = sum(
+                (k.input or 0) + (k.output or 0) + (k.cache_read or 0) + (k.cache_write or 0)
+                for k in quantities.tokens_by_model.values()
+            )
+        if tokens:
+            lines["tokens"] = float(tokens)
+        return lines
+
+    def _demand_lines(self, reservation: ConsumptionQuantities) -> dict[str, float]:
+        """A step's reservation priced at the instance's table, as a unit limit's lines."""
+        priced = reservation
+        table = self._options.prices
+        if table is not None:
+            if reservation.tokens_by_model and not reservation.currency:
+                priced = budgeting.with_token_money(priced, reservation.tokens_by_model, table)[0]
+            if reservation.compute_seconds and reservation.resource_class is not None:
+                seconds = {reservation.resource_class: reservation.compute_seconds}
+                priced = budgeting.with_money(priced, seconds, table)[0]
+        compute = (
+            {reservation.resource_class or "": reservation.compute_seconds}
+            if reservation.compute_seconds
+            else {}
+        )
+        return self._lines(priced, compute)
+
+    async def unit_costs(
+        self, tenant: Tenant, viewer: str | None
+    ) -> dict[str, tuple[dict[str, float], dict[date, dict[str, float]]]]:
+        """Per limit the viewer may see: what its runs of the period cost, and what they cost
+        per day, as admission reads them. A limit that names a person is that person's alone
+        (ADR-0282 §6)."""
+        if self._unit_limits is None:
+            return {}
+        every = list(await self._unit_limits.every(tenant))
+        return await self._unit_costs(tenant, None, every, viewer) if every else {}
+
+    async def _unit_costs(
+        self,
+        tenant: Tenant,
+        run: Run | None,
+        limits: Sequence[AppliedLimit],
+        own: str | None,
+    ) -> dict[str, tuple[dict[str, float], dict[date, dict[str, float]]]]:
+        """Per limit: what its runs of the period cost, and what they cost per day, from the
+        period's start or the 28 days before today, whichever is earlier. A run counts on the
+        day it was created; a rehearsal costs nothing. A limit held per person counts only the
+        runs `own` commissioned, and nothing where `own` is None (ADR-0282 §6). A rule over
+        the runs' records."""
+        now = self._clock.now()
+        earliest = min(
+            [now - timedelta(days=UNIT_HISTORY_DAYS + 1), *(lim.starts for lim in limits)]
+        )
+        async with self._work.transaction(tenant):
+            stored = list(await self._runs.list(tenant))
+        runs = stored if run is None else [run, *(r for r in stored if r.id != run.id)]
+        found: dict[str, tuple[dict[str, float], dict[date, dict[str, float]]]] = {
+            lim.name: ({}, {}) for lim in limits
+        }
+        for each in runs:
+            if each.rehearsal or each.created_at < earliest:
+                continue
+            path = self._path(each)
+            process = process_of(each.process_version)
+            matching = [
+                lim
+                for lim in limits
+                if lim.applies(path, process)
+                and (not lim.individually or (own is not None and each.identity == own))
+            ]
+            if not matching:
+                continue
+            lines = self._lines(self._cost(each), each.compute_by_class())
+            day = each.created_at.date()
+            for limit in matching:
+                spent, daily = found[limit.name]
+                per_day = daily.setdefault(day, {})
+                for line, value in lines.items():
+                    per_day[line] = per_day.get(line, 0.0) + value
+                    if limit.starts <= each.created_at < limit.ends:
+                        spent[line] = spent.get(line, 0.0) + value
+        return found
+
+    async def _unit_refusal(
+        self, run: Run, reservation: ConsumptionQuantities
+    ) -> _UnitRefusal | None:
+        """Whether the step's reservation, priced, does not fit what remains of a unit limit
+        on the run's path. Every limit that applies is seen, for its alerts and anomalies;
+        `halt` wins over `wait` where several refuse (ADR-0282 §2)."""
+        if self._unit_limits is None or run.rehearsal:
+            return None
+        limits = list(
+            await self._unit_limits.applying(
+                run.tenant, self._path(run), process_of(run.process_version)
+            )
+        )
+        if not limits:
+            return None
+        costs = await self._unit_costs(run.tenant, run, limits, run.identity)
+        demand = self._demand_lines(reservation)
+        refusals: list[_UnitRefusal] = []
+        for limit in limits:
+            spent, daily = costs[limit.name]
+            await self._unit_limits.observed(
+                run.tenant, limit.name, spent, daily, run.process_version
+            )
+            over = [
+                line
+                for line, amount in limit.lines.items()
+                if spent.get(line, 0.0) >= amount - 1e-9
+                or spent.get(line, 0.0) + demand.get(line, 0.0) > amount + 1e-9
+            ]
+            if over:
+                check_at = (
+                    None
+                    if limit.policy == "halt"
+                    else min(
+                        self._clock.now() + timedelta(seconds=limit.check_every_seconds),
+                        limit.ends,
+                    )
+                )
+                refusals.append(_UnitRefusal(limit, spent, demand, tuple(over), check_at))
+        if not refusals:
+            return None
+        halting = [r for r in refusals if r.limit.policy == "halt"]
+        return (halting or refusals)[0]
+
+    async def _held_at_unit(
+        self,
+        run: Run,
+        step_run: StepRun,
+        adapter: str | None,
+        demand: _Demand,
+        reservation: ConsumptionQuantities,
+        refusal: _UnitRefusal,
+        span: Span,
+        **changes: Any,
+    ) -> tuple[Run, StepRun, bool]:
+        """The step does not fit a unit limit: refused, its block names the limit, and the run
+        halts for a person (`halt`) or parks until the next check or period (`wait`)."""
+        span.record_failure("held at a unit limit")
+        limit = refusal.limit
+        newly = step_run.block is None or step_run.block.limit != limit.name
+        run, step_run = await self._open_block(run, step_run, "limit.budget", block.AT_UNIT_LIMIT)
+        if step_run.block is not None:
+            step_run = step_run.model_copy(
+                update={
+                    "block": step_run.block.model_copy(
+                        update={"limit": limit.name, "next_check_at": refusal.check_at}
+                    )
+                }
+            )
+        facts = {
+            "limit": limit.name,
+            "unit": limit.where(),
+            "period": limit.key,
+            "policy": limit.policy,
+            "lines": dict(limit.lines),
+            "spent": {k: round(v, 6) for k, v in sorted(refusal.spent.items())},
+            "demand": {k: round(v, 6) for k, v in sorted(refusal.demand.items())},
+            "over": list(refusal.over),
+        }
+        digest = await self._objects.put(_canonical(facts))
+        then = (
+            f"it is tried again at {refusal.check_at.isoformat()}"
+            if refusal.check_at is not None
+            else "a person raises the limit and resumes the run"
+        )
+        step_run = step_run.to(
+            StepState.REJECTED,
+            adapter=adapter,
+            estimate=demand.quantities,
+            reservation=reservation,
+            reason=(
+                f"does not fit what remains of the unit limit {limit.name!r} of "
+                f"{limit.where()} for {limit.key} in {', '.join(refusal.over)}; {then} "
+                "(ADR-0282)"
+            ),
+            **changes,
+        )
+        self._unit_held[run.id] = limit.policy
+        held = {
+            "kind": UNIT_LIMIT_HELD,
+            "step": step_run,
+            "outcome": limit.name,
+            "digest": digest,
+            "bare": True,
+        }
+        run = await self._commit(
+            run.with_step_run(step_run),
+            "step.rejected",
+            step=step_run,
+            outcome="rejected_by_unit_limit",
+            after=(held,) if newly else (),
+        )
+        if self._unit_limits is not None:
+            await self._unit_limits.refused(
+                run.tenant, limit.name, run.process_version, refusal.spent, refusal.demand
+            )
+        return run, step_run, False
+
+    async def what_applies(
+        self,
+        tenant: Tenant,
+        *,
+        run_id: str | None = None,
+        process: str | None = None,
+        viewer: str | None = None,
+    ) -> dict[str, Any]:
+        """What a run, or a process, needs, what it used, and every limit that holds it with
+        the unit it comes from (ADR-0282 §5, UC-8.10). What a limit held per person counts is
+        shown only to the person whose runs it counts; anyone else sees the limit without it."""
+        async with self._work.transaction(tenant):
+            if run_id is not None:
+                found = await self._runs.get(tenant, run_id)
+                if found is None:
+                    raise UnknownRun(f"run {run_id!r} is not known")
+                runs = [found]
+            else:
+                stored = list(await self._runs.list(tenant))
+                runs = [r for r in stored if process_of(r.process_version) == process]
+        now = self._clock.now()
+        month = f"{now:%Y-%m}"
+        shown: dict[str, Any] = {}
+        if run_id is not None:
+            run = runs[0]
+            path = self._path(run)
+            name = process_of(run.process_version)
+            reservations = {
+                str(s.step_id): self._demand_lines(s.reservation)
+                for s in run.step_runs
+                if s.reservation is not None
+            }
+            shown.update(
+                {
+                    "run": run.id,
+                    "process": name,
+                    "unit": "/".join(path) if path else "company",
+                    "needs": {
+                        "budget": run.budget.document(),
+                        "held": self._line(run).document(),
+                        "reservations": reservations,
+                    },
+                    "used": self._lines(self._cost(run), run.compute_by_class()),
+                }
+            )
+            limits = (
+                []
+                if self._unit_limits is None
+                else list(await self._unit_limits.applying(tenant, path, name))
+            )
+            subject = run
+        else:
+            month_runs = [r for r in runs if not r.rehearsal and f"{r.created_at:%Y-%m}" == month]
+            costs = [self._lines(self._cost(r), r.compute_by_class()) for r in month_runs]
+            lines = sorted({line for c in costs for line in c})
+            shown.update(
+                {
+                    "process": process,
+                    "needs": {
+                        "runs_this_month": len(month_runs),
+                        "mean": {
+                            lim: round(sum(c.get(lim, 0.0) for c in costs) / len(costs), 6)
+                            for lim in lines
+                        },
+                        "most": {
+                            lim: round(max(c.get(lim, 0.0) for c in costs), 6) for lim in lines
+                        },
+                    },
+                    "used": {lim: round(sum(c.get(lim, 0.0) for c in costs), 6) for lim in lines},
+                }
+            )
+            limits = []
+            if self._unit_limits is not None and process is not None:
+                # A process is run from any unit: every limit that names it or no process.
+                every = await self._unit_limits.every(tenant)
+                limits = [lim for lim in every if lim.process in (None, process)]
+            subject = None
+        own = viewer if subject is None or subject.identity == viewer else None
+        costs_of = await self._unit_costs(tenant, subject, limits, own) if limits else {}
+        shown["limits"] = (
+            []
+            if subject is None
+            else [
+                {
+                    "limit": "the run's budget",
+                    "unit": "run",
+                    "lines": self._line(subject).document(),
+                }
+            ]
+        )
+        for limit in limits:
+            entry: dict[str, Any] = {
+                "limit": limit.name,
+                "unit": limit.where(),
+                "individually": limit.individually,
+                "process": limit.process,
+                "period": limit.key,
+                "policy": limit.policy,
+                "lines": dict(limit.lines),
+            }
+            if limit.individually and own is None:
+                # Another person's consumption is theirs alone (principle 14, DEC-0069).
+                entry["spent"] = "shown to the person whose runs it counts"
+            else:
+                spent = costs_of.get(limit.name, ({}, {}))[0]
+                entry["spent"] = {k: round(v, 6) for k, v in sorted(spent.items())}
+                entry["remaining"] = {
+                    k: round(max(0.0, v - spent.get(k, 0.0)), 6)
+                    for k, v in sorted(limit.lines.items())
+                }
+            shown["limits"].append(entry)
+        if subject is not None and subject.org_unit is not None and self._org_units is not None:
+            quota = await self._org_units.budget(tenant, subject.org_unit)
+            if quota is not None:
+                shown["limits"].append(
+                    {
+                        "limit": "the department's monthly quota",
+                        "unit": subject.org_unit,
+                        "lines": {f"money.{c}": v for c, v in quota.amounts.items()},
+                    }
+                )
+        if self._tenant_budget is not None:
+            budget = await self._tenant_budget.month_budget(tenant)
+            if budget is not None:
+                shown["limits"].append(
+                    {
+                        "limit": "the tenant's monthly budget",
+                        "unit": "tenant",
+                        "lines": {f"money.{c}": v for c, v in budget.amounts.items()},
+                        "role": budget.role,
+                    }
+                )
+        return shown
 
     # --- a stop to repetition (ADR-0132 §5) ----------------------------------------------------
 
@@ -4241,6 +4982,7 @@ class RunEngine:
         role: str | None = None,
         lacking: str | None = None,
         awaited: Awaited | None = None,
+        short: Mapping[str, float] | None = None,
     ) -> tuple[Run, StepRun]:
         """The step is blocked from now — or from `since` — for this cause, unless it is
         already. A block it is in for another cause, or for another lack, ends first, with its
@@ -4261,6 +5003,7 @@ class RunEngine:
             role=role,
             lacking=lacking,
             awaited=awaited,
+            short=None if short is None else dict(short),
         )
         return run, step_run.model_copy(update={"block": opened})
 
@@ -4627,6 +5370,7 @@ class RunEngine:
         )
         if step.checks and not run.rehearsal:
             run = await self._sample(run, step, step_run)
+            run = await self._distributed(run, step, step_run)
         _measured(span, step_run)
         return run, step_run
 
@@ -4827,6 +5571,86 @@ class RunEngine:
 
         raise _ToApprove(drafts)
 
+    async def _distributed(self, run: Run, step: Step, step_run: StepRun) -> Run:
+        """After the result counts: each distribution check judges it against the moving median
+        of the step's earlier results in the same process (ADR-0271). One that fails marks the
+        result suspect — `check.suspect`, its family `distribution`, what it compared — and
+        stops nothing: the run goes on (UC-4.10)."""
+        checks = [
+            (position, check)
+            for position, check in enumerate(step.checks or (), start=1)
+            if check.kind is CheckKind.DISTRIBUTION
+        ]
+        checkpoint = step_run.checkpoint
+        if not checks or checkpoint is None or checkpoint.result_digest is None:
+            return run
+        given = control_of(step, run.work.get(step.id), run.inputs).checking
+        part = given.select if given is not None else None
+        judged = await self._recorded_value(checkpoint.result_digest, part)
+        if judged is _ABSENT:
+            return run
+        earlier = await self._earlier_values(
+            run, step.id, part, max(c.window or 0 for _, c in checks)
+        )
+        for position, check in checks:
+            finding = checking.distribution(position, check, judged, earlier)
+            if finding.passed:
+                continue
+            suspect = Suspect(
+                run_id=run.id,
+                step_id=step.id,
+                check=f"check_{position}",
+                family=str(check.kind),
+                compared=finding.describe(),
+            )
+            digest = await self._objects.put(_canonical(suspect.model_dump(mode="json")))
+            run = await self._commit(
+                run, SUSPECT, step=step_run, outcome=suspect.check, digest=digest
+            )
+        return run
+
+    async def _recorded_value(self, digest: Digest, part: str | None) -> Any:
+        """A step's result as it counted, read from the object store, or the part of it the
+        checks judge; `_ABSENT` where it cannot be read."""
+        content = await self._objects.get(digest)
+        if content is None:
+            return _ABSENT
+        try:
+            return select(json.loads(content), part)
+        except (KeyError, ValueError):
+            return _ABSENT
+
+    async def _earlier_values(
+        self, run: Run, step_id: StepId, part: str | None, window: int
+    ) -> list[Any]:
+        """The results of the step in the process's earlier runs, oldest first, at most
+        `window`: every version of the process counts, a rehearsal never (ADR-0271 §2)."""
+        process = run.process_version.rsplit("@", 1)[0]
+        async with self._work.transaction(run.tenant):
+            finished = await self._ledger.of_kinds(run.tenant, ("step.finished",))
+        runs = [
+            e.refs.run_id
+            for e in finished
+            if e.refs.step_id == step_id
+            and e.outcome == "succeeded"
+            and not e.rehearsal
+            and e.refs.run_id not in (None, run.id)
+            and (e.refs.process_version or "").rsplit("@", 1)[0] == process
+        ]
+        values: list[Any] = []
+        for run_id in list(dict.fromkeys(runs))[-window:]:
+            async with self._work.transaction(run.tenant):
+                earlier = await self._runs.get(run.tenant, run_id or "")
+            if earlier is None:
+                continue
+            done = earlier.step_run(step_id).checkpoint
+            if done is None or done.result_digest is None:
+                continue
+            value = await self._recorded_value(done.result_digest, part)
+            if value is not _ABSENT:
+                values.append(value)
+        return values
+
     async def _sample(self, run: Run, step: Step, step_run: StepRun) -> Run:
         """After the result counts: each sampling check that chooses it puts it to a person of
         its role, and the ledger records the sample as `check.sampled` naming the request
@@ -4923,6 +5747,14 @@ class RunEngine:
         if isinstance(work, InvoiceRule):
             (invoice, order), read = await self._resolved(run, [work.invoice, work.order])
             return invoices.invoice(invoice, order), Trace(inputs=read), None, None
+        if isinstance(work, RecurringRule):
+            (subscriptions, failures, as_of), read = await self._resolved(
+                run, [work.subscriptions, work.failures, work.as_of]
+            )
+            counted = recurring.recurring(work, subscriptions, failures, as_of)
+            return counted, Trace(inputs=read), None, None
+        if isinstance(work, CitationRule):
+            return await self._cited(run, work)
         if isinstance(work, DeviationStatistic):
             (days,), read = await self._resolved(run, [work.days])
             return statistics.deviation(work, days), Trace(inputs=read), None, None
@@ -4931,6 +5763,43 @@ class RunEngine:
         if isinstance(work, LlmWork):
             return await self._llm_step(run, step_run, work, span)
         raise UnsupportedWork(step_run.step_id, f"no evaluator for {type(work).__name__}")
+
+    async def _cited(self, run: Run, work: CitationRule) -> tuple[Any, Trace, None, None]:
+        """An answer drawn from knowledge, cited by the knowledge component (ADR-0265 §3). The
+        moment of each reading is when the step that read it finished: what the source held
+        then, not when the citation looked at it."""
+        (answer, documents, confirmed), read = await self._resolved(
+            run, [work.answer, work.documents, work.confirmed]
+        )
+        if self._citations is None:
+            raise RuleFailed(
+                "no knowledge index is wired: an answer drawn from knowledge cannot be cited, "
+                "and does not leave the step uncited"
+            )
+        read_at = self._finished(run, work.documents)
+        confirmed_at = None if work.confirmed is None else self._finished(run, work.confirmed)
+        try:
+            cited = await self._citations.cite(
+                run.tenant,
+                capability=work.capability,
+                answer=answer,
+                documents=documents,
+                confirmed=confirmed,
+                read_at=read_at,
+                confirmed_at=confirmed_at,
+            )
+        except ValueError as refused:
+            raise RuleFailed(str(refused)) from refused
+        return cited, Trace(inputs=read), None, None
+
+    def _finished(self, run: Run, value: Any) -> datetime:
+        """When the latest step a value refers to finished; now where none did."""
+        moments = [
+            finished
+            for step_id in references(value)
+            if (finished := run.step_run(step_id).finished_at) is not None
+        ]
+        return max(moments) if moments else self._clock.now()
 
     # --- estimate and admission -----------------------------------------------------------------
 
@@ -5048,7 +5917,7 @@ class RunEngine:
             calls = int(work.until.timeout_seconds // work.until.poll_seconds) + 1
             return _Demand(_times(operation.demand.document(), calls), adapter=resolved.adapter)
         if isinstance(work, ConnectorRule):
-            resolved = await self._connector(run, step.id, work.capability)
+            resolved = await self._connector(run, step.id, work.capability, work.data_class)
             await self._not_stopped(run, resolved.adapter)
             operation = resolved.declaration.operation(work.operation)
             if operation is None:
@@ -5223,7 +6092,11 @@ class RunEngine:
         if not verdict.fits:
             span.record_failure("rejected by admission control")
             run, step_run = await self._open_block(
-                run, step_run, block.limit_account(verdict.kinds), block.REJECTED_BY_ADMISSION
+                run,
+                step_run,
+                block.limit_account(verdict.kinds),
+                block.REJECTED_BY_ADMISSION,
+                short=verdict.short,
             )
             step_run = step_run.to(
                 StepState.REJECTED,
@@ -5240,8 +6113,25 @@ class RunEngine:
                 outcome="rejected_by_admission",
             )
             return run, step_run, False
+        refusal = await self._unit_refusal(run, reservation)
+        if refusal is not None:
+            return await self._held_at_unit(
+                run, step_run, adapter, demand, reservation, refusal, span, **changes
+            )
+        released: list[Mapping[str, Any]] = []
         if step_run.block is not None and step_run.block.cause in block.CLOSED_BY_ADMISSION:
             # What refused the step now lets it through: the block ends here.
+            if step_run.block.cause == block.AT_UNIT_LIMIT and step_run.block.limit is not None:
+                held_for = (self._clock.now() - step_run.block.since).total_seconds()
+                released.append(
+                    {
+                        "kind": UNIT_LIMIT_RELEASED,
+                        "step": step_run,
+                        "outcome": step_run.block.limit,
+                        "duration": round(max(held_for, 0.0), 3),
+                        "bare": True,
+                    }
+                )
             run, step_run = await self._close_block(run, step_run)
         step_run = step_run.to(
             StepState.ADMITTED,
@@ -5256,9 +6146,12 @@ class RunEngine:
             "step.admitted",
             step=step_run,
             before=(
-                ({"kind": RETRIED, "step": step_run, "outcome": "after_failure"},)
-                if retried
-                else ()
+                *released,
+                *(
+                    ({"kind": RETRIED, "step": step_run, "outcome": "after_failure"},)
+                    if retried
+                    else ()
+                ),
             ),
         )
         if reservation != demand.quantities:
@@ -5414,8 +6307,15 @@ class RunEngine:
                 outcome="answer failed the check",
             )
         trace = Trace(inputs=read, adapter_version=completion.model, route=routed.record())
+        answer: dict[str, Any] = {"text": completion.text, "model": completion.model}
+        if self._statements is not None and _names_exactness(work.values):
+            # A model may explain the statement; its explanation names the statement it
+            # explains, by a line the run writes, never the model (UC-6.9 §2, ADR-0226).
+            statement = await self._statements.rendered(run.tenant, run.process_version)
+            if statement is not None:
+                answer = explaining(answer, run.process_version, statement)
         return (
-            {"text": completion.text, "model": completion.model},
+            answer,
             trace,
             consumption,
             resolved.adapter,
@@ -5427,14 +6327,37 @@ class RunEngine:
         chain = [] if models is None else await models.chain(work.purpose)
         permitted: Permitted = "anywhere"
         if self._residency is not None:
-            permitted = await self._residency.permitted(run.tenant, work.data_class)
+            permitted = await self._residency.permitted(
+                run.tenant, work.data_class, process_of(run.process_version)
+            )
         needs = routing.Needs(
             purpose=work.purpose,
             exactness=step.exactness,
             permitted=permitted,
             data_class=work.data_class,
         )
-        return routing.route(chain, needs, self._cooling, self._clock.now())
+        unshared: frozenset[str] = frozenset()
+        if self._shares is not None and chain:
+            unshared = await self._shares.unshared_models(
+                run.tenant, run.identity, [m.adapter for m in chain]
+            )
+        # A real run reaches only a model a trial passed on its process's cases; a rehearsal
+        # acts on nothing, and a bound purpose is a trial's own case run (ADR-0249 §2).
+        unevaluated: frozenset[str] = frozenset()
+        if (
+            self._evaluated is not None
+            and chain
+            and not run.rehearsal
+            and work.purpose not in run.bindings
+        ):
+            unevaluated = await self._evaluated.unevaluated(
+                run.tenant,
+                run.process_version,
+                step.id,
+                work.purpose,
+                [m.adapter for m in chain],
+            )
+        return routing.route(chain, needs, self._cooling, self._clock.now(), unshared, unevaluated)
 
     async def _cool(
         self, run: Run, step_run: StepRun, work: LlmWork, adapter: str, delay: float | None
@@ -5449,10 +6372,14 @@ class RunEngine:
 
     # --- connector steps ------------------------------------------------------------------------
 
-    async def _connector(self, run: Run, step_id: StepId, capability: str) -> ResolvedConnector:
+    async def _connector(
+        self, run: Run, step_id: StepId, capability: str, data_class: str | None = None
+    ) -> ResolvedConnector:
         """The connector configured for the capability. None configured is a failed step, not
         an exception: the run escalates at the boundary with the reason, and a resume after
-        the configuration changed retries it (the same as a model that is not configured)."""
+        the configuration changed retries it (the same as a model that is not configured).
+        A connector outside the location the tenant's rule permits for the data class in a run
+        of the process fails the step the same way, before it is called (ADR-0281 §2)."""
         resolved = None
         pool = self._connector_pool(run)
         if pool is not None:
@@ -5466,6 +6393,20 @@ class RunEngine:
                 outcome="no connector",
                 lack=(block.NO_CONNECTOR, capability),
             )
+        if self._residency is not None:
+            permitted = await self._residency.permitted(
+                run.tenant, data_class, process_of(run.process_version)
+            )
+            if not admits(permitted, resolved.location):
+                raise _StepFailed(
+                    reason=str(
+                        OutsideResidency(step_id, resolved.adapter, resolved.location, permitted)
+                    ),
+                    retryable=True,
+                    consumption=None,
+                    adapter=resolved.adapter,
+                    outcome="outside residency",
+                )
         return resolved
 
     async def _connector_call(
@@ -5474,7 +6415,7 @@ class RunEngine:
         """One operation, called once for this attempt of the step. What comes back is the
         result as the contract shapes it — output, effect, consumption — and, for an outward
         effect, the egress entry the commit writes beside `step.finished`."""
-        resolved = await self._connector(run, step_run.step_id, work.capability)
+        resolved = await self._connector(run, step_run.step_id, work.capability, work.data_class)
         operation = resolved.declaration.operation(work.operation)
         if operation is None:
             raise _StepFailed(
@@ -5493,15 +6434,21 @@ class RunEngine:
         span.set_attribute("adapter", resolved.adapter)
         # Before the call is booked: a stopped connector is neither called nor counted.
         await self._not_stopped(run, resolved.adapter)
+        await self._write_granted(run, resolved, operation)
         scope = await self._frame(run, step_run.step_id, resolved, operation)
         if run.rehearsal and operation.outward and not self._replaying(run):
-            return await self._rehearsed(run, resolved, operation, read)
+            return await self._rehearsed(run, resolved, operation, read, input)
+        if operation.capability in QUERYING:
+            await self._book_query(run, step_run, operation.name, input)
         sent: Digest | None = None
         if operation.outward and not run.rehearsal:
             input, sent = await self._labelled(run, step_run.step_id, work, operation, input)
             await self._book_call(run, step_run, operation.name, input)
+        credentials = work.credentials
+        if work.on_behalf:
+            credentials = await self._own_credentials(run, step_run, resolved, work)
         result = await self._call(
-            run, step_run, resolved, operation, input, work.credentials, span, scope=scope
+            run, step_run, resolved, operation, input, credentials, span, scope=scope
         )
         document = result.document()
         unmet = [why for e in work.expect if (why := rules.unmet(e, document["output"]))]
@@ -5530,6 +6477,7 @@ class RunEngine:
             egress=egress,
             rehearsed=rehearsed,
             message=sent if egress is not None else None,
+            location=resolved.location if egress is not None else None,
         )
         return document, trace, result.consumption, resolved.adapter
 
@@ -5591,11 +6539,13 @@ class RunEngine:
         resolved: ResolvedConnector,
         operation: Operation,
         read: tuple[ProvenanceInput, ...],
+        input: Mapping[str, Any],
     ) -> tuple[Any, Trace, Consumption | None, str]:
         """An outward operation in a rehearsal: nothing is sent. The step answers with the
         recorded response of the most recent real call of the operation through the adapter,
-        reads it as that run's result, and consumes nothing. Without a recording the step
-        fails: the process cannot be rehearsed past it."""
+        reads it as that run's result, and consumes nothing. Its result says what a real run
+        would have sent, under `would_send`: the operation and its input as resolved (ADR-0251
+        §3). Without a recording the step fails: the process cannot be rehearsed past it."""
         found = await self._recordings.response(run.tenant, resolved.adapter, operation.name)
         if found is None:
             raise _StepFailed(
@@ -5617,11 +6567,104 @@ class RunEngine:
         replayed = {
             **document,
             "rehearsed_from": {"run_id": recording.run_id, "step_id": recording.step_id},
+            "would_send": {"operation": operation.name, "input": dict(input)},
         }
         trace = Trace(inputs=(*read, recorded), adapter_version=resolved.version, rehearsed=True)
         return replayed, trace, None, resolved.adapter
 
     # --- end of rehearsal ----------------------------------------------------------------------
+
+    async def _callers(
+        self, run: Run, adapter: str, credentials: tuple[Any, ...]
+    ) -> tuple[Any, ...]:
+        """The credentials a call names: for a shared connector the caller's own parameters,
+        or the call is refused before it is made — outside the share's circles or the units the
+        structure places it for (ADR-0247 §2, ADR-0294); otherwise as the work names them."""
+        if self._shares is None:
+            return credentials
+        names = [c.name for c in credentials]
+        answer = await self._shares.connector_call(
+            run.tenant,
+            run.identity,
+            adapter,
+            names,
+            process=run.process_version.rsplit("@", 1)[0],
+        )
+        if answer.refusal is not None:
+            raise _StepFailed(
+                reason=f"{adapter} was not called: {answer.why or answer.refusal} "
+                "(ADR-0247, ADR-0294)",
+                retryable=False,
+                consumption=None,
+                adapter=adapter,
+                outcome="refused by the frame",
+                frame=answer.refusal,
+            )
+        if answer.names is None:
+            return credentials
+        return tuple(CredentialReference(name=n, injected_as="env") for n in answer.names)
+
+    async def _write_granted(
+        self, run: Run, resolved: ResolvedConnector, operation: Operation
+    ) -> None:
+        """An outward operation on a connection that reads until a person grants writing is
+        refused before anything of the call, unless the tenant's grant is in force
+        (ADR-0262 §2). The connector is never called; the step fails, and is not retried."""
+        if not operation.outward or operation.capability not in READ_UNLESS_GRANTED:
+            return
+        if self._grants is not None and await self._grants.granted(
+            run.tenant, operation.capability
+        ):
+            return
+        raise _StepFailed(
+            reason=f"{operation.name} was not called: the connection of {operation.capability} "
+            "reads until a person with the right grants writing on it, and no grant is in force "
+            "(ADR-0262)",
+            retryable=False,
+            consumption=None,
+            adapter=resolved.adapter,
+            outcome="write not granted",
+        )
+
+    async def _book_query(
+        self, run: Run, step_run: StepRun, operation: str, input: Mapping[str, Any]
+    ) -> None:
+        """A query is sent now: the request — the operation and its input, the query's text
+        among it — goes into the object store, and `query.sent` names it by digest with the run
+        and the step, before the call, so that a query the source refuses is recorded too. The
+        ledger holds no query text (ADR-0006, ADR-0262 §3)."""
+        digest = await self._objects.put(_canonical({"operation": operation, "input": dict(input)}))
+        await self._record_fenced(run, QUERY_SENT, step_run, "sent", digest)
+
+    async def _own_credentials(
+        self, run: Run, step_run: StepRun, resolved: ResolvedConnector, work: ConnectorRule
+    ) -> tuple[CredentialReference, ...]:
+        """The credentials of a call on behalf of the run's identity: for each one the step
+        names, that identity's own (ADR-0264). Where it has none, the step fails before the
+        call: Taktus never reads with wider rights of its own than the person it acts for."""
+        own: list[CredentialReference] = []
+        for reference in work.credentials:
+            parameter = (
+                None
+                if self._own is None
+                else await self._own.own(run.tenant, run.identity, reference.name)
+            )
+            if parameter is None:
+                raise _StepFailed(
+                    reason=f"{run.identity} has no credential of its own for "
+                    f"{work.capability} ({reference.name}); the step acts on behalf of it and "
+                    "gets nothing from the source with wider rights",
+                    retryable=False,
+                    consumption=None,
+                    adapter=resolved.adapter,
+                    outcome="unauthenticated",
+                )
+            own.append(reference.model_copy(update={"name": parameter}))
+        if not own:
+            raise UnsupportedWork(
+                step_run.step_id, "a call on behalf of a person names the credential it stands for"
+            )
+        return tuple(own)
 
     async def _call(
         self,
@@ -5636,6 +6679,7 @@ class RunEngine:
         scope: CaseScope | None = None,
     ) -> Result:
         await self._not_stopped(run, resolved.adapter)
+        credentials = await self._callers(run, resolved.adapter, credentials)
         context = CallContext(
             tenant=run.tenant,
             identity=run.identity,
@@ -5820,6 +6864,8 @@ class RunEngine:
         waited = self._waited_so_far(step_run, resumed)
         limit = self._options.park_waits_after_seconds
         while True:
+            if operation.capability in QUERYING:
+                await self._book_query(run, step_run, operation.name, input)
             try:
                 result = await self._call(
                     run, step_run, resolved, operation, input, until.credentials, span, scope=scope
@@ -5925,7 +6971,9 @@ class RunEngine:
     ) -> tuple[Run, StepRun]:
         permitted: Permitted = "anywhere"
         if self._residency is not None:
-            permitted = await self._residency.permitted(run.tenant, work.data_class)
+            permitted = await self._residency.permitted(
+                run.tenant, work.data_class, process_of(run.process_version)
+            )
         outside: tuple[str, str] | None = None
         try:
             resolved = await self._worker_pool(run).resolve(step.required_capabilities, permitted)
@@ -5960,6 +7008,29 @@ class RunEngine:
                         step.id, step.required_capabilities, permitted=permitted, outside=outside
                     )
                 ),
+                retryable=True,
+                finished_at=self._clock.now(),
+            )
+            run = await self._commit(
+                run.with_step_run(step_run), "step.finished", step=step_run, outcome="failed"
+            )
+            return run, step_run
+        beyond_hosts = [
+            (host, located)
+            for host in dict.fromkeys((*work.allowed_hosts, *resolved.hosts))
+            if not admits(
+                permitted,
+                located := host_location(self._options.host_locations, host),
+            )
+        ]
+        if beyond_hosts:
+            # A host the unit would reach is outside the rule: nothing is assigned, and the
+            # reason names the rule and the host (ADR-0281 §3).
+            host, located = beyond_hosts[0]
+            span.record_failure("host outside residency")
+            step_run = step_run.to(
+                StepState.FAILED,
+                reason=str(OutsideResidency(step.id, f"the host {host}", located, permitted)),
                 retryable=True,
                 finished_at=self._clock.now(),
             )
@@ -6271,7 +7342,12 @@ class RunEngine:
         self._inflight_step[run.id] = step_run.step_id
         adapter = str(call["adapter"])
         self._inflight_adapter[run.id] = (run.tenant, adapter)
-        if run.id in self._stop_requested or adapter in await self._held_stops(run.tenant):
+        self._inflight_process[run.id] = process_of(run.process_version)
+        if (
+            run.id in self._stop_requested
+            or adapter in await self._held_stops(run.tenant)
+            or await self._covering(run.tenant, process_of(run.process_version)) is not None
+        ):
             # A stop of the adapter requested since the check before the handover, or held
             # while an assignment handed over earlier was adopted, lands at its boundary.
             await self.request_stop(run.id)
@@ -6290,6 +7366,7 @@ class RunEngine:
             self._inflight.pop(run.id, None)
             self._inflight_step.pop(run.id, None)
             self._inflight_adapter.pop(run.id, None)
+            self._inflight_process.pop(run.id, None)
         _measured(span, step_run)
         if (
             adopted
@@ -6928,7 +8005,8 @@ class RunEngine:
         interface: str | None = None,
         ended: str | None = None,
         action: str | None = None,
-        proposal: tuple[str, str | None, str] | None = None,
+        proposal: tuple[str, str | None, str, str | None] | None = None,
+        case_class: str | None = None,
         before: Sequence[Mapping[str, Any]] = (),
         after: Sequence[Mapping[str, Any]] = (),
         inside: Callable[[], Awaitable[None]] | None = None,
@@ -6967,9 +8045,10 @@ class RunEngine:
                     digest=digest,
                     decision=decision,
                     action=action,
+                    case_class=case_class,
                 )
                 if proposal is not None and step is not None:
-                    decided, held_by, document = proposal
+                    decided, held_by, document, named = proposal
                     await self._record(
                         run,
                         PROPOSAL_DECIDED,
@@ -6977,6 +8056,7 @@ class RunEngine:
                         outcome=decided,
                         digest=document,
                         action=held_by,
+                        case_class=named,
                         bare=True,
                     )
                 if interface is not None and step is not None:
@@ -7021,12 +8101,32 @@ class RunEngine:
                             outcome="replayed" if trace.egress.replayed else "acted",
                             digest=trace.egress.content_digest,
                         )
+                        # Where it went: the location of the adapter it went through, beside
+                        # the egress entry (ADR-0281 §5).
+                        await self._record(
+                            run,
+                            RESIDENCY_EGRESS,
+                            step=step,
+                            outcome=trace.location or "elsewhere",
+                            digest=trace.egress.content_digest,
+                        )
                         if trace.message is not None:
                             # The message's record — case, checks, label — beside its egress
                             # entry, by digest (ADR-0142 §10).
                             await self._record(
                                 run, messages.SENT, step=step, outcome="sent", digest=trace.message
                             )
+                if (
+                    kind == "step.finished"
+                    and outcome == "succeeded"
+                    and step
+                    and not run.rehearsal
+                ):
+                    declared = run.step(step.step_id)
+                    if declared.exactness in UNCHECKED_CLASSES and not declared.checks:
+                        # A result no check judged is recorded as unchecked, never as passed
+                        # (UC-4.10, ADR-0271 §3).
+                        await self._record(run, UNCHECKED, step=step, outcome="unchecked")
                 for extra in after:
                     await self._record(run, **extra)
         return run
@@ -7064,6 +8164,7 @@ class RunEngine:
         duration: float | None = None,
         action: str | None = None,
         bare: bool = False,
+        case_class: str | None = None,
     ) -> LedgerEntry:
         """`bare` records only what names the step — no assignment, no artifacts, no method,
         adapter or consumption — for an entry that counts a decision (ADR-0110)."""
@@ -7076,6 +8177,7 @@ class RunEngine:
             assignment_id=None if step is None or bare else step.assignment_id,
             decision_request_id=decision,
             action=action,
+            case_class=case_class,
             artifact_ids=None
             if step is None or bare or not step.artifacts
             else tuple(a.id for a in step.artifacts),
@@ -7148,6 +8250,22 @@ EXACTNESS = "exactness"
 """The part of a `$run` reference that is the exactness statement of the run's version."""
 
 
+def explaining(answer: dict[str, Any], process_version: str, rendered: str) -> dict[str, Any]:
+    """A model's answer that read the exactness statement, with the statement it explains named
+    by version and digest: in a closing line of its text and as `explains` (ADR-0226)."""
+    digest = hashlib.sha256(rendered.encode("utf-8")).hexdigest()
+    line = (
+        f"This explains the exactness statement of {process_version} (sha256:{digest[:16]}), "
+        "written by a model; the statement itself, generated from the process version, is "
+        "what holds."
+    )
+    return {
+        **answer,
+        "text": f"{str(answer['text']).rstrip()}\n\n{line}",
+        "explains": {"statement": process_version, "digest": f"sha256:{digest}"},
+    }
+
+
 def _names_exactness(value: Any) -> bool:
     """Whether a value carries `{"$run": "exactness"}` anywhere inside it."""
     if isinstance(value, Mapping):
@@ -7176,6 +8294,14 @@ class _ToApprove(Exception):
         self.drafts = drafts
 
 
+WITHDRAWN = "control.withdrawn"
+"""A decoupled run's task, withdrawn by the external tool that holds control: the run halts at
+the boundary (UC-5.2, ADR-0272)."""
+UNCHECKED = "result.unchecked"
+"""A result of a `tolerant` or `free` step that declares no check: recorded as unchecked, never
+as passed (UC-4.10, ADR-0271 §3)."""
+UNCHECKED_CLASSES = frozenset({ExactnessClass.TOLERANT, ExactnessClass.FREE})
+
 SUSPECT = "check.suspect"
 """A result a check that reads a source failed on when it was applied again after the result
 counted (ADR-0179 §1)."""
@@ -7185,15 +8311,21 @@ tenant's correction anchor names (ADR-0179 §3)."""
 
 
 class Suspect(Value):
-    """A result a check marked suspect when it was applied again (UC-4.10): the check by its
-    place, its family, what it compared, and the source as it was read now."""
+    """A result a check marked suspect (UC-4.10): the check by its place, its family, what it
+    compared, and the source as it was read now where it read one — a check applied again
+    (ADR-0179 §1); none for a distribution, which compares with the step's earlier results
+    (ADR-0271)."""
 
     run_id: str
     step_id: str
     check: str
     family: str
     compared: str
-    source: ProvenanceInput
+    source: ProvenanceInput | None = None
+
+
+_ABSENT = object()
+"""A recorded result that cannot be read."""
 
 
 def _carried(run: Run, carried: Sequence[StepRun]) -> Run:
@@ -7225,8 +8357,26 @@ SAMPLED = "check.sampled"
 ORG_UNIT_ADMITTED = "org_unit.admitted"
 """A run committed its budget to its organisational unit's budget quota (ADR-0166)."""
 ORG_UNIT_HELD = "org_unit.held"
+TENANT_BUDGET_HELD = "budget.held"
+UNIT_LIMIT_HELD = "unit_limit.held"
+UNIT_LIMIT_RELEASED = "unit_limit.released"
+UNIT_HISTORY_DAYS = 28
+"""The days before today a unit's cost per day is read for, to judge an anomaly (ADR-0282)."""
+"""A run waits at its boundary because the tenant's monthly budget is reached (ADR-0260)."""
 """A run held before its first step by its unit's budget quota, outcome `budget` or
 `no_amount` (ADR-0166)."""
+
+
+@dataclass(frozen=True)
+class _UnitRefusal:
+    """A unit limit a step's reservation does not fit (ADR-0282 §2)."""
+
+    limit: AppliedLimit
+    spent: Mapping[str, float]
+    demand: Mapping[str, float]
+    over: tuple[str, ...]
+    check_at: datetime | None
+    """When a `wait` parks the run until; None for `halt`."""
 
 
 class _OverUnitBudget(Exception):
@@ -7464,3 +8614,11 @@ def _message_inputs(step_run: StepRun) -> tuple[ProvenanceInput, ...]:
         )
         for message in step_run.messages
     )
+
+
+def _stopped_by(stop: AdapterStop) -> str:
+    """The reason of a run a stop of its process or its tenant halted: it names the stop, so
+    that the stop's confirmation finds the run (ADR-0256 §1)."""
+    what = f"the process {stop.process}" if stop.process is not None else "the tenant"
+    by = f"the rule {stop.rule}" if stop.rule is not None else "a person"
+    return f"stop {stop.id} of {what}, by {by}, holds at the boundary"

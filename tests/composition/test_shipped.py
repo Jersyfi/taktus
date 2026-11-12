@@ -57,3 +57,11 @@ def test_every_shipped_connector_is_listed_with_its_image() -> None:
     pages = next(line for line in lines if line.startswith("knowledge.pages "))
     assert "bookstack (image taktus-connector-bookstack)" in pages
     assert "directory (inside the control plane)" in pages
+
+
+def test_the_products_an_agent_may_not_name_are_the_connectors_not_named_by_function() -> None:
+    """UC-8.7: a tool or source of an agent is named by capability; the names it may not use
+    are those of the shipped connectors that are no capability's domain."""
+    products = shipped.product_names(shipped.load())
+    assert {"github", "slack", "zendesk"} <= products
+    assert "accounting" not in products, "a connector named after what it does is no product"

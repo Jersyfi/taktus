@@ -30,6 +30,7 @@ from taktus.components.governance.domain.model.defects import (
     Kind,
     Position,
     Rule,
+    SituationPackage,
     Verdict,
     When,
 )
@@ -195,6 +196,40 @@ def test_a_window_without_a_found_cause_says_so_and_is_unbounded_at_the_first_re
     assert found.window_start == AT + timedelta(days=1)
 
 
+STEADY = [
+    record(f"r{n}", "import", 10 * n, day=n, adapter_version="1", result=n) for n in range(1, 6)
+]
+
+
+def test_a_cause_in_the_content_of_a_source_starts_the_window_after_its_shape_changed() -> None:
+    """Nothing changed in how the step produced; the partner's file changed its form at r3."""
+    shapes = {
+        (r.run_id, r.step_id): "table(id,amount)" if r.ledger_seq < 30 else "table(amount,id)"
+        for r in STEADY
+    }
+    defect = ResultRef(run_id="r4", step_id="import", digest=digest(4))
+    found = defects.analyse(defect, Found.RECHECKED, STEADY, [], shapes=shapes)
+    assert found.cause is not None
+    assert (found.cause.field, found.cause.before, found.cause.after, found.cause.at_run) == (
+        "source_content",
+        "table(id,amount)",
+        "table(amount,id)",
+        "r3",
+    )
+    assert found.window_start == AT + timedelta(days=3) and not found.unbounded
+    assert found.window_runs == 3
+
+
+def test_without_a_change_the_window_starts_at_the_earliest_result_the_check_marks_again() -> None:
+    defect = ResultRef(run_id="r5", step_id="import", digest=digest(5))
+    found = defects.analyse(
+        defect, Found.RECHECKED, STEADY, [], shapes={}, marked=frozenset({"r3", "r5"})
+    )
+    assert found.cause is None and found.rechecked_from == "r3"
+    assert found.window_start == AT + timedelta(days=3) and not found.unbounded
+    assert found.window_runs == 3, "r3 to r5, the newest"
+
+
 def test_a_result_older_than_the_chain_is_not_reconstructed() -> None:
     with pytest.raises(defects.NotRecorded):
         defects.analyse(ResultRef(run_id="r0", step_id="import"), Found.CORRECTED, RECORDS, [])
@@ -355,3 +390,90 @@ async def test_a_reported_result_raises_one_incident_with_what_the_rule_read() -
     assert [e.outcome for e in raised] == ["escalate"]
     assert all(e.refs.actor is None for e in raised)
     assert "idn_" not in str(incident.model_dump())
+
+
+def test_a_package_missing_a_part_says_which_part_it_lacks() -> None:
+    """UC-6.8 §2, as UC-4.5 requires: a part that cannot be said is empty, and the package says
+    which it lacks; a complete one says nothing of the kind."""
+    lacking = SituationPackage(happened="a total was booked twice", options=("reverse it",))
+    assert lacking.lacking == ("tried", "affected", "needed")
+    assert defects.render_package(lacking).endswith("This package lacks: tried, affected, needed.")
+    complete = SituationPackage(
+        happened="h", tried="t", affected="a", options=("o",), needed=("n",)
+    )
+    assert complete.lacking == ()
+    assert "lacks" not in defects.render_package(complete)
+
+
+class RecordedStops:
+    """The port a rule's stop goes through, recording what it was asked (ADR-0256 §3)."""
+
+    def __init__(self) -> None:
+        self.asked: list[tuple[str, str, str, str]] = []
+
+    async def stop_process(self, tenant: str, process: str, *, rule: str, incident: str) -> str:
+        self.asked.append((tenant, process, rule, incident))
+        return "stp_0001"
+
+
+async def _raised(
+    rules: tuple[Rule, ...], relevance: int | None, stops: RecordedStops
+) -> tuple[Incident, Any, list[LedgerEntry]]:
+    persistence = MemoryPersistence()
+    clock = FakeClock(AT + timedelta(days=6))
+    ledger = ChainedLedger(MemoryLedgerStore(persistence), clock)
+    provenance = MemoryProvenanceStore(persistence)
+    watch = MemoryRepository(persistence, WatchConfiguration)
+    async with persistence.transaction(TENANT):
+        for r in RECORDS:
+            await ledger.record(
+                TENANT,
+                Fact(
+                    kind="step.finished",
+                    refs=LedgerRefs(tenant=TENANT, run_id=r.run_id, step_id=r.step_id),
+                    outcome="succeeded",
+                ),
+            )
+            await provenance.append(TENANT, r)
+        await watch.put(TENANT, WatchConfiguration(id=TENANT, tenant=TENANT, defect_rules=rules))
+    service = ResultDefects(
+        provenance,
+        ledger,
+        MemoryRepository(persistence, Incident),
+        watch,
+        MemoryRepository(persistence, AnchorConfiguration),
+        persistence,
+        clock,
+        stops=stops,
+    )
+    report = ReportDefect(
+        tenant=TENANT, run_id="r4", step_id="import", found=Found.CORRECTED, relevance=relevance
+    )
+    incident, assessed = await service.raise_incident(report)
+    await service.raise_incident(report)
+    async with persistence.transaction(TENANT):
+        entries = list(await ledger.entries(TENANT))
+    return incident, assessed, entries
+
+
+async def test_a_rule_that_decides_stop_stops_the_process_and_records_the_rule_and_the_facts() -> (
+    None
+):
+    relevant = Rule(id="relevant", when=When(relevance_at_least=4), then=Verdict.STOP)
+    stops = RecordedStops()
+    incident, assessed, entries = await _raised((*SHIPPED, relevant), 5, stops)
+    assert assessed.decision.verdict is Verdict.STOP
+    assert stops.asked == [(TENANT, "billing", incident.rule, incident.id)], "stopped once"
+    assert "relevant" in incident.rule.split(",")
+    assert incident.facts["verdict"] == "stop" and incident.facts["stop"] == "stp_0001"
+    assert incident.facts["relevance"] == 5 and incident.facts["strictest"] == "exact"
+    assert "relevant: " in str(incident.facts["thresholds"])
+    [raised] = [e for e in entries if e.kind == "incident.raised"]
+    assert raised.outcome == "stop" and raised.refs.actor is None, "a rule, not a person"
+
+
+async def test_a_verdict_short_of_stop_stops_nothing() -> None:
+    stops = RecordedStops()
+    incident, assessed, _ = await _raised(SHIPPED, 5, stops)
+    assert assessed.decision.verdict is Verdict.ESCALATE
+    assert stops.asked == [] and incident.facts["stop"] is None

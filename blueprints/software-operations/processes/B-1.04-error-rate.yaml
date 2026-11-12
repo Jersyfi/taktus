@@ -19,20 +19,27 @@
 # with the tenant's thresholds from the first run. The function behind a red value stands in
 # the result of `worst`, under `first.labels`.
 #
-# Not built here: tying the errors to the last deployment, and opening the fix pull request of
-# the target level. The deployment is not read by any connector yet (UC-03 §8); the fix is the
+# Tied to the last deployment (ADR-0201, ADR-0202): where the run names the business's
+# `deployment`, its last rollout's moment is read through `deployment.workloads`, and the error
+# entries logged since that moment through `logs.query`, by the tenant's `error_filter` in its
+# log store's own language. A rule counts them; the tenant's corridor on the step
+# `since-deployment` and its `count` (`errors.since_deployment`) tells a release that brought
+# errors from one that did not. A run without `deployment` skips the three steps.
+#
+# Not built here: opening the fix pull request of the target level. The fix is the
 # implementation process's (B-7.03), on an issue a person or B-1.05 files. Releasing a hotfix
 # stays with a person.
 #
 # By hand:
 #
 #     uv run taktusctl run --process blueprints/software-operations/processes/B-1.04-error-rate.yaml \
-#         --input 'query=sum by (function) (rate(function_errors_total[15m]))'
+#         --input 'query=sum by (function) (rate(function_errors_total[15m]))' \
+#         --input deployment=web --input 'error_filter=severity>=ERROR'
 #
 # Switching it off (`taktusctl deactivate --process b-1-04`) changes nothing at the store.
 
 id: b-1-04
-version: "1"
+version: "3"
 name: B-1.04 Error rate
 autonomy:
   level: 1
@@ -59,9 +66,21 @@ inputs:
       the tenant's query for the error rate per function, in the store's query language; each
       series it answers is one function
     example: sum by (function) (rate(function_errors_total[15m]))
+  deployment:
+    description: >
+      the business's deployment whose last rollout the errors are tied to, as the workload
+      connector's namespace names it; left out, the errors are not tied to a deployment
+    example: web
+    required: false
+  error_filter:
+    description: >
+      the tenant's filter for an error entry, in its log store's own query language; read only
+      where `deployment` is given
+    example: severity>=ERROR
+    required: false
 
 limits:
-  quota: { units: 2 }
+  quota: { units: 15 }
 
 steps:
   - id: read-rates
@@ -71,11 +90,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what metrics.series.query answered", columns: [complete, series] }
     fallback:
       when: the connector serving metrics.series is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: metrics.series.query
       input:
@@ -108,6 +130,81 @@ steps:
       descending: true
       limit: 1
 
+  - id: read-deployment
+    method: rule
+    reason: the deployment is read as the cluster states it, with the moment its rollout last progressed
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what deployment.workloads.read answered", columns: [changed_at] }
+    fallback:
+      when: the connector serving deployment.workloads is unavailable
+      to: human
+      role: owner
+    depends_on: [worst]
+    work:
+      checking: { select: output }
+      when:
+        - { value: { $input: deployment, $otherwise: "" }, matches: "." }
+      rule: connector
+      operation: deployment.workloads.read
+      input:
+        name: { $input: deployment, $otherwise: "" }
+      credentials:
+        - { name: WORKLOADS_TOKEN, injected_as: env }
+
+  - id: read-errors-since
+    method: rule
+    reason: the log store's error entries since the rollout are read verbatim, by the tenant's own filter
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what logs.query.entries answered", columns: [complete, entries] }
+    fallback:
+      when: the connector serving logs.query is unavailable
+      to: human
+      role: owner
+    depends_on: [read-deployment]
+    work:
+      checking: { select: output }
+      when:
+        - { value: { $from: read-deployment, $select: output.changed_at }, matches: "^\\d{4}-" }
+      rule: connector
+      operation: logs.query.entries
+      input:
+        filter: { $input: error_filter, $otherwise: "" }
+        start: { $from: read-deployment, $select: output.changed_at }
+        limit: 1000
+      credentials:
+        - { name: LOGS_TOKEN, injected_as: env }
+
+  - id: since-deployment
+    method: rule
+    reason: >
+      the errors since the last deployment are a count of the store's own entries, which the
+      corridor judges; an answer the store cut short is said so by its `complete`, never
+      completed by an estimate
+    rejected:
+      - method: llm
+        why: a count needs no judgement, and a figure held exact may not come from a model (CLAUDE.md §4)
+      - method: statistics
+        why: counting the entries of one reading is a fixed rule, not a statistic of a series
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the error entries logged since the last deployment }
+    depends_on: [read-errors-since]
+    work:
+      when:
+        - { value: { $from: read-errors-since, $select: output.complete }, matches: "^(true|false)$" }
+      rule: filter
+      items: { $from: read-errors-since, $select: output.entries }
+      all:
+        - { field: timestamp, matches: "." }
+
 # How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
 # every step the system to act in, what to do there, the expertise it needs, each credential by
 # its parameter and where an authorised person finds it, and how to tell that it is done.
@@ -117,8 +214,9 @@ takeover:
     functions starts it. The steps run in order: run the tenant's query for the error rate of
     each function in the metrics store, then take the function with the highest rate. Whether
     that rate is a deviation is the tenant's corridor; a red value is an incident for the role
-    responsible at once. Tying the errors to the last deployment is not part of it. Fixing the
-    error is worked on an issue, and releasing a hotfix stays with a person.
+    responsible at once. Where the run names a deployment, read when its last rollout finished
+    and count the error entries the log store holds since that moment. Fixing the error is
+    worked on an issue, and releasing a hotfix stays with a person.
   steps:
     read-rates:
       system: the business's metrics store, in its query view
@@ -149,3 +247,38 @@ takeover:
         corridor for them
       credentials: []
       done: the function with the highest error rate is written down, and a red rate reported
+    read-deployment:
+      system: the business's cluster, in the namespace of its workloads
+      do: >
+        only where the run names a deployment: read that deployment and note the last update
+        time of its condition Progressing, the moment its last rollout finished
+        (`kubectl get deployment <name> -o jsonpath='{.status.conditions[?(@.type=="Progressing")].lastUpdateTime}'`).
+      expertise: reading a deployment's status in the cluster
+      credentials:
+        - parameter: WORKLOADS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Workload cluster token of the
+            requesting identity described in CREDENTIALS.md
+      done: the moment the last rollout finished is noted, or the step is skipped
+    read-errors-since:
+      system: the business's log store, in its query view
+      do: >
+        search the log store with the tenant's error filter from the noted moment until now, at
+        most a thousand entries, and note whether the store said there are more.
+      expertise: querying the log store in its own query language
+      credentials:
+        - parameter: LOGS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Logs token of the requesting
+            identity described in CREDENTIALS.md; a person may instead sign in to the log store
+            with their own account that may read it
+      done: the error entries since the rollout are listed
+    since-deployment:
+      system: the list of error entries
+      do: >
+        count the entries. Compare the count with the tenant's corridor for errors since a
+        deployment; a red count after a release is reported at once to the role responsible,
+        with the release's moment. A list the store cut short is a count of at least that many.
+      expertise: the usual error volume of the business after a release
+      credentials: []
+      done: the errors since the last deployment are counted and a red count reported

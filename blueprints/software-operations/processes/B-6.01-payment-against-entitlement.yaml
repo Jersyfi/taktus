@@ -33,7 +33,7 @@
 # provider or in the product: it only reads.
 
 id: b-6-01
-version: "1"
+version: "2"
 name: B-6.01 Payment against entitlement
 autonomy:
   level: 1
@@ -64,11 +64,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what payments.subscriptions.list answered", columns: [complete, subscriptions] }
     fallback:
       when: the connector serving payments.subscriptions is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: payments.subscriptions.list
       input:
@@ -88,11 +91,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what entitlements.grants.list answered", columns: [complete, entitlements] }
     fallback:
       when: the connector serving entitlements.grants is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: entitlements.grants.list
       input: {}

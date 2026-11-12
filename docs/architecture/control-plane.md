@@ -79,6 +79,12 @@ provisional operator identity of DEC-0013 in `0.2.0`:
   of the channel's triage process, without the sender's account or text, and starts that
   process once, acting for whoever registered its active version. The sender is offered the
   link all the same, and never acts.
+- **A rollout channel serves an assistant, never a command** (UC-12.1, ADR-0261). Every channel
+  is a command channel unless `TAKTUS_ROLLOUT` names it, or one conversation of it, as a rollout
+  channel of an agent. There a placed person's message is kept for the agent's assistant and
+  starts only the agent's own process, as the person, within what the agent's profile for their
+  role grants. It is never completed into a command, never matched against a trigger and never
+  taken as an answer to what Taktus asked.
 - **Every link and every revocation is a ledger entry** (`identity.linked`,
   `identity.unlinked`). An administrator sees every link of a tenant and revokes one with
   `taktusctl identity links` and `revoke`; the next event from that account is from an
@@ -120,6 +126,14 @@ slides into execution through approval fatigue.
 
 The plan is also the authoring tool for processes: it ends either in a one-off run or in a new
 process version.
+
+A plan worked out in dialogue is a **plan draft** (ADR-0237): its goal, its steps with their
+methods and capabilities, the date it is due, the autonomy level with its reason, and an
+estimate per step that names its basis — one without a basis is shown as a guess. Every change
+is a new version. Commissioning takes one version into a plan `<draft>@v<version>` and records
+`plan.commissioned` with the identity that commissioned it; it is refused, naming what is
+missing, for a draft without one of the four parts, and for a step that cannot be estimated.
+The engine runs only a commissioned plan.
 
 ---
 
@@ -169,7 +183,8 @@ by a `rule` step of work `screen` before a model or a worker reads it: it names 
 `injection` and `personal_data` to run over a text. A check that finds something fails the step,
 the failure names the check and never the text found, the steps after it do not start and the
 run goes to a person. A text that passes is not declared safe: the patterns are fixed and name
-only what they name, so the step is classed `tolerant` at best and never `exact`. It is drawn in
+only what they name, so the step is classed `tolerant` at best and never `exact`: a version that
+classes one `exact` does not register. It is drawn in
 the graph and has its own entry in the ledger like any step.
 
 ### 4.2 Versioning
@@ -375,6 +390,12 @@ level (ADR-0042), and a person's own `human` step for a person of its role to pe
 every level (ADR-0167). Such a step is in the step state `waiting_human`; the steps that do not depend
 on it run on before the run waits. A person's answer continues the run; a stop halts it at once.
 A declined anchored act halts the run with cause `declined`, and a resume asks again.
+
+A person pauses or cancels one run through any channel (ADR-0236). The request is kept per run
+and read at every step boundary, by whichever instance holds the run: the run halts there with
+cause `paused` or `cancelled`, and the step it was inside finishes first. A waiting run halts at
+once. A paused run resumes at its boundary; a cancelled run never resumes. "What are you working
+on?" is answered from the ledger's projection `run.current_work.v1`, never from the run store.
 
 There are no open loops. Every execution produces a measurable result that flows back into
 monitoring and reports. Repeated self-healing of the same fault raises an improvement proposal or a

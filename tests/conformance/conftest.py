@@ -34,6 +34,7 @@ import httpx
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from fakes import google_oauth
 from fakes.ports import free_port
 
 from taktus.adapters.driven.clock import SystemClock
@@ -69,6 +70,7 @@ WORKER = ROOT / "workers" / "script" / "worker.py"
 CODING_WORKER = ROOT / "workers" / "claudecode" / "worker.py"
 FAKE_AGENT = ROOT / "workers" / "claudecode" / "fake_agent.py"
 MLBENCH_WORKER = ROOT / "workers" / "mlbench" / "worker.py"
+BROWSER_WORKER = ROOT / "workers" / "browser" / "worker.py"
 SECOND_CODING_WORKER = ROOT / "workers" / "codex" / "worker.py"
 SECOND_FAKE_AGENT = ROOT / "workers" / "codex" / "fake_agent.py"
 CODING_CREDENTIAL = {"api-key": "CODING_AGENT_API_KEY", "session": "CODING_AGENT_SESSION"}
@@ -356,6 +358,91 @@ def start_mlbench_worker(tmp_path: Path) -> Iterator[StartWorker]:
         endpoint = f"http://127.0.0.1:{port}"
         wait_ready(process, f"{endpoint}/v1/health", log, "ML bench")
         return RunningWorker(endpoint, log, value, process, task=task, hosts=(host,))
+
+    yield start
+    stop_all(started)
+    server.shutdown()
+    server.server_close()
+
+
+PAGE = b"""<!doctype html><html><head><title>Orders</title></head><body>
+<h1>Orders</h1><form><input id="q" name="q"><button id="go" type="button"
+onclick="document.getElementById('out').textContent='Found: '+document.getElementById('q').value">
+Search</button></form><p id="out"></p></body></html>"""
+
+
+def browser_available() -> str | None:
+    """Why the browser worker cannot run here, or None: its driver and its Chromium."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        return "the browser worker's driver is the extra `browser`: `uv sync --all-extras`"
+    try:
+        with sync_playwright() as playwright:
+            playwright.chromium.launch().close()
+    except Exception as error:
+        return f"the browser worker needs Chromium (`make browser`): {error}"
+    return None
+
+
+@pytest.fixture
+def start_browser_worker(tmp_path: Path) -> Iterator[StartWorker]:
+    """The browser worker, and a web page in this process that it checks: a search form, typed
+    into and clicked, and its answer read. The page's host is allowed in the main run and
+    withdrawn in the narrowed one (W-13). The estimate is half the expected demand, so that a
+    limit equal to it is crossed (W-14)."""
+    why = browser_available()
+    if why is not None and os.environ.get("TAKTUS_REQUIRE_BROWSER"):
+        pytest.fail(why + " — and TAKTUS_REQUIRE_BROWSER says it may not skip")
+    if why is not None:
+        pytest.skip(why)
+    started: list[subprocess.Popen[bytes]] = []
+    served = tmp_path / "site"
+    served.mkdir()
+    (served / "index.html").write_bytes(PAGE)
+    server = ThreadingHTTPServer(
+        ("127.0.0.1", 0), functools.partial(QuietFiles, directory=str(served))
+    )
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{server.server_port}/index.html"
+    check = {
+        "name": "search",
+        "url": url,
+        "steps": [{"fill": "#q", "value": "4711"}, {"click": "#go"}],
+        "expect": ["Orders", "Found: 4711"],
+        "absent": ["Error"],
+    }
+    task: dict[str, object] = {
+        "goal": "Conformance run of the browser worker: check the served page three times.",
+        "acceptance": ["a report per check"],
+        "inputs": {"checks": [check, {**check, "name": "again"}, {**check, "name": "third"}]},
+    }
+
+    def start(*, fault: str | None = None) -> RunningWorker:
+        port = free_port()
+        log = tmp_path / f"browser-{fault or 'honest'}.log"
+        value = "conf-" + secrets.token_hex(12)
+        env = {**os.environ, CREDENTIAL: value, "TAKTUS_BROWSER_CHECK_SECONDS": "1.5"}
+        args = [
+            sys.executable,
+            str(BROWSER_WORKER),
+            "--port",
+            str(port),
+            "--state-dir",
+            str(tmp_path / f"browser-state-{fault or 'honest'}"),
+            "--estimate-factor",
+            "0.5",
+        ]
+        if fault:
+            args += ["--fault", fault]
+        with log.open("wb") as handle:
+            process = subprocess.Popen(  # noqa: S603 — our own script, fixed arguments
+                args, stdout=handle, stderr=subprocess.STDOUT, env=env
+            )
+        started.append(process)
+        endpoint = f"http://127.0.0.1:{port}"
+        wait_ready(process, f"{endpoint}/v1/health", log, "browser worker")
+        return RunningWorker(endpoint, log, value, process, task=task, hosts=("127.0.0.1",))
 
     yield start
     stop_all(started)
@@ -1109,14 +1196,67 @@ class BusinessConnector:
     args: tuple[str, ...] = ()
     pair: bool = False
     """The credential is a key pair, `<id>:<secret>`, as a provider that signs takes one."""
+    key: str | None = None
+    """The credential is a signing key the connector exchanges or signs with, generated for the
+    fake at its address: `google`, a service account key whose token endpoint is the fake's;
+    `stores`, both app stores' keys in one document (ADR-0210)."""
+    service_account: bool = False
+    """The credential is a service account's key file, JSON with `client_email` and a private
+    key; the fake admits the account by its address."""
+    intake: str | None = None
+    """The name of the intake secret, where the connector has an intake: a secret under the
+    open specification of signed webhooks, `whsec_` and base64 (ADR-0186), shared with the suite,
+    which signs with it."""
 
-    def value(self) -> str:
+    def value(self, service_url: str = "") -> str:
+        if self.key == "google":
+            return google_oauth.service_account_key(f"{service_url}/token")
+        if self.key == "stores":
+            return _stores_key(service_url)
         if self.pair:
             return f"key-{secrets.token_hex(6)}:sig-{secrets.token_hex(12)}"
+        if self.service_account:
+            key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+            pem = key.private_bytes(
+                serialization.Encoding.PEM,
+                serialization.PrivateFormat.PKCS8,
+                serialization.NoEncryption(),
+            ).decode()
+            email = f"tok-{secrets.token_hex(8)}@project.iam.example"
+            document = {"type": "service_account", "client_email": email, "private_key": pem}
+            return json.dumps(document, separators=(",", ":"))
         return "tok-" + secrets.token_hex(12)
+
+    def admitted(self, value: str) -> str:
+        """What the fake is started with to admit the value: the value, or the account."""
+        return str(json.loads(value)["client_email"]) if self.service_account else value
+
+
+def _stores_key(service_url: str) -> str:
+    """Both app stores' keys as an operator writes `STORES_KEY`: a P-256 key for the one store,
+    a service account key for the other, its token endpoint the fake's."""
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    private = ec.generate_private_key(ec.SECP256R1()).private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    )
+    return json.dumps(
+        {
+            "ios": {
+                "issuer_id": "69a6de70-0000-47e3-e053-5b8c7c11a4d1",
+                "key_id": "2X9R4HXF34",
+                "private_key": private.decode("ascii"),
+            },
+            "android": json.loads(google_oauth.service_account_key(f"{service_url}/token")),
+        }
+    )
 
 
 FAKES = ROOT / "tests" / "fakes"
+LINEAR_TEAM = "00000000-0000-4000-8000-0000000000aa"
+"""The one team the fake task tracker holds (`tests/fakes/task_graph_service.py`)."""
 BUSINESS: dict[str, BusinessConnector] = {
     "accounting": BusinessConnector(
         "accounting", FAKES / "accounting_service.py", "ACCOUNTING_TOKEN"
@@ -1124,18 +1264,125 @@ BUSINESS: dict[str, BusinessConnector] = {
     "anthropic": BusinessConnector(
         "anthropic", FAKES / "cost_report_service.py", "MODEL_COSTS_TOKEN"
     ),
+    "appstores": BusinessConnector(
+        "appstores", FAKES / "app_stores_service.py", "STORES_KEY", key="stores"
+    ),
     "aws": BusinessConnector("aws", FAKES / "cloud_billing_service.py", "BILLING_KEY", pair=True),
+    "bigquery": BusinessConnector(
+        "bigquery",
+        FAKES / "warehouse_service.py",
+        "WAREHOUSE_KEY",
+        ("--project", "example", "--dataset", "product_copy"),
+        key="google",
+    ),
     "calendar": BusinessConnector("calendar", FAKES / "calendar_service.py", "CALENDAR_TOKEN"),
+    "canny": BusinessConnector("canny", FAKES / "feedback_service.py", "FEEDBACK_TOKEN"),
+    "cloudfunctions": BusinessConnector(
+        "cloudfunctions",
+        FAKES / "functions_service.py",
+        "SITES_TOKEN",
+        ("--project", "example", "--location", "europe-west1"),
+        key="google",
+    ),
+    "cloudrun": BusinessConnector(
+        "cloudrun",
+        FAKES / "serverless_service.py",
+        "WORKLOADS_TOKEN",
+        ("--project", "example", "--location", "europe-west1"),
+        key="google",
+    ),
+    "depsdev": BusinessConnector("depsdev", FAKES / "package_index_service.py", "PACKAGES_TOKEN"),
+    "discourse": BusinessConnector("discourse", FAKES / "forum_service.py", "MENTIONS_TOKEN"),
     "einvoice": BusinessConnector(
         "einvoice", FAKES / "document_inbox_service.py", "DOCUMENTS_TOKEN"
     ),
     "expiry": BusinessConnector("expiry", FAKES / "expiry_service.py", "EXPIRY_TOKEN"),
+    "firebase": BusinessConnector(
+        "firebase", FAKES / "hosting_releases_service.py", "SITES_TOKEN", key="google"
+    ),
+    "freshdesk": BusinessConnector(
+        "freshdesk", FAKES / "support_desk_service.py", "HELPDESK_TOKEN"
+    ),
+    "gcp": BusinessConnector(
+        "gcp", FAKES / "cloud_service.py", "CLOUD_TOKEN", ("--project", "example")
+    ),
+    "githubaudit": BusinessConnector(
+        "githubaudit", FAKES / "audit_log_service.py", "AUDIT_TOKEN", ("--organization", "example")
+    ),
+    "googleanalytics": BusinessConnector(
+        "googleanalytics",
+        FAKES / "analytics_service.py",
+        "ANALYTICS_KEY",
+        ("--property", "123456789"),
+        key="google",
+    ),
+    "googleworkspace": BusinessConnector(
+        "googleworkspace",
+        FAKES / "workspace_reports_service.py",
+        "AUDIT_TOKEN",
+        ("--subject", "admin@org.example", "--token-url", "{target}/token"),
+        service_account=True,
+    ),
+    "hubspot": BusinessConnector("hubspot", FAKES / "customer_system_service.py", "CRM_TOKEN"),
+    "jira": BusinessConnector(
+        "jira", FAKES / "task_rest_service.py", "TASKS_TOKEN", ("--project", "TSK"), pair=True
+    ),
     "kubernetes": BusinessConnector("kubernetes", FAKES / "workload_cluster.py", "WORKLOADS_TOKEN"),
+    "linear": BusinessConnector(
+        "linear", FAKES / "task_graph_service.py", "TASKS_TOKEN", ("--team", LINEAR_TEAM)
+    ),
+    "loki": BusinessConnector("loki", FAKES / "log_store_service.py", "LOGS_TOKEN"),
+    "mailchimp": BusinessConnector(
+        "mailchimp", FAKES / "newsletter_service.py", "NEWSLETTER_TOKEN"
+    ),
+    "mastodon": BusinessConnector("mastodon", FAKES / "social_service.py", "MENTIONS_TOKEN"),
+    "mixpanel": BusinessConnector(
+        "mixpanel",
+        FAKES / "product_analytics_service.py",
+        "ANALYTICS_KEY",
+        ("--project", "1234567"),
+        pair=True,
+    ),
+    "netlify": BusinessConnector("netlify", FAKES / "site_deploys_service.py", "SITES_TOKEN"),
     "openai": BusinessConnector("openai", FAKES / "model_costs_service.py", "MODEL_COSTS_TOKEN"),
+    "paypal": BusinessConnector(
+        "paypal", FAKES / "billing_plans_service.py", "PAYMENTS_TOKEN", pair=True
+    ),
+    "powerbi": BusinessConnector(
+        "powerbi",
+        FAKES / "business_intelligence_service.py",
+        "BI_TOKEN",
+        ("--login", "{target}", "--tenant", "example"),
+        pair=True,
+    ),
+    "resend": BusinessConnector(
+        "resend",
+        FAKES / "mail_api_service.py",
+        "MAIL_PASSWORD",
+        ("--from", "support@example.org"),
+        intake="MAIL_INTAKE_SECRET",
+    ),
+    "revenuecat": BusinessConnector(
+        "revenuecat",
+        FAKES / "app_subscriptions_service.py",
+        "PAYMENTS_TOKEN",
+        ("--project", "proj_fake"),
+    ),
+    "sanity": BusinessConnector("sanity", FAKES / "content_lake_service.py", "WEBSITE_TOKEN"),
+    "scim": BusinessConnector("scim", FAKES / "directory_service.py", "DIRECTORY_TOKEN"),
     "sentry": BusinessConnector(
         "sentry", FAKES / "error_tracking_service.py", "ERRORS_TOKEN", ("--organization", "example")
     ),
     "stripe": BusinessConnector("stripe", FAKES / "payment_service.py", "PAYMENTS_TOKEN"),
+    "vault": BusinessConnector("vault", FAKES / "secret_store_service.py", "SECRETS_TOKEN"),
+    "vercel": BusinessConnector("vercel", FAKES / "site_deployments_service.py", "SITES_TOKEN"),
+    # The credential is `<user>:<application password>`: a pair, as a provider that signs takes.
+    "wordpress": BusinessConnector(
+        "wordpress", FAKES / "website_service.py", "WEBSITE_TOKEN", pair=True
+    ),
+    "zendesk": BusinessConnector(
+        "zendesk", FAKES / "helpdesk_service.py", "HELPDESK_TOKEN", pair=True
+    ),
 }
 
 
@@ -1146,23 +1393,27 @@ def start_business_connector(tmp_path: Path) -> Iterator[Callable[..., RunningCo
 
     def start(module: str, *, fault: str | None = None) -> RunningConnector:
         spec = BUSINESS[module]
-        value = spec.value()
         name = f"{module}-{fault or 'honest'}"
         port = free_port()
         service_url = f"http://127.0.0.1:{port}"
-        fake_env = {**_clean_environment(), "FAKE_TOKENS": value}
+        value = spec.value(service_url)
+        fake_env = {**_clean_environment(), "FAKE_TOKENS": spec.admitted(value)}
         _start_fake(
             started, tmp_path, spec.fake, ["--port", str(port)], fake_env,
             f"{service_url}/_fake/state", name,
         )  # fmt: skip
-        env = {**_clean_environment(), **_secret_files(tmp_path, name, {spec.credential: value})}
-        args = ["--target", service_url, *spec.args] + (["--fault", fault] if fault else [])
+        values = {spec.credential: value}
+        if spec.intake:
+            values[spec.intake] = "whsec_" + base64.b64encode(secrets.token_bytes(24)).decode()
+        env = {**_clean_environment(), **_secret_files(tmp_path, name, values)}
+        given = [a.replace("{target}", service_url) for a in spec.args]
+        args = ["--target", service_url, *given] + (["--fault", fault] if fault else [])
         endpoint, log = _start_connector(started, tmp_path, module, args, env, name)
         return RunningConnector(
             f"{endpoint}/mcp",
             log,
             service_url,
-            {spec.credential: value},
+            values,
             started[-1],
             scenario=CONNECTORS / module / "scenario.json",
         )

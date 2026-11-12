@@ -21,7 +21,7 @@ boundaries, `import-linter` contracts and `tests/architecture` are not optional 
 | `decision` | decision requests, the decision register, rules derived from it: requests raised, answered, their reading confirmed, the register, the decider's list and response times (ADR-0042); rules from precedent proposed, adopted and answering their kind (`decision_rule`, ADR-0161), wired with the requests in `composition/decisions.py` |
 | `catalog` | models, agents, skills, connectors, blueprints, maturity |
 | `accounting` | consumption capture, Takt, forecasts, marginal value |
-| `knowledge` | knowledge sources, embeddings, citations. Its package's first content is the guides beyond the repository (UC-13.6, ADR-0065): the manifest, the rendering by rule, the seven states a page in a knowledge system can be in, and the publishing through `knowledge.pages` |
+| `knowledge` | knowledge sources, embeddings, citations. Its package's first content is the guides beyond the repository (UC-13.6, ADR-0065): the manifest, the rendering by rule, the seven states a page in a knowledge system can be in, and the publishing through `knowledge.pages`. Then the knowledge layer (UC-5.5, ADR-0265): the rule `citation`, which lets an answer drawn from knowledge leave its step only with its sources, and the index `KnowledgeEntry` of references and digests of what was read, never the text |
 | `value` | value ledger, cost and benefit entries, revert analysis |
 | `ledger` | hash chain, verification, export |
 | `reporting` | views and who may see them, reports and their delivery, the explanation of an action on request; owns no figure — every number is read from the component that produces it (ADR-0029). Its package arrived with the product finding (UC-6.12, ADR-0046), which leaves an instance by pseudonym, only where its operator enabled it, and only past the one rule for what may leave, which a report written by hand passes too (ADR-0112); the owner-facing channel — a tenant's configuration and phrasebook, a report to the owner in three renderings, the answer in the channel or on the report's page in the web app read, reflected and confirmed — is in it too (ADR-0045, ADR-0120), and so is the broken interface noticed from the run's failed calls (ADR-0047), and what needs a person's action — a capacity crossing to *act*, a lost claim, a failed or missing backup — noticed from recorded facts (ADR-0106), and the signals judged against their corridors, with the daily report of what deviates (ADR-0109) |
@@ -75,7 +75,7 @@ taktus/
 │
 ├── api/openapi.yaml                 # Taktus' OWN REST interface, generated from FastAPI by `make generate`, committed, held current by a test
 ├── migrations/                      # Alembic: alembic.ini, env.py, versions/ — explicit DDL, one head
-├── deploy/{docker,k8s,backup}/   # docker/compose.yml: Taktus and PostgreSQL, `make up`; compose.reference-worker.yml: the worker layered in for development; compose.dev.yml: the development database; backup/: the image of the database backup job (ADR-0087)
+├── deploy/{docker,k8s,backup,docs}/   # docker/compose.yml: Taktus and PostgreSQL, `make up`; compose.reference-worker.yml: the worker layered in for development; compose.dev.yml: the development database; backup/: the image of the database backup job (ADR-0087); docs/: how the documentation site is uploaded to web hosting (DEC-0234)
 ├── blueprints/{dev-orchestration,it-operations,self-operation,finance}/   # README.md: the blueprints and the example domains; self-operation: what Taktus runs for itself — S-01 the removal test, weekly; finance: a description
 ├── examples/processes/              # process bundles that run as they are; each exercised by a test
 ├── web/                             # the web app: SvelteKit, TypeScript, a static build with the route after `#`, built into the image and served by the `api` role at {prefix}/app/; every link a channel carries to a report opens its page there (ADR-0120); tests beside the code; `make gate-web` (ADR-0063)
@@ -92,7 +92,8 @@ taktus/
 │   └── security/ resilience/
 │
 ├── docs/{architecture,adr,usecases,vision,decisions,runs,research,roadmap.md}   # research: dated, sourced evidence a decision rests on
-├── docs/guides/                     # guides.yaml declares the administration guide and the guide for users; the files beside it hold only the words no other document says (ADR-0065)
+├── docs/guides/                     # guides.yaml declares the guides for administrators, users and developers; the files beside it hold only the words no other document says (ADR-0065)
+├── docs-site/                       # the documentation site's configuration and start page: `make docs-site` builds the guides into static files under build/docs-site/, which git ignores (DEC-0234, NTC-0272)
 ├── tools/                           # gates, checkdocs, preflight, generators
 ├── pyproject.toml  Makefile  .importlinter  .env.example   # .env.example lists TAKTUS_* names, never values
 └── CLAUDE.md  README.md  LICENSE  NOTICE  CONTRIBUTING.md  CREDENTIALS.md
@@ -143,7 +144,9 @@ connector is a driven adapter and the suite its client, and neither imports the 
 a stage of `connectors/Dockerfile`, and the control plane image copies nothing of it. The
 control plane keeps its side of the port under `adapters/driven/connectors/` — the MCP client,
 the pool, and the loopback and directory connectors, which reach the instance itself and run in
-its process.
+its process. A connector that reaches a cloud's API signs with its own copy of the key exchange
+(`auth.py` in its directory), because an image holds nothing of another connector; the release's
+list (`composition/shipped.json`, `make generate`) names each one with what it declares.
 
 `tests/architecture` fails on:
 
@@ -272,7 +275,10 @@ role it would tie the core to a model stack and the removal test would be lost.
   identifier from the trigger and the item alone, so an item listed again by a later slot —
   a document still in an inbox — starts no second run; its read takes the trigger's fixed
   `arguments` (ADR-0188). The release's list of what it ships (`composition/shipped.json`)
-  names the operations every connector declares. The tick also makes the capacity
+  names the operations every connector declares, the logs, secret metadata, signing
+  credentials and model catalogue of ADR-0202 to ADR-0204 among them, generated from the
+  connectors' declarations (`make generate`), so that a new connector reaches it without a hand
+  edit. The tick also makes the capacity
   report, and once a minute it watches that every expected run happened: one that did not
   raises an incident (`composition/expected_runs.py`, ADR-0107,
   `tests/integration/test_expected_runs.py`), and judges every signal against its corridor,
@@ -284,14 +290,32 @@ role it would tie the core to a model stack and the removal test would be lost.
   to the owner what needs a person's action, a level that fell by rule and a raise Taktus
   proposes among it (`composition/alerts.py`, ADR-0106, ADR-0110). The run reaches the
   governance component's `Corrections` through `composition/decisions.py`, and `taktusctl
-  corrections` reads and configures it. It reaches the tenant's anchors, and the ceilings its
+  corrections` reads and configures it; the same port reads the classes of request a version's
+  statement names from the process component (ADR-0215). It reaches the tenant's anchors, and the ceilings its
   risk classes set on a level, the same way, and `taktusctl anchors set` stores both in one
   document, the column `anchor_configuration.levels` holding the ceilings (ADR-0170). It reaches the tenant's residency rule,
-  `TenantResidency`, the same way, and `taktusctl residency` shows and sets it. The run and
+  `TenantResidency`, the same way, and `taktusctl residency` shows and sets it, narrowed per
+  data class and per process; the run asks it with the run's process (ADR-0258). Registration
+  reaches it through `ResidencyBindings`, which `composition/residency.py` answers from the
+  pools and the declared host locations (ADR-0281). The run and
   registration reach the tenant's declaration of its sources, `TenantSources`, the same way,
   and `taktusctl sources` shows and changes it (ADR-0130). Registration reaches the roles the tenant's
   identities hold, `RoleStructure`, from the identity component's `IdentityDirectory`
-  directly, and the process level reads a step's role from the version (ADR-0146).
+  directly, and the process level reads a step's role from the version (ADR-0146). It reaches the
+  rights of a process, `ProcessRights`, from the same directory (ADR-0257). The governance
+  component's `TenantDomains` answers registration's `DomainOwners` and reads the takeover and
+  removal tests through `composition/domains.py`, and `AnchorsInForce` reads the domains to scope
+  the anchors (ADR-0259). Its `TenantBudgets` answers the run's `TenantBudget` through
+  `BudgetOfTheRun` in `composition/decisions.py`, and `taktusctl budget` sets it (ADR-0260).
+  Its `UnitLimits` answers the run's `UnitLimitsPort` through `UnitLimitsOfTheRun` in
+  `composition/unit_limits.py`, which reads where an identity sits from the identity component's
+  `IdentityDirectory`; `taktusctl units limit` sets the limits (ADR-0282).
+  The accounting component's `BottlenecksHandler` reads its three ports through
+  `composition/bottlenecks.py`: `RunAccounts` over the run's `BlockedTime`, which hands over the
+  limits and the work held back and the waits on people only grouped; `MethodsOfTheRun` over the
+  step measures; `RulesOfTheDecisions` over the decision component's rules. The run's
+  `Departments` is answered there from the identity directory, and `taktusctl bottlenecks`
+  prints the analysis (ADR-0283).
   `composition/acting.py`'s `ActingReads` gathers what acts for a tenant, what depends on it and
   how a process really runs from the catalog's maturity records, the pools, the process
   versions, the residency rule, the stops, the blocks, the provenance store and the identities'
@@ -307,7 +331,11 @@ role it would tie the core to a model stack and the removal test would be lost.
   which the engine reads before every handover to a worker, every connector call and every
   question to a model, and the runner at every renewal; the
   scheduler confirms them in `composition/stops.py`, and `taktusctl stop` requests, shows and
-  lifts them (ADR-0138). The run reaches a version's deadlines in the process component
+  lifts them (ADR-0138). The same `Stops` keep the stops of a process and of a tenant, in
+  `scoped_stop`; the engine reads them before it hands any step on, and `taktusctl stop
+  process`, `tenant` and `global` request them. The governance component's `ResultDefects`
+  stops a process where its rule decides `stop`, through `RuleStops` in `composition/stops.py`
+  (ADR-0256). The run reaches a version's deadlines in the process component
   through `DeadlinesOfTheVersion`, in the same module, and its `DeadlineKeeper` keeps them;
   the scheduler takes their actions in `composition/deadlines.py`, which starts a process
   through the command component as a trigger does, and `taktusctl deadline` lists them and sets
@@ -371,7 +399,9 @@ role it would tie the core to a model stack and the removal test would be lost.
   A trigger whose condition does not hold leaves its entry for a later pass.
   The same pass reads `intake.contribution`: an unknown sender's contribution on a channel
   `TAKTUS_TRIAGE` names starts that channel's triage process once, acting for whoever registered
-  its active version, with no trigger matched (UC-1.9, ADR-0088).
+  its active version, with no trigger matched (UC-1.9, ADR-0088). It reads `intake.assistant`
+  too: a placed person's message in a rollout channel `TAKTUS_ROLLOUT` names runs the agent's
+  own process as that person (`composition/assistants.py`, UC-12.1, ADR-0261).
 - **The stream of changes** is the `api` role's (`composition/live.py`, ADR-0055). Each process
   holds at most `TAKTUS_LIVE_STREAMS` streams and one listening connection. A notification for a
   tenant with open streams wakes one read of its ledger, after the oldest position its streams
@@ -446,6 +476,50 @@ role it would tie the core to a model stack and the removal test would be lost.
   into `OwnerAnswers` beside the change in dialogue). Where a served take-over stands is read
   from the step run alone (`StepRun.takeovers`) and handed to the run level by
   `composition/levels.py`.
+- **A heal in the run's report** (UC-4.6): `composition/levels.py`'s `RepositoryLevelRecords`,
+  given the ledger and the object store, reads each `step.healed` of the run with the failure
+  it answered and the outcome of the step's next `step.finished`, and hands it to the run level
+  as the step's `heals`; the daemon's `Wired` gives both.
+- **The processes Taktus proposes** (ADR-0270) are found by the process component's rule
+  `domain/service/proposing.py` over facts `composition/process_proposals.py`'s
+  `ProcessProposals` reads from the ledger and the runs. Accepting one hands its words to
+  `ProposalActs.ask` (`composition/proposals.py`); a decision is a ledger entry, and nothing is
+  stored to make the list. The daemon hands it to the HTTP surface as `process_proposals`
+  (`rest/process_proposals.py`, `GET /process-proposals` and its `accept` and `decline`), and
+  the web app reads it on its page *Proposed* (`web/src/routes/proposed/`).
+- **A distribution and the window of a defect** (ADR-0271): the engine applies a check of kind
+  `distribution` after the result counted (`_distributed` in
+  `run/application/service/execute_run.py`, the statistic in `run/domain/service/checking.py`)
+  and records `result.unchecked` for a result no check judged. `composition/contents.py`'s
+  `StepContents` answers the governance port `RecordedContents`: the shape of what each result
+  read, and the runs a check run again marks; the daemon gives it to `ResultDefects`.
+- **Where a process's control sits** (ADR-0272): the version's `control`
+  (`process/domain/model/process.py`), the run's port `ExternalControl`
+  (`run/ports/control.py`) that the engine asks at every step boundary, and
+  `composition/control.py`'s `TaskControl`, which reads a decoupled task's state through the
+  connector that serves it; the daemon gives it to the engine.
+- **A partner's data contract and a chain of processes** (ADR-0273, ADR-0274): the process
+  component holds a version's `contracts` (`domain/model/process.py`) and its rule
+  (`domain/service/partners.py`), and a chain's shape and rules (`domain/model/chain.py`,
+  `domain/service/chains.py`); `composition/chains.py`'s `ChainRuns` runs a chain link by link
+  and records every handover.
+- **The load measurement** (S-04, ADR-0223) is `adapters/driving/cli/load_command.py`: it
+  submits the probe `blueprints/self-operation/processes/S-04-load-probe.yaml`, which the control
+  plane's image carries, through the same services as `taktusctl submit`, and reads each run's
+  latency from its record.
+- **A tenant's export and import** (ADR-0221): the port `TenantArchive` of
+  `ports/persistence.py`, implemented over every table with a `tenant` column by
+  `adapters/driven/postgres/archive.py`; `composition/tenant_export.py`'s `TenantExports`
+  writes and reads the document and checks the chains after an import. `taktusctl tenant
+  export` and `import` (`adapters/driving/cli/tenant_command.py`) and the administration routes
+  of `adapters/driving/rest/tenants.py` reach it; `composition/local.py` and the daemon's `Wired`
+  give it where the state is a database.
+- **Data-protection requests and the processing evidence** (ADR-0176) are served on the HTTP
+  surface by `adapters/driving/rest/subjects.py` through the ports `SubjectActs` and
+  `EvidenceReads` of `adapters/driving/rest/wiring.py`; the daemon's `Wired` builds the
+  governance component's `SubjectRequests` over `composition/subjects.py`'s `RunHoldings`, with
+  an uncached object store, and `ProcessingEvidence`, as `composition/local.py` does for
+  `taktusctl subject` and `evidence`. The web app's page is `web/src/routes/subjects/`.
 - **A process's takeover instructions and their trials** (ADR-0180) belong to the process
   component: `domain/model/takeover.py`, the rules registration holds them to in
   `domain/service/takeover.py`, and `application/service/takeover.py`'s `TakeoverTrials`, which
@@ -459,12 +533,28 @@ role it would tie the core to a model stack and the removal test would be lost.
   `process_version` (`adapters/driven/postgres/_schema.py`, `_mapping.py`, migration `0098`).
   `composition/levels.py` reads the trials to mark a version *untried* on the process level and
   the overview, and `composition/stages.py`'s `InstructionsOfTheVersion` answers the stages'
-  port from the active version.
+  port from the active version. Since ADR-0225 `composition/acting.py`'s `ActingReads` reads
+  them for the register, and `composition/stages.py`'s `LevelsOfTheProcess` for the stages'
+  view and the report that proposes opening a stage.
 - **The exactness statement where its reader is** (ADR-0152 §6) is generated by the process
   component and handed over unchanged by `composition/levels.py`: `statement_of` gives it to
   the process level, every run level and the overview, and `VersionStatements` answers the run's
   port `Statements` for a report step's `{"$run": "exactness"}`; `composition/local.py`,
-  `composition/daemon.py` and `composition/replay.py` wire it into their engines.
+  `composition/daemon.py` and `composition/replay.py` wire it into their engines. Since
+  ADR-0226 the residual risk carries the measured correction rate: the `value` component folds
+  it into the projection `value.corrections.v1` (`components/value/domain/service/corrections.py`)
+  and answers it by `CorrectionRates` (`application/query/correction_rates.py`);
+  `composition/levels.py`'s `measured_of` reads it and hands it to the statement, for the levels
+  and `VersionStatements`. An `llm` step that reads the statement carries `explains` and a
+  closing line naming it (`explaining` in `run/application/service/execute_run.py`).
+- **A result defect found, remedied and delivered** (ADR-0179, ADR-0184, ADR-0227) is wired in
+  `composition/defects.py`: `DefectWatch` raises it, `Remedies` starts the remediation run of the
+  wrong run and, once it finished, of every run built on its result (`follow`), `RecheckWatch`
+  applies the checks that read a source again, `IncidentDelivery` delivers the incident through
+  `repository.issues` or else `tasks.items`, `IncidentReports` has a model write its report, and
+  `CorrectionRequests` answers governance's port `OpenCorrections`, which holds an incident open
+  while its correction waits. A step done by hand is a happening of the incident
+  (`ResultDefects.by_hand`, `taktusctl defect by-hand`).
 - **An outside participant's answer** (ADR-0155) is taken from a channel's intake by
   `composition/participants.py`: `ParticipantAnswers` stands ahead of `OwnerAnswers` in the
   daemon's intake, finds the waiting `human` step of the tenant by the intake's channel and
@@ -510,6 +600,41 @@ role it would tie the core to a model stack and the removal test would be lost.
   on the command line alike. `taktusctl catalogue` (`adapters/driving/cli/catalogue_command.py`)
   reaches it through `catalogue_index` and `catalogue_author` of the command line's wiring; the
   table `catalogue_installation` is migration 0096.
+- **Models by dialect, and local first** (ADR-0248). `model_pool` of `composition/execution.py`
+  builds each configured model by `TAKTUS_MODEL_DIALECT`: `adapters/driven/models/openai_compatible/`
+  for chat completions, `adapters/driven/models/vertex/` for a regional `generateContent`
+  endpoint, whose region names its location when none is declared. `load_model` of
+  `composition/settings.py` binds every purpose to `TAKTUS_MODEL_LOCAL_ENDPOINT` under
+  `TAKTUS_MODEL_LOCAL_FIRST` and refuses a named model there without its location.
+- **Shares of the catalogue** (ADR-0246, ADR-0247) are the catalog component's
+  `domain/model/shares.py` (the share, the circle, the caller's credential),
+  `domain/service/shares.py` (who is inside, the withdrawal by the removal verdict, the use per
+  unit, the caller's parameters) and `application/service/shares.py` (`CatalogueShares`, the
+  one writer of both records and of `catalogue.shared`, `catalogue.withdrawn`,
+  `catalogue.share_refused` and `credential.bound`). `composition/shares.py` answers the run's
+  port `Shares` (`run/ports/shares.py`) from it: the engine passes over a model the run's
+  identity may not use (`not_shared`) and replaces a shared connector's credential names with
+  the caller's own, or refuses the call (`frame.refused`). Whether a connector call is
+  admitted is one rule, `SharesOfTheRun.connector_refused` (ADR-0294): the identity is inside
+  the share, and the run's process may use the connector by the placement the identity
+  component's `OrganisationStructure` holds, which `shares_of` is handed. `SharedAgents`
+  refuses a caller outside an agent's share (`agent.refused`), and `CatalogGuidance` hands a run only the skills
+  shared with its identity. `CatalogueUse` reads an entry's use per unit and the viewer's own.
+  `taktusctl catalogue share`, `withdraw`, `shares`, `use` and `bind-credential` reach it
+  through `shares` and `catalogue_use` of the command line's wiring, and `taktusctl skill
+  export` writes skills back as their directories; the tables `catalogue_share` and
+  `caller_credential` are migration 0103.
+- **Domain blueprints** (ADR-0263, UC-15.1) are the catalog component's
+  `domain/model/blueprint.py` (the blueprint, what a bundle came to, the instance and its
+  answers, the offer, the figures per domain), `domain/service/blueprints.py` (the admission
+  with every finding, the open questions, the starting level, the runs counted per domain) and
+  `application/service/domains.py` (`DomainInstances`, the one writer of the instance), over the
+  ports of `ports/domains.py`: `ProcessProposals`, `People` and `Adapters`.
+  `composition/domain_blueprints.py` reads a blueprint's directory, holds each bundle to
+  `parse_bundle`, answers the three ports from `Proposals`, the identity directory and the
+  release's list of connectors, and exports a blueprint as its files. `taktusctl domain`
+  (`adapters/driving/cli/domain_command.py`) reaches it through `domains` of the command line's
+  wiring; the table `domain_instance` is migration 0106.
 - **A halted run raised and resumed** is `taktusctl resume` (`adapters/driving/cli/resume_command.py`, #458): it reads no bundle, so the process's active version stays; it raises a run's money or its quota (DEC-0208).
 - **Memory once started.** Once wired, the daemon collects and freezes what its start left
   alive — the modules, the wiring — so that a full garbage collection, which stops every thread
@@ -538,3 +663,8 @@ role it would tie the core to a model stack and the removal test would be lost.
   per credential, the platforms it administers (`ports/administration.py`, ADR-0052). The
   composition root reads both once and hands the one value to the process component's
   registration and to the run engine's admission; without a platform the daemon warns at start.
+- **The machine's hardware.** The hardware port (`ports/hardware.py`, ADR-0284) is served by
+  `adapters/driven/platform/hardware.py`, which reads the kernel's device classes and runs no
+  program. `composition/hardware.py` hands it, with every configured model and its
+  `TAKTUS_MODEL_NEEDS`, to governance's `ReportHardwareHandler`; `taktusctl hardware` prints the
+  report through `Wiring.hardware`, with no state and no database.

@@ -43,6 +43,7 @@ from taktus.components.reporting.domain.model.interface import (
 from taktus.components.reporting.domain.model.levels import (
     DecisionFacts,
     Figure,
+    HealFacts,
     OriginFacts,
     OverviewFacts,
     PlannedStep,
@@ -124,6 +125,7 @@ __all__ = [
     "Finding",
     "FindingsLevel",
     "Happened",
+    "HealFacts",
     "InterfaceCause",
     "Judged",
     "Lack",

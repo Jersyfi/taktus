@@ -54,14 +54,20 @@ from starlette.routing import Route
 
 from taktus.adapters.driving.rest import (
     acting,
+    administration,
     agent_surface,
     autonomy,
     catalogue,
+    connections,
+    deprecation,
     evaluations,
+    figures,
     findings,
     gallery,
     levels,
     operation,
+    planning,
+    process_proposals,
     profiles,
     proposals,
     relay,
@@ -71,6 +77,8 @@ from taktus.adapters.driving.rest import (
     stages,
     steering,
     streams,
+    structure,
+    subjects,
     takeover,
     takeover_instructions,
     tenants,
@@ -82,6 +90,7 @@ from taktus.adapters.driving.rest.wiring import RestServices, StreamsFull
 from taktus.components.command.application.service import (
     AlreadyCompleted,
     CompleteIntake,
+    NotACommand,
     ReceiveIntake,
     UnknownChannel,
     UnknownIntakeEvent,
@@ -97,6 +106,7 @@ from taktus.components.decision.application.service import (
     UnknownRequest,
 )
 from taktus.components.identity.application.service import UnknownIdentity
+from taktus.components.ledger.domain.model import exported
 from taktus.components.reporting.application.query import view as report_view
 from taktus.components.reporting.application.service import AnswerOnPage
 from taktus.components.reporting.domain.model import (
@@ -163,6 +173,8 @@ def build_app(
     )
     app.add_exception_handler(HTTPException, on_http_exception)
     app.add_exception_handler(RequestValidationError, on_validation_error)
+    # A deprecated operation says so in every answer (ADR-0220 §4.1).
+    app.add_middleware(deprecation.Deprecations)
     app.include_router(_operations(services), prefix=base)
     if full:
         app.include_router(_intake(services), prefix=base)
@@ -176,7 +188,11 @@ def build_app(
         app.include_router(operation.router(services, _authenticated), prefix=base)
         app.include_router(proposals.router(services, _authenticated), prefix=base)
         app.include_router(proposals.acts_router(services, _authenticated), prefix=base)
+        app.include_router(process_proposals.router(services, _authenticated), prefix=base)
         app.include_router(gallery.router(services, _authenticated), prefix=base)
+        app.include_router(planning.router(services, _authenticated), prefix=base)
+        app.include_router(structure.router(services, _authenticated), prefix=base)
+        app.include_router(administration.router(services, _authenticated), prefix=base)
         app.include_router(evaluations.router(services, _authenticated), prefix=base)
         app.include_router(tenants.router(services), prefix=base)
         app.include_router(findings.router(services), prefix=base)
@@ -191,8 +207,11 @@ def build_app(
         app.include_router(catalogue.router(services, _authenticated), prefix=base)
         app.include_router(streams.router(services, _authenticated), prefix=base)
         app.include_router(profiles.router(services, _authenticated), prefix=base)
+        app.include_router(figures.router(services, _authenticated), prefix=base)
         app.include_router(spend.router(services, _authenticated), prefix=base)
         app.include_router(trials.router(services, _authenticated), prefix=base)
+        app.include_router(subjects.router(services, _authenticated), prefix=base)
+        app.include_router(connections.router(services, _authenticated), prefix=base)
         # A person's own agent, over MCP, with a key of its own (ADR-0131).
         app.router.routes.append(
             Route(
@@ -266,8 +285,10 @@ def _intake(services: RestServices) -> APIRouter:
             202: {
                 "description": "Decided: `accepted` with the intake event, `refused`, "
                 "`unknown_sender` with whether the sender was answered in the channel and "
-                "whether the message linked their account, or `answer` for a message in the "
-                "thread of a report to the owner, with what became of it."
+                "whether the message linked their account, `answer` for a message in the "
+                "thread of a report to the owner, with what became of it, `assistant` with the "
+                "intake event kept for the assistant of a rollout channel, or `passed` with why "
+                "a message in a rollout channel was passed over."
             },
             400: {"description": "The body cannot be read.", **PROBLEM},
             401: {"description": "Unsigned, or the signature does not verify.", **PROBLEM},
@@ -319,6 +340,11 @@ def _intake(services: RestServices) -> APIRouter:
             return JSONResponse(
                 {"answer": outcome.answer, "replied": outcome.replied}, status_code=202
             )
+        if outcome.assistant is not None:
+            # Kept for the rollout channel's assistant: never a command (ADR-0261).
+            return JSONResponse({"assistant": outcome.assistant.document()}, status_code=202)
+        if outcome.passed is not None:
+            return JSONResponse({"passed": outcome.passed}, status_code=202)
         if outcome.unknown_sender is not None:
             return JSONResponse(
                 {
@@ -348,7 +374,11 @@ def _intake(services: RestServices) -> APIRouter:
             401: {"description": "No account key, or one that proves no identity.", **PROBLEM},
             404: {"description": "No such intake event in your tenant.", **PROBLEM},
             409: {"description": "The event was completed before.", **PROBLEM},
-            422: {"description": "The sender cannot be placed.", **PROBLEM},
+            422: {
+                "description": "The sender cannot be placed, or the event was written in a "
+                "rollout channel and is no command.",
+                **PROBLEM,
+            },
         },
     )
     async def complete(
@@ -364,7 +394,7 @@ def _intake(services: RestServices) -> APIRouter:
             return problem(404, str(error))
         except AlreadyCompleted as error:
             return problem(409, str(error))
-        except UnknownSender as error:
+        except (UnknownSender, NotACommand) as error:
             return problem(422, str(error))
         return JSONResponse(command.document(), status_code=200)
 
@@ -921,6 +951,32 @@ def _reads(services: RestServices) -> APIRouter:
         return JSONResponse(run.document())
 
     @router.get(
+        "/ledger/export",
+        summary="The tenant's whole ledger, one entry per line, for verification outside Taktus",
+        description="Every entry of your tenant's ledger in sequence order, each as the JSON "
+        "document its hash covers, one per line (`application/x-ndjson`). Anyone with the file "
+        "and the ledger's published hash rule recomputes every chain without Taktus: "
+        "`deploy/backup/backup.py verify-export <file>` does (UC-6.1, ADR-0253). The entries "
+        "carry identifiers, tokens and digests, no text. Only the role `owner` may export: the "
+        "ledger holds every run of the tenant, also those a reader may not see.",
+        responses={
+            200: {"description": "The entries, one JSON document per line."},
+            **unauthenticated,
+            403: {"description": "Your roles do not include `owner`.", **PROBLEM},
+            **INVALID,
+        },
+    )
+    async def ledger_export(authorization: str | None = Header(default=None)) -> Any:
+        who = await _authenticated(services, authorization)
+        if who is None:
+            return problem(401, needs_key)
+        if EXPORTER not in who.roles:
+            return problem(403, f"only the role {EXPORTER!r} exports the tenant's ledger")
+        async with services.work.transaction(who.tenant):
+            entries = await services.ledger.entries(who.tenant)
+        return Response(content=exported(entries), media_type="application/x-ndjson")
+
+    @router.get(
         "/runs/{run_id}/ledger",
         summary="The ledger entries of one run you may see, in sequence",
         description="The account key in `Authorization: Bearer` proves the identity. A run you "
@@ -961,6 +1017,9 @@ def _reads(services: RestServices) -> APIRouter:
     return router
 
 
+EXPORTER = "owner"
+"""The role that exports a tenant's whole ledger (ADR-0253 §1)."""
+
 RECONNECT_MILLIS = 1000
 """How long a reader waits before it reconnects, as the stream tells it (ADR-0055 §6)."""
 
@@ -989,7 +1048,7 @@ def _mark(cursor: str) -> Mark | None:
 
 
 def _reader(who: Resolution) -> Reader:
-    return Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+    return Reader(tenant=who.tenant, identity=who.identity, roles=who.roles, unseen=who.unseen)
 
 
 def _sse(event: Snapshot | Change | None) -> str:

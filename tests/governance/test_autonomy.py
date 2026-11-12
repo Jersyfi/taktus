@@ -26,7 +26,10 @@ from taktus.adapters.driven.memory import (
 )
 from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
+from taktus.components.decision.domain.model import Request
 from taktus.components.ledger.application.service import ChainedLedger
+from taktus.components.process.domain.model import Process, ProcessVersion
+from taktus.components.reporting.domain.service.levels import run_level
 from taktus.components.run.application.service import (
     ConfirmSteps,
     EngineOptions,
@@ -35,11 +38,13 @@ from taktus.components.run.application.service import (
     StartRun,
 )
 from taktus.components.run.domain.model import Cause, Run, RunError, RunState, StepState
+from taktus.composition.levels import RepositoryLevelRecords
 from taktus.ports.administration import Administration
 from taktus.ports.worker import ComputeLimit, Limits, QuotaLimit
 from taktus.shared.v1 import (
     Autonomy,
     AutonomyLevel,
+    ClassAutonomy,
     Commissioned,
     ExactnessClass,
     Fallback,
@@ -123,10 +128,11 @@ class World:
         self.connector.reads["x"] = {"id": "x"}
         self.maturities = maturities if maturities is not None else FakeMaturities()
         self.queue = MemoryQueue(self.persistence, self.clock, lease_seconds=60)
+        self.objects = MemoryObjectStore()
         self.engine = RunEngine(
             runs=self.runs,
             work=self.persistence,
-            objects=MemoryObjectStore(),
+            objects=self.objects,
             ledger=self.ledger,
             provenance=MemoryProvenanceStore(self.persistence),
             workers=StaticWorkerPool([(WORKER, self.worker)]),
@@ -414,6 +420,36 @@ async def test_at_level_four_a_known_failure_inside_the_frame_is_healed_and_repo
     assert healed.refs.actor is None, "Taktus healed, no person"
 
 
+async def test_a_heal_is_shown_in_the_run_s_report_with_the_failure_and_its_outcome() -> None:
+    """UC-4.6 §2: every self-healing action appears in the run's report — the run level a
+    person reads in the web app and the channel — with the failure it answered, what was done
+    and the outcome, read from the ledger and nowhere else."""
+    w = World(rule("prep"), call("write", WRITE, after=("prep",)), level=4)
+    w.connector.fail_next[WRITE] = failure("unavailable", retryable=True)
+    run = await w.start()
+    records = RepositoryLevelRecords(
+        w.persistence,
+        w.runs,
+        MemoryRepository(w.persistence, Process),
+        MemoryRepository(w.persistence, ProcessVersion),
+        MemoryProvenanceStore(w.persistence),
+        MemoryRepository(w.persistence, Request),
+        ledger=w.ledger,
+        objects=w.objects,
+    )
+    facts = await records.run(TENANT, run.id)
+    assert facts is not None
+    level = run_level(facts)
+    (write,) = [s for s in level.steps if s.id == "write"]
+    (heal,) = write.heals
+    assert heal.action == "retry" and heal.attempt == 1 and heal.outcome == "succeeded"
+    assert "unavailable" in heal.failure
+    assert "Healed by Taktus after attempt 1 failed" in write.text
+    assert "the next attempt ended succeeded" in write.text
+    (prep,) = [s for s in level.steps if s.id == "prep"]
+    assert prep.heals == () and "Healed" not in prep.text
+
+
 async def test_at_level_four_a_failure_past_the_frame_escalates_with_what_was_tried() -> None:
     w = World(call("write", WRITE), level=4)
     w.connector.fail_each[WRITE] = [failure("unavailable", retryable=True) for _ in range(3)]
@@ -558,7 +594,15 @@ def test_no_field_of_the_statement_reaches_the_stop_the_reports_or_the_escalatio
     """The statement is closed: what a level can be configured with is these fields, and none
     of them names the stop, a report or the escalation. A new field fails here and is looked at
     against UC-7.1 before it passes."""
-    assert set(Autonomy.model_fields) == {"level", "reason", "toward_next", "actions", "history"}
+    assert set(Autonomy.model_fields) == {
+        "level",
+        "reason",
+        "toward_next",
+        "actions",
+        "history",
+        "classes",  # a level per class of request (ADR-0215): a level, never the stop
+    }
+    assert set(ClassAutonomy.model_fields) == {"step", "select", "default", "levels", "limits"}
     with pytest.raises(ValueError):
         Autonomy.model_validate(
             {"level": 3, "reason": "r", "toward_next": "t", "emergency_stop": False}

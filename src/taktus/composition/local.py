@@ -55,6 +55,7 @@ from taktus.adapters.driven.postgres import (
     PostgresQueue,
     PostgresRelay,
     PostgresRepository,
+    PostgresTenantArchive,
     PostgresTenantStore,
     PostgresTraceStore,
     SchemaOutOfDate,
@@ -70,6 +71,7 @@ from taktus.adapters.driving.cli.wiring import (
     Services,
 )
 from taktus.components.accounting.application.service import (
+    BottlenecksHandler,
     CostOfRunHandler,
     SpendHandler,
     TaktRateHandler,
@@ -77,6 +79,7 @@ from taktus.components.accounting.application.service import (
 from taktus.components.catalog.application.service import (
     AgentCatalog,
     CatalogueInstalls,
+    DomainInstances,
     RecordRemovalResultHandler,
     RunConformanceHandler,
     SkillCatalog,
@@ -85,25 +88,31 @@ from taktus.components.catalog.domain.model import (
     AdapterMaturity,
     AgentCore,
     CatalogueInstallation,
+    DomainInstance,
     RoleProfile,
     SkillOwnership,
     SkillPolicy,
     SkillVersion,
 )
-from taktus.components.command.application.service import CommissionPlanHandler
+from taktus.components.command.application.service import CommissionPlanHandler, PlanDialogue
+from taktus.components.command.domain.model import PlanDraft
 from taktus.components.decision.domain.model import Request
 from taktus.components.governance.application.service import (
     Drifts,
     ExpectedRuns,
+    ReportHardwareHandler,
     ResultDefects,
     SubjectRequests,
 )
+from taktus.components.governance.application.service.domains import ConformityEvidence
+from taktus.components.governance.application.service.stop_incidents import StopIncidents
 from taktus.components.governance.domain.model import (
     Incident,
     SubjectRequest,
     WatchConfiguration,
 )
 from taktus.components.governance.domain.model.anchors import AnchorConfiguration
+from taktus.components.governance.domain.model.domains import Domain
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.identity.domain.model import (
     BrowserSession,
@@ -113,8 +122,10 @@ from taktus.components.identity.domain.model import (
     RoleRights,
 )
 from taktus.components.knowledge.application.service import PublishGuidesHandler
+from taktus.components.knowledge.domain.model import KnowledgeEntry
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.deactivate import DeactivateProcessHandler
+from taktus.components.process.application.service.packages import ProcessPackages
 from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
@@ -136,14 +147,30 @@ from taktus.components.run.application.query import (
 )
 from taktus.components.run.application.service import EngineOptions, RunEngine
 from taktus.components.run.application.service.stops import Stops
-from taktus.components.run.domain.model import AdapterStop, Run
+from taktus.components.run.domain.model import AdapterStop, Run, RunSteering
+from taktus.components.value.application.query import CorrectionRates
 from taktus.composition.acting import ActingReads
 from taktus.composition.agents import SharedAgents
 from taktus.composition.alerts import alerts
+from taktus.composition.bottlenecks import (
+    DirectoryDepartments,
+    MethodsOfTheRun,
+    RulesOfTheDecisions,
+    RunAccounts,
+)
 from taktus.composition.capacity import capacity_report, rules_of
+from taktus.composition.case_spend import InstanceSpend
 from taktus.composition.catalogue import CatalogueAuthor, InstanceCatalogueIndex
 from taktus.composition.conformance import InstanceSuites, worker_suites
 from taktus.composition.decisions import decision_wiring
+from taktus.composition.defects import CorrectionRequests
+from taktus.composition.domain_blueprints import (
+    DeclaredAdapters,
+    DomainBlueprints,
+    DomainDialogue,
+    KnownPeople,
+    ProposalsOfProcesses,
+)
 from taktus.composition.evaluations import Evaluations
 from taktus.composition.execution import (
     connector_pool,
@@ -156,7 +183,9 @@ from taktus.composition.execution import (
 )
 from taktus.composition.findings import RunBlocks, RunContent, sending_of
 from taktus.composition.guides import InstanceGuides, served_directory
+from taktus.composition.hardware import hardware_report
 from taktus.composition.interfaces import broken_interfaces
+from taktus.composition.knowledge import IndexedCitations
 from taktus.composition.levels import RepositoryLevelRecords, VersionStatements
 from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.maturation import InstanceMaturation, RepositoryScores, maturation_wiring
@@ -165,7 +194,9 @@ from taktus.composition.moves import MethodMoves
 from taktus.composition.objects import object_store_of
 from taktus.composition.org_units import OrgUnitsOfTheRun
 from taktus.composition.owner_channel import known_secrets, owner_channel_wiring
+from taktus.composition.personal import ConfiguredPersonalCredentials
 from taktus.composition.proposals import InstanceChanges
+from taktus.composition.residency import PoolBindings
 from taktus.composition.settings import (
     ExecutionKind,
     load_administration,
@@ -173,22 +204,30 @@ from taktus.composition.settings import (
     load_budget,
     load_capacity,
     load_catalogue,
+    load_connector_locations,
     load_connectors,
     load_database_timeouts,
     load_findings,
     load_findings_connector,
+    load_host_locations,
     load_knowledge_directory,
     load_model,
     load_models,
     load_object_store,
+    load_personal_credentials,
     load_telemetry,
     load_workers,
 )
+from taktus.composition.shares import CatalogueUse, shares_of
 from taktus.composition.shipped import load as load_shipped
+from taktus.composition.shipped import product_names
 from taktus.composition.signals import signal_wiring
 from taktus.composition.skills import CatalogGuidance, SkillLifecycle
 from taktus.composition.stages import stage_wiring
+from taktus.composition.stops import RuleStops, StopIncidentsOfGovernance
 from taktus.composition.subjects import ProcessingEvidence, RunHoldings
+from taktus.composition.tenant_export import TenantExports
+from taktus.composition.workspace import structure_of
 from taktus.ports.backups import BackupLog
 from taktus.ports.configuration import Configuration, ConfigurationError
 from taktus.ports.org_units import OrgUnitSpends
@@ -200,6 +239,7 @@ from taktus.ports.persistence import (
     Repository,
     StateSize,
     Stored,
+    TenantArchive,
     TenantStore,
     UnitOfWork,
     UnreadableState,
@@ -240,6 +280,9 @@ class Stores:
     relay: Relay | None = None
     """The outbound binding's relay, which lives in the database (ADR-0156); None where the
     state is files, which no connected worker reaches."""
+    archive: TenantArchive | None = None
+    """A tenant's whole state as rows, for its export and import (ADR-0221); None where the
+    state is files, which is development state and is not exported."""
 
 
 class LocalWiring:
@@ -260,6 +303,8 @@ class LocalWiring:
             configured = load_workers(self._configuration)
             telemetry = telemetry_of(load_telemetry(self._configuration))
             connectors = load_connectors(self._configuration)
+            connector_locations = load_connector_locations(self._configuration)
+            host_locations = load_host_locations(self._configuration)
             model = load_model(self._configuration)
             models = load_models(self._configuration)
             budget = load_budget(self._configuration)
@@ -296,6 +341,8 @@ class LocalWiring:
                 clock=clock,
                 ids=ids,
             )
+            # The organisation's structure, beside the identities it places (ADR-0275).
+            structure = structure_of(stores.of, stores.work, ledger, clock)
             identities = IdentityDirectory(
                 tenants=registry,
                 identities=stores.of(Identity),
@@ -307,12 +354,13 @@ class LocalWiring:
                 ledger=ledger,
                 clock=clock,
                 randomness=SystemRandomness(),
+                structure=structure,
             )
             decisions = decision_wiring(stores.of, stores.work, ledger, clock, identities)
             org_units = (
                 None
                 if stores.spends is None
-                else OrgUnitsOfTheRun(decisions.org_units, stores.spends)
+                else OrgUnitsOfTheRun(decisions.org_units, stores.spends, structure)
             )
             objects = MemoryObjectStore(state_dir / "objects")
             recordings = RecordedResponses(runs, stores.work, objects)
@@ -333,8 +381,18 @@ class LocalWiring:
                 connector_pool(
                     connectors,
                     also=[(LOOPBACK, loopback), *served_directory(knowledge_directory)],
+                    locations=connector_locations,
                 ),
                 model_pool(models),
+            )
+            stop_incidents = StopIncidents(
+                stores.of(Incident),
+                stores.of(WatchConfiguration),
+                stores.of(Domain),
+                ledger,
+                objects,
+                stores.work,
+                clock,
             )
             stops = Stops(
                 stores.of(AdapterStop),
@@ -345,8 +403,12 @@ class LocalWiring:
                 clock,
                 ids,
                 stoppable=pools.identifiers(),
+                followed=StopIncidentsOfGovernance(stop_incidents),
             )
 
+            # Who may use a shared model or connector, with whose credential (ADR-0246,
+            # ADR-0247).
+            shares = shares_of(stores.of, stores.work, ledger, clock, identities, structure)
             # Skills and shared agents in the catalogue, handed to a run's steps (ADR-0162,
             # ADR-0163).
             skill_catalog = SkillCatalog(
@@ -358,14 +420,21 @@ class LocalWiring:
                 clock,
             )
             agent_catalog = AgentCatalog(
-                stores.of(AgentCore), stores.of(RoleProfile), stores.work, ledger, clock
+                stores.of(AgentCore),
+                stores.of(RoleProfile),
+                stores.work,
+                ledger,
+                clock,
+                products=product_names(load_shipped()),
             )
 
             def engine_for(
                 workers: StaticWorkerPool, connectors: StaticConnectorPool, models: StaticModelPool
             ) -> RunEngine:
                 return RunEngine(
-                    guidance=CatalogGuidance(skill_catalog, agent_catalog),
+                    guidance=CatalogGuidance(
+                        skill_catalog, agent_catalog, shares=shares.shares, identities=identities
+                    ),
                     runs=runs,
                     work=stores.work,
                     objects=objects,
@@ -388,6 +457,7 @@ class LocalWiring:
                         capacity=rules_of(capacity),
                         unit_memory_bytes=memory_demand(configured),
                         model_cool_down_seconds=model.cool_down_seconds,
+                        host_locations=host_locations,
                     ),
                     platform=HostPlatform(clock, state_dir=state_dir),
                     recordings=recordings,
@@ -409,9 +479,20 @@ class LocalWiring:
                     traces=stores.traces,
                     masking=known_secrets(os.environ),
                     stops=stops,
+                    tenant_budget=decisions.budget_of_the_run,
+                    unit_limits=decisions.unit_limits,
                     messages=decisions.messages,
-                    statements=VersionStatements(stores.work, stores.of(ProcessVersion)),
+                    statements=VersionStatements(
+                        stores.work, stores.of(ProcessVersion), CorrectionRates(ledger, stores.work)
+                    ),
                     org_units=org_units,
+                    steering=stores.of(RunSteering),
+                    shares=shares,
+                    personal=ConfiguredPersonalCredentials(
+                        load_personal_credentials(self._configuration)
+                    ),
+                    citations=IndexedCitations(stores.of(KnowledgeEntry), stores.work),
+                    grants=decisions.connections,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -522,6 +603,14 @@ class LocalWiring:
                     stores.of(ProcessVersion),
                     stores.work,
                 ),
+                # What a process spends per case, which B-2.02 reads (ADR-0216).
+                spend=InstanceSpend(
+                    SpendHandler(ledger, objects, stores.work),
+                    stores.of(ProcessVersion),
+                    runs,
+                    stores.work,
+                    clock,
+                ),
             )
             drifts = Drifts(
                 stores.of(Incident),
@@ -571,6 +660,7 @@ class LocalWiring:
                 clock=clock,
                 ids=ids,
                 costs=CostOfRunHandler(ledger, objects, stores.work),
+                shares=shares.shares,
             )
             register_version = RegisterProcessVersionHandler(
                 stores.of(ProcessVersion),
@@ -583,6 +673,9 @@ class LocalWiring:
                 sources=decisions.sources,
                 stages=staged.ceilings,
                 structure=identities,
+                rights=identities,
+                domains=decisions.domains,
+                residency=PoolBindings(pools, decisions.residency, host_locations),
             )
             findings = ProductFindings(
                 RunBlocks(BlockedTime(ledger, objects, stores.work, runs)),
@@ -619,6 +712,7 @@ class LocalWiring:
                 ledger=ledger,
                 work=stores.work,
                 clock=clock,
+                trials=stores.of(TakeoverTrial),
             )
             evidence = ProcessingEvidence(
                 register=acting.register,
@@ -648,6 +742,47 @@ class LocalWiring:
                 clock,
                 ids,
             )
+            domain_instances = DomainInstances(
+                stores.of(DomainInstance),
+                stores.work,
+                ProposalsOfProcesses(
+                    Proposals(
+                        stores.of(ProcessVersion),
+                        stores.of(Process),
+                        stores.of(Proposal),
+                        stores.work,
+                        clock,
+                        ids,
+                        administration,
+                    ),
+                    stores.of(ProcessVersion),
+                    stores.work,
+                ),
+                KnownPeople(identities),
+                DeclaredAdapters.shipped(),
+                clock,
+                ids,
+            )
+            domain_blueprints = DomainBlueprints(
+                domain_instances,
+                runs,
+                stores.work,
+                dialogue=DomainDialogue(
+                    domain_instances,
+                    PlanDialogue(
+                        stores.of(Command),
+                        stores.of(PlanDraft),
+                        stores.of(Plan),
+                        ledger,
+                        stores.work,
+                        clock,
+                        ids,
+                    ),
+                    decisions.domains,
+                    clock,
+                    ids,
+                ),
+            )
             yield Services(
                 conformance=conformance,
                 catalogue=InstanceCatalogue(pools, maturities),
@@ -675,6 +810,7 @@ class LocalWiring:
                     versions=stores.of(ProcessVersion),
                     work=stores.work,
                 ),
+                domains=domain_blueprints,
                 deactivate=DeactivateProcessHandler(stores.of(Process), stores.work, ledger),
                 register_version=register_version,
                 commission=commission,
@@ -693,6 +829,19 @@ class LocalWiring:
                 spend=SpendHandler(ledger, MemoryObjectStore(state_dir / "objects"), stores.work),
                 takt_rate=TaktRateHandler(
                     ledger, MemoryObjectStore(state_dir / "objects"), stores.work, clock, weights
+                ),
+                bottlenecks=BottlenecksHandler(
+                    RunAccounts(
+                        BlockedTime(
+                            ledger,
+                            objects,
+                            stores.work,
+                            runs,
+                            DirectoryDepartments(identities),
+                        )
+                    ),
+                    MethodsOfTheRun(maturation.measures, runs, stores.work),
+                    RulesOfTheDecisions(decisions.rules),
                 ),
                 identities=identities,
                 tenants=registry,
@@ -734,6 +883,8 @@ class LocalWiring:
                     ledger,
                     stores.work,
                     clock,
+                    # A result defect does not close while its correction waits (ADR-0227 §3).
+                    corrections=CorrectionRequests(ledger, stores.of(Request), stores.work),
                 ),
                 corridors=signals.corridors,
                 signals=signals.watch,
@@ -746,13 +897,22 @@ class LocalWiring:
                     stores.of(AnchorConfiguration),
                     stores.work,
                     clock,
+                    stops=RuleStops(stops),
                 ),
                 residency=decisions.residency,
+                budget=decisions.budget,
                 sources=decisions.sources,
                 messages=decisions.messages.tenant,
                 org_units=decisions.org_units,
+                structure=structure,
+                unit_limits=decisions.unit_limits.limits,
                 deadlines=decisions.deadlines,
                 stops=stops,
+                stop_incidents=stop_incidents,
+                tenant_domains=decisions.domains,
+                conformity=ConformityEvidence(
+                    decisions.domains, ledger, objects, stores.work, clock
+                ),
                 traces=None
                 if stores.traces is None
                 else StepTraces(
@@ -766,6 +926,7 @@ class LocalWiring:
                         stores.of(Request),
                         stores.of(TakeoverTrial),
                         tenants=stores.tenants,
+                        rates=CorrectionRates(ledger, stores.work),
                     ),
                     traces=stores.traces,
                     work=stores.work,
@@ -775,8 +936,22 @@ class LocalWiring:
                 stages=staged.stages,
                 skills=skill_lifecycle,
                 agents=shared_agents,
+                shares=shares.shares,
+                catalogue_use=CatalogueUse(runs, ledger, stores.work),
                 subjects=subjects,
                 evidence=evidence,
+                exports=None
+                if stores.archive is None
+                else TenantExports(
+                    archive=stores.archive,
+                    tenants=stores.tenants,
+                    objects=object_store_of(object_settings, state_dir=state_dir, cache_bytes=0),
+                    ledger=ledger,
+                    provenance=stores.provenance_store,
+                    runs=runs,
+                    work=stores.work,
+                    clock=clock,
+                ),
                 instructions=TakeoverTrials(
                     stores.of(Process),
                     stores.of(ProcessVersion),
@@ -786,6 +961,13 @@ class LocalWiring:
                     clock=clock,
                     identifiers=ids,
                     skills=skill_lifecycle.of_version,
+                ),
+                packages=ProcessPackages(
+                    stores.of(Process),
+                    stores.of(ProcessVersion),
+                    ledger=ledger,
+                    work=stores.work,
+                    skills=skill_lifecycle.files_of_version,
                 ),
             )
             telemetry.shutdown()
@@ -819,6 +1001,14 @@ class LocalWiring:
                 tenants=await registry.served(),
                 job_memory_bytes=memory_demand(configured),
             )
+
+    def hardware(self) -> ReportHardwareHandler:
+        """Looking at the machine needs no state (ADR-0284)."""
+        try:
+            models = load_models(self._configuration)
+        except ConfigurationError as error:
+            raise NotOperable(str(error)) from error
+        return hardware_report(models, clock=SystemClock())
 
     def catalogue_author(self) -> CatalogueAuthor:
         """Signing a catalogue's index needs no state (ADR-0175 §2)."""
@@ -903,6 +1093,7 @@ class LocalWiring:
                 spends=PostgresOrgUnitSpends(postgres),
                 size=postgres,
                 relay=PostgresRelay(postgres),
+                archive=PostgresTenantArchive(postgres),
             )
         finally:
             await postgres.close()

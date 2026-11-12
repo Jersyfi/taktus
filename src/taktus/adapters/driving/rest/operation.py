@@ -262,7 +262,7 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         who = await authenticated(services, authorization)
         if who is None:
             return None
-        return Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+        return Reader(tenant=who.tenant, identity=who.identity, roles=who.roles, unseen=who.unseen)
 
     async def owners(reader: Reader) -> bool:
         return await services.owner_reports.may_read(reader.tenant, reader.identity)

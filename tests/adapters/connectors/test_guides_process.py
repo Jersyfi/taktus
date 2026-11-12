@@ -62,6 +62,7 @@ from taktus.components.reporting.domain.model import ReportKind
 from taktus.components.run.application.service import RunEngine, StartRun
 from taktus.components.run.domain.model import Run, RunState, StepState
 from taktus.composition.guides import InstanceGuides
+from taktus.composition.levels import VersionStatements
 from taktus.ports.connector import ActionConnector
 from taktus.ports.worker import Limits
 from taktus.shared.v1 import Command, Intent, Plan, ReplyTo
@@ -199,6 +200,10 @@ class World:
             telemetry=NoTelemetry(),
             maturities=VERIFIED,
             connectors=connectors,
+            # Its report carries the exactness statement of its version (ADR-0226).
+            statements=VersionStatements(
+                persistence, MemoryRepository(persistence, ProcessVersion)
+            ),
         )
         processes = MemoryRepository(persistence, Process)
         self.processes = processes
@@ -295,12 +300,12 @@ async def test_the_guides_are_published_every_page_naming_its_commit(world: Worl
 
     assert run.state is RunState.FINISHED, [(s.step_id, s.state, s.reason) for s in run.step_runs]
     pages = world.knowledge.pages
-    assert len(pages) == 13, sorted(pages)  # eleven pages and two contents pages
+    assert len(pages) == 27, sorted(pages)  # twenty-four pages and three contents pages
     for place in pages:
         assert world.commit_of(place) == head
         assert f"commit `{head}`" in world.page(place)
     assert (await world.report(run)).startswith(
-        f"Guides at {head}: 13 pages created, 0 updated, 0 kept, 0 withheld."
+        f"Guides at {head}: 27 pages created, 0 updated, 0 kept, 0 withheld."
     )
 
     # Every step wrote its ledger entries; the publication is an egress record per page.
@@ -320,7 +325,7 @@ async def test_the_guides_are_published_every_page_naming_its_commit(world: Worl
     again = await world.run()
     assert again.state is RunState.FINISHED
     assert (await world.report(again)).startswith(
-        f"Guides at {head}: 0 pages created, 0 updated, 13 kept"
+        f"Guides at {head}: 0 pages created, 0 updated, 27 kept"
     )
     (quiet,) = [e for e in await world.entries(again) if e.kind.startswith("egress.")]
     assert quiet.outcome == "replayed", "a publication that wrote nothing acted on nothing"
@@ -344,7 +349,7 @@ async def test_a_merged_change_reaches_its_page_and_no_other(world: World) -> No
     rewritten = [p for p, s in world.knowledge.pages.items() if s.body != before[p]]
     assert rewritten == [ASKING], rewritten
     assert (await world.report(run)).startswith(
-        f"Guides at {merged}: 0 pages created, 1 updated, 12 kept"
+        f"Guides at {merged}: 0 pages created, 1 updated, 26 kept"
     )
 
 

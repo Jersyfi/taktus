@@ -17,9 +17,15 @@ import os
 import socket
 
 BASE = 20_000
-SPAN = 1_500  # per worker; eight workers end below 32 768
+TOP = 32_768
+"""Where the system's own range begins on Linux; every worker's range ends below it."""
+_workers = os.environ.get("PYTEST_XDIST_WORKER_COUNT", "")
+_count = max(int(_workers), 1) if _workers.isdigit() else 8
+SPAN = (TOP - BASE) // _count
+"""Per worker: the range divided by as many workers as the session runs, so that no two share
+ports — `-n auto` on a machine of more than eight cores once wrapped worker 8 onto worker 0."""
 _worker = os.environ.get("PYTEST_XDIST_WORKER", "gw0").removeprefix("gw")
-_start = BASE + (int(_worker) if _worker.isdigit() else 0) % 8 * SPAN
+_start = BASE + (int(_worker) if _worker.isdigit() else 0) % _count * SPAN
 _first = _start + os.getpid() % SPAN
 _ports = itertools.cycle([*range(_first, _start + SPAN), *range(_start, _first)])
 

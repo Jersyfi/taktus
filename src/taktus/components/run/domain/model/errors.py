@@ -51,6 +51,16 @@ class NoConnector(RunError):
         super().__init__(f"step {step_id!r}: no configured connector serves {capability!r}")
 
 
+class OutsideResidency(RunError):
+    def __init__(self, step_id: str, what: str, located: str, permitted: str) -> None:
+        """`what` is the connector or the host the step would send to, `located` where it
+        processes, `permitted` what the tenant's residency rule admits (ADR-0281)."""
+        super().__init__(
+            f"step {step_id!r}: the residency rule admits ({permitted}), and {what} is at "
+            f"{located}, so nothing was sent"
+        )
+
+
 class UnknownRun(RunError):
     pass
 

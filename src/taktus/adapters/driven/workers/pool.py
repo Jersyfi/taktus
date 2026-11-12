@@ -64,7 +64,11 @@ class StaticWorkerPool:
             location = self._located.get(adapter, "elsewhere")
             if needed <= capabilities and admits(permitted, location):
                 return ResolvedWorker(
-                    adapter=adapter, worker=worker, version=version, location=location
+                    adapter=adapter,
+                    worker=worker,
+                    version=version,
+                    location=location,
+                    hosts=self.hosts(adapter),
                 )
         return None
 

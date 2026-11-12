@@ -8,7 +8,8 @@ component answers (`complete_intake.py`), and so that a person can see what arri
 not acted on. A redelivery changes nothing: an event once completed stays completed
 (ADR-0048 §4). Only an event whose sender the
 identity component placed is kept; an unknown sender's is kept nowhere — except a contribution
-on a public channel, kept as data of its triage and never as a command (ADR-0088).
+on a public channel, kept as data of its triage and never as a command (ADR-0088). A message in
+a rollout channel is kept for its assistant, and is never a command either (ADR-0261).
 """
 
 from __future__ import annotations
@@ -34,6 +35,10 @@ class IntakeStatus(StrEnum):
     """An issue or pull request a sender nobody could place opened on a public channel, kept as
     data of the channel's triage (UC-1.9, ADR-0088): never completed into a command of the
     sender, and kept without their account or their text."""
+    ASSISTANT = "assistant"
+    """A placed person's message in a rollout channel, kept for the assistant the channel serves
+    (UC-12.1, ADR-0261): the assistant's own process runs on it, and it is never completed into
+    a command."""
 
 
 class IntakeEvent(Value):

@@ -1,0 +1,21 @@
+{
+  "credentials": {
+    "actions": "CLOUD_TOKEN"
+  },
+  "read": {
+    "operation": "logs.query.entries",
+    "input": {
+      "filter": "severity>=DEFAULT",
+      "since_minutes": 60
+    }
+  },
+  "writes": [],
+  "invalid": {
+    "operation": "logs.query.entries",
+    "input": {
+      "filter": "severity>=ERROR",
+      "source": "a-log-group"
+    },
+    "expected_cause": "invalid"
+  }
+}

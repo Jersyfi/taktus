@@ -1,0 +1,236 @@
+# B-5.01 Overdue tasks — UC-03 §4.5: an open task past its due date is reminded in the task
+# tracker, and escalated to the tenant's role once it is a week past its date (UC-4.17).
+#
+# Every day the open tasks due at least a day ago are listed through the capability
+# `tasks.items`, and one run starts for each (the trigger's `each`). The run reads the task, and
+# fixed rules decide from `days_overdue` — the whole days from the due date to today, as the
+# connector counts them — whether today is a reminder day: the first day overdue, and the
+# seventh. On those days a reminder is written as a comment on the task, after a person
+# confirmed it, at level 2. The tracker notifies whoever the task is assigned to: Taktus never
+# reads who that is, never addresses a person, and counts nothing per person (principle 14,
+# ADR-0015). A comment carries its run's key, and a repeat of the step writes nothing twice.
+#
+# Escalation is a figure: a task seven days or more past its date counts 1 in the step
+# `escalated`, and the tenant's corridor on it is red, which raises an incident to the role the
+# tenant names (UC-4.16):
+#
+#     uv run taktusctl signal configure tasks.escalated --process b-5-01 \
+#         --step escalated --select count --bounds fixed --direction above \
+#         --yellow 0.5 --red 0.5 --fresh 2d \
+#         --role <role> --case <where overdue tasks are worked>
+#
+# The reminder days and the escalation after seven days are this version's; a tenant changes
+# them by a version of its own. Not built: flagged messages listed by age — the capability
+# `mail.messages` reads a message by its identifier and lists no flags. Doing the task stays
+# with a person (UC-03 §6).
+#
+# By hand, for one task:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-5.01-overdue-tasks.yaml \
+#         --input task=OPS-123
+#
+# Switching it off (`taktusctl deactivate --process b-5-01`) changes nothing in the tracker:
+# the reminders written stay written.
+
+id: b-5-01
+version: "2"
+name: B-5.01 Overdue tasks
+autonomy:
+  level: 2
+  reason: >
+    whether a task is due a reminder is a fixed rule over the tracker's own date; the reminder
+    leaves the system to the tracker and its notification, so a person confirms it, as every
+    process of UC-03 starts at level 1 or 2 when its stage opens
+  toward_next: >
+    stage 1 of the tenant's plan open, and four weeks of reminders a person confirmed without
+    changing them; then Taktus proposes level 3, its target in UC-03 (UC-7.1, UC-9.6)
+author: the repository
+reason: an open task past its date is reminded where it is worked, and escalated by role, without a person watching the list (UC-03 B-5.01)
+
+triggers:
+  - schedule: daily
+    each:
+      input: task
+      operation: tasks.items.list
+      arguments: { overdue_by_days: 1, limit: 1000 }
+      select: items
+      field: id
+
+inputs:
+  task:
+    description: the task's identifier or key in the tracker
+    example: TSK-2
+
+# A read is one request, a reminder two; a wide margin.
+limits:
+  quota: { units: 8 }
+
+steps:
+  - id: read-task
+    method: rule
+    reason: the task is read as the tracker holds it, with its due date and the days since; nothing to judge
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what tasks.items.read answered", columns: [days_overdue, due] }
+    fallback:
+      when: the connector serving tasks.items is unavailable
+      to: human
+      role: owner
+    work:
+      checking: { select: output }
+      rule: connector
+      operation: tasks.items.read
+      input:
+        id: { $input: task }
+      credentials:
+        - { name: TASKS_TOKEN, injected_as: env }
+
+  - id: reminder-day
+    method: rule
+    reason: a task is reminded on the first day it is overdue and on the seventh, a fixed rule over its days overdue
+    rejected:
+      - method: llm
+        why: whether a number is one or seven is no judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: whether today is a reminder day of the task }
+    depends_on: [read-task]
+    work:
+      rule: filter
+      items: [{ $from: read-task, $select: output }]
+      all:
+        - { field: open, equals: true }
+      any:
+        - { field: days_overdue, equals: 1 }
+        - { field: days_overdue, equals: 7 }
+
+  - id: escalated
+    method: rule
+    reason: a task seven days or more past its date is escalated, a fixed rule over its days overdue; the corridor on its count raises the incident
+    rejected:
+      - method: statistics
+        why: the deadline is the business's rule, not a learned threshold
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: whether the task is a week past its date }
+    depends_on: [read-task]
+    work:
+      rule: filter
+      items: [{ $from: read-task, $select: output }]
+      all:
+        - { field: open, equals: true }
+        - { field: days_overdue, at_least: 7 }
+
+  - id: compose
+    method: rule
+    reason: the reminder is fixed words around the task's own date
+    rejected:
+      - method: llm
+        why: a fixed text needs no model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "Written by Taktus, process B-5\\.01 Overdue tasks, once a person confirmed it" }
+    depends_on: [read-task, reminder-day]
+    work:
+      when:
+        - { value: { $from: reminder-day, $select: count }, not_matches: "^0$" }
+      rule: template
+      text: |
+        This task was due on ${due} and is ${days} day(s) past its date. Please finish it, move
+        its date, or close it if it is no longer needed.
+
+        Written by Taktus, process B-5.01 Overdue tasks, once a person confirmed it.
+      values:
+        due: { $from: read-task, $select: output.due }
+        days: { $from: read-task, $select: output.days_overdue }
+
+  - id: remind
+    method: rule
+    reason: the reminder is a comment through the tracker's API, which notifies the task's assignee; it leaves the system, so at level 2 a person confirms it first
+    rejected:
+      - method: worker
+        why: nothing here needs a sandbox or tools
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what tasks.items.remind answered", columns: [comment, task] }
+    fallback:
+      when: the connector serving tasks.items is unavailable
+      to: human
+      role: owner
+    depends_on: [reminder-day, compose]
+    work:
+      checking: { select: output }
+      when:
+        - { value: { $from: reminder-day, $select: count }, not_matches: "^0$" }
+      rule: connector
+      operation: tasks.items.remind
+      input:
+        id: { $input: task }
+        text: { $from: compose }
+      credentials:
+        - { name: TASKS_TOKEN, injected_as: env }
+
+takeover:
+  sequence: >
+    The process runs every day once for each open task at least a day past its due date; the
+    person who looks after the business's tasks lists those tasks in the tracker and works
+    through them one by one. For each the steps run in order: read the task, decide whether
+    today is a reminder day, decide whether it is escalated, write the reminder, and comment
+    it on the task. A task a week or more past its date is reported to the role the tenant
+    named. At level 2 the owner confirms each reminder before it is written. Who the task is
+    assigned to is never looked up or counted.
+  steps:
+    read-task:
+      system: the task tracker
+      do: >
+        open the task by the identifier or key the run was started with, and note whether it
+        is still open, its due date and how many whole days ago that was
+      expertise: finding a task in the tracker
+      credentials:
+        - parameter: TASKS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Task tracker key of the requesting
+            identity described in CREDENTIALS.md; a person signs in with their own account that
+            may read the tasks and comment on them
+      done: it is noted whether the task is open, its due date and the days since
+    reminder-day:
+      system: the noted task
+      do: >
+        decide that today is a reminder day only when the task is still open and it is exactly
+        one or exactly seven days past its due date
+      expertise: none
+      credentials: []
+      done: it is decided whether today is a reminder day
+    escalated:
+      system: the noted task
+      do: >
+        decide that the task is escalated when it is still open and seven days or more past its
+        due date; then report it to the role the tenant named, where overdue tasks are worked,
+        naming the task and never the person it is assigned to
+      expertise: none
+      credentials: []
+      done: it is decided whether the task is escalated, and an escalated task has been reported
+    compose:
+      system: a text editor
+      do: >
+        only on a reminder day, write the reminder: the due date, the days past it, and the
+        request to finish the task, move its date or close it
+      expertise: none
+      credentials: []
+      done: the reminder is written, or it is decided that none is due today
+    remind:
+      system: the task tracker
+      do: >
+        only on a reminder day, and after the owner confirmed it, add the reminder as a comment
+        on the task, so that the tracker notifies whoever it is assigned to; never message that
+        person directly
+      expertise: commenting on a task in the tracker
+      credentials:
+        - parameter: TASKS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Task tracker key of the requesting
+            identity described in CREDENTIALS.md; a person signs in with their own account
+      done: the reminder is a comment on the task, or nothing was written for a stated reason

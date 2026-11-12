@@ -20,14 +20,26 @@ from taktus.components.command.application.service import (
     CompleteIntakeHandler,
     ReceiveIntakeHandler,
 )
+from taktus.components.command.application.service.coach import Coach
+from taktus.components.command.application.service.sessions import Sessions
+from taktus.components.command.domain.model import PlanDraft
+from taktus.components.command.domain.service.guided import Mode
 from taktus.components.decision.application.query import DecisionQueries
 from taktus.components.decision.application.service import (
     AnswerRequestHandler,
     ConfirmRequestHandler,
 )
-from taktus.components.governance.application.service import Corrections, Stages
-from taktus.components.governance.domain.model import Incident
+from taktus.components.governance.application.service import (
+    Confirmed,
+    ConnectionGrants,
+    Corrections,
+    PrepareRequest,
+    Stages,
+    TenantOrgUnits,
+)
+from taktus.components.governance.domain.model import Incident, SubjectRequest
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
+from taktus.components.identity.application.service.structure import OrganisationStructure
 from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.application.service.streams import DeclareStream
 from taktus.components.process.application.service.takeover import RecordTrial
@@ -39,6 +51,7 @@ from taktus.components.process.domain.model import (
     TakeoverTrial,
     ValueStream,
 )
+from taktus.components.process.domain.service.proposing import ProcessProposal
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.application.service import (
     Alerted,
@@ -46,6 +59,7 @@ from taktus.components.reporting.application.service import (
     BackupWatched,
     FindingsIntake,
     ProductFindings,
+    StepQueries,
     StepTraces,
 )
 from taktus.components.reporting.domain.model import (
@@ -62,17 +76,32 @@ from taktus.components.reporting.domain.model.acting import (
     ResidencyView,
     WrongResultView,
 )
+from taktus.components.reporting.domain.model.live import Reader as LiveReader
+from taktus.components.reporting.domain.model.views import (
+    OwnView,
+    ReportDefinition,
+    Shown,
+    ViewConfiguration,
+)
 from taktus.components.reporting.domain.service.catalogue import Catalogue
+from taktus.components.reporting.domain.service.explaining import Explanation
+from taktus.components.reporting.domain.service.own import OwnRelief
 from taktus.components.reporting.domain.service.profiles import RoleIndex, RoleProfile
+from taktus.components.reporting.domain.service.reports import Composed
 from taktus.components.reporting.domain.service.streams import StreamLanes, StreamMap
 from taktus.components.reporting.domain.service.variants import VariantsView
 from taktus.components.run.application.service import HandBack, SteerStep, TakeOver
 from taktus.components.run.domain.model import Run
+from taktus.components.value.application.service import Discoveries, ValueBases
+from taktus.components.value.domain.model import Figure, ValueProposal
+from taktus.components.value.domain.service.figures import Facts as ValueFacts
+from taktus.components.value.domain.service.figures import Index
 from taktus.ports.clock import Clock
 from taktus.ports.configuration import Secret
 from taktus.ports.identity import Resolution
 from taktus.ports.ledger import Ledger
-from taktus.ports.persistence import Queried, Tenant, UnitOfWork
+from taktus.ports.persistence import Queried, Tenant, TenantImported, UnitOfWork
+from taktus.shared.v1 import Plan
 
 
 class StreamsFull(Exception):
@@ -134,6 +163,52 @@ class ProposalActs(Protocol):
         as_version: str | None = None,
         approved_by: str | None = None,
     ) -> ProcessVersion: ...
+
+
+class PlanActs(Protocol):
+    """The plan dialogue as the surfaces present it, in either mode (ADR-0237, ADR-0238,
+    ADR-0279): the composition root's, because a guided answer that chooses a process takes
+    its steps from the process component."""
+
+    async def open(
+        self,
+        tenant: Tenant,
+        identity: str,
+        org_path: tuple[str, ...],
+        said: str,
+        *,
+        agent: bool = False,
+        describes: str | None = None,
+    ) -> PlanDraft: ...
+
+    async def mine(self, tenant: Tenant, identity: str) -> list[PlanDraft]: ...
+
+    async def get(self, tenant: Tenant, identity: str, draft_id: str) -> PlanDraft: ...
+
+    async def answer(
+        self,
+        tenant: Tenant,
+        identity: str,
+        draft_id: str,
+        field: str,
+        value: Any,
+        *,
+        step_id: str | None = None,
+    ) -> PlanDraft: ...
+
+    async def set(
+        self, tenant: Tenant, identity: str, draft_id: str, fields: Mapping[str, Any]
+    ) -> PlanDraft: ...
+
+    async def commission(self, tenant: Tenant, identity: str, draft_id: str) -> Plan: ...
+
+    async def commission_and_start(
+        self, tenant: Tenant, identity: str, draft_id: str
+    ) -> tuple[Plan, Run | None]: ...
+
+    async def templates(self, tenant: Tenant) -> list[dict[str, Any]]: ...
+
+    def view(self, draft: PlanDraft, mode: Mode) -> dict[str, Any]: ...
 
 
 class GalleryActs(Protocol):
@@ -233,6 +308,43 @@ class InstructionActs(Protocol):
     async def of_step(
         self, tenant: Tenant, process_version: str, step_id: str
     ) -> dict[str, Any] | None: ...
+
+
+class ProcessProposalRefused(Exception):
+    """A proposal of a process that is not the person's to decide, or is decided already, or
+    that no request path on this instance can build (ADR-0270 §5)."""
+
+
+class NoRequestPath(ProcessProposalRefused):
+    """Accepting is refused: no request path builds a process on this instance (ADR-0251)."""
+
+
+class AcceptedProposal(Protocol):
+    @property
+    def proposal(self) -> ProcessProposal: ...
+
+    @property
+    def run(self) -> Run:
+        """The run that builds the proposal of a version (UC-4.1)."""
+        ...
+
+
+class ProcessProposalActs(Protocol):
+    """The processes Taktus proposes to a person, and each accepted or declined on its own
+    (UC-4.4, ADR-0270): the composition root's, because the list reads the run component's
+    records and accepting crosses the command and run components."""
+
+    async def listed(self, tenant: Tenant, viewer: str) -> list[ProcessProposal]:
+        """What `viewer` is shown, most often recurring first, none decided already."""
+        ...
+
+    async def accept(self, tenant: Tenant, proposal_id: str, by: str) -> AcceptedProposal:
+        """`ProcessProposalRefused` when it is not `by`'s to decide."""
+        ...
+
+    async def decline(self, tenant: Tenant, proposal_id: str, by: str) -> ProcessProposal:
+        """`ProcessProposalRefused` when it is not `by`'s to decide."""
+        ...
 
 
 class StartRefused(Exception):
@@ -367,6 +479,141 @@ class ProfileReads(Protocol):
         ...
 
 
+class SubjectActs(Protocol):
+    """Data-protection requests prepared, carried out by a person and withdrawn
+    (ADR-0176)."""
+
+    async def prepare(self, command: PrepareRequest, *, by: str) -> SubjectRequest: ...
+
+    async def get(self, tenant: Tenant, request_id: str) -> SubjectRequest | None: ...
+
+    async def list(self, tenant: Tenant) -> Sequence[SubjectRequest]: ...
+
+    async def confirm(
+        self, tenant: Tenant, request_id: str, *, by: str, identity_checked: bool
+    ) -> Confirmed: ...
+
+    async def withdraw(self, tenant: Tenant, request_id: str, *, by: str) -> SubjectRequest: ...
+
+
+class EvidenceReads(Protocol):
+    """The processing evidence, generated from configuration and the ledger (ADR-0176 §8)."""
+
+    async def evidence(self, tenant: Tenant) -> dict[str, Any]: ...
+
+
+class TenantExportActs(Protocol):
+    """A tenant exported, and an export imported and checked (ADR-0221)."""
+
+    async def export(self, tenant: Tenant, *, by: str) -> bytes: ...
+
+    async def import_(self, content: bytes, *, by: str) -> TenantImported: ...
+
+
+class GatheredFigures(Protocol):
+    """Every owner's figures, gathered once for one reader (ADR-0241 §1)."""
+
+    @property
+    def shown(self) -> Sequence[Shown]: ...
+
+    @property
+    def index(self) -> Index: ...
+
+    @property
+    def proposals(self) -> Sequence[ValueProposal]: ...
+
+    @property
+    def backlog(self) -> Sequence[Mapping[str, Any]]: ...
+
+    @property
+    def facts(self) -> ValueFacts: ...
+
+    @property
+    def holders(self) -> Mapping[str, int]: ...
+
+
+class FigureGathering(Protocol):
+    async def gather(
+        self, reader: LiveReader, visible: frozenset[str], days: int
+    ) -> GatheredFigures: ...
+
+    async def warehouse(
+        self,
+        reader: LiveReader,
+        visible: frozenset[str],
+        judged: Sequence[tuple[Corridor, Judged]],
+    ) -> list[Shown]:
+        """The warehouse figures among the signals judged now (ADR-0291 §3)."""
+        ...
+
+    async def configuration(self, tenant: Tenant) -> ViewConfiguration: ...
+
+    async def configure(
+        self, tenant: Tenant, document: Mapping[str, Any], *, by: str
+    ) -> ViewConfiguration: ...
+
+
+class KnowledgeReads(Protocol):
+    """The same work with and without a knowledge source connected, compared on the value
+    ledger's figures (ADR-0291)."""
+
+    async def figures(self, tenant: Tenant, visible: frozenset[str], days: int) -> list[Figure]: ...
+
+
+class ReportReads(Protocol):
+    async def every(self, tenant: Tenant) -> list[ReportDefinition]: ...
+
+    async def get(self, tenant: Tenant, id: str) -> ReportDefinition | None: ...
+
+    async def put(
+        self, tenant: Tenant, document: Mapping[str, Any], *, by: str
+    ) -> ReportDefinition: ...
+
+    async def compose(self, definition: ReportDefinition, visible: frozenset[str]) -> Composed: ...
+
+
+class ExplanationReads(Protocol):
+    async def step(self, reader: LiveReader, run_id: str, step_id: str) -> Explanation | None: ...
+
+    async def summary(
+        self, reader: LiveReader, visible: frozenset[str], days: int
+    ) -> dict[str, Any]: ...
+
+
+class OwnViewReads(Protocol):
+    async def settings(self, tenant: Tenant, reader: str) -> OwnView | None: ...
+
+    async def set(self, tenant: Tenant, reader: str, document: Mapping[str, Any]) -> OwnView: ...
+
+    async def relief(self, reader: LiveReader, visible: frozenset[str], days: int) -> OwnRelief: ...
+
+
+class Reading(Protocol):
+    """Views, the export, reports, explanations, the value ledger and a person's own view
+    (ADR-0241 to ADR-0245): the composition root's, because they gather many components."""
+
+    @property
+    def figures(self) -> FigureGathering: ...
+
+    @property
+    def reports(self) -> ReportReads: ...
+
+    @property
+    def explanations(self) -> ExplanationReads: ...
+
+    @property
+    def own(self) -> OwnViewReads: ...
+
+    @property
+    def bases(self) -> ValueBases: ...
+
+    @property
+    def discoveries(self) -> Discoveries: ...
+
+    @property
+    def knowledge(self) -> KnowledgeReads: ...
+
+
 class RestServices(Protocol):
     @property
     def roles(self) -> Sequence[str]:
@@ -464,8 +711,40 @@ class RestServices(Protocol):
         ...
 
     @property
+    def process_proposals(self) -> ProcessProposalActs:
+        """The processes Taktus proposes, to a person, from recurring work (ADR-0270)."""
+        ...
+
+    @property
     def gallery(self) -> GalleryActs:
         """The gallery of first processes (UC-10.4, ADR-0136)."""
+        ...
+
+    @property
+    def planning(self) -> PlanActs:
+        """The plan dialogue, guided and expert (ADR-0237, ADR-0238)."""
+        ...
+
+    @property
+    def coach(self) -> Coach:
+        """Each person's own automation coach (ADR-0240)."""
+        ...
+
+    @property
+    def structure(self) -> OrganisationStructure | None:
+        """The organisation's structure and its projects (ADR-0275, ADR-0276); None where the
+        instance keeps none."""
+        ...
+
+    @property
+    def sessions(self) -> Sessions | None:
+        """Sessions with a project's knowledge (ADR-0277); None where the instance keeps no
+        structure."""
+        ...
+
+    @property
+    def org_units(self) -> TenantOrgUnits:
+        """The quotas per organisational unit (ADR-0166)."""
         ...
 
     @property
@@ -509,6 +788,22 @@ class RestServices(Protocol):
         ...
 
     @property
+    def tenant_exports(self) -> TenantExportActs | None:
+        """A tenant's export and import, for the administration key; None where the state is
+        not a database (ADR-0221)."""
+        ...
+
+    @property
+    def subject_requests(self) -> SubjectActs:
+        """Data-protection requests, prepared and carried out by a person (ADR-0176)."""
+        ...
+
+    @property
+    def processing_evidence(self) -> EvidenceReads:
+        """What is processed for a tenant, generated (ADR-0176 §8)."""
+        ...
+
+    @property
     def stages(self) -> Stages:
         """A tenant's introduction in stages: the view and a stage opened by a person
         (ADR-0137, ADR-0191)."""
@@ -536,6 +831,16 @@ class RestServices(Protocol):
         ...
 
     @property
+    def queries(self) -> StepQueries:
+        """The queries a step sent, read by a person entitled to the step (ADR-0262 §3)."""
+        ...
+
+    @property
+    def connection_grants(self) -> ConnectionGrants:
+        """Writing on a connection, granted and withdrawn by a person (ADR-0262 §2)."""
+        ...
+
+    @property
     def acting(self) -> ActingViews:
         """The register, the dependencies and the variants of a process (ADR-0147)."""
         ...
@@ -548,6 +853,11 @@ class RestServices(Protocol):
     @property
     def profiles(self) -> ProfileReads:
         """A role's profile, derived from the processes (ADR-0167)."""
+        ...
+
+    @property
+    def reading(self) -> Reading:
+        """Views, the export, reports, explanations, value and a person's own view."""
         ...
 
     @property

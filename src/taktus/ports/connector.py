@@ -34,6 +34,7 @@ from typing import Any, Literal, Protocol
 
 from pydantic import Field, model_validator
 
+from taktus.ports.model import Location
 from taktus.ports.worker import ConsumptionDeclaration, CredentialReference
 from taktus.shared.v1 import (
     AutonomyLevel,
@@ -48,6 +49,14 @@ OPERATION_PATTERN = r"^[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*){2,}$"
 IDEMPOTENCY_KEY_PATTERN = r"^[A-Za-z0-9_.:-]{16,128}$"
 CREDENTIAL_NAME_PATTERN = r"^[A-Z][A-Z0-9_]*$"
 EVENT_PATTERN = r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$"
+
+QUERYING: frozenset[Capability] = frozenset({"warehouse.queries"})
+"""The capabilities whose operations run a statement in a query language that computes their
+answer: the warehouse's (ADR-0262 §3, §4). Every query sent through one is recorded by
+reference, and where a figure it computed may go is a rule of registration."""
+READ_UNLESS_GRANTED: frozenset[Capability] = frozenset({"warehouse.queries"})
+"""The capabilities whose connection reads until a person grants writing (ADR-0262 §2): an
+outward operation of one is refused before the call unless the tenant's grant is in force."""
 
 
 class ConnectorError(Exception):
@@ -521,6 +530,9 @@ class ResolvedConnector:
     adapter: str
     connector: ActionConnector
     declaration: Capabilities
+    location: Location = "elsewhere"
+    """Where the system the connector reaches processes what it is sent, as whoever configured
+    the connector declared it; `elsewhere` where nobody did (ADR-0281 §1)."""
 
     @property
     def version(self) -> str | None:

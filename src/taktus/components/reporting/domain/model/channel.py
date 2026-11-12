@@ -124,6 +124,11 @@ class Phrasebook(Value):
     """The words that, standing alone, ask for the overview. None: the channel reads no such
     request — a phrasebook configured before there were any. Given only with the four entries
     of a run and a process (ADR-0069 §5)."""
+    show_origin_words: tuple[str, ...] | None = None
+    """The words a request for the origin of a result begins with, before `<run>/<step>`
+    (ADR-0069, *Where this promise ends*). None: the channel reads no such request — a
+    phrasebook configured before there were any. Given only with the four entries of a run and
+    a process."""
     live: str | None = Field(default=None, min_length=1)
     """The label of the link to the live representation in the web app."""
     not_shown: str | None = Field(default=None, min_length=1)
@@ -257,6 +262,7 @@ class Phrasebook(Value):
             "show_run_words": self.show_run_words or (),
             "show_process_words": self.show_process_words or (),
             "show_overview_words": self.show_overview_words or (),
+            "show_origin_words": self.show_origin_words or (),
             "change_words": self.change_words or (),
             "rehearse_words": self.rehearse_words or (),
             "commission_words": self.commission_words or (),
@@ -286,10 +292,16 @@ class Phrasebook(Value):
                 "show_overview_words are given with show_run_words, show_process_words, live "
                 "and not_shown, and name at least one word"
             )
+        if self.show_origin_words is not None and not (self.show_origin_words and all(showing)):
+            problems.append(
+                "show_origin_words are given with show_run_words, show_process_words, live "
+                "and not_shown, and name at least one word"
+            )
         asking = (
             set(self.show_run_words or ()),
             set(self.show_process_words or ()),
             set(self.show_overview_words or ()),
+            set(self.show_origin_words or ()),
         )
         if any(a & b for i, a in enumerate(asking) for b in asking[i + 1 :]):
             problems.append("a word cannot ask for two levels")

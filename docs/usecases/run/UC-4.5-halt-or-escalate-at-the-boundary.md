@@ -4,10 +4,10 @@ title: A step fails — halt or escalate at the boundary
 component: run
 epic: E4
 serves: [P10, P12]
-state: building
+state: verified
 version: 0.2.0
-tests: [tests/components/run/test_engine.py::test_no_worker_for_the_capabilities_fails_the_step_and_escalates, tests/components/run/test_engine.py::test_a_failing_assignment_escalates_with_what_it_used, tests/components/run/test_engine.py::test_a_worker_that_cannot_be_reached_fails_the_step_with_that_cause, tests/components/run/test_engine.py::test_the_worker_s_own_rejection_halts_the_run_the_same_way, tests/components/run/test_engine.py::test_a_failed_check_escalates_and_produces_nothing, tests/components/run/test_engine.py::test_only_a_halted_or_escalated_run_resumes, tests/components/run/test_provenance.py::test_a_failed_or_rejected_step_leaves_no_record]
-adrs: {ADR-0005: 0ea928e2016b, ADR-0021: dc801ddd1c47, ADR-0023: 949c6f4e13af}
+tests: [tests/components/run/test_engine.py::test_no_worker_for_the_capabilities_fails_the_step_and_escalates, tests/components/run/test_engine.py::test_a_running_step_is_never_aborted_to_halt_or_escalate, tests/components/run/test_engine.py::test_a_failing_assignment_escalates_with_what_it_used, tests/components/run/test_engine.py::test_a_worker_that_cannot_be_reached_fails_the_step_with_that_cause, tests/components/run/test_engine.py::test_the_worker_s_own_rejection_halts_the_run_the_same_way, tests/components/run/test_engine.py::test_a_failed_check_escalates_and_produces_nothing, tests/components/run/test_engine.py::test_only_a_halted_or_escalated_run_resumes, tests/components/run/test_provenance.py::test_a_failed_or_rejected_step_leaves_no_record, tests/composition/test_escalations.py::test_an_escalation_reaches_the_named_role_with_five_parts_none_empty, tests/composition/test_escalations.py::test_a_package_whose_record_lacks_a_part_says_which, tests/composition/test_escalations.py::test_the_path_ledger_records_the_package_and_raises_no_report, tests/composition/test_escalations.py::test_an_unanswered_escalation_past_its_time_is_recorded_once, tests/composition/test_escalations.py::test_an_escalation_the_person_reacted_to_is_never_overdue, tests/composition/test_escalations.py::test_without_a_declaration_the_owner_hears_and_nothing_is_ever_overdue, tests/composition/test_escalations.py::test_a_version_carries_its_time_to_react_and_path_and_refuses_a_bad_one]
+adrs: {ADR-0005: 0ea928e2016b, ADR-0021: dc801ddd1c47, ADR-0023: 949c6f4e13af, ADR-0252: 65013c8e21bc}
 supersedes: null
 ---
 
@@ -76,5 +76,12 @@ requirement — a business-critical finding always brings in a person, with ever
 
 ## 5. What is proven so far
 
-The first four conditions, by the named tests. The situation package and the
-reaction targets are not built.
+The first four conditions, by the named tests. The situation package is written from the run's
+record and delivered once per escalation to the role the process names, as a report in the
+tenant's owner-facing channel, or recorded only (ADR-0252); a package whose record lacks a part
+says which, and the ledger's `escalation.delivered` says whether it was complete. A time to react
+and the path are declared per process; an escalation still unanswered past its time is recorded
+once as `escalation.overdue`, and one the person reacted to is not. That a running step is never
+aborted to halt or escalate is the engine's step atomicity (ADR-0005): a step whose worker fails
+ends where the worker ended it, no stop is sent to it, and the run escalates after the step's
+own end — by the named test. Every condition of section 2 is shown by a named test.

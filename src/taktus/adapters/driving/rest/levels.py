@@ -18,6 +18,8 @@
   reader asks again with `after` while the step is in flight. `POST …/trace/shares` shares it
   with a role and `DELETE …/trace/shares/{role}` withdraws the share; each answers the trace,
   with the link to it in the web app.
+- `GET /levels/runs/{run_id}/steps/{step_id}/queries` — the queries a step sent through a
+  querying capability, each with its text, for a reader who may see the run (ADR-0262 §3).
 - `GET /vocabulary` — the visual vocabulary as a document (ADR-0059), for a legend. It says how
   Taktus draws, nothing about any tenant, and needs no key.
 - `/app/` — the web app, the static build of `web/`, served where it was built into the image.
@@ -95,7 +97,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         who = await authenticated(services, authorization)
         if who is None:
             return problem(401, "an account key is needed: Authorization: Bearer <key>")
-        reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+        reader = Reader(
+            tenant=who.tenant, identity=who.identity, roles=who.roles, unseen=who.unseen
+        )
         level = await services.levels.run(reader, run_id)
         if level is None:
             return problem(404, f"no run {run_id!r} you may see")
@@ -124,7 +128,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         who = await authenticated(services, authorization)
         if who is None:
             return problem(401, "an account key is needed: Authorization: Bearer <key>")
-        reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+        reader = Reader(
+            tenant=who.tenant, identity=who.identity, roles=who.roles, unseen=who.unseen
+        )
         view = await services.levels.stages(reader, run_id)
         if view is None:
             return problem(404, f"no run {run_id!r} you may see")
@@ -150,7 +156,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         who = await authenticated(services, authorization)
         if who is None:
             return problem(401, "an account key is needed: Authorization: Bearer <key>")
-        reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+        reader = Reader(
+            tenant=who.tenant, identity=who.identity, roles=who.roles, unseen=who.unseen
+        )
         return JSONResponse((await services.levels.overview(reader)).document())
 
     @routes.get(
@@ -185,7 +193,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         who = await authenticated(services, authorization)
         if who is None:
             return problem(401, "an account key is needed: Authorization: Bearer <key>")
-        reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+        reader = Reader(
+            tenant=who.tenant, identity=who.identity, roles=who.roles, unseen=who.unseen
+        )
         level = await services.levels.process(reader, process_id, version)
         if level is None:
             named = process_id if version is None else f"{process_id}@{version}"
@@ -219,7 +229,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         who = await authenticated(services, authorization)
         if who is None:
             return problem(401, "an account key is needed: Authorization: Bearer <key>")
-        reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+        reader = Reader(
+            tenant=who.tenant, identity=who.identity, roles=who.roles, unseen=who.unseen
+        )
         level = await services.levels.origin(reader, run_id, step_id)
         if level is None:
             return problem(404, f"no result of {run_id}/{step_id} you may see")
@@ -255,10 +267,42 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         who = await authenticated(services, authorization)
         if who is None:
             return problem(401, "an account key is needed: Authorization: Bearer <key>")
-        reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+        reader = Reader(
+            tenant=who.tenant, identity=who.identity, roles=who.roles, unseen=who.unseen
+        )
         view = await services.traces.read(reader, run_id, step_id, after=after)
         if view is None:
             return problem(404, f"no trace of {run_id}/{step_id} you may see")
+        return JSONResponse(view.document())
+
+    @routes.get(
+        "/levels/runs/{run_id}/steps/{step_id}/queries",
+        summary="The queries a step sent",
+        description="Every query the step sent through a querying capability — a warehouse's "
+        "— oldest first: its operation, its text, its parameters, when it was sent, and the "
+        "digest of the request, which the ledger's `query.sent` entry names. The ledger holds "
+        "the reference, never the text (ADR-0006). Shown to a reader who may see the run "
+        "(ADR-0262 §3).",
+        responses={
+            200: {"description": "The queries of the step; none where it sent none."},
+            401: {"description": "No account key, or one that proves no identity.", **PROBLEM},
+            404: {
+                "description": "No such run or step, or one you may not see: answered alike.",
+                **PROBLEM,
+            },
+            422: {"description": "A parameter does not validate.", **PROBLEM},
+        },
+    )
+    async def step_queries(
+        run_id: str, step_id: str, authorization: str | None = Header(default=None)
+    ) -> JSONResponse:
+        who = await authenticated(services, authorization)
+        if who is None:
+            return problem(401, "an account key is needed: Authorization: Bearer <key>")
+        reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+        view = await services.queries.read(reader, run_id, step_id)
+        if view is None:
+            return problem(404, f"no step {run_id}/{step_id} you may see")
         return JSONResponse(view.document())
 
     @routes.post(
@@ -282,7 +326,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         who = await authenticated(services, authorization)
         if who is None:
             return problem(401, "an account key is needed: Authorization: Bearer <key>")
-        reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+        reader = Reader(
+            tenant=who.tenant, identity=who.identity, roles=who.roles, unseen=who.unseen
+        )
         try:
             view = await services.traces.share(reader, run_id, step_id, body.role)
         except BadRole as error:
@@ -307,7 +353,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         who = await authenticated(services, authorization)
         if who is None:
             return problem(401, "an account key is needed: Authorization: Bearer <key>")
-        reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+        reader = Reader(
+            tenant=who.tenant, identity=who.identity, roles=who.roles, unseen=who.unseen
+        )
         try:
             view = await services.traces.unshare(reader, run_id, step_id, role)
         except BadRole as error:

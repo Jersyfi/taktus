@@ -185,7 +185,7 @@ async def test_an_issue_handed_over_becomes_a_pull_request_that_ends_with_the_br
     await linked(wired, tenant)
     await verified_adapters(wired, tenant, outside)
     version = await registered(wired, tenant, the_bundle(outside))
-    assert version.ref == "p03-implementation@24"
+    assert version.ref == "p03-implementation@25"
 
     clock.current += timedelta(minutes=1)
     hand(outside, tasks.ready)
@@ -199,14 +199,27 @@ async def test_an_issue_handed_over_becomes_a_pull_request_that_ends_with_the_br
     (run,) = await runs_of(wired, tenant, version.ref)
     assert run.state is RunState.FINISHED, run
     assert "closing_section" not in run.inputs and run.inputs["issue"] == tasks.ready
+
+    # The run answers at the reply address of the issue once it ended (ADR-0239), on the
+    # scheduler's tick after the end: the comments are read once that answer is recorded. Read
+    # at the end alone, they held the answer or not, as the tick fell (the flake register, #520).
+    async def answered() -> bool:
+        async with wired.work.transaction(tenant):
+            entries = await wired.ledger.entries(tenant, run.id)
+        return any(e.kind == "run.answered" for e in entries)
+
+    await eventually(answered, seconds=60)
     async with wired.work.transaction(tenant):
         entries = await wired.ledger.entries(tenant, run.id)
         assert (await wired.ledger.verify(tenant)).intact
     assert [e.kind for e in entries][:2] == ["run.created", "run.triggered"]
     assert entries[1].outcome == "event"
+    (answer,) = [e for e in entries if e.kind == "run.answered"]
+    assert answer.outcome == "said", answer
     comments = outside.get(f"/repos/{REPOSITORY}/issues/{tasks.ready}/comments")
-    assert isinstance(comments, list) and len(comments) == 1
+    assert isinstance(comments, list) and len(comments) == 2, comments
     assert str(comments[0]["body"]).startswith(f"Taktus took this issue: run `{run.id}` of ")
+    assert str(comments[1]["body"]).startswith(f"Done: run {run.id} of {version.ref} finished.")
 
     pulls = outside.get(f"/repos/{REPOSITORY}/pulls")
     assert isinstance(pulls, list) and len(pulls) == 1

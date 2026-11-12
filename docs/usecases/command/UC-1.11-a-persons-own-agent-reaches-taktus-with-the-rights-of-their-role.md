@@ -4,7 +4,7 @@ title: A person's own agent reaches Taktus, with the rights of their role
 component: command
 epic: E1
 serves: [P4, P7, P13, P14]
-state: building
+state: built
 version: 0.5.0
 tests: [tests/adapters/rest/test_agent_surface.py::test_only_an_agent_key_opens_the_surface, tests/adapters/rest/test_agent_surface.py::test_without_a_right_the_agent_only_reads_and_a_write_is_refused, tests/adapters/rest/test_agent_surface.py::test_a_right_granted_to_a_role_lists_its_tools_and_starts_a_process_as_the_person, tests/adapters/rest/test_agent_surface.py::test_a_run_the_reader_may_not_see_is_answered_as_one_that_does_not_exist, tests/adapters/rest/test_agent_surface.py::test_a_free_text_answer_is_read_back_and_counts_only_once_confirmed, tests/adapters/rest/test_agent_surface.py::test_a_step_is_taken_over_shown_and_handed_back_by_the_agent_as_the_person, tests/adapters/rest/test_agent_surface.py::test_every_call_is_in_the_ledger_with_the_person_and_no_argument, tests/adapters/rest/test_agent_surface.py::test_an_agent_of_the_protocols_own_client_reaches_the_tools, tests/adapters/rest/test_agent_surface.py::test_the_person_creates_their_agents_key_with_their_account_key, tests/components/identity/test_agent_rights.py::test_an_agent_key_proves_the_identity_only_as_an_agent_and_a_new_one_ends_it, tests/components/identity/test_agent_rights.py::test_an_identity_holds_the_rights_of_its_roles_as_they_are_now, tests/components/identity/test_agent_rights.py::test_every_grant_and_withdrawal_is_an_entry_and_a_repeat_changes_nothing]
 adrs: {ADR-0008: e6a4e033abd4, ADR-0033: eb18bea6bfb4, ADR-0117: 68746e0ef8ea, ADR-0128: 5292b4b5fe7e, ADR-0131: 7b1cf7e37d35}

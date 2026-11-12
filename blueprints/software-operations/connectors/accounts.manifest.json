@@ -1,0 +1,41 @@
+{
+  "contract": "connector/v1",
+  "capabilities": [
+    "accounts.customers",
+    "accounts.requests"
+  ],
+  "credential": "ACCOUNTS_TOKEN",
+  "operations": [
+    {
+      "tool": "read_account",
+      "name": "accounts.customers.read",
+      "capability": "accounts.customers",
+      "effect": "read",
+      "subject": "customer",
+      "summary": "The account of the customer customer: {id, customer, state, plan, created, manage_url}, the customer by the payment provider's identifier, manage_url the product's own page where the customer cancels or changes the subscription; no name and no address. Scoped: a call that serves a case answers only the case's subject."
+    },
+    {
+      "tool": "verify_address",
+      "name": "accounts.customers.verify",
+      "capability": "accounts.customers",
+      "effect": "read",
+      "subject": "customer",
+      "summary": "Whether address is the verified address of the account of the customer customer: {customer, account, verified}, verified true or false and nothing of the address the account holds. Scoped as the read is."
+    },
+    {
+      "tool": "prepare_request",
+      "name": "accounts.requests.prepare",
+      "capability": "accounts.requests",
+      "effect": "write",
+      "idempotency": "native",
+      "key_argument": "request_id",
+      "replayed": "/replayed",
+      "record": {
+        "kind": "data-request",
+        "id": "/id"
+      },
+      "subject": "customer",
+      "summary": "Prepare a data protection request of kind access, erasure or rectification for the customer customer, with reference as the case: the product readies it for a person of the business and carries out nothing; answered {id, customer, kind, state, replayed}, state prepared. The product's tool recognises a repeated request_id itself. Scoped as the reads are; access is answered by an export the product prepares."
+    }
+  ]
+}

@@ -6,9 +6,9 @@ is to decide.
 ## What you receive
 
 A **decision request**. It says what is to be decided, and gives you the options. One of them is
-recommended, with the reason. It also says by when the answer is needed. Today you find your
-requests in Taktus's list of decisions; a request to the owner of the organisation also reaches
-the owner in the chat.
+recommended, with the reason. It also says by when the answer is needed. You find your
+requests in the web app, on the page *Decisions*. A request to the owner of the organisation also
+reaches the owner in the chat.
 
 ## How you answer
 

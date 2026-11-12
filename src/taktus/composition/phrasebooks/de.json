@@ -42,6 +42,9 @@
   "show_overview_words": [
     "zeige überblick"
   ],
+  "show_origin_words": [
+    "zeige herkunft"
+  ],
   "live": "Live-Ansicht",
   "not_shown": "Dazu kann ich dir hier nichts zeigen.",
   "change_words": [

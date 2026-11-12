@@ -4,10 +4,10 @@ title: Self-healing within the frame
 component: run
 epic: E4
 serves: [P8, P10, P12]
-state: building
+state: verified
 version: 0.2.0
-tests: [tests/governance/test_autonomy.py::test_at_level_four_a_known_failure_inside_the_frame_is_healed_and_reported, tests/governance/test_autonomy.py::test_at_level_four_a_failure_past_the_frame_escalates_with_what_was_tried, tests/governance/test_autonomy.py::test_at_level_four_a_failure_of_no_known_kind_escalates_without_a_heal, tests/governance/test_autonomy.py::test_an_operation_that_cannot_recognise_a_repeat_is_never_healed]
-adrs: {ADR-0005: 0ea928e2016b, ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0024: 52ba89e4adec, ADR-0160: 34e64cb9d5ce}
+tests: [tests/governance/test_autonomy.py::test_at_level_four_a_known_failure_inside_the_frame_is_healed_and_reported, tests/governance/test_autonomy.py::test_at_level_four_a_failure_past_the_frame_escalates_with_what_was_tried, tests/governance/test_autonomy.py::test_at_level_four_a_failure_of_no_known_kind_escalates_without_a_heal, tests/governance/test_autonomy.py::test_an_operation_that_cannot_recognise_a_repeat_is_never_healed, tests/composition/test_objectives.py::test_a_run_slower_than_promised_is_recorded_with_the_objective_it_missed, tests/composition/test_objectives.py::test_a_share_of_finished_runs_below_the_promise_is_missed_by_the_run_that_lowers_it, tests/composition/test_objectives.py::test_a_process_without_objectives_is_not_measured, tests/composition/test_objectives.py::test_the_same_failure_healed_three_times_is_said_once_and_another_is_apart, tests/composition/test_objectives.py::test_the_limit_is_the_processs_and_cannot_be_switched_off, tests/governance/test_autonomy.py::test_a_heal_is_shown_in_the_run_s_report_with_the_failure_and_its_outcome, tests/composition/test_every_step_run_ends.py::test_every_step_run_of_every_bundle_ends_with_a_recorded_outcome, tests/composition/test_process_proposals.py::test_a_failure_healed_again_and_again_is_an_improvement_proposal_everyone_sees]
+adrs: {ADR-0005: 0ea928e2016b, ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0024: 52ba89e4adec, ADR-0160: 34e64cb9d5ce, ADR-0254: 272ad58f5433, ADR-0270: 970ca723e2d7}
 supersedes: null
 ---
 
@@ -79,6 +79,12 @@ adapter classified as repeatable is healed by a retry and recorded as `step.heal
 failure it answered, and the step's next `step.finished` is its outcome; the retry passes
 admission against the budget as `step.retried`; an operation with `idempotency: none` is never
 repeated; a failure of no known kind, or one past the frame of two heals, escalates and says why.
-Below level 4 a failure reaches a person, who resumes the run. Not built: service-level objectives,
-the improvement proposal after the same failure healed three times, a heal shown in a rendered run
-report beyond the ledger, and the test that every bundle's step runs end with a recorded outcome.
+Below level 4 a failure reaches a person, who resumes the run. Service-level objectives for a
+run's duration and the share of runs that complete are declared per process, and every ended run
+is measured against them once and recorded with the objectives it missed (ADR-0254). The same
+failure healed the process's limit of times — three by default, never off — is recorded once and
+said to the owner as a design fault, and it is an improvement proposal in the list of UC-4.4
+(ADR-0270). Every heal is shown in the run's report — the run level of the web app and the
+channel — with the failure it answered, what was done and how the next attempt ended. Every
+bundle of the repository is run as a rehearsal, and every step run that left `planned` has an
+entry that states how it ended — by the named tests.

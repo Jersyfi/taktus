@@ -14,12 +14,17 @@ export type IconName =
 	| 'ask'
 	| 'gallery'
 	| 'streams'
+	| 'discover'
+	| 'figures'
+	| 'value'
+	| 'report'
 	| 'levels'
 	| 'stages'
 	| 'findings'
 	| 'trials'
 	| 'acts'
 	| 'depends'
+	| 'privacy'
 	| 'incident'
 	| 'alert'
 	| 'backup'
@@ -48,19 +53,29 @@ export const DESTINATIONS: Destination[] = [
 	{ id: 'requests', label: 'Decisions', href: '#/requests', band: 'now', icon: 'decide', routes: ['/requests'] },
 	{ id: 'needs', label: 'Needs', href: '#/needs', band: 'now', icon: 'need', routes: ['/needs'] },
 	{ id: 'me', label: 'Yours', href: '#/me', band: 'now', icon: 'yours', routes: ['/me'] },
+	{ id: 'coach', label: 'Coach', href: '#/coach', band: 'now', icon: 'yours', routes: ['/coach'] },
+	{ id: 'proposed', label: 'Proposed', href: '#/proposed', band: 'now', icon: 'yours', routes: ['/proposed'] },
 	{ id: 'catalogue', label: 'Ask for', href: '#/catalogue', band: 'start', icon: 'ask', routes: ['/catalogue'] },
+	{ id: 'plans', label: 'Plan', href: '#/plans', band: 'start', icon: 'ask', routes: ['/plans'] },
 	{ id: 'gallery', label: 'Gallery', href: '#/gallery', band: 'start', icon: 'gallery', routes: ['/gallery'] },
 	{ id: 'streams', label: 'Streams', href: '#/streams', band: 'start', icon: 'streams', routes: ['/streams'] },
+	{ id: 'discoveries', label: 'Discoveries', href: '#/discoveries', band: 'start', icon: 'discover', routes: ['/discoveries'] },
+	{ id: 'views', label: 'Figures', href: '#/views', band: 'steer', icon: 'figures', routes: ['/views'] },
+	{ id: 'value', label: 'Value', href: '#/value', band: 'steer', icon: 'value', routes: ['/value'] },
+	{ id: 'role-reports', label: 'Reports', href: '#/role-reports', band: 'steer', icon: 'report', routes: ['/role-reports'] },
 	{ id: 'autonomy', label: 'Levels', href: '#/autonomy', band: 'steer', icon: 'levels', routes: ['/autonomy'] },
 	{ id: 'introduction', label: 'Introduction', href: '#/introduction', band: 'steer', icon: 'stages', routes: ['/introduction'] },
 	{ id: 'findings', label: 'Findings', href: '#/findings', band: 'steer', icon: 'findings', routes: ['/findings'] },
 	{ id: 'trials', label: 'Trials', href: '#/trials', band: 'steer', icon: 'trials', routes: ['/trials'] },
 	{ id: 'register', label: 'What acts', href: '#/register', band: 'steer', icon: 'acts', routes: ['/register'] },
 	{ id: 'dependencies', label: 'Dependencies', href: '#/dependencies', band: 'steer', icon: 'depends', routes: ['/dependencies'] },
+	{ id: 'subjects', label: 'Data protection', href: '#/subjects', band: 'steer', icon: 'privacy', routes: ['/subjects'] },
+	{ id: 'structure', label: 'Structure', href: '#/structure', band: 'steer', icon: 'streams', routes: ['/structure'] },
 	{ id: 'incidents', label: 'Incidents', href: '#/incidents', band: 'running', icon: 'incident', routes: ['/incidents'] },
 	{ id: 'alerts', label: 'Alerts', href: '#/alerts', band: 'running', icon: 'alert', routes: ['/alerts'] },
 	{ id: 'backup', label: 'Backup', href: '#/backup', band: 'running', icon: 'backup', routes: ['/backup'] },
 	{ id: 'signals', label: 'Signals', href: '#/signals', band: 'running', icon: 'signal', routes: ['/signals'] },
+	{ id: 'administration', label: 'Administration', href: '#/administration', band: 'running', icon: 'tenants', routes: ['/administration'] },
 	{ id: 'tenants', label: 'Tenants', href: '#/tenants', band: 'running', icon: 'tenants', routes: ['/tenants'] }
 ];
 

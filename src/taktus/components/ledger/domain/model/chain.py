@@ -213,3 +213,12 @@ def verify(entries: Sequence[LedgerEntry]) -> Verification:
     w = Walk()
     w.step(entries)
     return Verification(entries=len(entries), intact=not w.findings, findings=tuple(w.findings))
+
+
+def exported(entries: Iterable[LedgerEntry]) -> bytes:
+    """The entries as an export (UC-6.1, ADR-0253 §1): one entry's JSON document per line, in
+    the order given, each the document its hash covers. Anyone with the lines and the hash rule
+    recomputes every chain without Taktus."""
+    return "".join(
+        json.dumps(entry.document(), sort_keys=True, ensure_ascii=False) + "\n" for entry in entries
+    ).encode("utf-8")

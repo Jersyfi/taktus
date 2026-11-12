@@ -158,7 +158,10 @@ jobs:
   static:
     if: ${{ !((github.event_name == 'pull_request' && github.event.pull_request.draft) || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'taktus/'))) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # A change that touches every use case runs every verified one's tests: one case after
+    # another took 13.5 minutes in the gate alone for release 1.0 (#681) and met the limit of 15;
+    # run together, they took 2.5 minutes on ten cores instead of 11.7.
+    timeout-minutes: 20
     permissions:
       contents: read
       pull-requests: read
@@ -206,6 +209,11 @@ jobs:
           BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || (github.ref == 'refs/heads/main' && github.event.before || 'origin/main') }}
         run: make gate-docs BASE="$BASE"
 
+      # The documentation site builds from the guides (DEC-0234, NTC-0272); it is uploaded
+      # nowhere from here (deploy/docs/README.md).
+      - name: documentation site
+        run: make docs-site
+
       - name: decisions
         run: make gate-decisions
 
@@ -238,7 +246,17 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
       - run: make install
+      # The browser worker's suite drives headless Chromium; the browser is cached per version
+      # of the driver the lock file pins, and here its tests may not skip.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: chromium-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+      - name: browser
+        run: make browser
       - name: conformance
+        env:
+          TAKTUS_REQUIRE_BROWSER: "1"
         run: make gate-conformance
 
   # Unit, domain and integration tests. The runner has Docker; the PostgreSQL tests run in a
@@ -257,11 +275,20 @@ jobs:
       - run: make install
       - name: images
         run: make images
+      # The browser worker's tests (tests/workers) drive headless Chromium, cached as in the
+      # conformance lane; here they may not skip.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: chromium-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+      - name: browser
+        run: make browser
       # A pull request runs the tests of the components it touches and of every component that
       # depends on them (#394, ADR-0096 §3); a push to `main` runs everything.
       - name: test
         env:
           TAKTUS_REQUIRE_DATABASE: "1"
+          TAKTUS_REQUIRE_BROWSER: "1"
           BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
         run: make test BASE="$BASE"
 

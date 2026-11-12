@@ -139,10 +139,24 @@ def test_an_exact_step_without_a_check_does_not_register_and_the_finding_names_t
     assert "goes to a person" in finding and "`sourced`" in finding
 
 
-@pytest.mark.parametrize("cls", ["sourced", "tolerant", "free"])
-def test_only_exact_must_declare_a_check(cls: str) -> None:
+@pytest.mark.parametrize("cls", ["tolerant", "free"])
+def test_a_tolerant_or_free_step_may_declare_no_check(cls: str) -> None:
     version = parse_bundle(bundle(rule_step(exactness=cls)))
     assert version.steps[0].checks is None
+    statement = exactness.statement(version.ref, version.name, version.steps)
+    assert statement.applies == (f"`s` ({cls}): no check declared.",), "named unchecked"
+
+
+def test_a_sourced_step_without_a_check_does_not_register_and_the_finding_names_the_step() -> None:
+    with pytest.raises(InvalidProcess) as refused:
+        parse_bundle(bundle(rule_step(exactness="sourced")))
+    (finding,) = refused.value.findings
+    assert "step 's' is classed sourced and declares no check" in finding
+    for kind, row in CATALOGUE.items():
+        assert f"{kind.value} ({row.name})" in finding
+    assert "`tolerant` or `free`" in finding
+    checked = rule_step(exactness="sourced", checks=[{"kind": "source_shape", "columns": ["a"]}])
+    assert parse_bundle(bundle(checked)).steps[0].checks
 
 
 def test_an_exact_step_with_a_check_registers() -> None:
@@ -164,11 +178,11 @@ def test_a_recomputation_on_a_method_that_varies_is_refused() -> None:
         parse_bundle(bundle(step))
 
 
-def test_every_exact_step_of_every_bundle_declares_a_check() -> None:
+def test_every_exact_or_sourced_step_of_every_bundle_declares_a_check() -> None:
     for path in BUNDLES:
         version = parse_bundle(yaml.safe_load(path.read_text(encoding="utf-8")))
         for step in version.steps:
-            if step.exactness is ExactnessClass.EXACT:
+            if step.exactness in (ExactnessClass.EXACT, ExactnessClass.SOURCED):
                 assert step.checks, f"{path.name}: {step.id}"
 
 

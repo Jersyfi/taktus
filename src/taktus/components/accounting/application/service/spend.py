@@ -10,6 +10,10 @@ Two runs of the same task — with and without a change such as a compression or
 are compared step by step: each side's figures and each step's outcome and result digest, so
 that a change is adopted only when it is shown to be better. No figure here names a person
 (principle 14): a run, a step and a process are what is measured.
+
+A process's spend is also grouped by case (ADR-0216): the support message or the pull request
+a run was about, named by the caller for each run. Each case carries its runs, its money per
+currency and its Takte, as the runs' own tables price them.
 """
 
 from __future__ import annotations
@@ -99,6 +103,42 @@ class ProcessSpend(Value):
     steps: tuple[StepSpend, ...] = ()
     amounts: dict[str, float] = Field(default_factory=dict)
     unpriced: tuple[str, ...] = ()
+
+
+class CaseSpend(Value):
+    """One case's spend over a window: every run of it, priced at each run's own table."""
+
+    case: str
+    runs: int
+    amounts: dict[str, float] = Field(default_factory=dict)
+    """Money per currency; empty where no run of the case could be priced."""
+    amount: float | None = None
+    """The money where every priced run of the case is in one currency; None otherwise."""
+    takte: float | None = None
+    unpriced: tuple[str, ...] = ()
+
+
+class CasesSpend(Value):
+    """A process's spend over a window, per case, the costliest first (ADR-0216)."""
+
+    process_id: str
+    since: datetime | None = None
+    until: datetime | None = None
+    runs: int
+    """Every run of the process with a step finished in the window."""
+    without_case: int = 0
+    """Runs the caller named no case for: counted in `runs`, in no case."""
+    cases: tuple[CaseSpend, ...] = ()
+
+
+@dataclass(frozen=True)
+class SpendOfCases:
+    process_id: str
+    tenant: Tenant
+    cases: Mapping[str, str]
+    """The case of each run, by run identifier; a run not named here belongs to no case."""
+    since: datetime | None = None
+    until: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -224,6 +264,61 @@ class SpendHandler:
             steps=steps,
             amounts={c: round(a, 9) for c, a in totals.items()},
             unpriced=tuple(sorted(unpriced)),
+        )
+
+    async def of_cases(self, query: SpendOfCases) -> CasesSpend:
+        """The process's runs in the window, grouped by the case the query names for each."""
+        async with self._work.transaction(query.tenant):
+            finished = await self._ledger.of_kinds(query.tenant, {"step.finished"})
+        by_run: dict[str, list[LedgerEntry]] = {}
+        for entry in finished:
+            if _process(entry.refs.process_version) != query.process_id or entry.rehearsal:
+                continue
+            if query.since is not None and entry.ts < query.since:
+                continue
+            if query.until is not None and entry.ts >= query.until:
+                continue
+            if entry.refs.run_id is not None:
+                by_run.setdefault(entry.refs.run_id, []).append(entry)
+        runs: dict[str, int] = {}
+        amounts: dict[str, dict[str, float]] = {}
+        takte: dict[str, float] = {}
+        unpriced: dict[str, set[str]] = {}
+        without = 0
+        for run_id, entries in by_run.items():
+            case = query.cases.get(run_id)
+            if case is None:
+                without += 1
+                continue
+            async with self._work.transaction(query.tenant):
+                whole = list(await self._ledger.entries(query.tenant, run_id))
+            spent = await self._spend(run_id, whole, None, only=entries)
+            runs[case] = runs.get(case, 0) + 1
+            unpriced.setdefault(case, set()).update(spent.unpriced)
+            if spent.amount is not None and spent.currency is not None:
+                per = amounts.setdefault(case, {})
+                per[spent.currency] = per.get(spent.currency, 0.0) + spent.amount
+            if spent.takte is not None:
+                takte[case] = takte.get(case, 0.0) + spent.takte
+        cases = [
+            CaseSpend(
+                case=case,
+                runs=count,
+                amounts={c: round(a, 9) for c, a in amounts.get(case, {}).items()},
+                amount=_single(amounts.get(case)),
+                takte=None if case not in takte else round(takte[case], 9),
+                unpriced=tuple(sorted(unpriced.get(case, ()))),
+            )
+            for case, count in runs.items()
+        ]
+        cases.sort(key=lambda c: (-sum(c.amounts.values()), -(c.takte or 0.0), c.case))
+        return CasesSpend(
+            process_id=query.process_id,
+            since=query.since,
+            until=query.until,
+            runs=len(by_run),
+            without_case=without,
+            cases=tuple(cases),
         )
 
     async def _spend(

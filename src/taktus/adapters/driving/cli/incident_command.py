@@ -7,7 +7,9 @@ closes one: a run that happened later closes nothing by itself, a person does, a
 records who as `incident.closed`. `configure` sets the tenant's grace period, its threshold
 for a watcher that never finds anything and its limits on repetition (ADR-0132 §5), and prints
 the configuration in force; without an option it only prints it. `list` shows a step stopped
-for repeating itself as an incident of kind `step.repeated`.
+for repeating itself as an incident of kind `step.repeated`, and a stop a person requested, once
+it holds, as one of kind `stop.held`; `package ID` prints its situation package (ADR-0280).
+`configure --on-call ROLE` names the role it is reported to.
 
 The command line authenticates by holding the instance's state, as `anchors` does; `--identity`
 names who acts, for the ledger.
@@ -36,6 +38,7 @@ from taktus.components.governance.application.service import (
     CloseIncident,
     ConfigureWatch,
     ExpectedRuns,
+    IncidentHeld,
     UnknownIncident,
 )
 
@@ -84,6 +87,9 @@ def _run[T](ctx: typer.Context, state_dir: Path, act: Callable[[ExpectedRuns], A
     except (UnknownIncident, NotOperable, ValueError) as error:
         typer.echo(f"error: {error}", err=True)
         raise typer.Exit(code=2) from error
+    except IncidentHeld as held:
+        typer.echo(f"error: {held}", err=True)
+        raise typer.Exit(code=3) from held
 
 
 def _watch(services: Services) -> ExpectedRuns:
@@ -105,6 +111,35 @@ def list_(
         return [i.document() for i in await watch.incidents(tenant, every=every)]
 
     typer.echo(json.dumps(_run(ctx, state_dir, act), indent=2, ensure_ascii=False))
+
+
+@incident.command("package")
+def package(
+    ctx: typer.Context,
+    incident_id: Annotated[str, typer.Argument(help="The incident, as `list` names it.")],
+    tenant: Tenant = DEFAULT_TENANT,
+    state_dir: StateDir = Path(DEFAULT_STATE_DIR),
+) -> None:
+    """Print the situation package of an incident: of a stop a person requested (ADR-0280).
+    Exit code 2: the incident carries none."""
+    wiring: Wiring = ctx.obj
+    where = Path(os.path.expanduser(state_dir))
+
+    async def opened() -> str | None:
+        async with wiring.services(state_dir=where, worker_endpoint=DEFAULT_WORKER) as services:
+            if services.stop_incidents is None:
+                raise NotOperable("situation packages cannot be read with these services")
+            return await services.stop_incidents.package(tenant, incident_id)
+
+    try:
+        text = asyncio.run(opened())
+    except NotOperable as error:
+        typer.echo(f"error: {error}", err=True)
+        raise typer.Exit(code=2) from error
+    if text is None:
+        typer.echo(f"error: {incident_id} carries no situation package", err=True)
+        raise typer.Exit(code=2)
+    typer.echo(text)
 
 
 @incident.command("blind")
@@ -129,7 +164,8 @@ def close(
     by: By = "operator",
     state_dir: StateDir = Path(DEFAULT_STATE_DIR),
 ) -> None:
-    """Close an incident. Exit code 2: the tenant has no such incident."""
+    """Close an incident. Exit code 2: the tenant has no such incident. Exit code 3: a result
+    defect whose outward correction waits for a person's decision (ADR-0227 §3)."""
 
     async def act(watch: ExpectedRuns) -> str:
         closed = await watch.close(CloseIncident(tenant=tenant, incident_id=incident_id, by=by))
@@ -183,6 +219,10 @@ def configure(
             help="Whether an evaluation case may keep an input a step's scope names.",
         ),
     ] = None,
+    on_call: Annotated[
+        str | None,
+        typer.Option("--on-call", help="The role a person's stop is reported to (UC-7.2)."),
+    ] = None,
     tenant: Tenant = DEFAULT_TENANT,
     by: By = "operator",
     state_dir: StateDir = Path(DEFAULT_STATE_DIR),
@@ -198,6 +238,7 @@ def configure(
         repeated_model_calls=repeated_model_calls,
         evaluation_tolerance=evaluation_tolerance,
         evaluation_subjects=evaluation_subjects,
+        on_call=on_call,
     )
     changes = (
         grace,
@@ -208,6 +249,7 @@ def configure(
         repeated_model_calls,
         evaluation_tolerance,
         evaluation_subjects,
+        on_call,
     )
 
     async def act(watch: ExpectedRuns) -> dict[str, Any]:

@@ -1,0 +1,67 @@
+# Blueprint: knowledge
+# Answers from the organisation's own knowledge sources — wikis, document stores, repositories —
+# each statement naming the document it came from, read with the asker's own rights (UC-5.5,
+# ADR-0265). A deployment of the core, not a knowledge system: the sources stay the record.
+
+apiVersion: taktus.eu/process-bundle/v1
+kind: Blueprint
+metadata:
+  id: knowledge
+  name: Knowledge
+  domain: knowledge
+  maturity: experimental       # draft | experimental | verified | reference
+  version: "1"                 # a later version is offered to an instance, never applied (ADR-0263)
+
+# Capabilities, never product names. Mapping to an adapter is configuration.
+requires:
+  connectors:
+    - capability: knowledge.documents
+    - capability: channel.chat   # K-02 answers in the conversation it was asked in
+  models:
+    - purpose: triage        # the words a question is searched for
+    - purpose: support       # the answer from the documents
+    - purpose: check         # K-02: the answer checked, and classified for promises
+
+# What stays with a person regardless of the autonomy level: which sources are connected, and
+# which person's own credential a source is read with (ADR-0264, ADR-0265).
+anchors:
+  strategic:
+    - source.connect
+    - credential.map
+  legal: []
+
+# What the domain's value balance keeps (UC-9.3). No figure assesses a person (principle 14).
+value_criteria:
+  cost: [ ai_consumption, compute ]
+  benefit: [ time_to_answer, answers_with_sources ]
+
+processes:
+  - id: K-01
+    name: Answer from knowledge
+    bundle: processes/K-01-answer-from-knowledge.yaml
+    autonomy:
+      level: 3
+      reason: it reads with the asker's own rights and writes nothing outside; every statement names the documents it rests on, checked by rule
+      toward_next: none is needed; the answer goes to the person who asked
+    steps:
+      - { id: terms,   method: llm,  exactness: tolerant }
+      - { id: search,  method: rule, exactness: sourced }
+      - { id: answer,  method: llm,  exactness: sourced }
+      - { id: confirm, method: rule, exactness: sourced }
+      - { id: cite,    method: rule, exactness: sourced }
+  - id: K-02
+    name: Answer in the chat
+    autonomy:
+      level: 3
+      reason: it reads with the asker's own rights and answers only them, in their thread; every statement names its documents, and the answer is held by the frame of an outward message
+      toward_next: none is needed; the answer goes to the person who asked
+    steps:
+      - { id: terms,    method: llm,  exactness: tolerant }
+      - { id: search,   method: rule, exactness: sourced }
+      - { id: answer,   method: llm,  exactness: sourced }
+      - { id: confirm,  method: rule, exactness: sourced }
+      - { id: cite,     method: rule, exactness: sourced }
+      - { id: verify,   method: llm,  exactness: free }
+      - { id: promises, method: llm,  exactness: free }
+      - { id: reply,    method: rule, exactness: sourced }
+      - { id: nothing,  method: rule, exactness: sourced }

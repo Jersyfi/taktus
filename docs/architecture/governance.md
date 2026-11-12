@@ -86,6 +86,14 @@ approval and the quality history: registration measures the replaced version at 
 level. The owner hears of a fall and of a proposed raise through the owner-facing channel. The
 tenant's limits are `taktusctl corrections configure`; the shipped default is NTC-0215.
 
+**A level per class of request** (ADR-0215, UC-03 B-3.03). A statement may name the classes
+of request one step's result names — `autonomy.classes`, with a level per class, a default for
+any other answer and the limits the class rises and falls by. Every step that depends on that
+step runs at no higher a level than its class; the run reads the class once and records it as
+`run.classified`. A decision on a step a class held counts for the class. A class falls one
+level at its statement's count of corrections within its window, and a raise is proposed on its
+statement's numbers; a class rises only by a version a person approves, as every level does.
+
 **Where a person reads it** (ADR-0122, DEC-0218). `GET /autonomy` answers, for every process
 the reader may see, the level its version states and why, the level a rule lowered it to and
 the incident that says why, the level in force, and each unit's rates over 7 and 28 days. The
@@ -269,7 +277,11 @@ in [`docs/status.md`](../status.md).
   relevance of the process (ADR-0023). Thresholds are tenant configuration; a criterion may be
   added and a threshold changed, but the set cannot be emptied. Only the narrative — the
   incident description, the situation package — may come from a language model, and it names
-  the rule and the facts it fired on.
+  the rule and the facts it fired on. A stop is scoped to an adapter (ADR-0138), a process, a
+  tenant or the instance — a stop of each tenant it serves — and every run it covers halts at
+  its next boundary. Where the rule over a result reported wrong decides `stop`, it stops the
+  process that produced the result before the incident is written; the stop names the rule
+  and the incident, and the incident the facts (ADR-0256).
 
 ---
 
@@ -278,6 +290,34 @@ in [`docs/status.md`](../status.md).
 Taktus works with the minimum permissions needed, and that extends to the worker: it receives only
 the tools and credentials the process allows, injected at runtime, never stored. Role profiles of
 shared agents may only **narrow** the core's permissions, never widen them.
+
+Creating a process, approving a version for operation and setting or raising its autonomy level
+are three rights — `process.create`, `process.approve`, `autonomy.set` — each granted to a role,
+never to a person. Once a role of the tenant holds one, registration asks for them, and a
+version an identity lacks a right for is refused with `process.refused` naming the right
+(ADR-0257).
+
+Every domain a tenant instantiates has exactly one owner, an identity of the tenant, and a
+jurisdiction. Without an owner nothing in it is raised. An anchor scoped to a domain or a
+jurisdiction holds for that domain's processes, and no configuration may leave a domain without
+a legal anchor in force (ADR-0259). A tenant's monthly money budget across all its runs holds
+every run of it at its next boundary once the month's runs cost it (ADR-0260). A limit per unit of
+the structure — the company, a department, a team, a person — holds money, compute seconds or
+tokens per day, week or month. A run is attributed to where its identity sat when it was
+created, and a step is admitted only where its priced reservation fits what remains of every
+limit on that path, so that a child never lets through what its parent refuses. Alerts, the
+forecast band, an anomaly and a limit that does harm are each decided by a rule or a statistic
+over the runs' records and the ledger, and reach the limit's role; a person's limit is shown to
+that person alone, and Taktus never changes a limit (ADR-0282).
+
+A tenant's residency rule says where its data may be processed — `own`, `eu` or `anywhere` —
+and is narrowed per process and per data class, the narrowest holding (ADR-0116, ADR-0258).
+Every model, worker, connector and host has a declared location; whatever nobody declared counts
+as `elsewhere` (`TAKTUS_CONNECTOR_LOCATIONS`, `TAKTUS_HOST_LOCATIONS`, ADR-0157, ADR-0281). A
+version whose step handling restricted data would be bound outside the permitted location does
+not register. At run time such a step fails at its boundary without sending, naming the rule,
+and every egress entry is followed by `residency.egress`, naming where the effect went
+(ADR-0281).
 
 Shared agents run strictly in the permission, credential and cost context of the *calling user*,
 never of their author. No user sees another's mailbox, data or secrets.

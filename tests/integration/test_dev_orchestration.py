@@ -618,11 +618,14 @@ def test_implementation_admits_a_ready_issue_claims_it_and_refuses_the_rest(
     assert setup["arguments"] == ["sync", "--all-extras", "--frozen"], setup
     assert setup["credential"] is False, setup
     assert setup["cache"].endswith("worker-state/cache"), setup
-    writes = [
+    rows = [
         line.split()[2:4]
         for line in output.splitlines()
         if line.strip().startswith(tuple("0123456789")) and "egress" in line
     ]
+    writes = [row for row in rows if row[0].startswith("egress.")]
+    located = [step for kind, step in rows if kind == "residency.egress"]
+    assert located == [step for _, step in writes], "each write names where it went (ADR-0281)"
     assert writes == [
         ["egress.write", "claim"],
         ["egress.write", "announce-claim"],
@@ -641,7 +644,7 @@ def test_implementation_admits_a_ready_issue_claims_it_and_refuses_the_rest(
         "to-taktus",
     ]
     (announced,) = comments_on(outside, tasks.ready)
-    assert re.match(r"Taktus took this issue: run `run_\w+` of `p03-implementation@24`", announced)
+    assert re.match(r"Taktus took this issue: run `run_\w+` of `p03-implementation@25`", announced)
 
     ref = outside.get(f"/repos/{REPOSITORY}/git/ref/heads/taktus/issue-{tasks.ready}")
     assert isinstance(ref, dict)
@@ -1062,21 +1065,21 @@ def test_roadmap_control_reports_each_disagreement_once(outside: Outside, tmp_pa
 # --- the takeover of every integration step (issue #90) ---------------------------------------
 
 BUNDLES = {
-    "P-01-roadmap-control.yaml": "p01-roadmap-control@6",
-    "P-02-refinement.yaml": "p02-refinement@7",
-    "P-03-implementation.yaml": "p03-implementation@24",
+    "P-01-roadmap-control.yaml": "p01-roadmap-control@7",
+    "P-02-refinement.yaml": "p02-refinement@8",
+    "P-03-implementation.yaml": "p03-implementation@25",
 }
 REPOSITORY_CONNECTOR = "connector.channel.repo"
 TAKEN_OVER: dict[str, dict[str, set[str]]] = {
     REPOSITORY_CONNECTOR: {
-        "p01-roadmap-control@6": {
+        "p01-roadmap-control@7": {
             "read-roadmap",
             "read-issues",
             "read-open-records",
             "write-report",
         },
-        "p02-refinement@7": {"read-issue", "read-comments", "write-sections"},
-        "p03-implementation@24": {
+        "p02-refinement@8": {"read-issue", "read-comments", "write-sections"},
+        "p03-implementation@25": {
             "read-issue",
             "read-comments",
             "read-open-issues",
@@ -1098,8 +1101,8 @@ TAKEN_OVER: dict[str, dict[str, set[str]]] = {
             "announce-give-back",
         },
     },
-    "worker.endpoint": {"p03-implementation@24": {"implement"}},
-    "model.endpoint": {"p02-refinement@7": {"refine"}},
+    "worker.endpoint": {"p03-implementation@25": {"implement"}},
+    "model.endpoint": {"p02-refinement@8": {"refine"}},
 }
 """Per integration, the steps of P-01 to P-03 it serves, which a person takes over without it."""
 

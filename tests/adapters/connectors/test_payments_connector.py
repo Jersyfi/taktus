@@ -22,7 +22,7 @@ from taktus_connectors.stripe.operations import Config
 from taktus_connectors.stripe.server import build_server
 
 from taktus.adapters.driven.connectors.mcp import McpActionConnector
-from taktus.ports.connector import CallContext, CallFailed, idempotency_key
+from taktus.ports.connector import CallContext, CallFailed, CaseScope, idempotency_key
 from taktus.ports.worker import CredentialReference
 
 TOKEN = "tok-" + secrets.token_hex(8)
@@ -45,7 +45,7 @@ def provider() -> Iterator[str]:
     server.server_close()
 
 
-def context() -> CallContext:
+def context(scope: str | None = None) -> CallContext:
     return CallContext(
         tenant="default",
         identity="idn_ops",
@@ -54,6 +54,7 @@ def context() -> CallContext:
         attempt=1,
         idempotency_key=idempotency_key("run_read", "read", 1),
         credentials=(CredentialReference(name=CREDENTIAL, injected_as="env"),),
+        scope=CaseScope(subject=scope) if scope else None,
     )
 
 
@@ -61,8 +62,8 @@ def payments(url: str) -> McpActionConnector:
     return McpActionConnector(build_server(Config(url, timeout=5.0)))
 
 
-def replace(url: str, records: list[dict[str, Any]]) -> None:
-    httpx.post(f"{url}/_fake/subscriptions", content=json.dumps(records), timeout=5.0)
+def replace(url: str, records: list[dict[str, Any]], kind: str = "subscriptions") -> None:
+    httpx.post(f"{url}/_fake/{kind}", content=json.dumps(records), timeout=5.0)
 
 
 async def test_the_active_subscriptions_are_listed_without_personal_data(provider: str) -> None:
@@ -76,6 +77,8 @@ async def test_the_active_subscriptions_are_listed_without_personal_data(provide
         "status": "active",
         "current_period_end": 1790000001,
         "cancel_at_period_end": False,
+        "started_at": 1780000001,
+        "ended_at": None,
         "items": [
             {
                 "price": "price_monthly",
@@ -84,6 +87,7 @@ async def test_the_active_subscriptions_are_listed_without_personal_data(provide
                 "unit_amount": 999,
                 "currency": "EUR",
                 "interval": "month",
+                "interval_count": 1,
             }
         ],
         "metadata": {"account": "acct-1"},
@@ -160,3 +164,98 @@ async def test_a_provider_that_does_not_answer_is_unavailable_and_retryable() ->
         )
     assert failed.value.error.cause.value == "unavailable"
     assert failed.value.error.retryable is True
+
+
+# --- failed payments, invoices, undelivered events, a customer's contact (ADR-0214) ---------
+
+
+async def test_a_failed_payment_is_an_open_invoice_attempted_with_its_page_to_pay(
+    provider: str,
+) -> None:
+    result = await payments(provider).call("payments.failures.list", context(), {})
+    [failure] = result.output["failures"]
+    assert failure["id"] == "in_fake9" and failure["customer"] == "cus_fake3"
+    assert (failure["amount"], failure["currency"], failure["attempts"]) == (999, "EUR", 2)
+    assert failure["reason"] == "insufficient_funds"
+    assert failure["days_failing"] == 3
+    assert failure["update_url"] == "https://invoice.stripe.example/i/9"
+    assert result.output["complete"] is True and isinstance(result.output["as_of"], int)
+    assert "@customer.example" not in json.dumps(result.output)
+
+
+async def test_one_customers_failures_and_contact_only_under_their_scope(provider: str) -> None:
+    connector = payments(provider)
+    own = await connector.call(
+        "payments.customers.failures", context("cus_fake3"), {"customer": "cus_fake3"}
+    )
+    assert [f["id"] for f in own.output["failures"]] == ["in_fake9"]
+    none = await connector.call(
+        "payments.customers.failures", context("cus_fake1"), {"customer": "cus_fake1"}
+    )
+    assert none.output["failures"] == []
+    reached = await connector.call(
+        "payments.customers.contact", context("cus_fake3"), {"customer": "cus_fake3"}
+    )
+    assert reached.output == {"customer": "cus_fake3", "email": "person3@customer.example"}
+    for scope in (None, "cus_fake1"):
+        with pytest.raises(CallFailed) as failed:
+            await connector.call(
+                "payments.customers.contact", context(scope), {"customer": "cus_fake3"}
+            )
+        assert failed.value.error.cause.value == "out_of_scope"
+
+
+async def test_the_invoices_of_a_month_are_read_in_minor_units(provider: str) -> None:
+    connector = payments(provider)
+    result = await connector.call("payments.invoices.list", context(), {"status": "paid"})
+    assert result.output["month"]
+    assert all(i["status"] == "paid" for i in result.output["invoices"])
+    records = [
+        payment_service.invoice(1, "cus_fake1", created=1793491200),  # 2026-11-01 00:00 UTC
+        payment_service.invoice(2, "cus_fake2", created=1793491199),  # the month before
+    ]
+    replace(provider, records, "invoices")
+    november = await connector.call("payments.invoices.list", context(), {"month": "2026-11"})
+    assert november.output["month"] == "2026-11"
+    [only] = november.output["invoices"]
+    assert only == {
+        "id": "in_fake1",
+        "number": "FAKE-0001",
+        "customer": "cus_fake1",
+        "subscription": "sub_fake1",
+        "status": "paid",
+        "currency": "EUR",
+        "total": 999,
+        "tax": 19,
+        "paid": 999,
+        "remaining": 0,
+        "issued_at": 1793491200,
+        "due_at": None,
+        "paid_at": 1793491260,
+    }
+    assert "@customer.example" not in json.dumps(november.output)
+
+
+async def test_the_undelivered_events_name_their_object_and_nothing_of_it(provider: str) -> None:
+    result = await payments(provider).call("payments.events.undelivered", context(), {})
+    [event] = result.output["events"]
+    assert event["id"] == "evt_fake2" and event["type"] == "invoice.payment_failed"
+    assert event["pending_webhooks"] == 1
+    assert (event["object"], event["subject"]) == ("invoice", "in_fake2")
+    assert "@customer.example" not in json.dumps(result.output)
+
+
+@pytest.mark.parametrize(
+    ("operation", "input"),
+    [
+        ("payments.invoices.list", {"month": "2026-13"}),
+        ("payments.invoices.list", {"status": "refunded"}),
+        ("payments.failures.list", {"limit": 0}),
+    ],
+)
+async def test_a_month_or_status_it_cannot_ask_is_invalid(
+    provider: str, operation: str, input: dict[str, object]
+) -> None:
+    with pytest.raises(CallFailed) as failed:
+        await payments(provider).call(operation, context(), input)
+    assert failed.value.error.cause.value == "invalid"

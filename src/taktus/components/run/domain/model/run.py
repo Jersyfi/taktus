@@ -18,6 +18,7 @@ from taktus.ports.worker import AssignmentId, Limits
 from taktus.shared.v1 import (
     Artifact,
     AutonomyLevel,
+    ClassAutonomy,
     Consumption,
     ConsumptionQuantities,
     Digest,
@@ -90,6 +91,12 @@ class Cause(StrEnum):
     DECLINED = "declined"
     """The person an anchor names declined the act of a step: it was not performed, and the
     run halts at the step's boundary. A resume raises the request again (ADR-0042)."""
+    PAUSED = "paused"
+    """A person asked the run to pause: it halted at its next step boundary, and resumes there
+    when a person resumes it (ADR-0236, UC-1.5)."""
+    CANCELLED = "cancelled"
+    """A person cancelled the run: it halted at its next step boundary and never resumes
+    (ADR-0236, UC-1.5)."""
 
 
 # Every transition the run knows. Anything not listed is illegal. `self-healed` of §5.2 is a
@@ -108,6 +115,9 @@ RUN_TRANSITIONS: frozenset[tuple[RunState, RunState]] = frozenset(
         (RunState.RUNNING, RunState.FINISHED),
         (RunState.HALTED, RunState.RUNNING),
         (RunState.ESCALATED, RunState.RUNNING),
+        # A halted or escalated run is at its boundary: a cancellation lands at once (ADR-0236).
+        (RunState.HALTED, RunState.HALTED),
+        (RunState.ESCALATED, RunState.HALTED),
     }
 )
 
@@ -411,6 +421,12 @@ class Run(Value):
     """The level of each tool action of the process that runs below the process's level: a
     capability or a connector operation. A step that uses one runs at the lowest level that
     applies to it (ADR-0039)."""
+    classes: ClassAutonomy | None = None
+    """The levels per class of request the version's statement names, as far as they were
+    lowered: every step depending on the class's step runs at no higher a level (ADR-0215)."""
+    case_class: str | None = None
+    """The class of request the class's step named, once it did; None before, and where its
+    result names no class the statement knows."""
     budget: Limits
     margin: float = Field(default=0.0, ge=0.0, le=0.9)
     """The share of every limit held back from the first step on; the run is held to the
@@ -445,6 +461,10 @@ class Run(Value):
     org_unit: str | None = Field(default=None, min_length=1)
     """The organisational unit the run runs for: the department below the tenant that the
     command's structure names, never a person (ADR-0166). None for the tenant itself."""
+    org_path: tuple[str, ...] = ()
+    """Where the run is attributed in the structure below the tenant: where its identity sat
+    when the run was created, `("sales", "field")`; empty for the tenant itself. Every unit
+    limit on this path holds it (ADR-0282 §2)."""
     org_unit_month: str | None = Field(default=None, pattern=r"^[0-9]{4}-[0-9]{2}$")
     """The month in which the run committed its budget to its unit's budget quota; None while
     it committed nothing (ADR-0166 §3)."""

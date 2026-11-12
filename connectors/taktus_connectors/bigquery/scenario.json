@@ -1,0 +1,29 @@
+{
+  "credentials": {
+    "actions": "WAREHOUSE_KEY"
+  },
+  "read": {
+    "operation": "warehouse.queries.run",
+    "input": {
+      "query": "SELECT step, users FROM signups_funnel ORDER BY users DESC"
+    }
+  },
+  "writes": [
+    {
+      "operation": "warehouse.queries.change",
+      "input": {
+        "query": "INSERT INTO conformance_marks (mark) VALUES (@mark)",
+        "parameters": {
+          "mark": "conformance-{{unique}}"
+        }
+      }
+    }
+  ],
+  "invalid": {
+    "operation": "warehouse.queries.run",
+    "input": {
+      "query": "DELETE FROM signups_funnel WHERE TRUE"
+    },
+    "expected_cause": "invalid"
+  }
+}

@@ -6,8 +6,10 @@ from __future__ import annotations
 import pytest
 from fakes import FakeModel
 
+from taktus.components.process.domain.model import InvalidProcess, ProcessVersion
 from taktus.components.run.domain.model import RuleFailed, RunState, ScreenRule
 from taktus.components.run.domain.service import rules
+from taktus.shared.v1 import Autonomy, ExactnessClass, Method, Step
 
 from .test_engine import rule
 from .test_llm_steps import ModelHarness, llm
@@ -75,3 +77,28 @@ def test_a_check_is_named_once_and_only_from_the_catalogue() -> None:
         ScreenRule(rule="screen", text="x", checks=("injection", "injection"))
     with pytest.raises(ValueError):
         ScreenRule(rule="screen", text="x", checks=("safe",))
+
+
+def _version(exactness: ExactnessClass) -> ProcessVersion:
+    return ProcessVersion(
+        process_id="p",
+        version="1",
+        name="P",
+        autonomy=Autonomy(level=2, reason="a test", toward_next="nothing"),
+        steps=(
+            Step(
+                id="screen",
+                method=Method.RULE,
+                reason="fixed patterns",
+                rejected=(),
+                exactness=exactness,
+            ),
+        ),
+        work={"screen": {**SCREEN, "text": "x"}},
+    )
+
+
+def test_an_input_check_classed_exact_does_not_register() -> None:
+    with pytest.raises(InvalidProcess, match=r"input check .* classed exact"):
+        _version(ExactnessClass.EXACT)
+    assert _version(ExactnessClass.TOLERANT).steps[0].exactness is ExactnessClass.TOLERANT

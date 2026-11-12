@@ -872,6 +872,7 @@
         "attempt": 1,
         "consumption": [],
         "decisions": [],
+        "heals": [],
         "drawn": {
           "moving": {
             "subject": "step",
@@ -909,6 +910,7 @@
         "attempt": 1,
         "consumption": [],
         "decisions": [],
+        "heals": [],
         "drawn": {
           "moving": {
             "subject": "step",
@@ -946,6 +948,7 @@
         "attempt": 1,
         "consumption": [],
         "decisions": [],
+        "heals": [],
         "drawn": {
           "moving": {
             "subject": "step",
@@ -983,6 +986,7 @@
         "attempt": 1,
         "consumption": [],
         "decisions": [],
+        "heals": [],
         "drawn": {
           "moving": {
             "subject": "step",
@@ -1029,6 +1033,7 @@
           }
         ],
         "decisions": [],
+        "heals": [],
         "drawn": {
           "moving": {
             "subject": "step",
@@ -1066,6 +1071,7 @@
         "attempt": 1,
         "consumption": [],
         "decisions": [],
+        "heals": [],
         "drawn": {
           "moving": {
             "subject": "step",
@@ -1102,6 +1108,7 @@
         "attempt": 1,
         "consumption": [],
         "decisions": [],
+        "heals": [],
         "drawn": {
           "moving": {
             "subject": "step",
@@ -1177,6 +1184,7 @@
             "text": "decision request dr_example: open, waiting for its decider."
           }
         ],
+        "heals": [],
         "drawn": {
           "moving": {
             "subject": "step",
@@ -1214,6 +1222,7 @@
         "attempt": 1,
         "consumption": [],
         "decisions": [],
+        "heals": [],
         "drawn": {
           "moving": {
             "subject": "step",
@@ -1251,6 +1260,7 @@
         "attempt": 1,
         "consumption": [],
         "decisions": [],
+        "heals": [],
         "drawn": {
           "moving": {
             "subject": "step",
@@ -2002,6 +2012,7 @@
           "attempt": 1,
           "consumption": [],
           "decisions": [],
+          "heals": [],
           "drawn": {
             "moving": {
               "subject": "step",
@@ -2039,6 +2050,7 @@
           "attempt": 1,
           "consumption": [],
           "decisions": [],
+          "heals": [],
           "drawn": {
             "moving": {
               "subject": "step",
@@ -2087,6 +2099,7 @@
             "standing": "held",
             "until": "2026-10-10T17:00:00Z"
           },
+          "heals": [],
           "drawn": {
             "moving": {
               "subject": "step",
@@ -2128,6 +2141,7 @@
             "id": "tko_lapsed",
             "standing": "lapsed"
           },
+          "heals": [],
           "drawn": {
             "moving": {
               "subject": "step",
@@ -2204,7 +2218,8 @@
           "stated_text": "Runs at autonomy level 2: a person confirms each step. Toward level 3: twenty runs without a result defect.",
           "lowered": {
             "level": 1,
-            "actions": {}
+            "actions": {},
+            "classes": {}
           },
           "in_force": 1,
           "text": "Runs at autonomy level 1, lowered by rule from the stated 2: a person confirms each step.",
@@ -2776,7 +2791,8 @@
               "level": 2,
               "exactness": "sourced",
               "without": "breaks",
-              "reason": "no other adapter serves tickets.read and the step names no fallback"
+              "reason": "no other adapter serves tickets.read and the step names no fallback",
+              "untried": false
             },
             {
               "process_id": "support",
@@ -2787,7 +2803,8 @@
               "exactness": "sourced",
               "without": "degrades",
               "instead": "connector.mirror",
-              "reason": "another adapter, or a person of the role, takes the step"
+              "reason": "another adapter, or a person of the role, takes the step",
+              "untried": false
             }
           ],
           "used": {
@@ -2834,7 +2851,8 @@
               "exactness": "free",
               "without": "degrades",
               "role": "support-lead",
-              "reason": "another adapter, or a person of the role, takes the step"
+              "reason": "another adapter, or a person of the role, takes the step",
+              "untried": false
             }
           ],
           "used": {
@@ -2994,7 +3012,8 @@
           "level": 2,
           "exactness": "sourced",
           "without": "breaks",
-          "reason": "no other adapter serves tickets.read and the step names no fallback"
+          "reason": "no other adapter serves tickets.read and the step names no fallback",
+          "untried": false
         }
       ],
       "degrades": [
@@ -3007,7 +3026,8 @@
           "exactness": "sourced",
           "without": "degrades",
           "instead": "connector.mirror",
-          "reason": "another adapter, or a person of the role, takes the step"
+          "reason": "another adapter, or a person of the role, takes the step",
+          "untried": false
         }
       ],
       "removal": {
@@ -3675,7 +3695,8 @@
           "replies/late"
         ]
       },
-      "settled": true
+      "settled": true,
+      "validations": []
     },
     "trials": {
       "trials": [
@@ -4061,7 +4082,8 @@
             "runs": 21,
             "missed": 0,
             "incidents": 0,
-            "last_finished": "2026-10-10T08:00:00Z"
+            "last_finished": "2026-10-10T08:00:00Z",
+            "untried": false
           },
           {
             "process": "backups",
@@ -4071,7 +4093,8 @@
             "runs": 21,
             "missed": 0,
             "incidents": 1,
-            "last_finished": "2026-10-10T03:00:00Z"
+            "last_finished": "2026-10-10T03:00:00Z",
+            "untried": false
           }
         ],
         "condition": [
@@ -4108,7 +4131,8 @@
             "granted": 2,
             "runs": 0,
             "missed": 0,
-            "incidents": 0
+            "incidents": 0,
+            "untried": false
           }
         ],
         "condition": [
@@ -4144,7 +4168,8 @@
             "granted": 3,
             "runs": 0,
             "missed": 0,
-            "incidents": 0
+            "incidents": 0,
+            "untried": false
           }
         ],
         "condition": [

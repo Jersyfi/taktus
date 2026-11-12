@@ -14,12 +14,15 @@ import yaml
 from taktus.components.catalog.domain.model import (
     AdapterMaturity,
     AgentCore,
+    CallerCredential,
     CatalogueInstallation,
+    CatalogueShare,
     Configuration,
     ConformanceResult,
     CoreState,
     Grants,
     Measurement,
+    Origin,
     OriginKind,
     ProcessFinding,
     RemovalResult,
@@ -27,6 +30,7 @@ from taktus.components.catalog.domain.model import (
     Round,
     RoundState,
     RunSummary,
+    ShareKind,
     SkillFile,
     SkillOrigin,
     SkillOwnership,
@@ -37,11 +41,26 @@ from taktus.components.catalog.domain.model import (
     StepFinding,
     Verdict,
 )
-from taktus.components.command.domain.model import IntakeEvent
+from taktus.components.command.domain.model import Estimate, IntakeEvent, PlanDraft
+from taktus.components.command.domain.model.coach import CoachHint, CoachPolicy, CoachSettings
+from taktus.components.command.domain.model.configuration import (
+    Action,
+    ConfigurationChange,
+    Undo,
+)
+from taktus.components.command.domain.model.session import (
+    Outcome,
+    OutcomeKind,
+    ProjectSession,
+    Source,
+    Statement,
+    Turn,
+)
 from taktus.components.decision.domain.model import DecisionRule, RegisterEntry, Request
 from taktus.components.governance.domain.model import (
     AnchorConfiguration,
     CaseAnswer,
+    ConnectionGrant,
     CorrectionLimits,
     Happening,
     Incident,
@@ -69,6 +88,19 @@ from taktus.components.identity.domain.model import (
     link_id,
     session_id,
 )
+from taktus.components.identity.domain.model.structure import (
+    Circle,
+    Filing,
+    KnowledgeHome,
+    OrgStructure,
+    Place,
+    PlacedKind,
+    PlaceKind,
+    Placement,
+    Reference,
+    StructureUnit,
+)
+from taktus.components.knowledge.domain.model import KnowledgeEntry, Observed, entry_id
 from taktus.components.process.application.service.register_version import parse_bundle
 from taktus.components.process.domain.model import (
     CorrectedCase,
@@ -97,7 +129,10 @@ from taktus.components.run.domain.model import (
     ReceivedMessage,
     Run,
     RunState,
+    RunSteering,
     Start,
+    SteeringKind,
+    SteeringReply,
     StepState,
     StopState,
     WorkingTime,
@@ -110,12 +145,14 @@ from taktus.shared.v1 import (
     Commissioned,
     Consumption,
     ConsumptionQuantities,
+    ExactnessClass,
     Intent,
     Method,
     Plan,
     PlanResult,
     PlanStatus,
     ReplyTo,
+    Step,
 )
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -139,6 +176,43 @@ def process_version(version: str = "1", tenant: str = "t") -> ProcessVersion:
     ]
     document["slo"] = {"freshness": "24h", "latency": "90s"}
     document["expect"] = {"schedule": "0 7 * * 1-5", "bound": "2h"}
+    document["escalation"] = {"role": "support", "react_within": "30m", "path": "ledger"}
+    document["heal_limit"] = 5
+    document["inputs"] = {
+        "due": {"description": "when the answer is due", "example": "2026-11-02", "required": False}
+    }
+    document["case"] = "due"
+    document["frame"] = {"changes": ["work", "takeover"]}
+    for step in document["steps"]:
+        if step["id"] == "verify-answer":
+            step["checks"] = [*step["checks"], {"kind": "source_shape", "columns": ["answer"]}]
+    document["contracts"] = {
+        "answers": {
+            "partner": "a partner that receives the answer",
+            "direction": "import",
+            "proprietary": "the partner offers no open format for it",
+            "fields": [{"name": "answer", "required": True}],
+            "frequency": "1d",
+            "responsible": {"ours": "operations", "theirs": "the partner's office"},
+            "steps": ["verify-answer"],
+        }
+    }
+    document["control"] = {
+        "mode": "decoupled",
+        "task": {
+            "operation": "tasks.items.get",
+            "input": {"id": {"$input": "due"}},
+            "select": "state",
+            "withdrawn": ["withdrawn", "cancelled"],
+        },
+    }
+    document["change"] = {
+        "observed": "interface",
+        "on": "repository.issues.list",
+        "said": "the operation answers `items` where it answered `issues`",
+        "predecessor": "six-times-seven@0",
+        "changes": ["step compute: its work changed"],
+    }
     document["open_work"] = {
         "pull_requests": {
             "cap": 2,
@@ -190,6 +264,7 @@ def process_version(version: str = "1", tenant: str = "t") -> ProcessVersion:
                 "criterion": "Does the answer give the same number?",
             },
         ],
+        "tolerances": {"compute": 0.1},
         "schedule": "weekly",
     }
     parsed = parse_bundle(document)
@@ -757,6 +832,16 @@ def source_declaration(tenant: str = "t") -> SourceDeclaration:
     )
 
 
+def connection_grant(tenant: str = "t") -> ConnectionGrant:
+    return ConnectionGrant(
+        id="warehouse.queries",
+        tenant=tenant,
+        capability="warehouse.queries",
+        created_at=AT,
+        withdrawn=True,
+    )
+
+
 def message_rules(tenant: str = "t") -> MessageRules:
     return MessageRules(
         id=tenant,
@@ -870,6 +955,25 @@ def deadline(tenant: str = "t") -> Deadline:
         lead_at=AT + timedelta(hours=20),
         created_at=AT,
         lead_taken_at=AT + timedelta(hours=20, seconds=3),
+    )
+
+
+def knowledge_entry(tenant: str = "t") -> KnowledgeEntry:
+    """A document of a knowledge source read twice, its first version in the history and the
+    source no longer showing it at the last reading (ADR-0265 §4)."""
+    return KnowledgeEntry(
+        id=entry_id("knowledge.documents", "12"),
+        tenant=tenant,
+        created_at=AT,
+        capability="knowledge.documents",
+        identifier="12",
+        title="Holidays",
+        url="https://wiki.example/books/people/page/holidays",
+        version="2",
+        digest="sha256:" + "b" * 64,
+        observed_at=AT + timedelta(days=2),
+        held=False,
+        earlier=(Observed(version="1", digest="sha256:" + "a" * 64, at=AT),),
     )
 
 
@@ -1133,5 +1237,293 @@ def role_profile(tenant: str = "t") -> RoleProfile:
     )
 
 
+def catalogue_share(tenant: str = "t") -> CatalogueShare:
+    return CatalogueShare(
+        id="model:model.local",
+        tenant=tenant,
+        kind=ShareKind.MODEL,
+        subject="model.local",
+        owner="idn_owner",
+        purpose="Drafts replies for the support team",
+        circles=(f"{tenant}/support", "identity:idn_owner"),
+        location="own",
+        cost_model="per_hardware_time",
+        origin=Origin.TRAINED,
+        version="sha256:" + "a" * 64,
+        evaluations=("evl_first",),
+        shared_at=AT,
+        shared_by="idn_owner",
+    )
+
+
+def caller_credential(tenant: str = "t") -> CallerCredential:
+    return CallerCredential(
+        id="idn_a:TICKETS_TOKEN",
+        tenant=tenant,
+        identity="idn_a",
+        name="TICKETS_TOKEN",
+        suffix="IDN_A",
+        bound_at=AT,
+    )
+
+
 def skill_ownership(tenant: str = "t") -> SkillOwnership:
     return SkillOwnership(id="mine@1", tenant=tenant, owner="idn_t")
+
+
+def run_steering(tenant: str = "t") -> RunSteering:
+    """A pause asked of a run, with the thread its confirmation is said in (ADR-0236)."""
+    return RunSteering(
+        id="run_1",
+        tenant=tenant,
+        kind=SteeringKind.PAUSE,
+        requested_by="idn_p",
+        requested_at=AT,
+        reply=SteeringReply(channel="channel.chat", address="C1", thread="1.1"),
+    )
+
+
+def plan_draft(tenant: str = "t") -> PlanDraft:
+    """A plan draft at its second version, with an estimate and its basis (ADR-0237)."""
+    return PlanDraft(
+        id="pld_1",
+        tenant=tenant,
+        command_id="cmd_1",
+        version=2,
+        goal="answer supplier invoices",
+        steps=(
+            Step(
+                id="a", method=Method.RULE, reason="r", rejected=(), exactness=ExactnessClass.EXACT
+            ),
+        ),
+        due=AT,
+        autonomy_level=2,
+        autonomy_reason="a person confirms every reply",
+        estimates=(Estimate(step_id="a", figure=0.5, basis="the last 30 runs"),),
+        changed_by="idn_p",
+        changed_at=AT,
+    )
+
+
+def coach_settings(tenant: str = "t") -> CoachSettings:
+    return CoachSettings(id="idn_p", tenant=tenant, hints_per_week=3, observed_since=AT)
+
+
+def coach_hint(tenant: str = "t") -> CoachHint:
+    return CoachHint(
+        id="idn_p:abc",
+        tenant=tenant,
+        identity="idn_p",
+        pattern="abc",
+        says="You ask this every Monday.",
+        procedure='every Monday: "summarise"',
+        offered_at=AT,
+    )
+
+
+def coach_policy(tenant: str = "t") -> CoachPolicy:
+    return CoachPolicy(id=tenant, lasting_days=14)
+
+
+def view_configuration(tenant: str = "t") -> Any:
+    """Two views, one given to a person beyond their roles (ADR-0241)."""
+    from taktus.components.reporting.domain.model.views import ViewConfiguration
+
+    return ViewConfiguration.model_validate(
+        {
+            "id": tenant,
+            "tenant": tenant,
+            "configured_at": AT.isoformat(),
+            "views": [
+                {
+                    "id": "team",
+                    "title": "Team",
+                    "figures": ["value.runs_ended"],
+                    "roles": ["lead"],
+                    "persons": ["idn_ada"],
+                    "group_by": "process",
+                },
+            ],
+            "entitlements": {"value.runs_ended": ["lead", "owner"]},
+            "depth": {"lead": "short"},
+            "language": {"lead": "de"},
+        }
+    )
+
+
+def report_definition(tenant: str = "t") -> Any:
+    from taktus.components.reporting.domain.model.views import ReportDefinition
+
+    return ReportDefinition(
+        id="weekly-lead",
+        tenant=tenant,
+        reader_role="lead",
+        trigger="schedule",
+        every="week",
+        hour=7,
+        weekday=0,
+        channel="channel.chat",
+        address="C1",
+        set_at=AT,
+        last_slot="2026-W40",
+    )
+
+
+def own_view(tenant: str = "t") -> Any:
+    from taktus.components.reporting.domain.model.views import Goal, OwnView
+
+    return OwnView(
+        id="idn_ada",
+        tenant=tenant,
+        reader="idn_ada",
+        shared_with=("lead",),
+        goals=(Goal(title="Fridays free", hours_per_week=4),),
+        line="week",
+        channel="channel.chat",
+        address="D1",
+        set_at=AT,
+        last_slot="2026-W40",
+    )
+
+
+def value_basis(tenant: str = "t") -> Any:
+    from taktus.components.value.domain.model import ValueBasis
+
+    return ValueBasis.model_validate(
+        {
+            "id": "v000001",
+            "tenant": tenant,
+            "version": 1,
+            "set_at": AT.isoformat(),
+            "currency": "EUR",
+            "pay": [{"role": "accounting", "per_hour": 55.5}],
+            "processes": [
+                {
+                    "process": "invoice",
+                    "minutes_by_hand": 12,
+                    "roles_by_hand": ["accounting"],
+                    "learn_hours": 3,
+                    "response_minutes_by_hand": 600,
+                    "relevance": "critical",
+                    "licence_per_month": 20,
+                    "investment": 900,
+                }
+            ],
+            "targets": [{"process": "invoice", "figure": "value.quality", "low": 0.95}],
+            "plan": [{"unit": "t/finance", "maturity": 0.6, "due": "2027-06-30"}],
+            "backlog": [
+                {
+                    "id": "dunning",
+                    "unit": "t/finance",
+                    "title": "Dunning",
+                    "hours_per_month": 8,
+                    "basis": "two reminders a day by hand",
+                }
+            ],
+        }
+    )
+
+
+def discovered_process(tenant: str = "t") -> Any:
+    from taktus.components.value.domain.model import DiscoveredProcess
+
+    return DiscoveredProcess(
+        id="dsc_1",
+        tenant=tenant,
+        title="Friday bank check",
+        origin="interview",
+        found="the open invoices are checked against the bank every Friday",
+        stage="valued",
+        description="What: the check",
+        owner_role="accounting",
+        minutes_by_hand=45,
+        at=AT,
+    )
+
+
+def org_structure(tenant: str = "t") -> OrgStructure:
+    return OrgStructure(id=tenant, tenant=tenant, levels=("company", "area", "team", "project"))
+
+
+def structure_unit(tenant: str = "t") -> StructureUnit:
+    """A private project with a reference (ADR-0276)."""
+    return StructureUnit(
+        id="notes",
+        tenant=tenant,
+        name="My notes",
+        level=3,
+        parent=tenant,
+        members=("idn_p",),
+        private=True,
+        owner="idn_p",
+        circle=Circle.ALONE,
+        references=(Reference(kind="ticket", link="https://tickets.example.org/1"),),
+        created_by="idn_p",
+        created_at=AT,
+    )
+
+
+def placement(tenant: str = "t") -> Placement:
+    return Placement(
+        id="process:invoices",
+        tenant=tenant,
+        kind=PlacedKind.PROCESS,
+        object="invoices",
+        unit="notes",
+        placed_by="idn_p",
+        placed_at=AT,
+    )
+
+
+def filing(tenant: str = "t") -> Filing:
+    return Filing(
+        id="process:invoices",
+        tenant=tenant,
+        kind=PlacedKind.PROCESS,
+        object="invoices",
+        unit="notes",
+        places=(Place(kind=PlaceKind.KNOWLEDGE, link="https://wiki.example.org/x"),),
+        set_up_by="idn_p",
+        filed_at=AT,
+    )
+
+
+def knowledge_home(tenant: str = "t") -> KnowledgeHome:
+    return KnowledgeHome(id=tenant, tenant=tenant, base="https://wiki.example.org")
+
+
+def project_session(tenant: str = "t") -> ProjectSession:
+    source = Source(title="Handbook", link="https://wiki.example.org/handbook")
+    return ProjectSession(
+        id="ses_1",
+        tenant=tenant,
+        project="notes",
+        participant="idn_p",
+        opened_at=AT,
+        turns=(
+            Turn(at=AT, channel="channel.web", speaker="participant", text="When?"),
+            Turn(
+                at=AT,
+                channel="channel.web",
+                speaker="taktus",
+                statements=(Statement(text="Thursdays.", source=source),),
+            ),
+        ),
+        outcomes=(Outcome(kind=OutcomeKind.PLAN, ref="pld_1", summary="release", at=AT),),
+    )
+
+
+def configuration_change(tenant: str = "t") -> ConfigurationChange:
+    return ConfigurationChange(
+        id="pld_1@v1#1",
+        tenant=tenant,
+        plan_id="pld_1@v1",
+        position=1,
+        identity="idn_p",
+        capability="tickets.projects",
+        action=Action(operation="tickets.projects.create", input={"key": "WEB"}),
+        reverse=Action(operation="tickets.projects.delete", input={"key": "WEB"}),
+        instruction="Create the project WEB.",
+        undo=Undo(before={"exists": False}),
+        changed_at=AT,
+    )

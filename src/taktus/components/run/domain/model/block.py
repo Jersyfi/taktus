@@ -97,6 +97,13 @@ claim skipped its job until one freed (ADR-0166). Booked to `limit.quota`."""
 AT_UNIT_BUDGET = "at_unit_budget"
 """The run's budget did not fit what is left of its organisational unit's budget quota for the
 month, or names no amount in the quota's currency (ADR-0166). Booked to `limit.budget`."""
+AT_TENANT_BUDGET = "at_tenant_budget"
+"""What the tenant's runs of the month cost reached its monthly budget: every run of the
+tenant waits at its next boundary until a person raises the budget or the month turns
+(ADR-0260). Booked to `limit.budget`."""
+AT_UNIT_LIMIT = "at_unit_limit"
+"""The step's reservation did not fit what remains of a limit of a unit of the structure the
+run is attributed to; its block names the limit (ADR-0282). Booked to `limit.budget`."""
 HELD_BACK = "held_back"
 """The step depends on a step that waits, and cannot start before it ends."""
 NO_WORKER = "no_worker"
@@ -113,7 +120,7 @@ on an adapter the instance does not have (ADR-0046)."""
 LACK_ACCOUNT: Account = "wait.dependency"
 
 CLOSED_BY_ADMISSION: frozenset[str] = frozenset(
-    {REJECTED_BY_CAPACITY, REJECTED_BY_ADMISSION, HALTED_AT_LIMIT}
+    {REJECTED_BY_CAPACITY, REJECTED_BY_ADMISSION, HALTED_AT_LIMIT, AT_UNIT_LIMIT}
 )
 """The causes a block ends with once the step is admitted again: what refused it was a limit
 that admission checks."""
@@ -177,9 +184,16 @@ class OpenBlock(Value):
     next_check_at: datetime | None = None
     """For a `wait` step that parked its run: when the wait is checked next; the runner defers
     the job to it (ADR-0103). None for every other block."""
+    limit: str | None = Field(default=None, min_length=1)
+    """For a step held at a unit limit: the limit's name (ADR-0282). None for every other
+    block."""
     takeover: Takeover | None = None
     """For a step a person took over: the take-over they hold (ADR-0128). None for every other
     block."""
     awaited: Awaited | None = None
     """For a step that waits for a participant outside the organisation: where the answer is
     expected (ADR-0155). None for every other block."""
+    short: dict[str, float] | None = None
+    """For a step refused by admission: by how much its reservation exceeded what was left, per
+    quantity, at the refusal that began the block (`Admission.short`, ADR-0283). None for every
+    other block."""

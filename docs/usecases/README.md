@@ -54,8 +54,8 @@ is the file to copy.
 
 ```yaml
 ---
-id: UC-4.10
-title: Deviation detection
+id: UC-0.0                # the template's placeholder: no use case carries it
+title: <the outcome, in a few words>
 component: run
 epic: E4                  # optional: the epic of the original definition
 serves: [P8, P10, P12]    # which principles, P1 to P14 — at least one

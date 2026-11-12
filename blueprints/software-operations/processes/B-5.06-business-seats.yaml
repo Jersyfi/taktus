@@ -16,20 +16,38 @@
 #         --yellow 0.25 --red 0.5 --fresh 8d \
 #         --role <role> --case <where a business customer's seats are worked>
 #
-# The tenant starts it from its own event of a new customer or a changed seat count, as a
-# trigger of its own version, or by hand. Setting up access is B-3.04's repair. Preparing a
-# renewal is not built: no capability serves a contract's end date. The contract and the price
-# stay with a person (UC-03 §6).
+# The renewal is prepared from the same reading. A paid subscription's period ends at
+# `current_period_end`, which every payment provider connector answers (ADR-0206). The rule
+# `filter` keeps the paid subscriptions whose period ends at or before `renew_before`, a moment
+# in seconds since the epoch, ordered by that end, each with `cancel_at_period_end`: whether it
+# ends there rather than renews. No rule reads the clock, and a rule that did would not give
+# the same result twice; so the moment is an input — the start of the run plus the lead time
+# the tenant keeps, given by the trigger of a contract's end or by the person who starts it.
+# Without it nothing is selected. Each one selected reaches the responsible role as an
+# incident through the tenant's corridor on the step `renewals` and its `count`:
+#
+#     uv run taktusctl signal configure payments.renewals_due --process b-5-06 \
+#         --step renewals --select count --bounds fixed --direction above \
+#         --yellow 0.25 --red 0.5 --fresh 8d \
+#         --role <role> --case <where a business customer's contract is worked>
+#
+# Preparing it ends there: the run names the subscription, its products, its seats and the end
+# of its period, and the person renews, changes or ends the contract. The contract and the
+# price stay with a person (UC-03 §6).
+#
+# The tenant starts it from its own event of a new customer, a changed seat count or a
+# contract's end, as a trigger of its own version, or by hand. Setting up access is B-3.04's
+# repair.
 #
 # By hand:
 #
 #     uv run taktusctl run --process blueprints/software-operations/processes/B-5.06-business-seats.yaml \
-#         --input customer=cus_...
+#         --input customer=cus_... --input renew_before=<seconds since the epoch>
 #
 # Switching it off (`taktusctl deactivate --process b-5-06`) changes nothing: it only reads.
 
 id: b-5-06
-version: "1"
+version: "3"
 name: B-5.06 Business customers' seats
 autonomy:
   level: 1
@@ -49,6 +67,13 @@ inputs:
   customer:
     description: the business customer's identifier at the payment provider, as the product keeps it
     example: cus_fake1
+  renew_before:
+    description: >
+      the moment, in seconds since the epoch, up to which a paid period's end is prepared for
+      renewal: the start of the run plus the lead time the tenant keeps, for example 30 days;
+      without it no renewal is prepared
+    example: 1790000003
+    required: false
 
 limits:
   quota: { units: 8 }
@@ -61,11 +86,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what payments.customers.subscriptions answered", columns: [complete, subscriptions] }
     fallback:
       when: the connector serving payments.customers is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       scope: { subject: { $input: customer } }
       rule: connector
       operation: payments.customers.subscriptions
@@ -93,6 +121,27 @@ steps:
         - { field: status, equals: active }
         - { field: status, equals: trialing }
 
+  - id: renewals
+    method: rule
+    reason: >
+      whether a paid period ends by the moment the run was asked about is a comparison of two
+      numbers the reading holds, a fixed rule
+    rejected:
+      - method: llm
+        why: a date compared is a fixed rule; a model could misread a number
+      - method: statistics
+        why: nothing is estimated; a period ends by the moment or it does not
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the paid subscriptions whose period ends by the moment asked }
+    depends_on: [paid]
+    work:
+      rule: filter
+      items: { $from: paid, $select: items }
+      all:
+        - { field: current_period_end, at_most: { $input: renew_before, $otherwise: 0 } }
+      order: current_period_end
+
   - id: entitlements
     method: rule
     reason: the customer's entitlements are read as the product holds them; nothing to judge
@@ -100,11 +149,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what entitlements.customers.list answered", columns: [complete, entitlements] }
     fallback:
       when: the connector serving entitlements.customers is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       scope: { subject: { $input: customer } }
       rule: connector
       operation: entitlements.customers.list
@@ -146,8 +198,10 @@ takeover:
     the customer's identifier at the payment provider. The steps run in order: read the
     customer's subscriptions at the payment provider, keep those still paid, read the
     customer's entitlements in the product, and pair each paid product with its entitlement and
-    compare the seats. Every mismatch is red and goes to the role the tenant named. The process
-    changes nothing; the contract and the price stay with a person.
+    compare the seats; beside it, keep the paid subscriptions whose period ends by the moment
+    the run was given, for their renewal. Every mismatch is red and goes to the role the tenant
+    named, and so is every renewal due. The process changes nothing; the contract and the price
+    stay with a person.
   steps:
     subscriptions:
       system: the payment provider's dashboard
@@ -169,6 +223,20 @@ takeover:
       expertise: none
       credentials: []
       done: the list holds only the subscriptions still paid
+    renewals:
+      system: the list of paid subscriptions
+      do: >
+        only when the run was given a moment for renewals: keep the subscriptions whose paid
+        period ends at or before that moment, ordered by the end of the period, and note for
+        each whether it is set to end there instead of renewing. Each one kept is a renewal to
+        prepare: report it, with its products, seats and the end of its period, to the role
+        the tenant named, where a business customer's contract is worked. Renewing, changing
+        or ending the contract, and its price, stay with that person
+      expertise: none
+      credentials: []
+      done: >
+        the subscriptions whose period ends by the moment are listed and reported, or no
+        moment was given and none is listed
     entitlements:
       system: the product's administration, where a customer's access is granted
       do: >

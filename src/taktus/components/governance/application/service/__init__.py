@@ -4,6 +4,12 @@ from taktus.components.governance.application.service.configure_anchors import (
     ConfigureAnchors,
     ConfigureAnchorsHandler,
 )
+from taktus.components.governance.application.service.connections import (
+    ConnectionGrants,
+    Granter,
+    GrantRefused,
+    NotGrantable,
+)
 from taktus.components.governance.application.service.corrections import (
     BreachSeen,
     ConfigureCorrections,
@@ -16,6 +22,7 @@ from taktus.components.governance.application.service.expected_runs import (
     CloseIncident,
     ConfigureWatch,
     ExpectedRuns,
+    IncidentHeld,
     UnknownIncident,
     Watch,
 )
@@ -37,12 +44,18 @@ from taktus.components.governance.application.service.report_capacity import (
     ReportCapacity,
     ReportCapacityHandler,
 )
+from taktus.components.governance.application.service.report_hardware import (
+    ConfiguredModel,
+    ReportHardwareHandler,
+)
 from taktus.components.governance.application.service.residency import (
     ConfigureResidency,
     TenantResidency,
 )
 from taktus.components.governance.application.service.result_defects import (
     Assessment,
+    NotAResultDefect,
+    RecordByHand,
     ReportDefect,
     ResultDefects,
 )
@@ -77,7 +90,9 @@ __all__ = [
     "ConfigureMessages",
     "ConfigureResidency",
     "ConfigureWatch",
+    "ConfiguredModel",
     "Confirmed",
+    "ConnectionGrants",
     "Corrections",
     "DatabaseStore",
     "DecisionMade",
@@ -85,15 +100,22 @@ __all__ = [
     "DriftSeen",
     "Drifts",
     "ExpectedRuns",
+    "GrantRefused",
+    "Granter",
+    "IncidentHeld",
     "Looked",
+    "NotAResultDefect",
+    "NotGrantable",
     "OrgUnitQuotaRefused",
     "PrepareRequest",
     "RaiseRed",
+    "RecordByHand",
     "RepetitionSeen",
     "Repetitions",
     "ReportCapacity",
     "ReportCapacityHandler",
     "ReportDefect",
+    "ReportHardwareHandler",
     "ResultDefects",
     "SetOrgUnitQuota",
     "SignalIncidents",

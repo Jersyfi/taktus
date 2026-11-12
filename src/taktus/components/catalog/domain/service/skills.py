@@ -22,6 +22,7 @@ from typing import Any
 from taktus.components.catalog.domain.model.skill import (
     ORDER,
     SKILL_NAME,
+    TEXT_LIMIT,
     InvalidSkill,
     Measurement,
     Round,
@@ -86,8 +87,31 @@ def parse(directory: str, front: Any, instructions: str, files: Mapping[str, byt
         instructions=instructions,
         fields={k: v for k, v in front.items() if k not in ("name", "description")},
         files=tuple(sorted(p for p in files if p != FILE)),
+        texts=texts(files),
         digest=digest(files),
     )
+
+
+def texts(files: Mapping[str, bytes]) -> dict[str, str]:
+    """The text of every file that is UTF-8 and small enough to keep."""
+    kept: dict[str, str] = {}
+    for path, content in sorted(files.items()):
+        if len(content) > TEXT_LIMIT:
+            continue
+        try:
+            kept[path] = content.decode("utf-8")
+        except UnicodeDecodeError:
+            continue
+    return kept
+
+
+def exported(file: SkillFile) -> tuple[dict[str, bytes], tuple[str, ...]]:
+    """The directory of a skill as it was registered, by relative path, and every file the
+    catalogue did not keep the text of. Where none is missing, the files' digest is the
+    registered one: the export is the open format as it was written (ADR-0113, UC-14.3)."""
+    files = {path: text.encode("utf-8") for path, text in file.texts.items()}
+    missing = tuple(p for p in (FILE, *file.files) if p not in files)
+    return files, missing
 
 
 def advanced(version: SkillVersion, to: SkillStage, at: datetime, reason: str) -> SkillVersion:

@@ -6,8 +6,8 @@ epic: E4
 serves: [P8, P10, P12]
 state: building
 version: 0.5.0
-tests: [tests/exactness/test_recheck.py::test_a_source_that_changed_underneath_a_result_marks_it_suspect_once, tests/exactness/test_recheck.py::test_a_rehearsal_or_an_unknown_run_is_not_checked_again, tests/composition/test_defect_watch.py::test_a_result_marked_suspect_by_a_check_applied_again_is_raised]
-adrs: {ADR-0018: 17c99e0eaa3c, ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0023: 949c6f4e13af, ADR-0024: 52ba89e4adec, ADR-0179: b70d264ab655}
+tests: [tests/exactness/test_exactness_statement.py::test_a_sourced_step_without_a_check_does_not_register_and_the_finding_names_the_step, tests/exactness/test_exactness_statement.py::test_every_exact_or_sourced_step_of_every_bundle_declares_a_check, tests/exactness/test_recheck.py::test_a_source_that_changed_underneath_a_result_marks_it_suspect_once, tests/exactness/test_recheck.py::test_a_rehearsal_or_an_unknown_run_is_not_checked_again, tests/composition/test_defect_watch.py::test_a_result_marked_suspect_by_a_check_applied_again_is_raised, tests/exactness/test_distribution.py::test_a_total_ten_times_the_previous_eleven_marks_one_suspect_with_its_magnitude, tests/exactness/test_distribution.py::test_a_result_within_the_band_or_before_a_baseline_is_not_marked, tests/exactness/test_distribution.py::test_a_result_of_another_sign_is_marked, tests/exactness/test_distribution.py::test_a_distribution_decides_by_a_statistic_and_by_nothing_else, tests/exactness/test_distribution.py::test_every_check_of_every_bundle_decides_by_a_rule_or_a_statistic, tests/exactness/test_distribution.py::test_a_result_no_check_judged_is_recorded_as_unchecked_and_never_as_passed]
+adrs: {ADR-0018: 17c99e0eaa3c, ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0023: 949c6f4e13af, ADR-0024: 52ba89e4adec, ADR-0179: b70d264ab655, ADR-0233: 0bfd560a1535, ADR-0271: b77f5ed6eb3f}
 supersedes: null
 ---
 
@@ -100,6 +100,17 @@ proven there. A check that reads a source — reconciliation, agreement, complet
 again after the result counted, once a day for thirty days (ADR-0179 §1). One that fails now marks
 the result suspect, once per check, naming the check, its family and what it compared with the
 source as read now, on the run and the step; the run is unchanged, and a rehearsal is not checked.
-The suspect mark is raised as a result defect by itself (UC-4.11) — by the named tests. Not built:
-a distribution check against a moving median of earlier results as a family of its own; a statistic
-as a check's method; a result recorded as **unchecked** where its step declares none.
+The suspect mark is raised as a result defect by itself (UC-4.11). A step of class `exact` or
+`sourced` that declares no check does not register, and the finding names the step and the
+catalogue; every `sourced` step of the blueprints declares one — a connector's answer the shape
+of its source, a composed text its fixed words, a model's answer its pattern (ADR-0233) — by the
+named tests. A distribution is a row of its own (ADR-0271): a result against the median of the
+step's earlier results, within a band and of the same sign, decided by a statistic after the
+result counted; a monthly total ten times the previous eleven marks exactly one suspect, with
+the family, the magnitude and the median it was compared with, and the run goes on. A check
+declares its method, a statistic for a distribution and a rule for every other row, never a
+language model, and every check of every bundle decides by one of the two. A result of a step
+that declares no check is recorded as `result.unchecked`, never as passed — by the named tests.
+Not built: what follows a failed check declared on the check, `escalate` or `stop`, which is the
+rule's of ADR-0023 (NTC-0268); and a suspect mark, rather than a failed step, for a violation
+of the completeness, reference-point and source-shape families planted before the result counts.

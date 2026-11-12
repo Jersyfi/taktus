@@ -109,6 +109,16 @@ gate-conformance: env ## Contract conformance suite, both contracts: starts the 
 helm: ## Install the pinned helm into .tools/bin, for the chart's tests (deploy/k8s/chart)
 	tools/install_helm.sh
 
+# The browser worker's tests (tests/workers/test_browser_worker.py, the conformance suite's
+# browser worker) drive headless Chromium through the driver the lock file pins. `make browser`
+# installs the Chromium of that driver; on Linux with the system libraries it needs (`--with-deps`).
+# Without it the tests skip and say so; CI, which runs this target, sets TAKTUS_REQUIRE_BROWSER
+# so that they cannot.
+.PHONY: browser
+browser: env ## Install the Chromium the pinned browser driver drives, for the browser worker's tests
+	@if [ "$$(uname -s)" = Linux ]; then $(UV) run playwright install --with-deps chromium; \
+	else $(UV) run playwright install chromium; fi
+
 # The image workflow scans and signs with the pinned grype and cosign (ADR-0173);
 # `make image-tools` installs the same versions into .tools/bin, to scan an image by hand:
 # tools/scan_image.sh <image>@sha256:<digest>.
@@ -197,13 +207,16 @@ COMPOSE := deploy/docker/compose.yml
 COMPOSE_WORKER := deploy/docker/compose.reference-worker.yml
 COMPOSE_CONNECTORS := deploy/docker/compose.connectors.yml
 WITH_CONNECTORS = $$(test -f $(COMPOSE_CONNECTORS) && echo -f $(COMPOSE_CONNECTORS))
+# With TAKTUS_IMAGE (and TAKTUS_BACKUP_IMAGE) naming published images, `up` pulls them and builds
+# nothing; without, it builds both from this checkout (ADR-0222).
+IMAGES_FROM = $(if $(TAKTUS_IMAGE),--pull always --no-build,--build)
 
 .PHONY: up
-up: need-docker ## Bring Taktus up: two containers, migrations applied, ready
+up: need-docker ## Bring Taktus up: the control plane, its database and the scheduled backup, migrations applied, ready
 	deploy/docker/secrets.sh
 	python3 deploy/docker/secret_store.py
 	python3 deploy/docker/connectors.py
-	docker compose -f $(COMPOSE) $(WITH_CONNECTORS) up --build --detach --wait
+	docker compose -f $(COMPOSE) $(WITH_CONNECTORS) up $(IMAGES_FROM) --detach --wait
 
 # The one command of a first install on one machine (UC-10.4, ADR-0136 §6): what `up` does,
 # then the first tenant and its administrator, then a clock that runs until the first rehearsal
@@ -211,6 +224,13 @@ up: need-docker ## Bring Taktus up: two containers, migrations applied, ready
 .PHONY: start
 start: need-docker ## Install on one machine in one command: up, the first tenant and its key, and the clock to a first rehearsed process
 	python3 deploy/docker/start.py $(if $(NAME),--name "$(NAME)")
+
+# The same on a cluster (ADR-0228): the chart installed with the operator's values, the first
+# tenant created in a pod of the control plane, and the clock (deploy/k8s/start.py). VALUES= the
+# values file, ADDRESS= the web app's address; INSTALLED=1 takes the release as it stands.
+.PHONY: start-cluster
+start-cluster: ## Install on a cluster in one command: the chart, the first tenant and its key, and the clock to a first rehearsed process
+	python3 deploy/k8s/start.py --address "$(ADDRESS)" $(if $(VALUES),--values "$(VALUES)") $(if $(INSTALLED),--installed) $(if $(NAME),--name "$(NAME)") $(if $(NAMESPACE),--namespace "$(NAMESPACE)")
 
 .PHONY: up-dev
 up-dev: need-docker ## The same, plus the reference worker in its own image, for development
@@ -261,6 +281,19 @@ lint: env ## Static analysis and types, of the product and of the Python tools u
 .PHONY: generate
 generate: env ## Regenerate what is generated and committed: api/openapi.yaml from the REST interface, the web app's test fixtures from reporting (tools/README.md)
 	$(UV) run python tools/generate.py
+
+# The documentation site (DEC-0234, NTC-0272): the guides rendered from the committed tree into
+# Markdown, then built by Zensical into static HTML files under build/docs-site/site, which git
+# ignores. deploy/docs/README.md says how the files are uploaded.
+DOCS_SITE := build/docs-site
+GUIDES_MANIFEST := docs/guides/guides.yaml
+
+.PHONY: docs-site
+docs-site: env need-git ## Build the documentation site from the guides into build/docs-site/site: static files with search in the browser
+	rm -rf $(DOCS_SITE)
+	$(UV) run taktusctl guides publish --manifest $(GUIDES_MANIFEST) --to $(DOCS_SITE)/src
+	$(UV) run python tools/docs_site.py --manifest $(GUIDES_MANIFEST) --config docs-site/mkdocs.yml --build $(DOCS_SITE)
+	$(UV) run zensical build --config-file $(DOCS_SITE)/mkdocs.yml --strict
 
 .PHONY: status
 status: need-uv ## Print what is needed from the owner, from the register: the last section of every pull request description (DEC-0026)

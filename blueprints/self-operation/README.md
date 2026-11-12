@@ -8,11 +8,12 @@ first process is the check of the product's own central claim.
 |---|---|---|
 | **S-01 Removal test** — one integration is withheld, the processes that use it are exercised, the verdict is recorded | **runs** weekly | [`processes/S-01-removal-test.yaml`](processes/S-01-removal-test.yaml) |
 | S-02 Takeover test — a person runs a process by hand from its instructions | **a person's act**, recorded with `taktusctl takeover trial`; every bundle carries its instructions, and the automated test of the path is `tests/composition/test_takeover_test.py` (ADR-0180) | — by design: a trial is what a person did |
-| **S-03 Restore drill** — the newest backup restored without Taktus, into a server of its own, and every tenant's ledger chain verified against the heads taken before | **runs** weekly, from the chart (`backup.drill.enabled`), not from Taktus | — by design: see below |
-| S-04 Load measurement — how many concurrent runs one instance carries | `1.0.0` | — |
+| **S-03 Restore drill** — the newest backup restored without Taktus, into a server of its own, and every tenant's ledger chain verified against the heads taken before | **runs** weekly, from the chart (`backup.drill.enabled`) on a cluster and from the compose file's service `backup` on one machine, not from Taktus | — by design: see below |
+| **S-04 Load measurement** — how many concurrent runs one instance carries, at which latency, on stated hardware | **runs** when a person measures, `taktusctl load measure`; the first measurement is `docs/runs/2026-11-07-the-load-one-machine-carries.md` | [`processes/S-04-load-probe.yaml`](processes/S-04-load-probe.yaml), the probe it runs many times at once |
 | **S-05 Guides** — the administration guide and the guide for users, rendered from the repository and put into the knowledge system; a hand edit is kept and reported | **runs** daily | [`processes/S-05-guides.yaml`](processes/S-05-guides.yaml) |
 | **S-06 Maturation** — every step measured, and a step on a language model proposed a trained model where the evidence holds; never applied | **runs** weekly | [`processes/S-06-maturation.yaml`](processes/S-06-maturation.yaml) |
 | **S-07 Change in dialogue** — a request in a person's own words becomes a proposal for a changed process; nothing is registered | **runs** when a person asks, from the web app or the chat | [`processes/S-07-change-in-dialogue.yaml`](processes/S-07-change-in-dialogue.yaml) |
+| **S-08 Process from a description** — a description in a person's own words becomes a proposal for a new process; nothing is registered | **runs** when a person describes a process the tenant does not have, from the web app or the chat | [`processes/S-08-process-from-a-description.yaml`](processes/S-08-process-from-a-description.yaml) |
 
 ## S-01 Removal test
 
@@ -199,7 +200,10 @@ ADR-0013 C asks that Taktus can be repaired without Taktus, and that the way to 
 exercised. The drill exercises it (ADR-0174 §3, UC-10.5). It is the one process of this blueprint
 that **Taktus does not run**: a drill that needs Taktus to run would show nothing about repairing
 Taktus without it. It has no bundle. The chart's scheduler starts it, from the backup image, which
-holds no code of Taktus (`deploy/backup/`, `backup.py drill`).
+holds no code of Taktus (`deploy/backup/`, `backup.py drill`). On one machine the compose file's
+service `backup` starts it after the backup of every seventh day (`backup.py schedule`,
+ADR-0222); a drill that fails there is recorded as a failed backup run at the step `drill`, and
+the instance tells the owner of it.
 
 **What one run does.** It restores the newest backup into a database server of its own pod — the
 dump, or with point-in-time recovery the newest base backup and the archived log up to the latest
@@ -213,6 +217,34 @@ store, `drills/taktus-<time>.drill.json`, and its Job fails on any finding.
 `deploy/k8s/README.md` §11, into a database of their own, and compares every tenant's heads with
 the manifest's. Or runs the same drill with `docker run <backup image> drill`, off the instance,
 with the private key from their own store where the backups are encrypted.
+
+## S-04 Load measurement
+
+The roadmap's condition *Measured load behaviour* asks for a number: how many concurrent runs one
+instance carries at which latency, on stated hardware, so that someone can answer the question
+instead of guessing (ADR-0223).
+
+**What one measurement does.** `taktusctl load measure --process processes/S-04-load-probe.yaml
+--levels 1,10,25,50` registers the probe,
+`S-04-load-probe.yaml`, in the tenant it is given, and for each level submits that many runs of it
+at once. It waits until every run has ended and reads from each run's own record when it was
+created and when it ended. Per level it reports how many runs ended in each state, the median,
+95th percentile and longest latency, and the runs ended per second. Beside the figures it states
+the machine: its system, architecture, processors and memory. `--out` writes it as JSON.
+
+**Why the probe is rules.** A worker, a connector or a model has a latency of its own, which its
+own measures report (ADR-0084). The probe asks of the instance what every run asks: a plan, a
+run, a job claimed, three boundaries with their checkpoints, ledger entries and provenance
+records. Its result is what the instance carries, not what a business's processes take.
+
+**Why Taktus does not schedule it.** A measurement loads the instance it measures; on a schedule,
+it would slow the business's own runs at a time nobody chose. A person starts it, on the
+instance's machine, in a tenant of its own: `docker compose exec taktus taktusctl load measure
+--process /app/blueprints/self-operation/processes/S-04-load-probe.yaml --identity <identity>
+--tenant <tenant>`; the image carries the probe there. Its runs are in that tenant's ledger.
+
+**By hand.** Submit the probe with `taktusctl submit` as many times as the level asks, and read
+each run's `created_at` and `updated_at` from `GET /runs/{id}`.
 
 ## S-05 Guides
 
@@ -426,3 +458,43 @@ under `blueprints/` or `GET /levels/processes/{id}` — change it, give it a new
 hand it over: `POST /processes/{id}/proposals` with the changed bundle keeps the proposal with
 its difference, as S-07 would, and registers nothing. Without Taktus, the bundle is a YAML file:
 registering the changed file with `taktusctl submit` is the same change, made directly.
+
+## S-08 Process from a description
+
+UC-4.1 asks that a person describes in their own words what should happen, and Taktus builds the
+process. ADR-0251 makes the building a process of Taktus's own, as S-07 is for a change: the one
+variable step is visible, and the rest are rules.
+
+**What one run does:**
+
+1. **propose** — a language model, for the purpose `reasoning`, is given the identifier the new
+   process is to have and the person's description, and answers with the complete bundle as one
+   JSON object. Every step carries its method, the reason, the methods rejected, a fallback and an
+   exactness class; a step no admissible method fits is a person's.
+2. **keep** — the instance validates the bundle as registration would and keeps the proposal,
+   made against no version. A bundle that would not register — a method guessed against its
+   exactness class among them — is kept nowhere: the step fails with every finding, and the run
+   goes to a person.
+
+**Started by a person.** It has no trigger. `POST /processes/{id}/proposals` with the words, for
+an identifier the tenant has no process under, starts one run; so does `change process <id>:
+<words>` in the owner's chat. The instance starts it only where its operator names it:
+`TAKTUS_DESCRIBE_PROCESS=s08-process-from-a-description` (ADR-0092). The proposal is then
+rehearsed — nothing leaves, and each outward step's result says under `would_send` what a real
+run would have sent — and commissioned by the person, as any proposal (ADR-0091 §3, §4).
+
+`tests/composition/test_process_from_a_description.py` runs it end to end with a scripted model.
+
+### Its autonomy, with the reason
+
+Level 3: the one value a language model produces is a proposed bundle, and it leaves its step
+only through registration's validation; nothing is registered, and commissioning is the person's
+act at every level. Toward level 4: a quarter of proposals commissioned without a rewrite by
+hand; then Taktus proposes the raise with that evidence (M3.9).
+
+### By hand — the takeover test of this process
+
+A person does the same without the model (ADR-0013 B). Copy a bundle of `examples/`, write the
+new process into it, and hand it over: `POST /processes/{id}/proposals` with the bundle keeps
+the proposal, as S-08 would, and registers nothing. Without Taktus, the bundle is a YAML file:
+`taktusctl submit` registers it directly.

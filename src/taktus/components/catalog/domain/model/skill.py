@@ -30,6 +30,8 @@ SKILL_VERSION = r"^[A-Za-z0-9][A-Za-z0-9._-]*$"
 FLOOR = 11
 """The smallest n of passed rounds before a skill is approved automatically at level 4, for a
 skill no `exact` step uses (DEC-0028, NTC-0246)."""
+TEXT_LIMIT = 65536
+"""The largest file of a skill's directory the catalogue keeps the text of."""
 EXACT_FACTOR = 2
 """What the floor is multiplied by for a skill an `exact` step uses (NTC-0246)."""
 
@@ -102,6 +104,10 @@ class SkillFile(Value):
     honoured: the frame of an assignment decides which tools a step may use."""
     files: tuple[str, ...] = ()
     """The directory's other files, by relative path."""
+    texts: Mapping[str, str] = Field(default_factory=dict)
+    """The text of every file of the directory that is UTF-8 and at most `TEXT_LIMIT` bytes,
+    `SKILL.md` among them, by relative path: what an export writes back (UC-14.3). Empty on a
+    version registered before it was kept."""
     digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     """Of the directory's whole content, `SKILL.md` and every other file."""
 

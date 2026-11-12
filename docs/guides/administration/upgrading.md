@@ -32,6 +32,10 @@ tar -tzf taktus-before-upgrade-state.tar.gz | head -5
 
 Move both files off the machine. The page *Restoring* says how they are brought back.
 
+The service `backup` also takes a backup on its own every day, into its own store. To take one
+there now, run `docker compose -f deploy/docker/compose.yml run --rm backup backup`. The page
+*Restoring* brings either kind back.
+
 **On a cluster**, the chart's scheduled backup writes the database to an object store when
 `backup.enabled` is set (`deploy/k8s/README.md`, section 11). Run one now, and wait until it
 completed:
@@ -56,7 +60,9 @@ git checkout <the tag you chose>
 make up
 ```
 
-`make up` builds the new image and replaces the Taktus container. Before it stops, the old
+`make up` builds the new image and replaces the Taktus container. With published images, set
+`TAKTUS_IMAGE` and `TAKTUS_BACKUP_IMAGE` to the new release's images first; `make up` then pulls
+them and builds nothing. Before it stops, the old
 container lets each running step reach its boundary, within five minutes at most. The new one
 brings the database to the new schema when it starts. The command returns once the new release
 answers that it is ready. The tag is chosen as in *Installing from nothing*, section 2.2. Your
@@ -133,3 +139,23 @@ make up
 **On a cluster**, `.tools/bin/helm rollback taktus --namespace taktus` brings the previous
 release's objects back, but not its database's schema. Restore the database from the backup
 first, as `deploy/k8s/README.md`, section 11, *The restore, by hand*, describes.
+
+## 6. What a version number promises, and what is going away
+
+A release's number says what an upgrade may change (ADR-0220):
+
+- **A patch release** (`1.0.1`) fixes. It changes no contract, no route, no setting.
+- **A minor release** (`1.1.0`) adds. It removes nothing and changes nothing you use in a way
+  that breaks it. It may *deprecate* something: mark it as going away in a later release.
+- **A major release** (`2.0.0`) removes what an earlier release deprecated, and nothing else.
+
+A deprecated part of the HTTP interface still works. Every answer it gives carries the header
+`Deprecation`, with the date it was deprecated, and `Taktus-Removal`, with the major release
+that removes it. `api/openapi.yaml` marks it the same way. An old major version of a contract —
+`v1` once `v2` exists — is served until the later of the next major release and twelve months
+after the release that brought its successor.
+
+Before a major upgrade, look for these headers in your clients' logs. What still calls a
+deprecated part must move to its replacement first.
+
+**Deprecated now:** nothing.

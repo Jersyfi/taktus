@@ -125,7 +125,7 @@
             "type": "object",
             "properties": {
               "adapter": { "type": "string", "minLength": 1 },
-              "reason": { "type": "string", "enum": ["residency", "exactness", "cooling_down"] }
+              "reason": { "type": "string", "enum": ["residency", "exactness", "cooling_down", "not_shared", "not_evaluated"] }
             },
             "required": ["adapter", "reason"],
             "additionalProperties": false

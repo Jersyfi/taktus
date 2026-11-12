@@ -1,0 +1,216 @@
+# B-5.03 Access review — UC-03 §4.5: every month the internal accounts, their groups and roles,
+# and the bot and service accounts are listed; inactive and over-privileged accounts are marked.
+# Revoking access stays with a person (UC-03 §6).
+#
+# The accounts are read through `directory.accounts`, from the business's account directory
+# (SCIM 2.0, ADR-0209): every account, and the members of the group the tenant names as the one
+# with the widest rights. Two fixed rules mark them, `filter`, `exact` (ADR-0192 §1):
+#
+# - **inactive and still holding rights**: an account the directory marks inactive that is
+#   still in a group;
+# - **over-privileged**: a member of the privileged group that is inactive, or that is a service
+#   or bot account by its `user_type`.
+#
+# What the directory does not say is not judged. SCIM's core schema has no last sign-in, so an
+# account that is active and unused is not found here; "inactive" is the directory's own
+# `active: false`. Whether a person's rights fit their work is not a rule: the review's list
+# goes to a person, who decides (principle 14: the review marks accounts, never assesses a person).
+#
+# The judgement is the tenant's corridors on the two steps' `count`; one mark is red:
+#
+#     uv run taktusctl signal configure access.inactive_with_groups --process b-5-03 \
+#         --step inactive --select count --bounds fixed --direction above \
+#         --yellow 0.25 --red 0.5 --fresh 32d --role <role> --case <where access is reviewed>
+#     uv run taktusctl signal configure access.over_privileged --process b-5-03 \
+#         --step over-privileged --select count --bounds fixed --direction above \
+#         --yellow 0.25 --red 0.5 --fresh 32d --role <role> --case <where access is reviewed>
+#
+# The tenant's version names its own privileged group in the trigger's input, and may name the
+# kinds of account its directory uses for services in the rule's pattern.
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-5.03-access-review.yaml \
+#         --input privileged=Administrators
+#
+# Switching it off (`taktusctl deactivate --process b-5-03`) changes nothing: it only reads.
+
+id: b-5-03
+version: "2"
+name: B-5.03 Access review
+autonomy:
+  level: 1
+  reason: >
+    the process only reads the directory and marks accounts by two fixed rules; nothing leaves
+    the system, so at level 1 every step runs and none acts; a mark reaches a person as an
+    incident, and revoking access stays with that person at every level (UC-03 §6); it starts
+    at level 1, observing, as UC-03 starts every process at level 1 or 2 when its stage opens
+  toward_next: >
+    stage 1 of the tenant's plan open, and three monthly reviews whose marks a person checked
+    against the directory and found right; then Taktus proposes level 2, its target in UC-03
+    (UC-7.1, UC-9.6)
+author: the repository
+reason: inactive and over-privileged accounts are found every month without a person reading the directory (UC-03 B-5.03)
+
+# On the first of every month, through the elected scheduler (ADR-0035).
+triggers:
+  - schedule: "0 6 1 * *"
+    inputs:
+      privileged: Administrators
+
+inputs:
+  privileged:
+    description: the display name of the directory's group whose members hold the widest rights
+    example: Administrators
+
+limits:
+  quota: { units: 250 }
+
+steps:
+  - id: accounts
+    method: rule
+    reason: the directory's accounts are read as it holds them; nothing to judge
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what directory.accounts.list answered", columns: [accounts, complete] }
+    fallback:
+      when: the connector serving directory.accounts is unavailable
+      to: human
+      role: owner
+    work:
+      checking: { select: output }
+      rule: connector
+      operation: directory.accounts.list
+      input:
+        limit: 10000
+      credentials:
+        - { name: DIRECTORY_TOKEN, injected_as: env }
+      expect:
+        - select: complete
+          equals: true
+          says: the directory answered only part of its accounts; a partial list would miss marks
+
+  - id: privileged
+    method: rule
+    reason: the members of the privileged group are read as the directory holds them; nothing to judge
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what directory.accounts.list answered", columns: [accounts, complete] }
+    fallback:
+      when: the connector serving directory.accounts is unavailable
+      to: human
+      role: owner
+    # After the whole directory, so that both readings are of the same moment's directory.
+    depends_on: [accounts]
+    work:
+      checking: { select: output }
+      rule: connector
+      operation: directory.accounts.list
+      input:
+        group: { $input: privileged }
+        limit: 10000
+      credentials:
+        - { name: DIRECTORY_TOKEN, injected_as: env }
+      expect:
+        - select: complete
+          equals: true
+          says: the privileged group's members were not all read
+
+  - id: inactive
+    method: rule
+    reason: an account the directory marks inactive that is still in a group is two fields of one record, kept by a fixed rule
+    rejected:
+      - method: llm
+        why: a field and an empty list are read, not judged
+      - method: ml
+        why: a learned notion of activity would profile the people behind the accounts (principle 14)
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the inactive accounts still holding groups }
+    depends_on: [accounts]
+    work:
+      rule: filter
+      items: { $from: accounts, $select: output.accounts }
+      all:
+        - { field: active, equals: false }
+        - { field: groups, not_matches: "^\\[\\]$" }
+
+  - id: over-privileged
+    method: rule
+    reason: >
+      a member of the privileged group that is inactive, or that is a service or bot account,
+      holds rights nobody uses in person; two fields of one record, kept by a fixed rule
+    rejected:
+      - method: llm
+        why: a field is read, not judged
+      - method: statistics
+        why: nothing is estimated; every member either matches or does not
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the over-privileged members of the privileged group }
+    depends_on: [privileged]
+    work:
+      rule: filter
+      items: { $from: privileged, $select: output.accounts }
+      any:
+        - { field: active, equals: false }
+        - { field: user_type, matches: "(?i)service|bot|system" }
+
+takeover:
+  sequence: >
+    The process runs on the first of every month at six UTC, on its own schedule; whoever looks
+    after access to the business's systems takes it over. The steps run in order: list every
+    account of the directory, list the members of the privileged group, mark every inactive
+    account still in a group, and mark every member of the privileged group that is inactive or
+    a service or bot account. Every mark is red and goes to the role the tenant named. The
+    process changes nothing: revoking access stays with a person.
+  steps:
+    accounts:
+      system: the account directory's administration, or its export of users
+      do: >
+        export every account with whether it is active, the groups it is in, its roles and its
+        user type. Leave out names, addresses and phone numbers. Make sure the export is
+        complete
+      expertise: exporting users from the directory's administration
+      credentials:
+        - parameter: DIRECTORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Directory token of the requesting
+            identity described in CREDENTIALS.md; a person signs in with their own account that
+            may read users and groups
+      done: every account is in the export with its state, groups, roles and type
+    privileged:
+      system: the account directory's administration
+      do: >
+        open the group the run names as privileged and list its members with whether each is
+        active and its user type. Make sure the list is complete
+      expertise: listing a group's members in the directory's administration
+      credentials:
+        - parameter: DIRECTORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Directory token of the requesting
+            identity described in CREDENTIALS.md; a person signs in with their own account that
+            may read groups
+      done: every member of the privileged group is listed with its state and type
+    inactive:
+      system: the export of accounts, in a spreadsheet
+      do: >
+        keep every account that is not active and is still in at least one group; count them.
+        One or more is red: report them to the role the tenant named, where access is reviewed
+      expertise: filtering a table by two columns
+      credentials: []
+      done: the inactive accounts still in a group are listed, counted and reported
+    over-privileged:
+      system: the list of the privileged group's members
+      do: >
+        keep every member that is not active, or whose user type names a service, a bot or a
+        system; count them. One or more is red: report them to the role the tenant named
+      expertise: filtering a table by two columns
+      credentials: []
+      done: the over-privileged members are listed, counted and reported

@@ -25,11 +25,13 @@ from taktus.adapters.driven.execution import (
     ProcessExecution,
 )
 from taktus.adapters.driven.models import Declared, OpenAiCompatibleModel, StaticModelPool
+from taktus.adapters.driven.models.vertex import VertexModel, location_of
 from taktus.adapters.driven.telemetry import (
     OpenTelemetryTelemetry,
     exporter_for,
     metric_exporter_for,
 )
+from taktus.adapters.driven.telemetry.masking import MaskingExporter, MaskingPolicy
 from taktus.adapters.driven.workers.connected import connected_worker
 from taktus.adapters.driven.workers.http import HttpWorker
 from taktus.adapters.driven.workers.launched import LaunchedWorker
@@ -43,6 +45,7 @@ from taktus.composition.settings import (
 from taktus.ports.configuration import Configuration, ConfigurationError
 from taktus.ports.connector import ActionConnector
 from taktus.ports.execution import Execution, ExecutionUnit, ResourceLimits
+from taktus.ports.model import Location, Model
 from taktus.ports.relay import Relay
 from taktus.ports.worker import Worker
 
@@ -66,19 +69,34 @@ def model_pool(
     for settings in configured:
         if settings.endpoint is None:
             continue
-        model = OpenAiCompatibleModel(
-            settings.endpoint,
-            settings.name,
-            credential=settings.credential,
-            timeout=timeout,
-            billing=settings.billing,  # type: ignore[arg-type]  # validated by load_model
-            output_cap=settings.output_cap,  # type: ignore[arg-type]
-            provider_limit=settings.provider_limit,  # type: ignore[arg-type]
-            usage_kinds=settings.usage_kinds,  # type: ignore[arg-type]
-        )
-        members.append((settings.identifier, settings.purposes, model, settings.name))
+        model: Model
+        location = settings.location
+        if settings.dialect == "generate_content":
+            model = VertexModel(
+                settings.endpoint,
+                settings.name,
+                credential=settings.credential,
+                timeout=timeout,
+                billing=settings.billing,  # type: ignore[arg-type]  # validated by load_model
+                output_cap=settings.output_cap,  # type: ignore[arg-type]
+                provider_limit=settings.provider_limit,  # type: ignore[arg-type]
+            )
+            if not settings.location_declared:
+                location = location_of(settings.endpoint)
+        else:
+            model = OpenAiCompatibleModel(
+                settings.endpoint,
+                settings.name,
+                credential=settings.credential,
+                timeout=timeout,
+                billing=settings.billing,  # type: ignore[arg-type]  # validated by load_model
+                output_cap=settings.output_cap,  # type: ignore[arg-type]
+                provider_limit=settings.provider_limit,  # type: ignore[arg-type]
+                usage_kinds=settings.usage_kinds,  # type: ignore[arg-type]
+            )
+        members.append((settings.identifier, settings.purposes, model, settings.name or None))
         declared[settings.identifier] = Declared(
-            location=settings.location,  # type: ignore[arg-type]  # validated by load_model
+            location=location,  # type: ignore[arg-type]  # validated by load_model
             classes=settings.classes,
         )
     return StaticModelPool(members, declared)
@@ -89,17 +107,25 @@ def connector_pool(
     *,
     timeout: float = 120.0,
     also: Sequence[tuple[str, ActionConnector]] = (),
+    locations: Mapping[str, Location] | None = None,
 ) -> StaticConnectorPool:
     """The configured connectors as the run's pool: one MCP client per entry of
     `TAKTUS_CONNECTORS`, registered under the adapter identifier `connector.<label>` — never a
     product name (ADR-0003) — and, after them, the connectors the instance brings itself
-    (`also`: the loopback). The run resolves by the capabilities each declares."""
+    (`also`: the loopback). The run resolves by the capabilities each declares. Each configured
+    connector is where `locations` (`TAKTUS_CONNECTOR_LOCATIONS`, by label) says, `elsewhere`
+    where it says nothing; the instance's own connectors are `own` (ADR-0281 §1)."""
+    declared: dict[str, Location] = {
+        f"connector.{label}": location for label, location in (locations or {}).items()
+    }
+    declared.update({adapter: "own" for adapter, _ in also})
     return StaticConnectorPool(
         [
             (f"connector.{label}", McpActionConnector(endpoint, timeout=timeout))
             for label, endpoint in connectors.items()
         ]
-        + list(also)
+        + list(also),
+        locations=declared,
     )
 
 
@@ -276,8 +302,10 @@ def telemetry_of(settings: TelemetrySettings) -> OpenTelemetryTelemetry:
     metrics = None
     if settings.endpoint is not None:
         protocol: Literal["grpc", "http"] = "grpc" if settings.protocol == "grpc" else "http"
-        exporter = exporter_for(
-            settings.endpoint, protocol=protocol, headers=settings.parsed_headers()
+        # What leaves is masked by the organisation's policy first (UC-5.8, ADR-0286).
+        exporter = MaskingExporter(
+            exporter_for(settings.endpoint, protocol=protocol, headers=settings.parsed_headers()),
+            MaskingPolicy(settings.masked_attributes, settings.masked_kinds),
         )
         metrics = metric_exporter_for(
             settings.endpoint, protocol=protocol, headers=settings.parsed_headers()

@@ -10,12 +10,60 @@ from __future__ import annotations
 
 import structlog
 
+from taktus.components.governance.application.service.stop_incidents import (
+    StopHeld,
+    StopIncidents,
+)
 from taktus.components.run.application.service.stops import Stops
 from taktus.components.run.domain.model import AdapterStop
+from taktus.components.run.ports.stop_follow_up import ConfirmedStop
 from taktus.composition.tenancy import this_round
 from taktus.ports.identity import ServedTenants
 
 log = structlog.get_logger("taktus.stops")
+
+
+class RuleStops:
+    """The governance component's port for a rule's stop, answered from the run component's
+    stops (ADR-0256 §3)."""
+
+    def __init__(self, stops: Stops) -> None:
+        self._stops = stops
+
+    async def stop_process(self, tenant: str, process: str, *, rule: str, incident: str) -> str:
+        stop = await self._stops.request_process(
+            tenant, process, None, rule=rule or "none", incident=incident
+        )
+        log.warning(
+            "a rule stopped a process",
+            tenant=tenant,
+            process=process,
+            rule=rule,
+            incident=incident,
+            stop=stop.id,
+        )
+        return stop.id
+
+
+class StopIncidentsOfGovernance:
+    """The run component's port `StopFollowUp`, answered from the governance component's
+    incidents (ADR-0280 §1). An incident that cannot be raised is logged; the confirmation
+    stands either way."""
+
+    def __init__(self, incidents: StopIncidents) -> None:
+        self._incidents = incidents
+
+    async def confirmed(self, tenant: str, stop: ConfirmedStop) -> None:
+        try:
+            # A raised incident is its own record, `incident.raised`; nothing is printed.
+            await self._incidents.confirmed(tenant, StopHeld.model_validate(stop.model_dump()))
+        except Exception as error:  # the stop holds whether or not its incident was written
+            log.error(
+                "the incident of a stop was not raised",
+                tenant=tenant,
+                stop=stop.stop,
+                error=f"{type(error).__name__}: {error}",
+            )
 
 
 class StopsConfirmed:

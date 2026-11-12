@@ -4,10 +4,10 @@ title: Taktus changes a process within the frame
 component: process
 epic: E4
 serves: [P2, P10, P12]
-state: building
+state: built
 version: 0.4.0
-tests: [tests/composition/test_method_move.py::test_accepting_the_proposal_registers_a_version_with_the_step_on_the_trained_model, tests/composition/test_method_move.py::test_nothing_is_moved_before_a_person_accepts_or_when_the_answer_keeps_the_step, tests/composition/test_method_move.py::test_rolling_back_makes_the_predecessor_current_again_as_a_new_version, tests/components/run/test_maturation.py::test_asked_as_a_change_within_the_frame_it_is_proposed_and_nothing_is_registered]
-adrs: {ADR-0004: ffdb1f1537f5, ADR-0008: e6a4e033abd4, ADR-0011: f25413d512b9, ADR-0013: 1da224cdeaf4, ADR-0014: 6611f7833deb, ADR-0026: ccc4bd1f5423, ADR-0084: b792ae358b77, ADR-0114: 75a031083f19}
+tests: [tests/composition/test_method_move.py::test_accepting_the_proposal_registers_a_version_with_the_step_on_the_trained_model, tests/composition/test_method_move.py::test_nothing_is_moved_before_a_person_accepts_or_when_the_answer_keeps_the_step, tests/composition/test_method_move.py::test_rolling_back_makes_the_predecessor_current_again_as_a_new_version, tests/components/run/test_maturation.py::test_asked_as_a_change_within_the_frame_it_is_proposed_and_nothing_is_registered, tests/components/process/test_change_within_frame.py::test_a_change_within_the_frame_is_a_version_that_records_what_led_to_it, tests/components/process/test_change_within_frame.py::test_rolling_back_makes_the_predecessor_current_again_as_a_new_version, tests/components/process/test_change_within_frame.py::test_a_version_registration_refuses_becomes_a_proposal_with_the_findings, tests/components/process/test_change_within_frame.py::test_a_change_the_frame_does_not_list_is_a_proposal, tests/components/process/test_change_within_frame.py::test_each_change_always_outside_asked_within_the_frame_is_a_proposal_never_a_version]
+adrs: {ADR-0004: ffdb1f1537f5, ADR-0008: e6a4e033abd4, ADR-0011: f25413d512b9, ADR-0013: 1da224cdeaf4, ADR-0014: 6611f7833deb, ADR-0026: ccc4bd1f5423, ADR-0084: b792ae358b77, ADR-0114: 75a031083f19, ADR-0255: 6f2d57e8f007}
 supersedes: null
 ---
 
@@ -59,10 +59,16 @@ roadmap places change proposals. Definition `UC-4.3`.
 
 ## 5. What is proven so far
 
-One change outside the frame is built end to end: a step's method kind (ADR-0084, ADR-0114).
-Asked for as a change within the frame, it is a proposal and no version. Accepted by a person, it
-is a new version, and the replaced version stays registered and unchanged. Rolling it back is one
-act, which makes the predecessor current again as a new version. The named tests prove these
-three conditions for that change. Changes Taktus makes itself within the frame, the record of
-the observation that led to a change, and the other changes that are always outside the frame
-are not built.
+A version declares its frame: the kinds of change Taktus may make on its own — a step's work,
+a step added, a check added, the takeover instructions (ADR-0255). A change within it is
+registered through the one registration a person's version goes through, takeover instructions
+included, as a new version whose record names the observation, the version it replaces and
+every change; the replaced version stays registered and unchanged, and rolling back makes it
+current again as a new version in one act. A version registration refuses becomes a proposal
+with the findings. A change the frame does not list, and each of the changes that are always
+outside — raising autonomy, changing a method kind, loosening exactness, removing or narrowing
+an anchor, widening reach or credentials — asked for as a change within a frame that lists
+every kind, is a proposal and never a version. A step's method kind is also built end to end
+as a proposal a person accepts (ADR-0084, ADR-0114) — by the named tests. Not built: a watch
+of the instance that writes such a changed bundle from what it observes; the change is taken
+from whoever writes it (ADR-0255, *Where this promise ends*), which is why the state is `built`.

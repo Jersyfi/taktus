@@ -25,7 +25,7 @@
 # Switching it off (`taktusctl deactivate --process b-7-01`) changes nothing in the repository.
 
 id: b-7-01
-version: "1"
+version: "2"
 name: B-7.01 Triage
 autonomy:
   level: 2
@@ -59,11 +59,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.read answered", columns: [body, labels, state, title] }
     fallback:
       when: the connector serving repository.issues is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       rule: connector
       operation: repository.issues.read
       input:
@@ -130,12 +133,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.labels.set answered", columns: [labels, number] }
     fallback:
       when: the connector serving repository.labels is unavailable
       to: human
       role: owner
     depends_on: [label]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: label, $select: extracted }, not_matches: "^\\[\\]$" }
       rule: connector

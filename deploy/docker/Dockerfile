@@ -35,6 +35,8 @@ COPY migrations ./migrations
 COPY examples ./examples
 # The gallery a person chooses a first process from (ADR-0136 §1).
 COPY blueprints/gallery ./blueprints/gallery
+# The probe the load measurement runs (S-04, `taktusctl load measure`, ADR-0223).
+COPY blueprints/self-operation/processes/S-04-load-probe.yaml ./blueprints/self-operation/processes/
 RUN uv sync --frozen --no-dev
 
 FROM python:3.13-slim-bookworm AS runtime

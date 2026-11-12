@@ -13,9 +13,14 @@ or to the part of it `checking.select` names. Six kinds judge the value on the s
   a value of the same digest;
 - **completeness** — the parts number the count read through `source` at the moment of the
   check: a list's items, an object's entries, or one value as its only part (DEC-0223);
-- **source shape** — what the step read has the columns it was written for, in order, and its
-  text matches `pattern`: a table read as text by its header row, a list of records by the
-  fields of every record, an object by its keys (DEC-0223).
+- **source shape** — what the step read has the columns it was written for, and its text
+  matches `pattern`: a table read as text by its header row, exactly and in order; a list of
+  records by the fields of every record, an object by its keys, each carrying every declared
+  column in any order, since a step reads an object's members by name (DEC-0223, ADR-0233).
+
+A **distribution** is a statistic, applied after the result counted: the value against the
+median of the step's `window` earlier results, within `band` of the median's size and of the
+same sign (ADR-0271). One that fails marks the result suspect; it stops nothing (UC-4.10).
 
 Two kinds bring a person in. **Approval** holds a value above `threshold` for the role before it
 counts. **Sampling** chooses `share` of the results after the fact, by a digest of the run and
@@ -32,6 +37,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import statistics
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
@@ -218,8 +224,8 @@ def columns_of(value: Any) -> list[tuple[str, ...]] | None:
 
 
 def source_shape(position: int, check: Check, value: Any) -> Finding:
-    """What the step read has the columns it was written for, in their order, and matches the
-    pattern."""
+    """What the step read has the columns it was written for — a table read as text in their
+    order, an object or every record carrying each of them — and matches the pattern."""
     said: list[str] = []
     if check.columns is not None:
         expected = tuple(check.columns)
@@ -228,8 +234,14 @@ def source_shape(position: int, check: Check, value: Any) -> Finding:
             return Finding(
                 position, check, False, f"what the step read, {_short(value)}, has no columns"
             )
+        # A table read as text has its columns in an order, and a column more shifts every one
+        # after it. An object's members have no order (RFC 8259 §4) — the same answer replayed
+        # from a recording may list them sorted — and a step reads them by name, so a member
+        # more changes nothing it reads. An object, and each record, must carry every declared
+        # column (ADR-0233).
+        ordered = isinstance(value, str)
         for number, columns in enumerate(found, start=1):
-            if columns != expected:
+            if (columns != expected) if ordered else not set(expected) <= set(columns):
                 where = "" if len(found) == 1 else f" in record {number}"
                 return Finding(
                     position,
@@ -238,7 +250,7 @@ def source_shape(position: int, check: Check, value: Any) -> Finding:
                     f"the columns{where} are {', '.join(columns)}; the step was written for "
                     f"{', '.join(expected)}",
                 )
-        said.append(f"the columns are {', '.join(expected)}, in order")
+        said.append(f"the columns are {', '.join(expected)}" + (", in order" if ordered else ""))
     if check.pattern is not None:
         if re.search(check.pattern, text(value)) is None:
             return Finding(
@@ -301,6 +313,47 @@ def sampled(check: Check, run_id: str, step_id: str) -> bool:
     seed = f"{run_id}\n{step_id}".encode()
     drawn = int.from_bytes(hashlib.sha256(seed).digest()[:8], "big") / 2**64
     return drawn < (check.share or 0)
+
+
+def distribution(position: int, check: Check, value: Any, earlier: Sequence[Any]) -> Finding:
+    """The value against the moving median of the step's earlier results (ADR-0271): within
+    `band` of the median's size, and of the median's sign. Fewer earlier results than the
+    window judge nothing yet: the finding passes and says so. A value or an earlier result that
+    is not a number fails: nothing could be compared."""
+    number = decimal(value)
+    if number is None:
+        return Finding(position, check, False, f"the value {_short(value)} is not a number")
+    numbers = [decimal(item) for item in earlier]
+    if any(n is None for n in numbers):
+        return Finding(position, check, False, "an earlier result of the step is not a number")
+    window = check.window or 0
+    if len(numbers) < window:
+        return Finding(
+            position,
+            check,
+            True,
+            f"no baseline yet: {len(numbers)} earlier result(s), fewer than the window of {window}",
+        )
+    taken = [n for n in numbers[-window:] if n is not None]
+    middle = Decimal(str(statistics.median(taken)))
+    band = Decimal(str(check.band))
+    deviation = abs(number - middle)
+    allowed = band * abs(middle)
+    baseline = f"the median {middle} of the {window} result(s) before it"
+    if middle != 0 and (number < 0) != (middle < 0) and number != 0:
+        return Finding(
+            position, check, False, f"the value {number} has another sign than {baseline}"
+        )
+    if deviation > allowed:
+        share = "" if middle == 0 else f", {(deviation / abs(middle)).normalize():f} of its size"
+        return Finding(
+            position,
+            check,
+            False,
+            f"the value {number} lies {deviation} from {baseline}{share}; the band admits "
+            f"{_n(float(band))}",
+        )
+    return Finding(position, check, True, f"the value {number} lies within the band of {baseline}")
 
 
 def approval_key(position: int, digest: str) -> str:

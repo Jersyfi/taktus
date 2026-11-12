@@ -25,6 +25,16 @@ class CheckKind(StrEnum):
     """The parts number what another source holds: a row DEC-0223 added."""
     SOURCE_SHAPE = "source_shape"
     """What the step read has the shape it was written for: a row DEC-0223 added."""
+    DISTRIBUTION = "distribution"
+    """The result lies where the step's earlier results lie, within a band around their moving
+    median: the family UC-4.10 names first (ADR-0271)."""
+
+
+class CheckMethod(StrEnum):
+    """How a check decides: a rule, or a statistic. Never a language model (UC-4.10)."""
+
+    RULE = "rule"
+    STATISTICS = "statistics"
 
 
 class Reference(StrEnum):
@@ -44,6 +54,7 @@ PARAMETERS: dict[CheckKind, tuple[frozenset[str], frozenset[str]]] = {
     CheckKind.RECOMPUTATION: (frozenset(), frozenset()),
     CheckKind.COMPLETENESS: (frozenset({"count", "source"}), frozenset({"count", "source"})),
     CheckKind.SOURCE_SHAPE: (frozenset(), frozenset({"columns", "pattern"})),
+    CheckKind.DISTRIBUTION: (frozenset({"window", "band"}), frozenset({"window", "band"})),
 }
 """What each row of the catalogue needs, as Check.json's `allOf` states it."""
 
@@ -62,6 +73,18 @@ class Check(Value):
     role: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9-]*$")
     count: str | None = Field(default=None, min_length=1)
     columns: tuple[str, ...] | None = Field(default=None, min_length=1)
+    window: int | None = Field(default=None, ge=3)
+    band: float | None = Field(default=None, gt=0)
+    method: CheckMethod | None = None
+    """How the check decides; without it the row's own: `statistics` for a distribution,
+    `rule` for every other row."""
+
+    @property
+    def decided_by(self) -> CheckMethod:
+        """The method the check decides by: the declared one, or its row's."""
+        if self.method is not None:
+            return self.method
+        return CheckMethod.STATISTICS if self.kind is CheckKind.DISTRIBUTION else CheckMethod.RULE
 
     @model_validator(mode="after")
     def _parameters_of_its_row(self) -> Check:
@@ -69,7 +92,7 @@ class Check(Value):
         given = {
             name
             for name in Check.model_fields
-            if name not in ("kind", "subject") and getattr(self, name) is not None
+            if name not in ("kind", "subject", "method") and getattr(self, name) is not None
         }
         findings: list[str] = []
         missing = sorted(required - given)
@@ -84,6 +107,9 @@ class Check(Value):
             findings.append("a source_shape check names its columns or a pattern")
         if self.columns is not None and any(not c for c in self.columns):
             findings.append("a column of a source_shape check has a name")
+        row = CheckMethod.STATISTICS if self.kind is CheckKind.DISTRIBUTION else CheckMethod.RULE
+        if self.method is not None and self.method is not row:
+            findings.append(f"a {self.kind} check decides by {row}, not by {self.method}")
         if self.minimum is not None and self.maximum is not None and self.minimum > self.maximum:
             findings.append("the minimum of a bounds check lies above its maximum")
         if self.pattern is not None:

@@ -59,6 +59,7 @@ from taktus.components.process.domain.model import ProcessVersion
 from taktus.components.run.application.query import ProvenanceQuery, RecordedResponses
 from taktus.components.run.application.service import RunEngine, StartRun
 from taktus.components.run.domain.model import Run, RunState, StepState
+from taktus.composition.levels import VersionStatements
 from taktus.composition.local import LocalWiring
 from taktus.composition.loopback import Loopback, Pools
 from taktus.ports.worker import Limits
@@ -291,6 +292,7 @@ FAKE_PROCESS: dict[str, Any] = instructed(
                 "reason": "a read through the connector",
                 "rejected": [{"method": "llm", "why": "a read needs no judgement"}],
                 "exactness": "sourced",
+                "checks": [{"kind": "bounds", "pattern": "^\\{"}],
                 "fallback": {"when": "no connector serves it", "to": "human"},
                 "work": {"rule": "connector", "operation": READ, "input": {"id": {"$input": "id"}}},
             },
@@ -300,6 +302,7 @@ FAKE_PROCESS: dict[str, Any] = instructed(
                 "reason": "a write through the connector, which leaves the system",
                 "rejected": [{"method": "llm", "why": "a write needs no judgement"}],
                 "exactness": "sourced",
+                "checks": [{"kind": "bounds", "pattern": "^\\{"}],
                 "fallback": {"when": "no connector serves it", "to": "human"},
                 "depends_on": ["read"],
                 "work": {
@@ -314,12 +317,15 @@ FAKE_PROCESS: dict[str, Any] = instructed(
 
 
 def connector_services(
-    connector: FakeConnector, workers: StaticWorkerPool | None = None
+    connector: FakeConnector,
+    workers: StaticWorkerPool | None = None,
+    others: tuple[tuple[str, FakeConnector], ...] = (),
 ) -> Services:
     """The wiring of `composition/local.py` over memory, with the fake connector configured as
     `connector.fake` beside the loopback and a scripted worker: what the removal test needs
     to exercise a process that writes outward, without a network. `workers` replaces the
-    scripted worker with a pool of the caller's."""
+    scripted worker with a pool of the caller's; `others` are more connectors, by adapter
+    identifier."""
     clock, ids = FakeClock(), FakeIdentifiers()
     persistence = MemoryPersistence()
     runs = MemoryRepository(persistence, Run)
@@ -330,7 +336,7 @@ def connector_services(
     loopback = LoopbackConnector()
     pools = Pools(
         workers or StaticWorkerPool([("worker.endpoint", FakeWorker())]),
-        StaticConnectorPool([(RECORDS, connector), (LOOPBACK, loopback)]),
+        StaticConnectorPool([(RECORDS, connector), *others, (LOOPBACK, loopback)]),
         StaticModelPool(),
     )
 
@@ -351,6 +357,10 @@ def connector_services(
             connectors=connectors,
             models=models,
             recordings=recordings,
+            # S-01's report carries the exactness statement of its version (ADR-0226).
+            statements=VersionStatements(
+                persistence, MemoryRepository(persistence, ProcessVersion)
+            ),
         )
 
     commission = CommissionPlanHandler(

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://taktus.eu/contracts/shared/v1/Check.json",
   "title": "Check",
-  "description": "A machine check a step declares on its result, taken from a fixed catalogue (UC-4.13, ADR-0082). The class `exact` is a claim that a check makes the value right; the check names how. Each kind is one row of the catalogue and takes exactly the parameters that row needs: reconciliation against a total (`total`, `source`), agreement with a second system (`source`, `reference`), plausibility bounds (`minimum`, `maximum`, `pattern`, at least one), approval above a threshold (`threshold`, `role`), sampling (`share`, `role`), recomputation (none; DEC-0173), completeness against a count another source holds (`count`, `source`), and the shape of what the step read (`columns`, `pattern`, at least one) (DEC-0223). A kind outside the catalogue is a change of the catalogue, not a choice of whoever writes the process.",
+  "description": "A machine check a step declares on its result, taken from a fixed catalogue (UC-4.13, ADR-0082). The class `exact` is a claim that a check makes the value right; the check names how. Each kind is one row of the catalogue and takes exactly the parameters that row needs: reconciliation against a total (`total`, `source`), agreement with a second system (`source`, `reference`), plausibility bounds (`minimum`, `maximum`, `pattern`, at least one), approval above a threshold (`threshold`, `role`), sampling (`share`, `role`), recomputation (none; DEC-0173), completeness against a count another source holds (`count`, `source`), the shape of what the step read (`columns`, `pattern`, at least one) (DEC-0223), and the distribution of the step's results against the moving median of its earlier ones (`window`, `band`; ADR-0271). `method` says how a check decides: `statistics` for a distribution, `rule` for every other row, never a language model. A kind outside the catalogue is a change of the catalogue, not a choice of whoever writes the process.",
   "type": "object",
   "properties": {
     "kind": {
@@ -16,7 +16,8 @@
         "sampling",
         "recomputation",
         "completeness",
-        "source_shape"
+        "source_shape",
+        "distribution"
       ]
     },
     "subject": {
@@ -68,6 +69,24 @@
       },
       "minItems": 1
     },
+    "window": {
+      "description": "distribution: how many of the step's earlier results the moving median is taken over, at least 3.",
+      "type": "integer",
+      "minimum": 3
+    },
+    "band": {
+      "description": "distribution: how far the result may lie from the moving median, as a share of the median's size: 0.5 admits half the median above or below it. Greater than 0.",
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "method": {
+      "description": "How the check decides: `statistics` for a distribution, `rule` for every other row (UC-4.10). Never a language model. Without it the row's own method holds.",
+      "type": "string",
+      "enum": [
+        "rule",
+        "statistics"
+      ]
+    },
     "threshold": {
       "description": "approval: a value above it is confirmed by a person of `role` before it counts.",
       "type": "number"
@@ -111,7 +130,12 @@
           "share": false,
           "role": false,
           "count": false,
-          "columns": false
+          "columns": false,
+          "window": false,
+          "band": false,
+          "method": {
+            "const": "rule"
+          }
         }
       }
     },
@@ -137,7 +161,12 @@
           "share": false,
           "role": false,
           "count": false,
-          "columns": false
+          "columns": false,
+          "window": false,
+          "band": false,
+          "method": {
+            "const": "rule"
+          }
         }
       }
     },
@@ -175,7 +204,12 @@
           "share": false,
           "role": false,
           "count": false,
-          "columns": false
+          "columns": false,
+          "window": false,
+          "band": false,
+          "method": {
+            "const": "rule"
+          }
         }
       }
     },
@@ -201,7 +235,12 @@
           "pattern": false,
           "share": false,
           "count": false,
-          "columns": false
+          "columns": false,
+          "window": false,
+          "band": false,
+          "method": {
+            "const": "rule"
+          }
         }
       }
     },
@@ -227,7 +266,12 @@
           "pattern": false,
           "threshold": false,
           "count": false,
-          "columns": false
+          "columns": false,
+          "window": false,
+          "band": false,
+          "method": {
+            "const": "rule"
+          }
         }
       }
     },
@@ -251,7 +295,12 @@
           "share": false,
           "role": false,
           "count": false,
-          "columns": false
+          "columns": false,
+          "window": false,
+          "band": false,
+          "method": {
+            "const": "rule"
+          }
         }
       }
     },
@@ -277,7 +326,12 @@
           "threshold": false,
           "share": false,
           "role": false,
-          "columns": false
+          "columns": false,
+          "window": false,
+          "band": false,
+          "method": {
+            "const": "rule"
+          }
         }
       }
     },
@@ -311,7 +365,43 @@
           "threshold": false,
           "share": false,
           "role": false,
-          "count": false
+          "count": false,
+          "window": false,
+          "band": false,
+          "method": {
+            "const": "rule"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "distribution"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "window",
+          "band"
+        ],
+        "properties": {
+          "total": false,
+          "source": false,
+          "reference": false,
+          "minimum": false,
+          "maximum": false,
+          "pattern": false,
+          "threshold": false,
+          "share": false,
+          "role": false,
+          "count": false,
+          "columns": false,
+          "method": {
+            "const": "statistics"
+          }
         }
       }
     }

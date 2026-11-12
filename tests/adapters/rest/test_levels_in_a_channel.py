@@ -1,5 +1,5 @@
-"""The run level and the overview asked for in the owner-facing channel say what the web app is
-handed (UC-6.10 *beyond the web app*, ADR-0069, issues #193 and #204).
+"""The run level, the overview and the origin of a result asked for in the owner-facing channel
+say what the web app is handed (UC-6.10 *beyond the web app*, ADR-0069, issues #193 and #204).
 
 The web app draws `GET /levels/runs/{id}`. The owner's conversation, a chat that cannot draw
 it, receives the text equivalent of the same level — every element's text, with the same states
@@ -19,6 +19,7 @@ from taktus.ports.connector import Intake
 from taktus.shared.v1 import Consumption, Method
 
 from .conftest import OTHER, TENANT, Services, a_run
+from .test_origin_level import recorded
 from .test_process_level import bundle, register
 
 type Client = tuple[httpx.AsyncClient, Services, str]
@@ -189,3 +190,63 @@ async def test_the_owner_s_chat_receives_the_overview_s_text_and_a_link_to_it_li
     assert (invoices["working"], invoices["waiting"]) == (1, 1)
     assert [s["run"] for s in invoices["running"]] == ["run_1"]
     assert "1 run working, 1 waiting" in said.text and "run_9" not in said.text
+
+
+async def test_the_owner_s_chat_receives_the_origin_of_a_result_as_its_text_and_a_link_to_it_live(
+    client: Client,
+) -> None:
+    """`show origin <run>/<step>` is answered with the text of the origin as
+    `GET /levels/origins/{run}/{step}` hands it to the web app — its summary, the result, each
+    step on the path and each source read — and the link under which the web app draws it.
+    A result nobody recorded, and one of a step that produced none, are answered alike."""
+    http, given, base = client
+    await a_run(given)
+    await recorded(given)
+    who, key = await given.identity.person(TENANT, "idn_owner")
+    owner = who.identity
+    control_plane = f"http://taktus.test{base}"
+    await given.owner.configure.execute(
+        ConfigureChannel(
+            tenant=TENANT,
+            document={
+                "owner": owner,
+                "channel": CHAT,
+                "address": CONVERSATION,
+                "language": "en",
+                "view_base": control_plane,
+            },
+            actor="operator",
+        )
+    )
+    answer = await http.get(
+        f"{base}/levels/origins/run_1/b", headers={"Authorization": f"Bearer {key}"}
+    )
+    assert answer.status_code == 200, answer.text
+    level = answer.json()
+
+    taken = await given.owner.answers.take(
+        TENANT, message("show origin run_1/b", "Ev1"), owner, who.roles
+    )
+
+    assert taken is not None and taken.outcome == "shown" and taken.replied
+    [said] = given.deliveries.said
+    assert said.text.splitlines() == [
+        level["summary"],
+        f"• {level['result']['text']}",
+        *(f"• {step['text']}" for step in level["steps"]),
+        *(f"• {source['text']}" for source in level["sources"]),
+        "",
+        f"Live: {control_plane}/app/#/origins/run_1/b",
+    ]
+    assert [s["id"] for s in level["steps"]] == ["run_1/b", "run_1/a"]
+    assert "repository.files" in said.text, "the source the path ends at is named"
+
+    answers = [
+        await given.owner.answers.take(TENANT, message(text, event), owner, who.roles)
+        for text, event in (
+            ("show origin run_1/c", "Ev2"),
+            ("show origin run_9/b", "Ev3"),
+        )
+    ]
+    assert [a.outcome if a else None for a in answers] == ["not_shown", "not_shown"]
+    assert given.deliveries.said[1].text == given.deliveries.said[2].text

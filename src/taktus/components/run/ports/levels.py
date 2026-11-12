@@ -8,7 +8,9 @@ things and asks it one:
   recorded it as `proposal.decided`;
 - **a breach**: a step performed an act an anchor names, with no person's decision to perform it;
 - **the lowered levels** of a process version, which the run applies at every step boundary
-  before the level of the step.
+  before the level of the step;
+- **the classes of request** a version's statement names (ADR-0215): the run takes them on
+  when it is created, as it takes the levels of the actions.
 
 The composition root answers from the governance component, because components never import
 each other.
@@ -23,7 +25,7 @@ from typing import Protocol
 from pydantic import Field
 
 from taktus.ports.persistence import Tenant
-from taktus.shared.v1 import AutonomyLevel, Value
+from taktus.shared.v1 import AutonomyLevel, ClassAutonomy, ClassLimits, Value
 
 
 class LoweredLevels(Value):
@@ -32,6 +34,8 @@ class LoweredLevels(Value):
 
     level: AutonomyLevel | None = None
     actions: Mapping[str, AutonomyLevel] = Field(default_factory=dict)
+    classes: Mapping[str, AutonomyLevel] = Field(default_factory=dict)
+    """Each class of request lowered (ADR-0215)."""
 
 
 @dataclass(frozen=True)
@@ -45,6 +49,10 @@ class ProposalDecided:
     """The tool action whose level held the step; None where the process's own level did."""
     level: AutonomyLevel
     """The level the step was held at."""
+    case_class: str | None = None
+    """The class of request whose level held the step (ADR-0215); None for none."""
+    class_limits: ClassLimits | None = None
+    """The limits the version's statement names for its classes, with `case_class`."""
 
 
 @dataclass(frozen=True)
@@ -62,6 +70,10 @@ class Breach:
 
 class Levels(Protocol):
     async def lowered(self, tenant: Tenant, process_version: str) -> LoweredLevels: ...
+
+    async def classes(self, tenant: Tenant, process_version: str) -> ClassAutonomy | None:
+        """The classes of request the version's statement names; None for none."""
+        ...
 
     async def decided(self, tenant: Tenant, decision: ProposalDecided) -> None:
         """Apply the rule after a decision: lower the unit, or propose its raise, or nothing."""

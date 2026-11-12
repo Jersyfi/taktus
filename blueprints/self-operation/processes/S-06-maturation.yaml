@@ -19,7 +19,7 @@
 # hand (README.md beside this directory).
 
 id: s06-maturation
-version: "2"
+version: "4"
 name: S-06 Maturation
 autonomy:
   level: 3
@@ -65,7 +65,10 @@ steps:
       - method: llm
         why: a measure is arithmetic over records; a model would only restate it, less exactly
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what orchestrator.maturation.measures answered", columns: [count, unpriced] }
     work:
+      checking: { select: output }
       rule: connector
       operation: orchestrator.maturation.measures
       input: {}
@@ -82,8 +85,11 @@ steps:
           whether the evidence holds must be decided the same way every time, by numbers a
           person can check; a judgement could propose on weaker evidence
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what orchestrator.maturation.propose answered", columns: [applied, looked_at, proposed] }
     depends_on: [measure]
     work:
+      checking: { select: output }
       rule: connector
       operation: orchestrator.maturation.propose
       input:
@@ -118,17 +124,22 @@ steps:
       - method: llm
         why: a narrative is not needed for one line; the values speak
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "step\\(s\\) on a language model looked at" }
     depends_on: [measure, nothing-applied]
     work:
       rule: template
       text: |
         Maturation: ${steps} step(s) measured, ${unpriced} with a cost that could not be priced.
         ${looked_at} step(s) on a language model looked at, ${proposed} proposal(s) raised.
+
+        ${statement}
       values:
         steps: { $from: measure, $select: output.count }
         unpriced: { $from: measure, $select: output.unpriced }
         looked_at: { $from: propose, $select: output.looked_at }
         proposed: { $from: propose, $select: output.proposed }
+        statement: { $run: exactness }
 
 # How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
 # every step the system to act in, what to do there, the expertise it needs, each credential by

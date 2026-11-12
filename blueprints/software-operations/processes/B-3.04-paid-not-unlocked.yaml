@@ -28,7 +28,7 @@
 # stays granted.
 
 id: b-3-04
-version: "1"
+version: "2"
 name: B-3.04 Paid but not unlocked
 autonomy:
   level: 2
@@ -59,11 +59,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what payments.customers.subscriptions answered", columns: [complete, subscriptions] }
     fallback:
       when: the connector serving payments.customers is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       scope: { subject: { $input: customer } }
       rule: connector
       operation: payments.customers.subscriptions
@@ -98,11 +101,14 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what entitlements.customers.list answered", columns: [complete, entitlements] }
     fallback:
       when: the connector serving entitlements.customers is unavailable
       to: human
       role: owner
     work:
+      checking: { select: output }
       scope: { subject: { $input: customer } }
       rule: connector
       operation: entitlements.customers.list
@@ -149,12 +155,15 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what entitlements.customers.grant answered", columns: [customer, id, product, quantity, replayed] }
     fallback:
       when: the connector serving entitlements.customers is unavailable
       to: human
       role: owner
     depends_on: [match]
     work:
+      checking: { select: output }
       when:
         - { value: { $from: match, $select: mismatches }, equals: 1 }
         - { value: { $from: match, $select: first.kind }, equals: left_only }

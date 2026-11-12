@@ -4,10 +4,10 @@ title: A session with project knowledge
 component: command
 epic: E1
 serves: [P2, P6]
-state: specified
+state: building
 version: 0.5.0
-tests: []
-adrs: {}
+tests: [tests/components/command/test_sessions.py::test_closing_reopening_and_changing_channel_continue_the_same_session, tests/components/command/test_sessions.py::test_every_statement_names_its_source_or_says_it_has_none, tests/components/command/test_sessions.py::test_a_session_reads_only_what_its_participant_may_see, tests/components/command/test_sessions.py::test_a_session_acts_on_nothing_and_settles_in_a_plan_draft_or_a_record]
+adrs: {ADR-0277: b52a68602dad}
 supersedes: null
 ---
 
@@ -46,3 +46,15 @@ Blueprint UC-01, `AF-01-dev-orchestration.md` §6, which first described it; the
 "sessions with project knowledge", hence the version; the plan (UC-1.2); the process version
 (UC-4.1); the command and its reply channel (UC-1.1). UC-1.8 is in no version of the definition; it
 was numbered in conversation (`NUMBERING.md`).
+
+## 5. What is proven so far
+
+Built by ADR-0277: a session is one participant's in one project, the same one after closing and
+on every channel; every statement names its source or says it has none; it reads through the
+participant's own sight and acts on nothing, settling in a plan draft or a named record, each
+recorded `session.settled`. The web app presents it (`#/structure`, `/sessions`).
+
+Not met: a chat channel does not yet reach the session; and what the project's source systems
+hold — its repository, its documents — is read only with the participant's own credential for
+each, which no instance holds yet, so the session reads what Taktus keeps of the project. The
+state stays `building`.

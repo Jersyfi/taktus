@@ -37,6 +37,7 @@ deploy/docker/secrets/*
 deploy/docker/taktus.env
 # what `make start` measured (deploy/docker/start.py) — the operator's, never committed
 deploy/docker/first-process.json
+deploy/k8s/first-process.json
 # the operator's further connectors and the compose file written from them (deploy/docker/connectors.py)
 deploy/docker/connectors.json
 deploy/docker/secret-store.json

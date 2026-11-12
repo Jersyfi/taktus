@@ -11,7 +11,8 @@ the run component's own: what a step recorded it used, and the run's sum, `Run.c
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import json
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from taktus.components.decision.domain.model import Request
@@ -26,6 +27,7 @@ from taktus.components.process.domain.service import exactness
 from taktus.components.process.domain.service.takeover import untried
 from taktus.components.reporting.domain.model import (
     DecisionFacts,
+    HealFacts,
     OriginFacts,
     OverviewFacts,
     PlannedStep,
@@ -44,6 +46,9 @@ from taktus.components.reporting.domain.model import (
     Wait,
 )
 from taktus.components.run.domain.model import WAITING, WORKING, Run, RunState, StepRun, StepState
+from taktus.components.value.application.query import CorrectionRates
+from taktus.ports.ledger import Ledger
+from taktus.ports.objectstore import ObjectStore
 from taktus.ports.persistence import (
     ProvenanceStore,
     Queried,
@@ -52,7 +57,11 @@ from taktus.ports.persistence import (
     TenantStore,
     UnitOfWork,
 )
-from taktus.shared.v1 import DecisionStatus, Provenance
+from taktus.shared.v1 import DecisionStatus, LedgerEntry, Provenance
+
+HEALED = "step.healed"
+"""The run component's kind of a self-healing action (ADR-0160)."""
+FINISHED = "step.finished"
 
 
 class RepositoryLevelRecords:
@@ -68,7 +77,17 @@ class RepositoryLevelRecords:
         requests: Repository[Request],
         trials: Repository[TakeoverTrial] | None = None,
         tenants: TenantStore | None = None,
+        rates: CorrectionRates | None = None,
+        ledger: Ledger | None = None,
+        objects: ObjectStore | None = None,
     ) -> None:
+        self._ledger = ledger
+        self._objects = objects
+        """The ledger and the object store the run's heals are read from (UC-4.6). None: the
+        run level shows no heal."""
+        self._rates = rates
+        """The value ledger's correction rates (ADR-0226). None: the statement says the rate is
+        not yet measured."""
         self._trials = trials
         """The trials of takeover instructions (ADR-0180 §3). None: none is recorded, and a
         version at level 3 or 4 is untried."""
@@ -88,9 +107,44 @@ class RepositoryLevelRecords:
             raised = [r for s in run.step_runs if s.anchoring for r in s.anchoring.requests]
             found = [await self._requests.get(tenant, r) for r in raised]
             version = await self._versions.get(tenant, run.process_version)
+            own: Sequence[LedgerEntry] = (
+                () if self._ledger is None else await self._ledger.entries(tenant, run_id)
+            )
         statuses = {r.id: r.status for r in found if r is not None}
-        facts = facts_of(run, statuses)
-        return facts.model_copy(update={"exactness": statement_of(version)})
+        facts = facts_of(run, statuses, await self._heals(own))
+        measured = await measured_of(self._rates, tenant, version)
+        return facts.model_copy(update={"exactness": statement_of(version, measured)})
+
+    async def _heals(self, own: Sequence[LedgerEntry]) -> dict[str, tuple[HealFacts, ...]]:
+        """Every heal of the run by step, each with the failure it answered, read from the
+        object store by its digest, and the outcome of the step's next `step.finished`."""
+        if self._objects is None:
+            return {}
+        heals: dict[str, list[HealFacts]] = {}
+        for number, entry in enumerate(own):
+            if entry.kind != HEALED or entry.refs.step_id is None or entry.content_digest is None:
+                continue
+            stored = await self._objects.get(entry.content_digest)
+            if stored is None:
+                continue
+            answered = json.loads(stored)
+            outcome = next(
+                (
+                    later.outcome
+                    for later in own[number + 1 :]
+                    if later.kind == FINISHED and later.refs.step_id == entry.refs.step_id
+                ),
+                None,
+            )
+            heals.setdefault(entry.refs.step_id, []).append(
+                HealFacts(
+                    failure=str(answered.get("failure") or "a failure without a reason"),
+                    action=str(answered.get("action") or entry.outcome or "retry"),
+                    attempt=int(answered.get("attempt") or 1),
+                    outcome=outcome,
+                )
+            )
+        return {step: tuple(found) for step, found in heals.items()}
 
     async def origin(self, tenant: Tenant, run_id: str, step_id: str) -> OriginFacts | None:
         records: dict[str, list[Provenance]] = {}
@@ -168,7 +222,7 @@ class RepositoryLevelRecords:
                 )
                 for r in runs
             ),
-            exactness=statement_of(found),
+            exactness=statement_of(found, await measured_of(self._rates, tenant, found)),
             untried=untried(found.autonomy.level, trials, found.ref),
         )
 
@@ -203,7 +257,7 @@ class RepositoryLevelRecords:
                         )
                         for step in active.steps
                     ),
-                    exactness=statement_of(active),
+                    exactness=statement_of(active, await measured_of(self._rates, tenant, active)),
                     untried=active is not None
                     and untried(active.autonomy.level, trials, active.ref),
                 )
@@ -217,14 +271,28 @@ class RepositoryLevelRecords:
         )
 
 
-def statement_of(version: ProcessVersion | None) -> Statement | None:
+async def measured_of(
+    rates: CorrectionRates | None, tenant: Tenant, version: ProcessVersion | None
+) -> tuple[int, int] | None:
+    """The value ledger's figure for a version: corrected and counted results of the steps that
+    declare a check (ADR-0226). None where no value ledger is wired."""
+    if rates is None or version is None:
+        return None
+    checked = [step.id for step in version.steps if step.checks]
+    found = await rates.of(tenant, version.ref, checked)
+    return (found.corrected, found.counted)
+
+
+def statement_of(
+    version: ProcessVersion | None, measured: tuple[int, int] | None = None
+) -> Statement | None:
     """The exactness statement of a version, generated by the process component and handed over
-    as it is (UC-6.9); None without a version, or for one written before a statement could be
-    generated from it."""
+    as it is (UC-6.9), with the value ledger's measured rate where it is given (ADR-0226); None
+    without a version, or for one written before a statement could be generated from it."""
     if version is None:
         return None
     try:
-        generated = exactness.statement(version.ref, version.name, version.steps)
+        generated = exactness.statement(version.ref, version.name, version.steps, measured)
     except (InvalidStatement, InvalidProcess):
         return None
     return Statement.model_validate(generated.as_document())
@@ -276,10 +344,15 @@ def activity_of(run: Run) -> RunActivity:
     )
 
 
-def facts_of(run: Run, statuses: Mapping[str, DecisionStatus] | None = None) -> RunFacts:
+def facts_of(
+    run: Run,
+    statuses: Mapping[str, DecisionStatus] | None = None,
+    heals: Mapping[str, tuple[HealFacts, ...]] | None = None,
+) -> RunFacts:
     """The facts of a run as reporting reads them, with the status of each decision request a
-    step raised as the decision component records it."""
+    step raised as the decision component records it, and every heal of each step (UC-4.6)."""
     statuses = statuses or {}
+    heals = heals or {}
     states = {s.step_id: s for s in run.step_runs}
     steps: list[StepFacts] = []
     for step in run.steps:
@@ -295,6 +368,7 @@ def facts_of(run: Run, statuses: Mapping[str, DecisionStatus] | None = None) -> 
                 consumption=None if ran is None else ran.consumption,
                 wait=None if ran is None else _wait(ran),
                 takeover=None if ran is None else _takeover(ran),
+                heals=heals.get(step.id, ()),
                 started_at=None if ran is None else ran.started_at,
                 finished_at=None if ran is None else ran.finished_at,
                 decisions=()
@@ -354,16 +428,23 @@ class VersionStatements:
     by `{"$run": "exactness"}`, rendered by the process component and handed over unchanged
     (UC-6.9)."""
 
-    def __init__(self, work: UnitOfWork, versions: Repository[ProcessVersion]) -> None:
+    def __init__(
+        self,
+        work: UnitOfWork,
+        versions: Repository[ProcessVersion],
+        rates: CorrectionRates | None = None,
+    ) -> None:
         self._work = work
         self._versions = versions
+        self._rates = rates
 
     async def rendered(self, tenant: Tenant, process_version: str) -> str | None:
         async with self._work.transaction(tenant):
             version = await self._versions.get(tenant, process_version)
         if version is None:
             return None
+        measured = await measured_of(self._rates, tenant, version)
         try:
-            return exactness.statement(version.ref, version.name, version.steps).render()
+            return exactness.statement(version.ref, version.name, version.steps, measured).render()
         except (InvalidStatement, InvalidProcess):
             return None

@@ -81,6 +81,7 @@ def bundle(
                 "reason": "r",
                 "rejected": [],
                 "exactness": "sourced",
+                "checks": [{"kind": "bounds", "pattern": "^\\{"}],
                 "depends_on": ["build"],
                 "work": {"rule": "connector", "operation": "repository.pullrequest.merge"},
             },

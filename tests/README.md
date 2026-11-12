@@ -25,7 +25,10 @@ fixture `postgres_url` there copies a template migrated once per session, and dr
 when the test ends (`tests/integration/conftest.py`, #517). The
 container execution tests and the image tests need Docker the same way (`engine_socket`,
 `reference_worker_image` in `conftest.py`): they skip without it and fail under
-`TAKTUS_REQUIRE_DATABASE`, which in CI means "Docker is required here".
+`TAKTUS_REQUIRE_DATABASE`, which in CI means "Docker is required here". The browser worker's
+tests (`tests/workers/test_browser_worker.py`, `tests/conformance/test_worker_v1_browser.py`)
+need headless Chromium, which `make browser` installs: they skip without it and fail under
+`TAKTUS_REQUIRE_BROWSER`, which CI's `conformance` and `test` lanes set.
 
 The images those tests run are built through `tests/images.py` and nowhere else: labelled with a
 digest of their Dockerfile and every file it copies, tagged with that digest, and not handed to

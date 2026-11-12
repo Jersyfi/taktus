@@ -1,0 +1,357 @@
+# B-8.03 Store submission — UC-03 §4.8: an approved release is submitted to its store, the
+# review is followed, and a rejection is reported at once (UC-7.6). Submitting stays with a
+# person.
+#
+# The release's version is read from the store through the capability `stores.releases`
+# (ADR-0210). Only a version the store still has in preparation is submitted, and the
+# submission is put to a person as a decision request, at every level: submitting is the
+# technical lead's act (UC-03 §4.8), and the decision request carries the version and its
+# state. Where the store publishes its review's state, the run then follows it every half hour
+# for up to three days, and a rejection is opened as an issue in the repository at once. The
+# store's metadata and screenshots are prepared by people in the store's console, or drafted by
+# B-8.01; this process changes none of them.
+#
+# One store publishes no review state through its API; for its platform the run ends with the
+# submission, and the review is followed in its console.
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-8.03-store-submission.yaml \
+#         --input platform=ios --input app=1000000001 --input release=v-11
+#
+# Switching it off (`taktusctl deactivate --process b-8-03`) changes nothing at the store.
+
+id: b-8-03
+version: "2"
+name: B-8.03 Store submission
+autonomy:
+  level: 2
+  reason: >
+    a submission is a person's act at every level, and the step asks for it; following the
+    review and opening the issue leave the system, so at level 2 a person confirms them, as
+    every process of UC-03 starts at level 1 or 2 when its stage opens
+  toward_next: >
+    UC-03 sets this process's target at level 2; it stays there, and the submission stays with
+    a person at every level (UC-7.1)
+author: the repository
+reason: an approved release reaches the store's review on a person's word, and a rejection reaches the repository without anyone watching the console (UC-03 B-8.03)
+
+inputs:
+  platform:
+    description: the platform of the app, ios or android; it names the store
+    example: ios
+  app:
+    description: the app at its store, the identifier or the package name the store gives it
+    example: "1000000001"
+  release:
+    description: the version to submit, as the store names it — a version's identifier, or a version code
+    example: v-11
+
+limits:
+  quota: { units: 600 }
+
+steps:
+  - id: read
+    method: rule
+    reason: the version's state at the store is read verbatim
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what stores.releases.read answered", columns: [state] }
+    fallback:
+      when: the connector serving stores.releases is unavailable
+      to: human
+      role: owner
+    work:
+      checking: { select: output }
+      rule: connector
+      operation: stores.releases.read
+      input:
+        platform: { $input: platform }
+        app: { $input: app }
+        version: { $input: release }
+      credentials:
+        - { name: STORES_KEY, injected_as: env }
+
+  - id: preparing
+    method: rule
+    reason: only a version the store still has in preparation is submitted, a fixed rule over the store's own word; on the store without a review state, a version code on no production release
+    rejected:
+      - method: llm
+        why: a state needs no judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the version still in preparation }
+    depends_on: [read]
+    work:
+      rule: filter
+      items:
+        - { $from: read, $select: output }
+      all:
+        - { field: review, equals: preparing }
+
+  - id: submit
+    method: rule
+    reason: >
+      the submission is an API call; submitting stays with a person (UC-03 B-8.03), so the step
+      asks at every level
+    rejected:
+      - method: human
+        why: the store's interface submits the version as the person decided; nothing is left to do by hand
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what stores.releases.submit answered", columns: [app, fraction, platform, version] }
+    fallback:
+      when: the connector serving stores.releases is unavailable
+      to: human
+      role: owner
+    depends_on: [preparing]
+    work:
+      checking: { select: output }
+      when:
+        - { value: { $from: preparing, $select: count }, matches: "^[1-9]" }
+      ask:
+        question: "Submit ${version} of ${app} to the store's review?"
+        situation: >
+          The version ${version} of the ${platform} app ${app} is in the state ${state} at its
+          store. Its metadata and screenshots are as the store's console shows them.
+        proposal: the version is submitted to the store's review
+        values:
+          version: { $input: release }
+          app: { $input: app }
+          platform: { $input: platform }
+          state: { $from: read, $select: output.state }
+      rule: connector
+      operation: stores.releases.submit
+      input:
+        platform: { $input: platform }
+        app: { $input: app }
+        version: { $input: release }
+      credentials:
+        - { name: STORES_KEY, injected_as: env }
+
+  - id: reviewed
+    method: wait
+    reason: the store reviews on its own time; the run looks every half hour until the review has a verdict
+    rejected: []
+    fallback:
+      when: the connector serving stores.releases is unavailable, or the review has no verdict in three days
+      to: human
+      role: owner
+    depends_on: [submit]
+    work:
+      when:
+        - { value: { $input: platform }, matches: "^ios$" }
+        - { value: { $from: preparing, $select: count }, matches: "^[1-9]" }
+      until:
+        operation: stores.releases.read
+        input:
+          platform: { $input: platform }
+          app: { $input: app }
+          version: { $input: release }
+        credentials:
+          - { name: STORES_KEY, injected_as: env }
+        select: review
+        expect: [approved, rejected, live]
+        poll_seconds: 1800
+        timeout_seconds: 259200
+
+  - id: verdict
+    method: rule
+    reason: the review's verdict is read verbatim once it has one
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what stores.releases.read answered", columns: [app, fraction, id, phased, platform, review, rolled_out, state, version] }
+    fallback:
+      when: the connector serving stores.releases is unavailable
+      to: human
+      role: owner
+    depends_on: [reviewed]
+    work:
+      checking: { select: output }
+      when:
+        - { value: { $input: platform }, matches: "^ios$" }
+        - { value: { $from: preparing, $select: count }, matches: "^[1-9]" }
+      rule: connector
+      operation: stores.releases.read
+      input:
+        platform: { $input: platform }
+        app: { $input: app }
+        version: { $input: release }
+      credentials:
+        - { name: STORES_KEY, injected_as: env }
+
+  - id: rejected
+    method: rule
+    reason: whether the review rejected the version is the store's own word, counted
+    rejected:
+      - method: llm
+        why: a state needs no judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the rejected version }
+    depends_on: [verdict]
+    work:
+      when:
+        - { value: { $input: platform }, matches: "^ios$" }
+        - { value: { $from: preparing, $select: count }, matches: "^[1-9]" }
+      rule: filter
+      items:
+        - { $from: verdict, $select: output }
+      all:
+        - { field: review, equals: rejected }
+
+  - id: compose
+    method: rule
+    reason: the issue's text is the store's own words between fixed words
+    rejected:
+      - method: llm
+        why: a fixed composition needs no model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "The reasons are in the store's console, under the version's review\\. Fixing them and" }
+    depends_on: [rejected]
+    work:
+      when:
+        - { value: { $input: platform }, matches: "^ios$" }
+        - { value: { $from: rejected, $select: count }, matches: "^[1-9]" }
+      rule: template
+      text: |
+        The store's review rejected ${version} of the app ${app}: its state is ${state}.
+
+        The reasons are in the store's console, under the version's review. Fixing them and
+        submitting again stays with a person.
+
+        Filed by Taktus, process B-8.03 Store submission.
+      values:
+        version: { $from: rejected, $select: first.version }
+        app: { $input: app }
+        state: { $from: rejected, $select: first.state }
+
+  - id: report
+    method: rule
+    reason: opening the issue is an API call; the effect leaves the system, so at level 2 a person confirms it first
+    rejected:
+      - method: worker
+        why: nothing here needs a sandbox or tools
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.create answered", columns: [author, body, created_at, is_pull_request, labels, milestone, number, state, title, updated_at, url] }
+    fallback:
+      when: the connector serving repository.issues is unavailable
+      to: human
+      role: owner
+    depends_on: [rejected, compose]
+    work:
+      checking: { select: output }
+      when:
+        - { value: { $input: platform }, matches: "^ios$" }
+        - { value: { $from: rejected, $select: count }, matches: "^[1-9]" }
+      rule: connector
+      operation: repository.issues.create
+      input:
+        title: "The store's review rejected a version"
+        body: { $from: compose }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+takeover:
+  sequence: >
+    The technical lead starts the process when a release is approved; the run names the
+    platform, the app and the version. The steps run in order: read the version's state at its
+    store, check that it is still being prepared, decide whether to submit it and submit it,
+    follow the review every half hour for up to three days where the store shows it, read the
+    verdict, and open an issue at once when the review rejected the version. Submitting is the
+    technical lead's decision at every level.
+  steps:
+    read:
+      system: the app's store, the version the run was started with
+      do: >
+        read the version's state in the store's developer console and write it down.
+      expertise: reading an app version's state in its store's developer console
+      credentials:
+        - parameter: STORES_KEY
+          where: >
+            the operator's secret store, under the parameter App stores key of the requesting
+            identity described in CREDENTIALS.md; a person working by hand signs in to the store's
+            console with their own account, which may manage the app's releases
+      done: the version's state is written down
+    preparing:
+      system: the state written down
+      do: >
+        go on only if the version is still being prepared for submission; on the store that shows
+        no such state, only if the version code is on no release of the production track.
+      expertise: none
+      credentials: []
+      done: it is written down whether the version may be submitted
+    submit:
+      system: the app's store, the version
+      do: >
+        only if the version may be submitted: the technical lead decides whether to submit it. Only
+        if they agree, submit it to the store's review with the store's own command.
+      expertise: submitting an app version for review in its store's developer console
+      credentials:
+        - parameter: STORES_KEY
+          where: >
+            the operator's secret store, under the parameter App stores key of the requesting
+            identity described in CREDENTIALS.md; a person working by hand uses their own account
+            at the store, which may submit the app for review
+      done: the version is waiting for review, or the decision not to submit is recorded
+    reviewed:
+      system: the app's store, the version's review
+      do: >
+        on the store that shows its review: look every half hour until the review approved or
+        rejected the version. If there is no verdict after three days, hand it to the owner.
+      expertise: reading an app version's review state in its store's developer console
+      credentials:
+        - parameter: STORES_KEY
+          where: >
+            the operator's secret store, under the parameter App stores key of the requesting
+            identity described in CREDENTIALS.md; a person working by hand uses their own account
+            at the store, which may read the app's releases
+      done: the review has a verdict, or the owner has the review that took too long
+    verdict:
+      system: the app's store, the version
+      do: >
+        read the version's state once more and write it down.
+      expertise: reading an app version's state in its store's developer console
+      credentials:
+        - parameter: STORES_KEY
+          where: >
+            the operator's secret store, under the parameter App stores key of the requesting
+            identity described in CREDENTIALS.md; a person working by hand uses their own account
+            at the store, which may read the app's releases
+      done: the version's state is written down
+    rejected:
+      system: the state written down
+      do: >
+        decide by rule whether the review rejected the version.
+      expertise: none
+      credentials: []
+      done: it is written down whether the version was rejected
+    compose:
+      system: the state written down
+      do: >
+        only if the version was rejected: write the issue's text, naming the version, the app and
+        the store's state, and that the reasons are in the console.
+      expertise: none
+      credentials: []
+      done: the issue's text is written
+    report:
+      system: the repository hosting service, the repository's issues
+      do: >
+        only if the version was rejected: open an issue at once with the title The store's review
+        rejected a version and the text written.
+      expertise: opening an issue on the repository hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md; a person working by hand uses their
+            own account, which may open issues
+      done: the issue is open, or the version was not rejected

@@ -38,6 +38,7 @@ from taktus.components.governance.domain.service.expected_runs import (
     overruns,
     seen,
 )
+from taktus.components.governance.ports.corrections import OpenCorrections
 from taktus.ports.clock import Clock
 from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.persistence import LedgerStore, Repository, Tenant, UnitOfWork
@@ -88,11 +89,25 @@ class ConfigureWatch:
     repeated_model_calls: int | None = None
     evaluation_tolerance: float | None = None
     evaluation_subjects: bool | None = None
+    on_call: str | None = None
 
 
 class UnknownIncident(LookupError):
     def __init__(self, tenant: str, incident: str) -> None:
         super().__init__(f"tenant {tenant!r} has no incident {incident!r}")
+
+
+class IncidentHeld(Exception):
+    """An incident whose remediation still waits for a person's decision on an outward
+    correction does not close (UC-6.8 §2, ADR-0227 §3)."""
+
+    def __init__(self, incident: str, requests: Sequence[str]) -> None:
+        super().__init__(
+            f"{incident} does not close while its outward correction waits for a person: the "
+            f"decision request(s) {', '.join(requests)} of class correction are open; decide "
+            "them first (`taktusctl decision`)"
+        )
+        self.requests = tuple(requests)
 
 
 class ExpectedRuns:
@@ -104,7 +119,12 @@ class ExpectedRuns:
         ledger: Ledger,
         work: UnitOfWork,
         clock: Clock,
+        *,
+        corrections: OpenCorrections | None = None,
     ) -> None:
+        self._corrections = corrections
+        """What holds an incident of a result defect open (ADR-0227 §3). None: nothing is
+        read, and an instance that raises no remediation holds none."""
         self._incidents = incidents
         self._configurations = configurations
         self._store = ledger_store
@@ -133,6 +153,7 @@ class ExpectedRuns:
                 ("repeated_model_calls", command.repeated_model_calls),
                 ("evaluation_tolerance", command.evaluation_tolerance),
                 ("evaluation_subjects", command.evaluation_subjects),
+                ("on_call", command.on_call),
             )
             if value is not None
         }
@@ -173,8 +194,21 @@ class ExpectedRuns:
         )
 
     async def close(self, command: CloseIncident) -> Incident:
-        """A person closes the incident. One closed already stays as it is."""
+        """A person closes the incident. One closed already stays as it is. A result defect
+        whose remediation waits for a decision of class `correction` does not close:
+        `IncidentHeld`."""
         tenant = command.tenant
+        if self._corrections is not None:
+            async with self._work.transaction(tenant):
+                found = await self._incidents.get(tenant, command.incident_id)
+            if (
+                found is not None
+                and found.kind is IncidentKind.RESULT_DEFECT
+                and found.state is IncidentState.OPEN
+            ):
+                waiting = await self._corrections.waiting(tenant, command.incident_id)
+                if waiting:
+                    raise IncidentHeld(command.incident_id, waiting)
         async with self._work.transaction(tenant):
             incident = await self._incidents.get(tenant, command.incident_id)
             if incident is None:

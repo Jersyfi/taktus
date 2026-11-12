@@ -165,7 +165,20 @@ class BrowserSession(Value):
 
 
 class Right(StrEnum):
-    """What a role may let an agent do on the MCP surface beyond reading (ADR-0131 §3)."""
+    """What a role may let an agent do on the MCP surface beyond reading (ADR-0131 §3), what a
+    role may do to runs beyond its own (ADR-0236), the three acts on a process that are
+    rights of their own (ADR-0257), and steering processes by their targets (ADR-0293)."""
+
+    PROCESS_CREATE = "process.create"
+    """Register the first version of a process the tenant does not have yet."""
+    PROCESS_APPROVE = "process.approve"
+    """Register a version, which approves it for operation: it becomes the active version."""
+    AUTONOMY_SET = "autonomy.set"
+    """Set the autonomy level of a new process, or approve a version that raises one."""
+    PROCESS_STEER = "process.steer"
+    """State the value basis: the targets per process and figure, the plan and what the figures
+    are measured against (UC-9.1, ADR-0293). Asked for once any role of the tenant holds it;
+    until then `owner` states it."""
 
     START = "agent.start"
     """Start a process's active version."""
@@ -175,6 +188,19 @@ class Right(StrEnum):
     """Take over a running step, and hand its result back."""
     STEER = "agent.steer"
     """Send a message to a running step (ADR-0156 §7)."""
+    STEER_RUN = "run.steer"
+    """Pause or cancel a run that does not act on the person's own behalf, through any channel
+    (ADR-0236). A run that acts on a person's behalf is theirs to steer without it."""
+    ADMINISTER = "tenant.administer"
+    """The tenant's administrative acts on the HTTP surface and in the web app: identities,
+    their keys, roles and rights, channel links, and quotas per unit (UC-10.2, ADR-0279). The
+    command line authenticates by holding the instance's state instead."""
+    SHAPE_STRUCTURE = "structure.shape"
+    """Name the structure's levels, add a unit, place an object in one, configure a unit's
+    knowledge system (ADR-0275). An administrative act (UC-10.2)."""
+    COMPANY_PROJECT = "project.company"
+    """Create a project for the whole company (ADR-0276). A project alone, with one's own team
+    or with a project team needs no right beyond belonging to the unit it is created in."""
 
 
 class RoleRights(Value):

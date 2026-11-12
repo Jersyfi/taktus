@@ -21,7 +21,11 @@ from taktus.components.run.domain.model import (
     resolve_inputs,
     select,
 )
-from taktus.components.run.domain.model.work import is_reference
+from taktus.components.run.domain.model.work import (
+    CitationRule,
+    is_reference,
+    referenced_values,
+)
 from taktus.shared.v1 import ExactnessClass, Fallback, Method, Step
 
 
@@ -249,3 +253,17 @@ def test_select_names_what_is_missing() -> None:
         select({"a": [10]}, "a.5")
     with pytest.raises(KeyError):
         select({"a": 1}, "b")
+
+
+def test_a_cited_answer_names_the_steps_it_reads_so_a_model_behind_it_is_found() -> None:
+    """ADR-0142 §1 finds a model's draft through `$from`. A citation rule reads the answer, the
+    documents and the versions, so that a delivery of its result is a message a model drafted."""
+    rule = CitationRule(
+        rule="citation",
+        capability="knowledge.documents",
+        answer={"$from": "answer", "$select": "text"},
+        documents={"$from": "search", "$select": "output.documents"},
+        confirmed={"$from": "confirm", "$select": "output.documents"},
+    )
+    found = {r for value in referenced_values(rule) for r in references(value)}
+    assert found == {"answer", "search", "confirm"}

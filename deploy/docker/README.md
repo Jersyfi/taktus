@@ -2,13 +2,13 @@
 
 | File | Purpose |
 |---|---|
-| `compose.yml` | **the deployment shape**: Taktus and PostgreSQL, two containers for the control plane (ADR-0002). No worker: a worker is configured by endpoint, or started by the execution port (`TAKTUS_EXECUTION`) |
+| `compose.yml` | **the deployment shape**: Taktus and PostgreSQL, two containers for the control plane (ADR-0002), and the scheduled backup with its weekly drill beside them (ADR-0222). No worker: a worker is configured by endpoint, or started by the execution port (`TAKTUS_EXECUTION`) |
 | `compose.reference-worker.yml` | **development only**, layered over `compose.yml`: the reference worker in its own image, reached by endpoint, for trying a bundle out and for `verify.sh` (`make up-dev`) |
 | `Dockerfile` | the control plane image, every role, selected at start by `TAKTUS_ROLES`; carries no worker code (DEC-0011) and no connector (ADR-0158). The web app is built in a stage of its own with Node, and only its static build is carried over; the runtime holds no Node (ADR-0063). `npm ci` gives up a request that stalls after 30 s and retries it, so that a stalled download is retried rather than stopping the build (#360). It runs as user 999, pinned by number because the chart runs it as that number (`deploy/k8s/`). On a version tag and on a push to `main`, `.github/workflows/images.yml` builds it and each worker's image for the registry the repository names, scanned, signed and recorded by digest (ADR-0173) |
 | `connectors.py` | writes `compose.connectors.yml` from the operator's `connectors.json` — a service per further connector, its credentials as secret files, and `TAKTUS_CONNECTORS` on the `taktus` service — which `make up`, `make up-dev` and `make start` lay over `compose.yml` (see *Connectors*). Both files are the operator's, ignored by git; `connectors.example.json` is the shape |
 | `secret_store.py` | fills the secret files under `secrets/` from a secret store the operator chooses, by the store's own command per reference, as the operator's `secret-store.json` names them; run by `make up`, `make up-dev` and `make start`, and with `--interval` again and again, so that a rotation in the store reaches the files (see *Secrets from a store*, ADR-0187). Without the file it does nothing; `secret-store.example.json` is the shape |
 | `secrets.sh` | writes the two secret files `compose.yml` reads, once, under `secrets/` (ignored by git); the directory is closed to other host users and the files are readable, because the containers read them as their own user |
-| `start.py` | `make start`, the one command of a first install (ADR-0136 §6): what `make up` does, then `taktusctl first start` — the first tenant, its administrator and the account key, printed once — and a clock that runs until the tenant's first rehearsal has finished; it writes what it measured to `first-process.json`, which is never committed |
+| `start.py` | `make start`, the one command of a first install (ADR-0136 §6): what `make up` does, then `taktusctl first start` — the first tenant, its administrator and the account key, printed once — and a clock that runs until the tenant's first rehearsal has finished; it writes what it measured to `first-process.json`, which is never committed. Its clock (`wait_for_rehearsal`) is the one `deploy/k8s/start.py` keeps on a cluster (ADR-0228) |
 | `first-process.sh` | `make verify-first-process` (ADR-0136 §7): `start.py` from nothing under a compose project of its own, then the gallery, a proposal and its rehearsal through the HTTP surface; fails where the rehearsal did not finish within ten minutes of the install's start |
 | `verify.sh` | the end-to-end check: from nothing, the image checked for worker code, a run, the container killed, restarted, the run resumed |
 | `upgrade.sh` | the upgrade test (ADR-0124): the previous release from its tag's compose files and published images, a run in each of five states (its bundles carrying takeover instructions, which a release since ADR-0180 asks for), this checkout's migrations run while it still serves — and, once that release reads the schema's range, it stays ready while the schema's `taktus_oldest_code()` still names a revision of its history, and refuses once a breaking migration names a newer one (ADR-0093, #330, #664) — then upgraded to this checkout; every run continues at its boundary and no completed step runs again (`make verify-upgrade`, and the workflow `upgrade` on every release tag) |
@@ -54,7 +54,7 @@ which gives it volumes of its own. Nothing here removes a volume. From then on:
 | `docker compose -f deploy/docker/compose.yml exec taktus taktusctl submit --process …` | queue a bundle for the daemon; prints the run's identifier |
 
 `make down` stops the containers and keeps every volume — the database, the artifact bytes,
-and the reference worker's state if it ran. Removing a volume is the operator's explicit act
+the backups, and the reference worker's state if it ran. Removing a volume is the operator's explicit act
 (`docker volume rm taktus_taktus-postgres`), never a make target: nothing here deletes data
 without asking (CLAUDE.md §9). The configuration is the `TAKTUS_*` variables of
 `.env.example`; `compose.yml` sets what a container needs (`0.0.0.0`, the secret file,
@@ -64,6 +64,39 @@ the environment of `make up`. Every other setting goes into `deploy/docker/taktu
 the operator writes and git ignores; a variable `compose.yml` names itself wins over it. The
 administration guide's pages *Installing from nothing* and *Upgrading*
 (`docs/guides/administration/`) take a stranger through all of it.
+
+**From published images.** Without settings, `make up` builds the control plane and the backup
+image from the checkout. Once a release is published, its images are in the registry
+`.github/workflows/images.yml` pushes to on a version tag, each scanned and signed (ADR-0173).
+Name them and `make up` pulls them and builds nothing:
+
+```bash
+export TAKTUS_IMAGE=<registry>/taktus:<version>
+export TAKTUS_BACKUP_IMAGE=<registry>/taktus-backup:<version>
+make up
+```
+
+Check out the same tag as the images, so that the compose file matches them. Without
+`TAKTUS_IMAGE` the build from the checkout stays the way to install. No release has been
+published yet (`docs/status/1.0.0.md`), so until then it is the only one.
+
+**Backups.** The service `backup` backs up the database and the stored files every 24 hours
+(`TAKTUS_BACKUP_EVERY_HOURS`), keeps them 30 days (`TAKTUS_BACKUP_RETENTION_DAYS`), and after the
+backup of every seventh day (`TAKTUS_DRILL_EVERY_DAYS`) drills the newest one: restores it into a
+database server of its own inside the container, never the instance's, and checks every
+tenant's ledger chain against the heads the backup noted (S-03, ADR-0222). Each backup records
+its outcome in the database, and so does a drill that fails. The instance tells the owner of a
+failed or missing backup, and of a failed drill, through the owner channel (ADR-0106). The
+backups go into the volume `taktus-backups`, which lives on this machine and goes down with it.
+Point `TAKTUS_BACKUP_DIRECTORY` at a directory on another disk or a mounted share, owned by the
+user 70 the backup runs as (`sudo install -d -o 70 -g 70 /mnt/backups`), to keep them off it.
+`TAKTUS_BACKUP_RECIPIENT`, an `age` public key, encrypts them. By hand:
+
+| Command | What |
+|---|---|
+| `docker compose -f deploy/docker/compose.yml run --rm backup backup` | a backup now |
+| `docker compose -f deploy/docker/compose.yml run --rm backup list` | the backups kept |
+| `docker compose -f deploy/docker/compose.yml run --rm backup drill` | the drill now, on the newest backup; its report under `drills/` |
 
 **Readiness and health are different questions.** A container whose database is gone answers
 `503` on `/ready` and `200` on `/health`: it must not receive traffic, and it must not be
@@ -155,6 +188,15 @@ A step on a model names a purpose, and Taktus routes it through that purpose's c
 `elsewhere`. `taktusctl residency set --location eu` keeps a tenant's steps on models the rule
 permits. A model that answers `429` or fails is passed over for a while, and the step moves to
 the next model at its boundary. The provenance of every answer names the model that gave it.
+
+**Local first** (ADR-0248). This installation sets `TAKTUS_MODEL_LOCAL_FIRST=true`. While no
+model is named, every purpose is bound to the model server on this machine at
+`TAKTUS_MODEL_LOCAL_ENDPOINT` (by default `http://host.docker.internal:11434/v1`), declared
+`own`. Any server of the chat-completions dialect will do; one that serves a single model needs
+no `TAKTUS_MODEL_NAME`. Nothing is installed for it: start the server you choose. A model named
+in `TAKTUS_MODEL_ENDPOINT` in its place must declare `TAKTUS_MODEL_LOCATION`, or the instance
+does not start. `taktusctl residency set --location own` keeps every step off any other model.
+Providers and their settings: `src/taktus/adapters/driven/models/README.md`.
 
 **A gateway is supported as a pass-through, and only so.** A gateway is a proxy that answers
 for several providers in one dialect. Taktus does its own routing, because a gateway's fallback

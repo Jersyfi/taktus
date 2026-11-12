@@ -66,8 +66,10 @@ paths:
       responses:
         '202':
           description: 'Decided: `accepted` with the intake event, `refused`, `unknown_sender` with whether
-            the sender was answered in the channel and whether the message linked their account, or `answer`
-            for a message in the thread of a report to the owner, with what became of it.'
+            the sender was answered in the channel and whether the message linked their account, `answer`
+            for a message in the thread of a report to the owner, with what became of it, `assistant`
+            with the intake event kept for the assistant of a rollout channel, or `passed` with why a
+            message in a rollout channel was passed over.'
           content:
             application/json:
               schema: {}
@@ -143,7 +145,8 @@ paths:
           content:
             application/problem+json: {}
         '422':
-          description: The sender cannot be placed.
+          description: The sender cannot be placed, or the event was written in a rollout channel and
+            is no command.
           content:
             application/problem+json: {}
   /identity/link-codes:
@@ -417,7 +420,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AnswerBody'
+              $ref: '#/components/schemas/taktus__adapters__driving__rest__app__AnswerBody'
       responses:
         '200':
           description: The message sent back, and the request.
@@ -851,6 +854,46 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /ledger/export:
+    get:
+      tags:
+      - runs
+      summary: The tenant's whole ledger, one entry per line, for verification outside Taktus
+      description: 'Every entry of your tenant''s ledger in sequence order, each as the JSON document
+        its hash covers, one per line (`application/x-ndjson`). Anyone with the file and the ledger''s
+        published hash rule recomputes every chain without Taktus: `deploy/backup/backup.py verify-export
+        <file>` does (UC-6.1, ADR-0253). The entries carry identifiers, tokens and digests, no text. Only
+        the role `owner` may export: the ledger holds every run of the tenant, also those a reader may
+        not see.'
+      operationId: ledger_export_ledger_export_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The entries, one JSON document per line.
+          content:
+            application/json:
+              schema:
+                title: Response Ledger Export Ledger Export Get
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not include `owner`.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
   /runs/{run_id}/ledger:
     get:
       tags:
@@ -1256,6 +1299,55 @@ paths:
             application/problem+json: {}
         '404':
           description: 'No such run or worker step, or a trace you may not see: answered alike.'
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /levels/runs/{run_id}/steps/{step_id}/queries:
+    get:
+      tags:
+      - levels
+      summary: The queries a step sent
+      description: 'Every query the step sent through a querying capability — a warehouse''s — oldest
+        first: its operation, its text, its parameters, when it was sent, and the digest of the request,
+        which the ledger''s `query.sent` entry names. The ledger holds the reference, never the text (ADR-0006).
+        Shown to a reader who may see the run (ADR-0262 §3).'
+      operationId: step_queries_levels_runs__run_id__steps__step_id__queries_get
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run Id
+      - name: step_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Step Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The queries of the step; none where it sent none.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: 'No such run or step, or one you may not see: answered alike.'
           content:
             application/problem+json: {}
         '422':
@@ -1970,6 +2062,129 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /process-proposals:
+    get:
+      tags:
+      - process proposals
+      summary: The processes Taktus proposes to you
+      description: 'Work that recurs, found by rule in the ledger: a process you start by hand at a regular
+        cadence, shown to you alone, and a failure healed again and again, shown to everyone of the tenant.
+        Each says the work it would take over, its cost and why now; the list is ordered by how often
+        the work recurs per 30 days, and each says so (ADR-0270).'
+      operationId: listed_process_proposals_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The proposals, most often recurring first.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /process-proposals/{proposal_id}/accept:
+    post:
+      tags:
+      - process proposals
+      summary: Accept a proposal
+      description: Its words go to the request path that builds a proposal of a version, as you; the answer
+        names the run that builds it. Nothing runs for real before a person commissions the version (UC-4.1,
+        ADR-0251). Recorded `proposal.accepted`.
+      operationId: accept_process_proposals__proposal_id__accept_post
+      parameters:
+      - name: proposal_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Proposal Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The proposal, and the run that builds it.
+          content:
+            application/json:
+              schema:
+                title: Response Accept Process Proposals  Proposal Id  Accept Post
+        '400':
+          description: This instance has no request path that builds one.
+          content:
+            application/problem+json: {}
+        '404':
+          description: 'No open proposal of that identifier is shown to you: it is decided already, or
+            it is not yours.'
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /process-proposals/{proposal_id}/decline:
+    post:
+      tags:
+      - process proposals
+      summary: Decline a proposal
+      description: It is not listed again; declining costs nothing and changes nothing. Recorded `proposal.declined`.
+      operationId: decline_process_proposals__proposal_id__decline_post
+      parameters:
+      - name: proposal_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Proposal Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The proposal declined.
+          content:
+            application/json:
+              schema:
+                title: Response Decline Process Proposals  Proposal Id  Decline Post
+        '404':
+          description: 'No open proposal of that identifier is shown to you: it is decided already, or
+            it is not yours.'
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
   /gallery:
     get:
       tags:
@@ -2060,6 +2275,1726 @@ paths:
             application/problem+json: {}
         '401':
           description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /plans:
+    get:
+      tags:
+      - planning
+      summary: Your plan drafts
+      description: The drafts of your own commands, the newest change first, each as the expert mode shows
+        it (ADR-0237).
+      operationId: mine_plans_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The drafts.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+    post:
+      tags:
+      - planning
+      summary: Open a plan draft
+      description: A new draft for what you said; nothing runs until a version of it is commissioned (ADR-0237).
+      operationId: open_draft_plans_post
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpenBody'
+      responses:
+        '201':
+          description: The draft, in the guided mode.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /plans/templates:
+    get:
+      tags:
+      - planning
+      summary: What a guided answer may choose
+      description: The tenant's process versions, by name, with the level each runs at and its steps (ADR-0238
+        §2).
+      operationId: templates_plans_templates_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The templates.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /plans/{draft_id}:
+    get:
+      tags:
+      - planning
+      summary: A plan draft, as a mode shows it
+      description: Its parts, what it lacks, every estimate as a person reads it, every setting with its
+        value and why; in the guided mode, the question asked next.
+      operationId: one_plans__draft_id__get
+      parameters:
+      - name: draft_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Draft Id
+      - name: mode
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/Mode'
+          default: guided
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The draft.
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such draft of yours.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+    patch:
+      tags:
+      - planning
+      summary: Set fields of a draft (the expert mode)
+      description: Every field given, as one new version of the draft.
+      operationId: set_fields_plans__draft_id__patch
+      parameters:
+      - name: draft_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Draft Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FieldsBody'
+      responses:
+        '200':
+          description: The draft, in the expert mode.
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such draft of yours.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /plans/{draft_id}/answers:
+    post:
+      tags:
+      - planning
+      summary: Answer the guided question
+      description: The answer becomes a new version of the draft. The guided mode offers autonomy level
+        1 or 2 only (ADR-0026).
+      operationId: answer_plans__draft_id__answers_post
+      parameters:
+      - name: draft_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Draft Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/taktus__adapters__driving__rest__planning__AnswerBody'
+      responses:
+        '200':
+          description: The draft, in the guided mode.
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such draft of yours.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /plans/{draft_id}/commission:
+    post:
+      tags:
+      - planning
+      summary: Commission the current version
+      description: Commissioning is an act of its own, recorded `plan.commissioned` with the version and
+        your identity. Refused, writing nothing, when a part is missing or a step cannot be estimated
+        before it starts (ADR-0237, ADR-0005). An agent draft's agent is registered in the catalogue by
+        the same act, and named in the answer (ADR-0292). A draft that describes a process hands its goal
+        to the describe process, and the answer names that run (ADR-0290).
+      operationId: commission_plans__draft_id__commission_post
+      parameters:
+      - name: draft_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Draft Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The commissioned plan.
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such draft of yours.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /coach:
+    get:
+      tags:
+      - planning
+      summary: Your automation coach
+      description: Your hints, drawn from your own requests and shown to you only; your settings, with
+        the default stated; and how many of your accepted hints lasted (ADR-0240).
+      operationId: coach_coach_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: Your coach.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+    put:
+      tags:
+      - planning
+      summary: Set your coach
+      description: On or off — off stops reading your requests — and how many hints a week, none to seven.
+      operationId: set_coach_coach_put
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CoachBody'
+      responses:
+        '200':
+          description: Your coach.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /coach/hints/{hint_id}/dismiss:
+    post:
+      tags:
+      - planning
+      summary: Dismiss a hint
+      description: The pattern is never offered to you again.
+      operationId: dismiss_coach_hints__hint_id__dismiss_post
+      parameters:
+      - name: hint_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Hint Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: Your coach.
+          content:
+            application/json:
+              schema:
+                title: Response Dismiss Coach Hints  Hint Id  Dismiss Post
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such draft of yours.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /coach/hints/{hint_id}/accept:
+    post:
+      tags:
+      - planning
+      summary: Accept a hint
+      description: The automation it led to is the process version named; whether it still runs after
+        the tenant's period is checked and shown to you.
+      operationId: accept_coach_hints__hint_id__accept_post
+      parameters:
+      - name: hint_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Hint Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptBody'
+      responses:
+        '200':
+          description: Your coach.
+          content:
+            application/json:
+              schema:
+                title: Response Accept Coach Hints  Hint Id  Accept Post
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such draft of yours.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /structure:
+    get:
+      tags:
+      - structure
+      summary: The organisation's structure
+      description: Its levels, the units you may see — no private project but your own — and where every
+        object you see is placed (ADR-0275).
+      operationId: shown_structure_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The structure.
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not hold the right.
+          content:
+            application/problem+json: {}
+        '404':
+          description: This instance keeps no structure.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /structure/levels:
+    put:
+      tags:
+      - structure
+      summary: Name the structure's levels
+      description: The root's first; refused while a unit sits deeper than the names reach.
+      operationId: name_levels_structure_levels_put
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LevelsBody'
+      responses:
+        '200':
+          description: The levels.
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not hold the right.
+          content:
+            application/problem+json: {}
+        '404':
+          description: This instance keeps no structure.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /structure/units:
+    post:
+      tags:
+      - structure
+      summary: Add a unit
+      description: One level below its parent, never below the last level.
+      operationId: add_unit_structure_units_post
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UnitBody'
+      responses:
+        '201':
+          description: The unit.
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not hold the right.
+          content:
+            application/problem+json: {}
+        '404':
+          description: This instance keeps no structure.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /structure/placements/{kind}/{name}:
+    put:
+      tags:
+      - structure
+      summary: Place or move an object
+      description: The object is in the unit from now on, and only there; what it is seen by, what it
+        uses and where its next runs count follow (ADR-0275).
+      operationId: place_structure_placements__kind___name__put
+      parameters:
+      - name: kind
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/PlacedKind'
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaceBody'
+      responses:
+        '200':
+          description: The placement.
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not hold the right.
+          content:
+            application/problem+json: {}
+        '404':
+          description: This instance keeps no structure.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /structure/knowledge/{unit}:
+    put:
+      tags:
+      - structure
+      summary: Configure a unit's knowledge system
+      description: Documentation of the unit, and of every unit below it without one, is filed there from
+        now on, and that system is the record (ADR-0275 §7).
+      operationId: knowledge_structure_knowledge__unit__put
+      parameters:
+      - name: unit
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Unit
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KnowledgeBody'
+      responses:
+        '200':
+          description: The unit's knowledge system.
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not hold the right.
+          content:
+            application/problem+json: {}
+        '404':
+          description: This instance keeps no structure.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /structure/filings/{kind}/{name}:
+    get:
+      tags:
+      - structure
+      summary: Where something is documented
+      description: Every place, each with the link that opens it.
+      operationId: where_structure_filings__kind___name__get
+      parameters:
+      - name: kind
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/PlacedKind'
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The filing.
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not hold the right.
+          content:
+            application/problem+json: {}
+        '404':
+          description: This instance keeps no structure.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /projects:
+    get:
+      tags:
+      - structure
+      summary: Your projects
+      description: The projects you belong to, and the shared ones your context sees.
+      operationId: projects_projects_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The projects.
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not hold the right.
+          content:
+            application/problem+json: {}
+        '404':
+          description: This instance keeps no structure.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+    post:
+      tags:
+      - structure
+      summary: Create a project
+      description: Alone (private), for a team you belong to, for a project team, or for the company with
+        a role holding project.company (ADR-0276).
+      operationId: create_projects_post
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectBody'
+      responses:
+        '201':
+          description: The project.
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not hold the right.
+          content:
+            application/problem+json: {}
+        '404':
+          description: This instance keeps no structure.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /projects/{project}/share:
+    post:
+      tags:
+      - structure
+      summary: Share your private project
+      description: With a team you belong to or a project team; only its owner shares it.
+      operationId: share_projects__project__share_post
+      parameters:
+      - name: project
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Project
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShareBody'
+      responses:
+        '200':
+          description: The project.
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not hold the right.
+          content:
+            application/problem+json: {}
+        '404':
+          description: This instance keeps no structure.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /projects/{project}/references:
+    post:
+      tags:
+      - structure
+      summary: Refer to something of the organisation's own
+      description: The project keeps the link — a ticket, a document — and copies nothing.
+      operationId: refer_projects__project__references_post
+      parameters:
+      - name: project
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Project
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Reference'
+      responses:
+        '200':
+          description: The project.
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not hold the right.
+          content:
+            application/problem+json: {}
+        '404':
+          description: This instance keeps no structure.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /projects/{project}/session:
+    post:
+      tags:
+      - structure
+      summary: Open your session in a project
+      description: The one you had there before, with its history, on whatever channel; a new one the
+        first time (ADR-0277).
+      operationId: open_session_projects__project__session_post
+      parameters:
+      - name: project
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Project
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The session.
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not hold the right.
+          content:
+            application/problem+json: {}
+        '404':
+          description: This instance keeps no structure.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /sessions/{session_id}/turns:
+    post:
+      tags:
+      - structure
+      summary: Say something in your session
+      description: Taktus's answer is drawn from the project's knowledge you may see; every statement
+        names its source, or says it has none. Nothing is acted on.
+      operationId: say_sessions__session_id__turns_post
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Session Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SayBody'
+      responses:
+        '200':
+          description: Taktus's answer.
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not hold the right.
+          content:
+            application/problem+json: {}
+        '404':
+          description: This instance keeps no structure.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /sessions/{session_id}/plan:
+    post:
+      tags:
+      - structure
+      summary: Settle the session in a plan draft
+      description: A draft of the plan dialogue, commissioned there or not at all (UC-1.2).
+      operationId: to_plan_sessions__session_id__plan_post
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Session Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SettleBody'
+      responses:
+        '200':
+          description: The outcome.
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not hold the right.
+          content:
+            application/problem+json: {}
+        '404':
+          description: This instance keeps no structure.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /sessions/{session_id}/close:
+    post:
+      tags:
+      - structure
+      summary: Close your session
+      description: Opening it again continues it.
+      operationId: close_sessions__session_id__close_post
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Session Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The session.
+          content:
+            application/json:
+              schema:
+                title: Response Close Sessions  Session Id  Close Post
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not hold the right.
+          content:
+            application/problem+json: {}
+        '404':
+          description: This instance keeps no structure.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /administration/identities:
+    post:
+      tags:
+      - administration
+      summary: Add an identity
+      description: A new identity of your tenant with its place in the structure and its roles; its first
+        account key is answered once and kept only as a digest (`identity.created`).
+      operationId: add_administration_identities_post
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddBody'
+      responses:
+        '201':
+          description: The identity and its key.
+          content:
+            application/json:
+              schema:
+                title: Response Add Administration Identities Post
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not hold tenant.administer.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /administration/identities/{identity}/key:
+    post:
+      tags:
+      - administration
+      summary: Issue a new account key
+      description: The old key proves nothing from now on, and every browser session exchanged for it
+        ends (`identity.key_issued`).
+      operationId: key_administration_identities__identity__key_post
+      parameters:
+      - name: identity
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Identity
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The key, once.
+          content:
+            application/json:
+              schema:
+                title: Response Key Administration Identities  Identity  Key Post
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not hold tenant.administer.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /administration/identities/{identity}/agent-key:
+    post:
+      tags:
+      - administration
+      summary: Issue a new agent key
+      description: The key the person's own agent proves them with on the MCP surface (`identity.agent_key_issued`,
+        ADR-0131).
+      operationId: agent_key_administration_identities__identity__agent_key_post
+      parameters:
+      - name: identity
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Identity
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The agent key, once.
+          content:
+            application/json:
+              schema:
+                title: Response Agent Key Administration Identities  Identity  Agent Key Post
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not hold tenant.administer.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /administration/identities/{identity}/roles:
+    put:
+      tags:
+      - administration
+      summary: Set an identity's roles
+      description: The roles it holds from now on; none clears them (`identity.roles_set`).
+      operationId: roles_administration_identities__identity__roles_put
+      parameters:
+      - name: identity
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Identity
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RolesBody'
+      responses:
+        '200':
+          description: The identity's roles.
+          content:
+            application/json:
+              schema:
+                title: Response Roles Administration Identities  Identity  Roles Put
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not hold tenant.administer.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /administration/links:
+    get:
+      tags:
+      - administration
+      summary: Every channel link
+      description: Each account mapped to an identity, active or revoked (UC-1.7).
+      operationId: links_administration_links_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The links.
+          content:
+            application/json:
+              schema:
+                title: Response Links Administration Links Get
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not hold tenant.administer.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /administration/links/{link}:
+    delete:
+      tags:
+      - administration
+      summary: Revoke a channel link
+      description: The next event from the account is from an unknown sender (`identity.unlinked`).
+      operationId: revoke_administration_links__link__delete
+      parameters:
+      - name: link
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Link
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The revoked link.
+          content:
+            application/json:
+              schema:
+                title: Response Revoke Administration Links  Link  Delete
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not hold tenant.administer.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /administration/rights:
+    get:
+      tags:
+      - administration
+      summary: What each role may do
+      description: Every role that holds a right, with its rights, and every right there is.
+      operationId: rights_administration_rights_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The rights.
+          content:
+            application/json:
+              schema:
+                title: Response Rights Administration Rights Get
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not hold tenant.administer.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /administration/rights/{role}/{right}:
+    put:
+      tags:
+      - administration
+      summary: Grant a role a right
+      description: '`identity.right_granted`; a right is never granted to a person.'
+      operationId: grant_administration_rights__role___right__put
+      parameters:
+      - name: role
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Role
+      - name: right
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Right
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The role's rights.
+          content:
+            application/json:
+              schema:
+                title: Response Grant Administration Rights  Role   Right  Put
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not hold tenant.administer.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+    delete:
+      tags:
+      - administration
+      summary: Withdraw a right from a role
+      description: '`identity.right_withdrawn`.'
+      operationId: withdraw_administration_rights__role___right__delete
+      parameters:
+      - name: role
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Role
+      - name: right
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Right
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The role's rights.
+          content:
+            application/json:
+              schema:
+                title: Response Withdraw Administration Rights  Role   Right  Delete
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not hold tenant.administer.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /administration/units:
+    get:
+      tags:
+      - administration
+      summary: The quotas per organisational unit
+      description: How many runs of each unit may hold a runner's place at once, and what its runs may
+        commit per month (ADR-0166).
+      operationId: units_administration_units_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The quotas.
+          content:
+            application/json:
+              schema:
+                title: Response Units Administration Units Get
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not hold tenant.administer.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /administration/units/{unit}:
+    put:
+      tags:
+      - administration
+      summary: Set a unit's quota
+      description: 'A limit is a unit''s, never a person''s: a unit named like an identity is refused
+        (principle 14).'
+      operationId: set_unit_administration_units__unit__put
+      parameters:
+      - name: unit
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Unit
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuotaBody'
+      responses:
+        '200':
+          description: The quota.
+          content:
+            application/json:
+              schema:
+                title: Response Set Unit Administration Units  Unit  Put
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not hold tenant.administer.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+    delete:
+      tags:
+      - administration
+      summary: Take a unit's quota away
+      description: The unit holds none from now on.
+      operationId: clear_unit_administration_units__unit__delete
+      parameters:
+      - name: unit
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Unit
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: Cleared.
+          content:
+            application/json:
+              schema:
+                title: Response Clear Unit Administration Units  Unit  Delete
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not hold tenant.administer.
           content:
             application/problem+json: {}
         '422':
@@ -2425,6 +4360,96 @@ paths:
             application/problem+json: {}
         '422':
           description: The body does not validate.
+          content:
+            application/problem+json: {}
+  /administration/tenants/{tenant}/export:
+    get:
+      tags:
+      - administration
+      summary: Export a tenant
+      description: 'Everything the instance holds of the tenant — processes, runs, ledger, provenance,
+        artifacts, identities — in one document, with the newest hash of every chain and the document''s
+        own digest, for another instance to import (ADR-0221). The export is an entry of the tenant''s
+        ledger, `tenant.exported`, after it was read. It holds the tenant''s data: keep it as a backup
+        is kept.'
+      operationId: export_administration_tenants__tenant__export_get
+      parameters:
+      - name: tenant
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The export.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No administration key, or another one.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such tenant, or the administration is off.
+          content:
+            application/problem+json: {}
+        '409':
+          description: This instance keeps its state in files.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /administration/tenants/import:
+    post:
+      tags:
+      - administration
+      summary: Import a tenant
+      description: 'An export written into this instance, into a tenant that holds nothing here, then
+        checked: the ledger verified from its first entry, every chain''s newest entry the one the export
+        names, every run''s provenance chain verified. The body is the export as `GET …/export` answered
+        it. The import is an entry of the tenant''s ledger, `tenant.imported`, after the check (ADR-0221).'
+      operationId: imported_administration_tenants_import_post
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '201':
+          description: What was written and what the check found.
+          content:
+            application/json:
+              schema:
+                title: Response Imported Administration Tenants Import Post
+        '401':
+          description: No administration key, or another one.
+          content:
+            application/problem+json: {}
+        '404':
+          description: The administration on HTTP is not enabled.
+          content:
+            application/problem+json: {}
+        '409':
+          description: The tenant holds something here already.
+          content:
+            application/problem+json: {}
+        '422':
+          description: Not an export, or one whose bytes changed.
           content:
             application/problem+json: {}
   /findings/intake:
@@ -3842,6 +5867,1049 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /figures:
+    get:
+      tags:
+      - figures
+      summary: 'Every figure the reader is entitled to: the export'
+      description: The same figures, definitions and values every view shows, in JSON. A figure the reader's
+        roles are not entitled to is absent. Each names its owner, definition, unit, scope, period, value
+        or why it is withheld, method and basis.
+      operationId: exported_figures_get
+      parameters:
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 366
+          minimum: 1
+          description: The period, in days up to now.
+          default: 30
+          title: Days
+        description: The period, in days up to now.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The figures.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /figures.csv:
+    get:
+      tags:
+      - figures
+      summary: Every figure the reader is entitled to, as CSV
+      description: The rows of `GET /figures`, one figure a row, for any business-intelligence tool.
+      operationId: exported_csv_figures_csv_get
+      parameters:
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 366
+          minimum: 1
+          description: The period, in days up to now.
+          default: 30
+          title: Days
+        description: The period, in days up to now.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The CSV.
+          content:
+            text/csv; charset=utf-8: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /views:
+    get:
+      tags:
+      - figures
+      summary: The reader's views, each with the figures it shows them
+      description: A view the reader holds by a role or was given by name, showing only the figures the
+        reader's roles are entitled to. Every figure here is in `GET /figures`.
+      operationId: views_views_get
+      parameters:
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 366
+          minimum: 1
+          description: The period, in days up to now.
+          default: 30
+          title: Days
+        description: The period, in days up to now.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The views.
+          content:
+            application/json:
+              schema:
+                title: Response Views Views Get
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /views/configuration:
+    get:
+      tags:
+      - figures
+      summary: The tenant's views and who is entitled to which figure
+      operationId: configuration_views_configuration_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The configuration.
+          content:
+            application/json:
+              schema:
+                title: Response Configuration Views Configuration Get
+        '403':
+          description: Only a person holding `owner` sets it.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+    put:
+      tags:
+      - figures
+      summary: Set the tenant's views and entitlements
+      description: Views, each with its figures, the roles that hold it, the persons it is given to and
+        what it groups by — never a person; entitlements per figure; depth and language of an explanation
+        per role. A figure no component computes is refused.
+      operationId: configure_views_configuration_put
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              title: Body
+      responses:
+        '200':
+          description: Stored.
+          content:
+            application/json:
+              schema:
+                title: Response Configure Views Configuration Put
+        '403':
+          description: Only a person holding `owner` sets it.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /value/index:
+    get:
+      tags:
+      - figures
+      summary: 'The bus-factor index: without Taktus, per role, per supplier'
+      description: Computed from recorded takeover trials and removal verdicts only. With the trend per
+        day and the graph of dependencies. No figure names a person.
+      operationId: index_value_index_get
+      parameters:
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 366
+          minimum: 1
+          description: The period, in days up to now.
+          default: 30
+          title: Days
+        description: The period, in days up to now.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The index.
+          content:
+            application/json:
+              schema:
+                title: Response Index Value Index Get
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /value/proposals:
+    get:
+      tags:
+      - figures
+      summary: 'What to do: targets missed, deteriorations, each process''s quadrant'
+      description: Computed on every read and stored nowhere; nothing changes. A reader sees the proposals
+        addressed to a role they hold; `owner` sees every one.
+      operationId: proposals_value_proposals_get
+      parameters:
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 366
+          minimum: 1
+          description: The period, in days up to now.
+          default: 30
+          title: Days
+        description: The period, in days up to now.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The proposals.
+          content:
+            application/json:
+              schema:
+                title: Response Proposals Value Proposals Get
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /value/transformation:
+    get:
+      tags:
+      - figures
+      summary: Maturity per unit, progress against the plan, the backlog of potential
+      operationId: transformation_value_transformation_get
+      parameters:
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 366
+          minimum: 1
+          description: The period, in days up to now.
+          default: 30
+          title: Days
+        description: The period, in days up to now.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The transformation.
+          content:
+            application/json:
+              schema:
+                title: Response Transformation Value Transformation Get
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /value/knowledge:
+    get:
+      tags:
+      - figures
+      summary: The same work with and without a knowledge source connected, compared
+      description: 'Per process whose versions read knowledge: the cockpit''s figures of the runs whose
+        knowledge read a connected source answered, of those it did not, and the difference, each with
+        its method and basis. A side without an ended run withholds its figures, never zero. A figure
+        reaches a reader entitled to the cockpit figure it compares (UC-5.5, ADR-0291).'
+      operationId: knowledge_compared_value_knowledge_get
+      parameters:
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 366
+          minimum: 1
+          description: The period, in days up to now.
+          default: 30
+          title: Days
+        description: The period, in days up to now.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The comparison.
+          content:
+            application/json:
+              schema:
+                title: Response Knowledge Compared Value Knowledge Get
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /value/basis:
+    get:
+      tags:
+      - figures
+      summary: The organisation's stated value basis, every version
+      operationId: bases_value_basis_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The versions.
+          content:
+            application/json:
+              schema:
+                title: Response Bases Value Basis Get
+        '403':
+          description: Only a role holding `process.steer` sets it — `owner` while no role of the tenant
+            holds it.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+    put:
+      tags:
+      - figures
+      summary: State the next version of the value basis
+      description: Personnel cost rates per role — never per person — and per process the minutes by hand,
+        the roles, the time to learn, the response by hand, the relevance, the licence share and the investment;
+        targets; the plan; entered potential.
+      operationId: set_basis_value_basis_put
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              title: Body
+      responses:
+        '200':
+          description: Stored.
+          content:
+            application/json:
+              schema:
+                title: Response Set Basis Value Basis Put
+        '403':
+          description: Only a role holding `process.steer` sets it — `owner` while no role of the tenant
+            holds it.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /reports/definitions:
+    get:
+      tags:
+      - figures
+      summary: 'The reports for roles: reader, trigger, channel'
+      operationId: definitions_reports_definitions_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The definitions.
+          content:
+            application/json:
+              schema:
+                title: Response Definitions Reports Definitions Get
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /reports/definitions/{report}:
+    put:
+      tags:
+      - figures
+      summary: 'Set a report: its reader role, its trigger and the channel'
+      description: A report without a reader is refused; a schedule needs `every` and `hour`, a week its
+        `weekday`.
+      operationId: set_definition_reports_definitions__report__put
+      parameters:
+      - name: report
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Report
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              title: Body
+      responses:
+        '200':
+          description: Stored.
+          content:
+            application/json:
+              schema:
+                title: Response Set Definition Reports Definitions  Report  Put
+        '403':
+          description: Only a person holding `owner` sets it.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /reports/definitions/{report}/now:
+    get:
+      tags:
+      - figures
+      summary: The report composed now, for a reader who holds its role
+      description: Its first level carries only what bears on its reader role; a quiet period is one sentence.
+      operationId: now_reports_definitions__report__now_get
+      parameters:
+      - name: report
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Report
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The report.
+          content:
+            application/json:
+              schema:
+                title: Response Now Reports Definitions  Report  Now Get
+        '404':
+          description: No such record.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /levels/runs/{run}/steps/{step}/explanation:
+    get:
+      tags:
+      - figures
+      summary: Why Taktus did a step the way it did, from the records
+      description: What was done, by which method and why, what was rejected, what it consumed and what
+        came out — at the depth and in the language of the reader's role. Every number in it is a number
+        of the records.
+      operationId: explanation_levels_runs__run__steps__step__explanation_get
+      parameters:
+      - name: run
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run
+      - name: step
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Step
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The explanation.
+          content:
+            application/json:
+              schema:
+                title: Response Explanation Levels Runs  Run  Steps  Step  Explanation Get
+        '404':
+          description: No such record.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /summary:
+    get:
+      tags:
+      - figures
+      summary: What Taktus did in a period, per process
+      operationId: summary_summary_get
+      parameters:
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 366
+          minimum: 1
+          description: The period, in days up to now.
+          default: 30
+          title: Days
+        description: The period, in days up to now.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The summary.
+          content:
+            application/json:
+              schema:
+                title: Response Summary Summary Get
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /me/relief:
+    get:
+      tags:
+      - figures
+      summary: 'What Taktus took off you: tasks, time regained, your goals'
+      description: Yours alone unless you share it with a role. No points, levels, ranks or comparisons.
+      operationId: mine_me_relief_get
+      parameters:
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 366
+          minimum: 1
+          description: The period, in days up to now.
+          default: 30
+          title: Days
+        description: The period, in days up to now.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: Your view.
+          content:
+            application/json:
+              schema:
+                title: Response Mine Me Relief Get
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /me/relief/settings:
+    put:
+      tags:
+      - figures
+      summary: 'Your own view''s settings: whom you share it with, your goals, your line'
+      operationId: settings_me_relief_settings_put
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              title: Body
+      responses:
+        '200':
+          description: Stored.
+          content:
+            application/json:
+              schema:
+                title: Response Settings Me Relief Settings Put
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /people/{identity}/relief:
+    get:
+      tags:
+      - figures
+      summary: A person's own view, while they share it with a role you hold
+      operationId: theirs_people__identity__relief_get
+      parameters:
+      - name: identity
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Identity
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 366
+          minimum: 1
+          description: The period, in days up to now.
+          default: 30
+          title: Days
+        description: The period, in days up to now.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: Their view.
+          content:
+            application/json:
+              schema:
+                title: Response Theirs People  Identity  Relief Get
+        '404':
+          description: No such record.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /discoveries/interview:
+    get:
+      tags:
+      - figures
+      summary: The questions of the interview, guided or expert
+      operationId: interview_discoveries_interview_get
+      parameters:
+      - name: mode
+        in: query
+        required: false
+        schema:
+          type: string
+          default: guided
+          title: Mode
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The questions.
+          content:
+            application/json:
+              schema:
+                title: Response Interview Discoveries Interview Get
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+    post:
+      tags:
+      - figures
+      summary: Write the documented process from the interview's answers
+      description: The same answers give the same documented process in either mode.
+      operationId: interviewed_discoveries_interview_post
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              title: Body
+      responses:
+        '200':
+          description: The documented process.
+          content:
+            application/json:
+              schema:
+                title: Response Interviewed Discoveries Interview Post
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /discoveries:
+    get:
+      tags:
+      - figures
+      summary: Processes nobody wrote down, at their stage
+      description: The organisation's, and the patterns found for you, which only you see.
+      operationId: discoveries_discoveries_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The discovered processes.
+          content:
+            application/json:
+              schema:
+                title: Response Discoveries Discoveries Get
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+    post:
+      tags:
+      - figures
+      summary: Make a process visible
+      description: '`origin` is `interview`, `pattern` or `request`. A pattern is found for you and stays
+        yours until you agree.'
+      operationId: discover_discoveries_post
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              title: Body
+      responses:
+        '200':
+          description: Recorded.
+          content:
+            application/json:
+              schema:
+                title: Response Discover Discoveries Post
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /discoveries/{id}/agree:
+    post:
+      tags:
+      - figures
+      summary: Agree that a pattern found for you becomes the organisation's procedure
+      operationId: agree_discoveries__id__agree_post
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: Shared.
+          content:
+            application/json:
+              schema:
+                title: Response Agree Discoveries  Id  Agree Post
+        '404':
+          description: No such record.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
+  /discoveries/{id}/stages/{stage}:
+    post:
+      tags:
+      - figures
+      summary: Take a discovered process to its next stage
+      description: 'documented (description, owner_role), valued (minutes_by_hand, cases_per_month), decided
+        (decision: automate or keep — a person''s), automated (process_id, level 1 or 2, instructions).
+        A stage out of order is refused.'
+      operationId: advance_discoveries__id__stages__stage__post
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Id
+      - name: stage
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Stage
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              title: Body
+      responses:
+        '200':
+          description: Recorded.
+          content:
+            application/json:
+              schema:
+                title: Response Advance Discoveries  Id  Stages  Stage  Post
+        '409':
+          description: 'Refused: out of order or incomplete.'
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such record.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or a body does not validate.
+          content:
+            application/problem+json: {}
   /runs/{run_id}/spend:
     get:
       tags:
@@ -4105,8 +7173,9 @@ paths:
       summary: One model trial, with its report
       description: Per candidate the cases passed, money at each run's own price table, tokens in and
         out, wall time, and each case's result digests beside the other candidates'; the cases whose results
-        differ are named. `settled` says whether every run has gone as far as it can. The report decides
-        nothing (ADR-0149 §2, §4).
+        differ are named. `settled` says whether every run has gone as far as it can. `validations` says,
+        per process and model, whether the quality held on the process's cases; a step a process evaluates
+        reaches in a real run only a model whose newest settled validation held (ADR-0149 §2, ADR-0249).
       operationId: read_trials__trial_id__get
       parameters:
       - name: trial_id
@@ -4142,32 +7211,429 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /subjects/requests:
+    get:
+      tags:
+      - data protection
+      summary: The data-protection requests of your tenant
+      description: 'Every request, oldest first: its kind, its state and who prepared, carried out or
+        withdrew it (ADR-0176).'
+      operationId: listing_subjects_requests_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The requests.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+    post:
+      tags:
+      - data protection
+      summary: Prepare a data-protection request
+      description: Finds every run that served one of the subject's cases — through the provenance records
+        whose scope names it and through the runs' intake — with each step, object and trace line, and
+        stores the request as `prepared`. Changes nothing else; the ledger records `subject.request_prepared`
+        with you as its actor and never the subject (ADR-0176 §1, §2).
+      operationId: prepare_subjects_requests_post
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PrepareBody'
+      responses:
+        '201':
+          description: The prepared request.
+          content:
+            application/json:
+              schema:
+                title: Response Prepare Subjects Requests Post
+        '409':
+          content:
+            application/problem+json: {}
+          description: Conflict
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /subjects/requests/{request_id}:
+    get:
+      tags:
+      - data protection
+      summary: One data-protection request
+      description: The request with its holdings and, once carried out, its outcome.
+      operationId: show_subjects_requests__request_id__get
+      parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Request Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The request.
+          content:
+            application/json:
+              schema:
+                title: Response Show Subjects Requests  Request Id  Get
+        '404':
+          description: No request of that identifier in your tenant.
+          content:
+            application/problem+json: {}
+        '409':
+          description: The request is not in a state that allows it.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /subjects/requests/{request_id}/confirm:
+    post:
+      tags:
+      - data protection
+      summary: Carry a prepared request out
+      description: You carry the request out and state that you checked the requester's identity; without
+        the statement nothing happens. The holdings are found again first, and a request whose holdings
+        changed since it was prepared is refused. An erasure erases and verifies the ledger and every
+        erased run's provenance chain; an access or portability export is in the answer under `export`
+        and Taktus keeps no copy; a rectification is recorded as done by you at the source (ADR-0176 §1,
+        §3 to §5).
+      operationId: confirm_subjects_requests__request_id__confirm_post
+      parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Request Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/taktus__adapters__driving__rest__subjects__ConfirmBody'
+      responses:
+        '200':
+          description: The request, carried out.
+          content:
+            application/json:
+              schema:
+                title: Response Confirm Subjects Requests  Request Id  Confirm Post
+        '404':
+          description: No request of that identifier in your tenant.
+          content:
+            application/problem+json: {}
+        '409':
+          description: The request is not in a state that allows it.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /subjects/requests/{request_id}/withdraw:
+    post:
+      tags:
+      - data protection
+      summary: Withdraw a prepared request
+      description: Ends a prepared request without carrying it out.
+      operationId: withdraw_subjects_requests__request_id__withdraw_post
+      parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Request Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The request, withdrawn.
+          content:
+            application/json:
+              schema:
+                title: Response Withdraw Subjects Requests  Request Id  Withdraw Post
+        '404':
+          description: No request of that identifier in your tenant.
+          content:
+            application/problem+json: {}
+        '409':
+          description: The request is not in a state that allows it.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /evidence:
+    get:
+      tags:
+      - data protection
+      summary: What is processed for your tenant, generated, not legally reviewed
+      description: What is processed, where, by which adapter and kept how long, generated from the register
+        of what acts, the active versions, the tenant's declarations, its trace retention and the ledger.
+        Not legal advice, and it says so (ADR-0176 §8).
+      operationId: evidence_evidence_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The processing evidence.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /connections/{capability}/grant:
+    get:
+      tags:
+      - connections
+      summary: Whether writing is granted on a connection
+      description: 'A new connection reads only: `granted` is false until a person with the right grants
+        writing on it (ADR-0262 §2).'
+      operationId: read_connections__capability__grant_get
+      parameters:
+      - name: capability
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capability
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The grant.
+          content:
+            application/json:
+              schema:
+                title: Response Read Connections  Capability  Grant Get
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No connection of that capability reads until granted.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+    put:
+      tags:
+      - connections
+      summary: Grant writing on a connection
+      description: From now on a step may write through the connection; the warehouse's own rights still
+        decide what. The ledger records `connection.granted` with you as its actor (ADR-0262 §2).
+      operationId: grant_connections__capability__grant_put
+      parameters:
+      - name: capability
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capability
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The grant, in force.
+          content:
+            application/json:
+              schema:
+                title: Response Grant Connections  Capability  Grant Put
+        '403':
+          description: You do not hold the right to grant writing.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No connection of that capability reads until granted.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+    delete:
+      tags:
+      - connections
+      summary: Withdraw the grant of writing on a connection
+      description: 'The connection reads only again: a write is refused before it is sent. The ledger
+        records `connection.withdrawn` with you as its actor (ADR-0262 §2).'
+      operationId: withdraw_connections__capability__grant_delete
+      parameters:
+      - name: capability
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capability
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The grant, withdrawn.
+          content:
+            application/json:
+              schema:
+                title: Response Withdraw Connections  Capability  Grant Delete
+        '403':
+          description: You do not hold the right to grant writing.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No connection of that capability reads until granted.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
 components:
   schemas:
+    AcceptBody:
+      properties:
+        process_version:
+          type: string
+          minLength: 1
+          title: Process Version
+      type: object
+      required:
+      - process_version
+      title: AcceptBody
+    AddBody:
+      properties:
+        identity:
+          type: string
+          minLength: 1
+          title: Identity
+        org_path:
+          items:
+            type: string
+          type: array
+          title: Org Path
+          description: Below the tenant.
+        roles:
+          items:
+            type: string
+          type: array
+          title: Roles
+      type: object
+      required:
+      - identity
+      title: AddBody
     Answer:
       type: string
       enum:
       - send
       - not
       - local
-    AnswerBody:
-      properties:
-        option:
-          anyOf:
-          - type: string
-            pattern: ^[A-Z]$
-          - type: 'null'
-          title: Option
-          description: The identifier of one option.
-        text:
-          anyOf:
-          - type: string
-            minLength: 1
-          - type: 'null'
-          title: Text
-          description: Free text, as you would write it.
-      type: object
-      title: AnswerBody
     CaseBody:
       properties:
         process:
@@ -4195,6 +7661,31 @@ components:
             the value the gallery shows.
       type: object
       title: ChooseBody
+    Circle:
+      type: string
+      enum:
+      - alone
+      - team
+      - project_team
+      - company
+      title: Circle
+      description: Whom a project is for (UC-1.6 §2).
+    CoachBody:
+      properties:
+        'on':
+          type: boolean
+          title: 'On'
+        hints_per_week:
+          anyOf:
+          - type: integer
+            maximum: 7.0
+            minimum: 0.0
+          - type: 'null'
+          title: Hints Per Week
+      type: object
+      required:
+      - 'on'
+      title: CoachBody
     CommissionBody:
       properties:
         approve_raise:
@@ -4242,6 +7733,17 @@ components:
       - occasion
       - model
       title: DeclineBody
+    FieldsBody:
+      properties:
+        fields:
+          additionalProperties: true
+          type: object
+          title: Fields
+          description: The fields of the draft, set at once.
+      type: object
+      required:
+      - fields
+      title: FieldsBody
     HandBackBody:
       properties:
         result:
@@ -4252,6 +7754,30 @@ components:
       required:
       - result
       title: HandBackBody
+    KnowledgeBody:
+      properties:
+        base:
+          type: string
+          minLength: 1
+          title: Base
+          description: The link documentation is filed under.
+      type: object
+      required:
+      - base
+      title: KnowledgeBody
+    LevelsBody:
+      properties:
+        levels:
+          items:
+            type: string
+          type: array
+          maxItems: 8
+          minItems: 2
+          title: Levels
+      type: object
+      required:
+      - levels
+      title: LevelsBody
     LinkCodeRequest:
       properties:
         channel:
@@ -4277,6 +7803,102 @@ components:
       required:
       - text
       title: MessageBody
+    Mode:
+      type: string
+      enum:
+      - guided
+      - expert
+      title: Mode
+    OpenBody:
+      properties:
+        said:
+          type: string
+          maxLength: 2000
+          title: Said
+          description: What should be achieved.
+          default: ''
+        agent:
+          type: boolean
+          title: Agent
+          description: The draft works out an agent, whose role is what was said (ADR-0292).
+          default: false
+        describes:
+          anyOf:
+          - type: string
+            pattern: ^[a-z][a-z0-9-]*$
+          - type: 'null'
+          title: Describes
+          description: 'The process what was said describes: commissioning the draft hands it to the describe
+            process, whose run proposes the process''s version (ADR-0290).'
+      type: object
+      title: OpenBody
+    PlaceBody:
+      properties:
+        unit:
+          type: string
+          minLength: 1
+          title: Unit
+      type: object
+      required:
+      - unit
+      title: PlaceBody
+    PlacedKind:
+      type: string
+      enum:
+      - process
+      - agent
+      - connector
+      - model
+      - skill
+      - budget
+      title: PlacedKind
+      description: What a unit holds. Every one of these belongs to exactly one unit (UC-1.4 §2).
+    PrepareBody:
+      properties:
+        kind:
+          $ref: '#/components/schemas/RequestKind'
+          description: access, rectification, erasure or portability.
+        subject:
+          type: string
+          maxLength: 500
+          minLength: 1
+          title: Subject
+          description: The subject, by the identifier the organisation's systems use — the value a case's
+            scope names.
+      additionalProperties: false
+      type: object
+      required:
+      - kind
+      - subject
+      title: PrepareBody
+    ProjectBody:
+      properties:
+        id:
+          type: string
+          minLength: 1
+          title: Id
+        name:
+          type: string
+          minLength: 1
+          title: Name
+        circle:
+          $ref: '#/components/schemas/Circle'
+        unit:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Unit
+        members:
+          items:
+            type: string
+          type: array
+          title: Members
+      type: object
+      required:
+      - id
+      - name
+      - circle
+      title: ProjectBody
     ProposeBody:
       properties:
         bundle:
@@ -4297,6 +7919,54 @@ components:
           description: The words the change was asked for in.
       type: object
       title: ProposeBody
+    QuotaBody:
+      properties:
+        concurrent_runs:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Concurrent Runs
+        budget:
+          items:
+            type: string
+          type: array
+          title: Budget
+          description: As 250eur, once a currency.
+        check_every_seconds:
+          type: integer
+          minimum: 1.0
+          title: Check Every Seconds
+          default: 900
+      type: object
+      title: QuotaBody
+    Reference:
+      properties:
+        kind:
+          type: string
+          maxLength: 40
+          minLength: 1
+          title: Kind
+        link:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Link
+        title:
+          type: string
+          maxLength: 200
+          title: Title
+          default: ''
+      additionalProperties: false
+      type: object
+      required:
+      - kind
+      - link
+      title: Reference
+      description: 'Something of the organisation''s own that a project refers to: a ticket, a document,
+        a
+
+        board. The project holds the link, never a copy (UC-1.6 §2).'
     RehearseBody:
       properties:
         inputs:
@@ -4326,6 +7996,14 @@ components:
           description: The answer in your words, as in the channel.
       type: object
       title: ReportAnswerBody
+    RequestKind:
+      type: string
+      enum:
+      - access
+      - rectification
+      - erasure
+      - portability
+      title: RequestKind
     ReviewAnswer:
       properties:
         answer:
@@ -4359,6 +8037,15 @@ components:
       - confirmed
       title: ReviewConfirmation
       description: The reading of an answer, confirmed or rejected.
+    RolesBody:
+      properties:
+        roles:
+          items:
+            type: string
+          type: array
+          title: Roles
+      type: object
+      title: RolesBody
     RollbackBody:
       properties:
         approve_raise:
@@ -4382,6 +8069,32 @@ components:
       required:
       - version
       title: RollbackBody
+    SayBody:
+      properties:
+        text:
+          type: string
+          maxLength: 8000
+          minLength: 1
+          title: Text
+        channel:
+          type: string
+          title: Channel
+          default: channel.web
+      type: object
+      required:
+      - text
+      title: SayBody
+    SettleBody:
+      properties:
+        goal:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Goal
+      type: object
+      required:
+      - goal
+      title: SettleBody
     Share:
       properties:
         role:
@@ -4396,6 +8109,19 @@ components:
       - role
       title: Share
       description: A field the surface does not know — a person among them — is refused.
+    ShareBody:
+      properties:
+        circle:
+          $ref: '#/components/schemas/Circle'
+        unit:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Unit
+      type: object
+      required:
+      - circle
+      title: ShareBody
     StreamBody:
       properties:
         name:
@@ -4516,6 +8242,44 @@ components:
       - role
       - passed
       title: TrialBody
+    UnitBody:
+      properties:
+        id:
+          type: string
+          minLength: 1
+          title: Id
+        name:
+          type: string
+          minLength: 1
+          title: Name
+        parent:
+          type: string
+          minLength: 1
+          title: Parent
+      type: object
+      required:
+      - id
+      - name
+      - parent
+      title: UnitBody
+    taktus__adapters__driving__rest__app__AnswerBody:
+      properties:
+        option:
+          anyOf:
+          - type: string
+            pattern: ^[A-Z]$
+          - type: 'null'
+          title: Option
+          description: The identifier of one option.
+        text:
+          anyOf:
+          - type: string
+            minLength: 1
+          - type: 'null'
+          title: Text
+          description: Free text, as you would write it.
+      type: object
+      title: AnswerBody
     taktus__adapters__driving__rest__app__ConfirmBody:
       properties:
         confirmed:
@@ -4543,6 +8307,39 @@ components:
           description: The result the step should have produced, where it is not the corrected value the
             case was proposed with.
       type: object
+      title: ConfirmBody
+    taktus__adapters__driving__rest__planning__AnswerBody:
+      properties:
+        field:
+          type: string
+          minLength: 1
+          title: Field
+          description: The field the guided question asked for.
+        value:
+          title: Value
+          description: The answer.
+        step_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Step Id
+          description: 'For an estimate: its step.'
+      type: object
+      required:
+      - field
+      - value
+      title: AnswerBody
+    taktus__adapters__driving__rest__subjects__ConfirmBody:
+      properties:
+        identity_checked:
+          type: boolean
+          title: Identity Checked
+          description: You checked that the person asking is the subject, or may act for them. Without
+            it nothing is carried out.
+      additionalProperties: false
+      type: object
+      required:
+      - identity_checked
       title: ConfirmBody
     taktus__adapters__driving__rest__trials__StartBody:
       properties:

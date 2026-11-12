@@ -1,6 +1,6 @@
 # The guides beyond the repository (UC-13.6, ADR-0065).
 #
-# Two guides, each a list of pages, each page a list of parts. A part is a file of this
+# Three guides, each a list of pages, each page a list of parts. A part is a file of this
 # repository, or one section of it named by its heading exactly as the file writes it; `heading`
 # gives the section another heading in the page, where its own would mislead there. A page
 # says what its parts say and nothing more: the repository is the source, the guides are
@@ -53,6 +53,14 @@ guides:
           - file: deploy/docker/README.md
             section: Connectors
             heading: Adding a connector on one machine
+      - id: organising
+        title: Structure, people and rights
+        parts:
+          - file: docs/guides/administration/organising.md
+      - id: limits
+        title: Budgets, limits, residency and stops
+        parts:
+          - file: docs/guides/administration/limits.md
       - id: operating
         title: Operating
         parts:
@@ -66,6 +74,7 @@ guides:
           - file: blueprints/self-operation/README.md
             section: Running it
             heading: The removal test
+          - file: docs/guides/administration/moving.md
       - id: restoring
         title: Restoring
         parts:
@@ -86,14 +95,30 @@ guides:
             section: What Taktus is
           - file: docs/vision/vision.md
             section: What it is not, said first
+      - id: web-app
+        title: The web app
+        parts:
+          - file: docs/guides/use/web-app.md
       - id: asking
         title: Asking Taktus for something
         parts:
           - file: docs/guides/use/asking.md
+      - id: steering
+        title: Following and stopping your work
+        parts:
+          - file: docs/guides/use/steering.md
+      - id: planning
+        title: Planning work with Taktus
+        parts:
+          - file: docs/guides/use/planning.md
       - id: deciding
         title: When Taktus asks you to decide
         parts:
           - file: docs/guides/use/deciding.md
+      - id: figures
+        title: Figures, reports and your own page
+        parts:
+          - file: docs/guides/use/figures.md
       - id: spending
         title: Seeing where the work spends
         parts:
@@ -102,6 +127,83 @@ guides:
         title: What Taktus never does with people
         parts:
           - file: docs/guides/use/people.md
+          - file: docs/guides/use/data-protection.md
           - file: docs/vision/principles.md
             section: 14 — People at the centre
             heading: People at the centre
+
+  - id: develop
+    title: Developing on Taktus
+    reader: the people who build a process, a connector, a worker or a model provider for Taktus
+    place: [Taktus, Developing]
+    pages:
+      - id: architecture
+        title: The architecture
+        parts:
+          - file: docs/guides/develop/architecture.md
+          - file: docs/architecture/contracts.md
+            section: 1. Three adapter families
+            heading: The three adapter types
+          - file: docs/architecture/project-structure.md
+            section: 3. Dependency rules (enforced by `import-linter`)
+            heading: What may import what
+      - id: bundles
+        title: Writing a process bundle
+        parts:
+          - file: docs/guides/develop/bundles.md
+          - file: examples/README.md
+            section: Checking a bundle without an instance
+            heading: Checking bundles in your own repository
+      - id: connectors
+        title: Building a connector
+        parts:
+          - file: docs/guides/develop/connectors.md
+          - file: contracts/connector/v1/README.md
+            section: 2. The MCP binding
+            heading: The MCP binding
+          - file: contracts/connector/v1/README.md
+            section: 3. Capabilities
+            heading: The declaration
+          - file: contracts/connector/v1/README.md
+            section: "4. Idempotency: the promise, tested against the outside"
+            heading: Idempotency
+          - file: contracts/connector/v1/CONFORMANCE.md
+            section: 2. Writing a scenario
+            heading: Writing a scenario
+          - file: contracts/connector/v1/CONFORMANCE.md
+            section: 3. Running it
+            heading: Running the conformance suite
+      - id: workers
+        title: Building a worker
+        parts:
+          - file: docs/guides/develop/workers.md
+          - file: contracts/worker/v1/README.md
+            section: 1. Endpoints
+            heading: The endpoints
+          - file: contracts/worker/v1/CONFORMANCE.md
+            section: 2. Running it
+            heading: Running the conformance suite
+      - id: models
+        title: Adding a model provider
+        parts:
+          - file: docs/guides/develop/models.md
+          - file: contracts/model/v1/README.md
+            section: 2. The declaration
+            heading: The declaration
+          - file: contracts/model/v1/CONFORMANCE.md
+            section: 2. Running it
+            heading: Running the conformance suite
+      - id: contracts
+        title: Contracts and their versions
+        parts:
+          - file: docs/guides/develop/contracts.md
+          - file: docs/architecture/contracts.md
+            section: 8. Versions and compatibility
+            heading: What may change in a published contract
+          - file: docs/guides/administration/upgrading.md
+            section: 6. What a version number promises, and what is going away
+            heading: What a release number promises
+      - id: testing
+        title: Tests and gates
+        parts:
+          - file: docs/guides/develop/testing.md

@@ -52,6 +52,7 @@ from taktus.adapters.driven.postgres import (
     PostgresQueue,
     PostgresRelay,
     PostgresRepository,
+    PostgresTenantArchive,
     PostgresTenantStore,
     PostgresTraceStore,
     SchemaOutOfDate,
@@ -87,6 +88,8 @@ from taktus.components.command.application.service import (
     CompleteIntakeHandler,
     ReceiveIntakeHandler,
 )
+from taktus.components.command.application.service.coach import Coach
+from taktus.components.command.application.service.sessions import Sessions
 from taktus.components.command.domain.model import IntakeEvent
 from taktus.components.decision.application.query import DecisionQueries
 from taktus.components.decision.application.service import (
@@ -95,6 +98,7 @@ from taktus.components.decision.application.service import (
 )
 from taktus.components.decision.domain.model import Request
 from taktus.components.governance.application.service import (
+    ConnectionGrants,
     Corrections,
     Drifts,
     ExpectedRuns,
@@ -102,13 +106,19 @@ from taktus.components.governance.application.service import (
     ReportCapacityHandler,
     ResultDefects,
     Stages,
+    SubjectRequests,
+    TenantOrgUnits,
 )
+from taktus.components.governance.application.service.stop_incidents import StopIncidents
 from taktus.components.governance.domain.model import (
     AnchorConfiguration,
     Incident,
+    SubjectRequest,
     WatchConfiguration,
 )
+from taktus.components.governance.domain.model.domains import Domain
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
+from taktus.components.identity.application.service.structure import OrganisationStructure
 from taktus.components.identity.domain.model import (
     BrowserSession,
     ChannelLink,
@@ -116,6 +126,7 @@ from taktus.components.identity.domain.model import (
     LinkCode,
     RoleRights,
 )
+from taktus.components.knowledge.domain.model import KnowledgeEntry
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.expectations import ExpectationsHandler
 from taktus.components.process.application.service.proposals import Proposals
@@ -146,6 +157,7 @@ from taktus.components.reporting.application.service import (
     LiveChanges,
     ProductFindings,
     SignalWatch,
+    StepQueries,
     StepTraces,
 )
 from taktus.components.reporting.domain.model import OwnerChannel, PendingAct
@@ -163,26 +175,33 @@ from taktus.components.run.application.service import (
     RunnerOptions,
 )
 from taktus.components.run.application.service.stops import Stops
-from taktus.components.run.domain.model import AdapterStop, Run
+from taktus.components.run.domain.model import AdapterStop, Run, RunSteering
+from taktus.components.value.application.query import CorrectionRates
 from taktus.composition import roles
 from taktus.composition.acting import ActingReads
 from taktus.composition.agent_surface import AgentSurface
 from taktus.composition.agents import SharedAgents
 from taktus.composition.alerts import alerts, alerts_tick, say_who_hears
 from taktus.composition.anchors import anchors_tick
+from taktus.composition.assistants import Assistants
 from taktus.composition.capacity import capacity_report, capacity_tick, rules_of
+from taktus.composition.case_spend import InstanceSpend
 from taktus.composition.catalogue_in_channel import CatalogueInChannel
 from taktus.composition.change_in_channel import ChangeInChannel
 from taktus.composition.conformance import InstanceSuites, worker_suites
+from taktus.composition.contents import StepContents
+from taktus.composition.control import TaskControl
 from taktus.composition.deadlines import Deadlines
 from taktus.composition.decisions import DecisionWiring, decision_wiring
 from taktus.composition.defects import (
     DefectWatch,
     IncidentDelivery,
+    IncidentReports,
     RecheckWatch,
     Remedies,
     defects_tick,
 )
+from taktus.composition.escalations import EscalationWatch, escalations_tick
 from taktus.composition.evaluations import Evaluations, evaluations_tick, outward_by
 from taktus.composition.execution import (
     connector_pool,
@@ -204,6 +223,8 @@ from taktus.composition.findings import (
 from taktus.composition.gallery import Gallery
 from taktus.composition.guides import InstanceGuides, served_directory
 from taktus.composition.interfaces import broken_interfaces, interfaces_tick
+from taktus.composition.knowledge import IndexedCitations
+from taktus.composition.ledger_signal import LedgerSignal, ledger_signal_tick
 from taktus.composition.levels import RepositoryLevelRecords, VersionStatements
 from taktus.composition.live import LiveHub, LiveOptions, Records, run_listener, state_of
 from taktus.composition.logging import configure, log_effective_configuration
@@ -211,6 +232,7 @@ from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.maturation import InstanceMaturation, RepositoryScores, maturation_wiring
 from taktus.composition.maturity import CatalogMaturities, InstanceCatalogue
 from taktus.composition.moves import MethodMoves
+from taktus.composition.objectives import ObjectivesWatch, objectives_tick
 from taktus.composition.objects import object_store_of
 from taktus.composition.operation import OperationRecords
 from taktus.composition.org_units import OrgUnitsOfTheRun
@@ -220,10 +242,16 @@ from taktus.composition.owner_channel import (
     owner_channel_wiring,
 )
 from taktus.composition.participants import ParticipantAnswers
+from taktus.composition.personal import ConfiguredPersonalCredentials
+from taktus.composition.planning import PlanActs
+from taktus.composition.process_proposals import ProcessProposals
 from taktus.composition.profiles import RoleProfiles
 from taktus.composition.proposals import InstanceChanges, ProposalActs
 from taktus.composition.reactions import Reactions, capacity_condition
 from taktus.composition.replies import ConnectorReplies
+from taktus.composition.reports import ReadingWiring, reading_tick, reading_wiring
+from taktus.composition.residency import PoolBindings
+from taktus.composition.run_answers import RunAnswers
 from taktus.composition.settings import (
     CONNECT_KEY,
     ExecutionKind,
@@ -232,17 +260,25 @@ from taktus.composition.settings import (
     WorkerSettings,
     load,
 )
+from taktus.composition.shares import shares_of
 from taktus.composition.shipped import load as load_shipped
+from taktus.composition.shipped import product_names
 from taktus.composition.signals import CommandInterventions, signal_wiring, signals_tick
 from taktus.composition.skills import CatalogGuidance, SkillLifecycle, skills_tick
 from taktus.composition.spend_in_channel import SpendInChannel
 from taktus.composition.stages import stage_wiring, stages_tick
-from taktus.composition.stops import StopsConfirmed
+from taktus.composition.steering import Steering, SteeringConfirmed, SteeringInChannel
+from taktus.composition.stops import RuleStops, StopIncidentsOfGovernance, StopsConfirmed
 from taktus.composition.streams import StreamReads
+from taktus.composition.subjects import ProcessingEvidence, RunHoldings
 from taktus.composition.takeover_in_channel import TakeoverInChannel
+from taktus.composition.tenancy import this_round
+from taktus.composition.tenant_export import TenantExports
 from taktus.composition.traces import traces_tick
 from taktus.composition.trials import Trials, trials_tick
 from taktus.composition.triggers import Triggers
+from taktus.composition.validation import Validations
+from taktus.composition.workspace import Workspace, structure_of, workspace_of
 from taktus.ports.clock import Clock
 from taktus.ports.configuration import Configuration, ConfigurationError, Secret
 from taktus.ports.leadership import Leadership
@@ -300,6 +336,12 @@ class Wired:
     stops: StopsConfirmed
     """The stops of adapters the scheduler confirms on every tick while it leads, once each
     holds (ADR-0138)."""
+    steering: SteeringConfirmed
+    answers: RunAnswers
+    """Every run of a channel's command that ended or waits, answered in that channel's thread
+    once (ADR-0239)."""
+    """The pauses and cancellations of runs said, in the channel they were asked in, once each
+    took effect (ADR-0236)."""
     defects: DefectWatch
     """Every result found wrong nobody assessed, raised as a result defect and its plan started
     by the scheduler (ADR-0184, ADR-0179)."""
@@ -311,6 +353,15 @@ class Wired:
     stages: Stages
     """A tenant's introduction in stages, looked at by the scheduler once an hour while it
     leads (ADR-0137)."""
+    escalations: EscalationWatch
+    """Every failure's escalation delivered with its situation package, and watched against
+    its process's time to react, by the scheduler once a minute while it leads (ADR-0252)."""
+    objectives: ObjectivesWatch
+    """Every ended run measured against its process's objectives, and a failure healed again
+    and again said, by the scheduler once a minute while it leads (ADR-0254)."""
+    ledger_signal: LedgerSignal
+    """The ledger exported as a telemetry signal entry by entry, by the scheduler's leader
+    every few seconds (ADR-0253 §3)."""
     expected: ExpectedRunsWatch
     """The watch over expected runs the scheduler makes once a minute while it leads: a run
     that did not happen raises an incident (ADR-0107)."""
@@ -342,6 +393,8 @@ class Wired:
     """A person's proposals for a changed process, never versions (ADR-0091)."""
     proposal_acts: ProposalActs
     """A proposal rehearsed and commissioned, and a process rolled back (ADR-0091 §3 to §5)."""
+    process_proposals: ProcessProposals
+    """The processes Taktus proposes to a person from recurring work (ADR-0270)."""
     evaluations: Evaluations
     """A change held to the process's evaluation cases, and drift measured on them, which the
     scheduler advances (ADR-0134)."""
@@ -359,10 +412,18 @@ class Wired:
     """The organisation as value streams, and their declaration (ADR-0159)."""
     profiles: RoleProfiles
     """A role's profile, derived from the processes (ADR-0167)."""
+    reading: ReadingWiring
+    """Views, the export, reports, explanations, the value ledger and a person's own view
+    (ADR-0241 to ADR-0245)."""
     traces: StepTraces
     """The trace inside a worker's step, read and shared by role, and erased by the scheduler
     when its retention ends (ADR-0135)."""
+    queries: StepQueries
+    """The queries a step sent, read by a person entitled to the step (ADR-0262 §3)."""
     """What the MCP surface needs beyond the HTTP surface's services (ADR-0131)."""
+    workspace: Workspace
+    """The plan dialogue, the coach, the structure with its projects, and the sessions in them
+    (ADR-0279)."""
     moves: MethodMoves | None = None
     """An accepted proposal to move a step applied, and a move rolled back (ADR-0114)."""
     runner: Runner | None = None
@@ -370,6 +431,12 @@ class Wired:
     """The skill lifecycle the scheduler looks at once a minute (ADR-0162)."""
     instructions: TakeoverTrials | None = None
     """A process's takeover instructions and the trials of them (ADR-0180)."""
+    subjects: SubjectRequests | None = None
+    """Data-protection requests, prepared and carried out by a person (ADR-0176)."""
+    evidence: ProcessingEvidence | None = None
+    """What is processed for a tenant, generated (ADR-0176 §8)."""
+    exports: TenantExports | None = None
+    """A tenant exported, and an export imported and checked (ADR-0221)."""
     agents: SharedAgents | None = None
     """Shared agents with role profiles (ADR-0163)."""
     connected: ConnectedHost | None = None
@@ -385,6 +452,26 @@ class Wired:
     @property
     def administration_key(self) -> Secret | None:
         return self.settings.administration_key
+
+    @property
+    def planning(self) -> PlanActs:
+        return self.workspace.planning
+
+    @property
+    def coach(self) -> Coach:
+        return self.workspace.coach
+
+    @property
+    def structure(self) -> OrganisationStructure:
+        return self.workspace.structure
+
+    @property
+    def sessions(self) -> Sessions:
+        return self.workspace.sessions
+
+    @property
+    def org_units(self) -> TenantOrgUnits:
+        return self.decisions.org_units
 
     @property
     def corrections(self) -> Corrections:
@@ -413,6 +500,30 @@ class Wired:
         if self.instructions is None:
             raise RuntimeError("the daemon wires the takeover instructions")
         return self.instructions
+
+    @property
+    def tenant_exports(self) -> TenantExports | None:
+        """A tenant's export and import on the HTTP surface (ADR-0221)."""
+        return self.exports
+
+    @property
+    def subject_requests(self) -> SubjectRequests:
+        """Data-protection requests on the HTTP surface (ADR-0176)."""
+        if self.subjects is None:
+            raise RuntimeError("the daemon wires the data-protection requests")
+        return self.subjects
+
+    @property
+    def connection_grants(self) -> ConnectionGrants:
+        """Writing on a connection, granted and withdrawn by a person (ADR-0262 §2)."""
+        return self.decisions.connections
+
+    @property
+    def processing_evidence(self) -> ProcessingEvidence:
+        """The processing evidence on the HTTP surface (ADR-0176 §8)."""
+        if self.evidence is None:
+            raise RuntimeError("the daemon wires the processing evidence")
+        return self.evidence
 
     @property
     def operation(self) -> OperationRecords:
@@ -512,6 +623,13 @@ async def wire(
             clock=clock,
             ids=ids,
         )
+
+        def stored_here[T: Stored](kind: type[T]) -> Repository[T]:
+            return PostgresRepository(persistence, kind)
+
+        # The organisation's structure, which the identity component reads what a person does
+        # not see from (ADR-0275).
+        structure = structure_of(stored_here, persistence, ledger, clock)
         # Who a sender is, and who acts: the identity component, and nothing else (ADR-0040).
         identities = IdentityDirectory(
             tenants=tenants,
@@ -525,6 +643,7 @@ async def wire(
             clock=clock,
             randomness=SystemRandomness(),
             session_lifetime=timedelta(hours=settings.session_hours),
+            structure=structure,
         )
         provenance_store = PostgresProvenanceStore(persistence)
         trace_store = PostgresTraceStore(persistence)
@@ -539,7 +658,9 @@ async def wire(
             return PostgresRepository(persistence, kind)
 
         decisions = decision_wiring(stored, persistence, ledger, clock, identities)
-        org_units = OrgUnitsOfTheRun(decisions.org_units, PostgresOrgUnitSpends(persistence))
+        org_units = OrgUnitsOfTheRun(
+            decisions.org_units, PostgresOrgUnitSpends(persistence), structure
+        )
         async with open_workers(
             settings.workers, configuration, state_dir=settings.state_dir, relay=relay
         ) as opened:
@@ -551,6 +672,10 @@ async def wire(
                 state_dir=settings.state_dir,
                 cache_bytes=settings.object_cache_mb * 1024 * 1024,
             )
+            if settings.object_store.kind != "s3":
+                # The directory exists from the start, empty, so that a backup of a fresh
+                # instance finds the store it archives (ADR-0222).
+                (settings.state_dir / "objects").mkdir(parents=True, exist_ok=True)
             recordings = RecordedResponses(runs, persistence, objects)
             pools = Pools(
                 StaticWorkerPool(
@@ -566,6 +691,7 @@ async def wire(
                 connector_pool(
                     settings.connectors,
                     also=[(LOOPBACK, loopback), *served_directory(settings.knowledge_directory)],
+                    locations=settings.connector_locations,
                 ),
                 model_pool(settings.models),
             )
@@ -573,6 +699,8 @@ async def wire(
             weights = settings.budget.weights()
             seeds = settings.budget.seeds()
             shape = settings.findings.form()
+            # A person's pause or cancellation of a run, read at its boundary (ADR-0236).
+            steering_store = PostgresRepository(persistence, RunSteering)
             stops = Stops(
                 PostgresRepository(persistence, AdapterStop),
                 runs,
@@ -582,8 +710,29 @@ async def wire(
                 clock,
                 ids,
                 stoppable=pools.identifiers(),
+                followed=StopIncidentsOfGovernance(
+                    StopIncidents(
+                        PostgresRepository(persistence, Incident),
+                        PostgresRepository(persistence, WatchConfiguration),
+                        PostgresRepository(persistence, Domain),
+                        ledger,
+                        objects,
+                        persistence,
+                        clock,
+                    )
+                ),
             )
 
+            # Who may use a shared model or connector, with whose credential, by the share and
+            # the structure's placement (ADR-0246, ADR-0247, ADR-0294).
+            shares = shares_of(
+                lambda kind: PostgresRepository(persistence, kind),
+                persistence,
+                ledger,
+                clock,
+                identities,
+                structure,
+            )
             # Skills and shared agents in the catalogue, handed to a run's steps (ADR-0162,
             # ADR-0163).
             skill_catalog = SkillCatalog(
@@ -600,6 +749,17 @@ async def wire(
                 persistence,
                 ledger,
                 clock,
+                products=product_names(load_shipped()),
+            )
+
+            # A real run reaches a model only after a trial found the quality held with it on
+            # the cases of the step's process (ADR-0249).
+            validations = Validations(
+                versions=PostgresRepository(persistence, ProcessVersion),
+                runs=runs,
+                ledger=ledger,
+                objects=objects,
+                work=persistence,
             )
 
             def engine_for(
@@ -628,6 +788,7 @@ async def wire(
                         unit_memory_bytes=memory_demand(settings.workers),
                         park_waits_after_seconds=settings.poll_seconds,
                         model_cool_down_seconds=settings.model.cool_down_seconds,
+                        host_locations=settings.host_locations,
                     ),
                     platform=HostPlatform(clock, state_dir=settings.state_dir),
                     connectors=connectors,
@@ -651,12 +812,31 @@ async def wire(
                     traces=trace_store,
                     masking=secrets,
                     stops=stops,
+                    tenant_budget=decisions.budget_of_the_run,
+                    unit_limits=decisions.unit_limits,
                     messages=decisions.messages,
                     statements=VersionStatements(
-                        persistence, PostgresRepository(persistence, ProcessVersion)
+                        persistence,
+                        PostgresRepository(persistence, ProcessVersion),
+                        CorrectionRates(ledger, persistence),
                     ),
-                    guidance=CatalogGuidance(skill_catalog, agent_catalog),
+                    guidance=CatalogGuidance(
+                        skill_catalog, agent_catalog, shares=shares.shares, identities=identities
+                    ),
                     org_units=org_units,
+                    steering=steering_store,
+                    shares=shares,
+                    evaluated=validations,
+                    control=TaskControl(
+                        versions=PostgresRepository(persistence, ProcessVersion),
+                        connectors=connectors,
+                        work=persistence,
+                    ),
+                    personal=ConfiguredPersonalCredentials(settings.personal_credentials),
+                    citations=IndexedCitations(
+                        PostgresRepository(persistence, KnowledgeEntry), persistence
+                    ),
+                    grants=decisions.connections,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -680,6 +860,9 @@ async def wire(
                     PostgresRepository(persistence, Request),
                     PostgresRepository(persistence, TakeoverTrial),
                     tenants=PostgresTenantStore(persistence),
+                    rates=CorrectionRates(ledger, persistence),
+                    ledger=ledger,
+                    objects=objects,
                 )
             )
             owner = owner_channel_wiring(
@@ -695,6 +878,7 @@ async def wire(
                 # The owner's conversation answers a request for a representation with its
                 # text equivalent and a link, read as the web app reads it (ADR-0069).
                 levels=levels,
+                sight=identities,
             )
             decisions.requests.report_to(owner.decision_raised)
             # A tenant's introduction in stages: the ceiling registration asks, the look the
@@ -813,6 +997,14 @@ async def wire(
                     PostgresRepository(persistence, ProcessVersion),
                     persistence,
                 ),
+                # What a process spends per case, which B-2.02 reads (ADR-0216).
+                spend=InstanceSpend(
+                    SpendHandler(ledger, objects, persistence),
+                    PostgresRepository(persistence, ProcessVersion),
+                    runs,
+                    persistence,
+                    clock,
+                ),
             )
             outbox = PostgresOutbox(persistence)
             complete_intake = CompleteIntakeHandler(
@@ -834,6 +1026,9 @@ async def wire(
                 sources=decisions.sources,
                 stages=staged.ceilings,
                 structure=identities,
+                rights=identities,
+                domains=decisions.domains,
+                residency=PoolBindings(pools, decisions.residency, settings.host_locations),
             )
             moves = MethodMoves(
                 versions=PostgresRepository(persistence, ProcessVersion),
@@ -868,6 +1063,7 @@ async def wire(
                 ids=ids,
                 outward=outward_by(pools),
             )
+            validations.attach(evaluations)
             skill_lifecycle = SkillLifecycle(
                 catalog=skill_catalog,
                 processes=PostgresRepository(persistence, Process),
@@ -899,6 +1095,7 @@ async def wire(
                 clock=clock,
                 ids=ids,
                 costs=CostOfRunHandler(ledger, objects, persistence),
+                shares=shares.shares,
             )
             # Where a process spends, and a model tried on fixed cases (ADR-0148, ADR-0149).
             spend = SpendHandler(ledger, objects, persistence)
@@ -917,6 +1114,7 @@ async def wire(
                 work=persistence,
                 clock=clock,
                 ids=ids,
+                validations=validations,
             )
             proposal_acts = ProposalActs(
                 proposals=proposals,
@@ -932,7 +1130,19 @@ async def wire(
                 clock=clock,
                 ids=ids,
                 change_process=settings.change_process,
+                describe_process=settings.describe_process,
                 evaluations=evaluations,
+            )
+            # The processes Taktus proposes from recurring work; accepting one asks the request
+            # path above (ADR-0270).
+            process_proposals = ProcessProposals(
+                ledger=ledger,
+                runs=runs,
+                versions=PostgresRepository(persistence, ProcessVersion),
+                objects=objects,
+                work=persistence,
+                clock=clock,
+                asking=proposal_acts,
             )
             # A change in dialogue read in the owner's conversation too (ADR-0091 §6).
             owner.answers.change_with(
@@ -958,6 +1168,7 @@ async def wire(
                     deliveries=owner.deliveries,
                     secrets=owner.secrets,
                     clock=clock,
+                    sight=identities,
                 )
             )
             # The processes a person may start, and a start as the person, from any channel
@@ -997,6 +1208,7 @@ async def wire(
                     deliveries=owner.deliveries,
                     secrets=owner.secrets,
                     clock=clock,
+                    sight=identities,
                 )
             )
             findings = ProductFindings(
@@ -1021,6 +1233,14 @@ async def wire(
                 PostgresRepository(persistence, AnchorConfiguration),
                 persistence,
                 clock,
+                stops=RuleStops(stops),
+                contents=StepContents(
+                    objects=objects,
+                    runs=runs,
+                    provenance=provenance_store,
+                    ledger=ledger,
+                    work=persistence,
+                ),
             )
             wired = Wired(
                 connected=connected_host(settings.workers, configuration, relay),
@@ -1048,13 +1268,32 @@ async def wire(
                     # An outside participant's answer in its thread, before the owner-facing
                     # channel reads the message (ADR-0155).
                     ParticipantAnswers(
-                        runs, persistence, engine, ConnectorReplies(pools.connectors), owner.answers
+                        runs,
+                        persistence,
+                        engine,
+                        ConnectorReplies(pools.connectors),
+                        # Status, pause and cancellation, on every channel (ADR-0236).
+                        SteeringInChannel(
+                            Steering(
+                                engine=engine,
+                                runs=runs,
+                                rights=PostgresRepository(persistence, RoleRights),
+                                ledger=ledger,
+                                work=persistence,
+                                ceiling_seconds=settings.shutdown_ceiling_seconds,
+                                sight=identities,
+                            ),
+                            ConnectorReplies(pools.connectors),
+                            owner.answers,
+                        ),
                     ),
                     outbox,
                     clock=clock,
                     offer_window=timedelta(seconds=settings.offer_window_seconds),
                     # A public channel's triage of contributions (ADR-0088): TAKTUS_TRIAGE.
                     triage=settings.triage,
+                    # The rollout channels and the agents they serve (ADR-0261): TAKTUS_ROLLOUT.
+                    rollout=settings.rollout,
                 ),
                 identities=identities,
                 tenants=tenants,
@@ -1088,11 +1327,25 @@ async def wire(
                     ledger=ledger,
                     clock=clock,
                 ),
+                queries=StepQueries(
+                    records=levels.records, ledger=ledger, objects=objects, work=persistence
+                ),
                 proposals=proposals,
                 proposal_acts=proposal_acts,
+                process_proposals=process_proposals,
                 evaluations=evaluations,
                 spend=spend,
                 trials=trials,
+                workspace=workspace_of(
+                    stored,
+                    persistence,
+                    ledger,
+                    clock,
+                    ids,
+                    structure,
+                    agents=agent_catalog,
+                    describe=None if settings.describe_process is None else proposal_acts,
+                ),
                 gallery=Gallery(
                     settings.gallery_directory,
                     proposals,
@@ -1122,6 +1375,7 @@ async def wire(
                     ledger=ledger,
                     work=persistence,
                     clock=clock,
+                    trials=PostgresRepository(persistence, TakeoverTrial),
                 ),
                 agent=agent,
                 streams=StreamReads(
@@ -1139,6 +1393,19 @@ async def wire(
                     identities=identities,
                     work=persistence,
                     clock=clock,
+                ),
+                reading=reading_wiring(
+                    stored,
+                    ledger=ledger,
+                    provenance=provenance_store,
+                    spend=spend,
+                    blocked=BlockedTime(ledger, objects, persistence, runs),
+                    identities=identities,
+                    levels=levels,
+                    deliveries=owner.deliveries,
+                    work=persistence,
+                    clock=clock,
+                    identifiers=ids,
                 ),
                 profiles=RoleProfiles(
                     processes=PostgresRepository(persistence, Process),
@@ -1182,6 +1449,15 @@ async def wire(
                     ),
                     identities=identities,
                     ids=ids,
+                    # A message in a rollout channel runs its assistant's process (ADR-0261).
+                    assistants=Assistants(
+                        agents=shared_agents,
+                        identities=identities,
+                        runs=runs,
+                        ledger=ledger,
+                        work=persistence,
+                        replies=ConnectorReplies(pools.connectors),
+                    ),
                 ),
                 leadership=PostgresLeadership(persistence.engine),
                 clock=clock,
@@ -1207,6 +1483,26 @@ async def wire(
                     clock=clock,
                     form=shape,
                 ),
+                objectives=ObjectivesWatch(
+                    ledger=ledger,
+                    versions=PostgresRepository(persistence, ProcessVersion),
+                    objects=objects,
+                    work=persistence,
+                    clock=clock,
+                    channels=owner.channel,
+                    raising=owner.raising,
+                ),
+                ledger_signal=LedgerSignal(ledger_store, persistence, telemetry),
+                escalations=EscalationWatch(
+                    ledger=ledger,
+                    runs=runs,
+                    versions=PostgresRepository(persistence, ProcessVersion),
+                    work=persistence,
+                    clock=clock,
+                    channels=owner.channel,
+                    raising=owner.raising,
+                    reports=owner.queries,
+                ),
                 expected=ExpectedRunsWatch(
                     ExpectationsHandler(
                         PostgresRepository(persistence, Process),
@@ -1224,6 +1520,19 @@ async def wire(
                     clock,
                 ),
                 stops=StopsConfirmed(tenants, stops),
+                steering=SteeringConfirmed(
+                    tenants, steering_store, persistence, ConnectorReplies(pools.connectors)
+                ),
+                answers=RunAnswers(
+                    tenants,
+                    ledger,
+                    runs,
+                    PostgresRepository(persistence, Plan),
+                    PostgresRepository(persistence, Command),
+                    persistence,
+                    ConnectorReplies(pools.connectors),
+                    clock,
+                ),
                 defects=DefectWatch(
                     ledger,
                     result_defects,
@@ -1238,6 +1547,7 @@ async def wire(
                         persistence,
                         clock,
                         ids,
+                        defects=result_defects,
                     ),
                 ),
                 delivery=IncidentDelivery(
@@ -1247,6 +1557,14 @@ async def wire(
                     ledger,
                     objects,
                     persistence,
+                    reports=IncidentReports(
+                        pools.models,
+                        PostgresRepository(persistence, Incident),
+                        result_defects,
+                        ledger,
+                        objects,
+                        persistence,
+                    ),
                 ),
                 rechecks=RecheckWatch(engine, ledger, persistence, clock),
                 stages=staged.stages,
@@ -1291,6 +1609,50 @@ async def wire(
                     clock=clock,
                     ids=ids,
                 ),
+            )
+            # Data-protection requests reach the store the artifacts live in (ADR-0165,
+            # ADR-0176), uncached: an erased object must not linger in a cache.
+            wired.evidence = ProcessingEvidence(
+                register=wired.acting.register,
+                processes=PostgresRepository(persistence, Process),
+                versions=PostgresRepository(persistence, ProcessVersion),
+                sources=decisions.sources,
+                residency=decisions.residency,
+                ledger=ledger,
+                work=persistence,
+                clock=clock,
+                traces=trace_store,
+            )
+            wired.exports = TenantExports(
+                archive=PostgresTenantArchive(persistence),
+                tenants=PostgresTenantStore(persistence),
+                objects=object_store_of(
+                    settings.object_store, state_dir=settings.state_dir, cache_bytes=0
+                ),
+                ledger=ledger,
+                provenance=provenance_store,
+                runs=runs,
+                work=persistence,
+                clock=clock,
+            )
+            wired.subjects = SubjectRequests(
+                PostgresRepository(persistence, SubjectRequest),
+                RunHoldings(
+                    runs=runs,
+                    provenance=provenance_store,
+                    ledger=ledger,
+                    objects=object_store_of(
+                        settings.object_store, state_dir=settings.state_dir, cache_bytes=0
+                    ),
+                    work=persistence,
+                    tenants=PostgresTenantStore(persistence),
+                    traces=trace_store,
+                    locations=wired.evidence.locations,
+                ),
+                ledger,
+                persistence,
+                clock,
+                ids,
             )
             if Role.RUNNER in settings.roles:
                 wired.runner = Runner(
@@ -1495,9 +1857,19 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
         report_alerts = alerts_tick(wired.alerts, wired.tenants, wired.clock)
         # And it watches that every expected run happened, by rule (ADR-0107).
         watch_expected = expected_runs_tick(wired.expected, wired.tenants, wired.clock)
+        # And it delivers every failure's escalation with its situation package, and records
+        # one that passed its time to react (ADR-0252).
+        watch_escalations = escalations_tick(wired.escalations, wired.tenants, wired.clock)
+        # And it exports every new ledger entry as a telemetry signal (ADR-0253 §3).
+        # And it measures every ended run against its process's objectives, and says a
+        # failure healed again and again (ADR-0254).
+        measure_objectives = objectives_tick(wired.objectives, wired.tenants, wired.clock)
+        signal_ledger = ledger_signal_tick(wired.ledger_signal, wired.tenants, wired.clock)
         # And it judges every signal against its corridor, and raises the daily report
         # (ADR-0109).
         judge_signals = signals_tick(wired.signals, wired.tenants, wired.clock)
+        # And it says every report and every person's line that is due (ADR-0242, ADR-0245).
+        say_reports = reading_tick(wired.reading, lambda: this_round(wired.tenants, "scheduler"))
         # And it measures drift on every process's evaluation cases, moves every evaluation on,
         # and proposes a case for every corrected draft (ADR-0134).
         evaluate = evaluations_tick(wired.evaluations, wired.tenants, wired.clock)
@@ -1540,12 +1912,20 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
             await wired.deadlines.tick()
             # And it confirms every stop of an adapter that holds now (ADR-0138).
             await wired.stops.tick()
+            # And it says every pause or cancellation of a run that took effect (ADR-0236).
+            await wired.steering.tick()
+            # And every run of a channel's command answers there once it ends or waits (ADR-0239).
+            await wired.answers.tick()
             await watch_expected()
+            await watch_escalations()
+            await measure_objectives()
+            await signal_ledger()
             await tick()
             await send_findings()
             await report_interfaces()
             await report_alerts()
             await judge_signals()
+            await say_reports()
             await evaluate()
             await erase_traces()
             await anchor_chains()

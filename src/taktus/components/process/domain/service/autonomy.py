@@ -6,7 +6,8 @@ than the version it replaces *raises* a level. Three cases are raises:
 
 - the process's level goes up;
 - an action's level goes up;
-- an action loses its own entry, and so runs at the process's level, which is higher.
+- an action loses its own entry, and so runs at the process's level, which is higher;
+- a class of request's level goes up, or the level of a class not named (ADR-0215).
 
 A level the governance component lowered by rule counts as the replaced version's level
 (ADR-0110): a version at the level the replaced one was registered with, after it fell, raises
@@ -36,9 +37,17 @@ from typing import Any, Literal
 
 from pydantic import Field
 
-from taktus.shared.v1 import ActionAutonomy, Autonomy, AutonomyLevel, LedgerEntry, Step, Value
+from taktus.shared.v1 import (
+    ActionAutonomy,
+    Autonomy,
+    AutonomyLevel,
+    ClassAutonomy,
+    LedgerEntry,
+    Step,
+    Value,
+)
 
-type Refusal = Literal["no_approval", "no_history_named", "history_short"]
+type Refusal = Literal["no_approval", "no_history_named", "history_short", "no_owner"]
 
 CLEAN_STEP_OUTCOMES = frozenset({"succeeded", "rehearsed", "stopped"})
 """What a `step.finished` entry may say without the run counting as failed."""
@@ -83,9 +92,10 @@ def lowered_to(
     statement: Autonomy,
     level: AutonomyLevel | None,
     actions: Mapping[str, AutonomyLevel],
+    classes: Mapping[str, AutonomyLevel] | None = None,
 ) -> Autonomy:
     """The statement as its version runs after the levels it was lowered to: the process's
-    level and each action's, never higher than the statement says."""
+    level, each action's and each class's, never higher than the statement says."""
     process = statement.level if level is None else min(statement.level, level)
     entries: dict[str, ActionAutonomy] = {}
     for action, own in (statement.actions or {}).items():
@@ -98,7 +108,12 @@ def lowered_to(
     for action, to in actions.items():
         if action not in entries and to < process:
             entries[action] = ActionAutonomy(level=to, reason=LOWERED, toward_next=LOWERED)
-    if process == statement.level and entries == dict(statement.actions or {}):
+    named = _classes_lowered(statement.classes, process, classes or {})
+    if (
+        process == statement.level
+        and entries == dict(statement.actions or {})
+        and named == statement.classes
+    ):
         return statement
     return Autonomy(
         level=process,
@@ -106,7 +121,33 @@ def lowered_to(
         toward_next=statement.toward_next or LOWERED,
         actions=entries or None,
         history=statement.history,
+        classes=named,
     )
+
+
+def _lower(own: ActionAutonomy, to: AutonomyLevel) -> ActionAutonomy:
+    if to >= own.level:
+        return own
+    return ActionAutonomy(level=to, reason=LOWERED, toward_next=own.toward_next or LOWERED)
+
+
+def _classes_lowered(
+    classes: ClassAutonomy | None, process: AutonomyLevel, lowered: Mapping[str, AutonomyLevel]
+) -> ClassAutonomy | None:
+    """The classes as they run after the process and each class fell: never above either."""
+    if classes is None:
+        return None
+    levels = {
+        name: _lower(own, min(process, lowered.get(name, own.level)))
+        for name, own in classes.levels.items()
+    }
+    for name, to in lowered.items():
+        if name not in levels and to < min(process, classes.default.level):
+            levels[name] = ActionAutonomy(level=to, reason=LOWERED, toward_next=LOWERED)
+    default = _lower(classes.default, process)
+    if default == classes.default and levels == dict(classes.levels):
+        return classes
+    return classes.model_copy(update={"default": default, "levels": levels})
 
 
 def raises(current: Autonomy, new: Autonomy) -> list[str]:
@@ -119,6 +160,17 @@ def raises(current: Autonomy, new: Autonomy) -> list[str]:
         before, after = current.level_of(action), new.level_of(action)
         if after > before:
             found.append(f"the action {action} from level {before} to {after}")
+    if new.classes is not None:
+        if new.class_level(None) > current.class_level(None):
+            found.append(
+                f"a class not named from level {current.class_level(None)} to "
+                f"{new.class_level(None)}"
+            )
+        known = set(new.classes.levels) | set(current.classes.levels if current.classes else ())
+        for name in sorted(known):
+            before, after = current.class_level(name), new.class_level(name)
+            if after > before:
+                found.append(f"the class {name} from level {before} to {after}")
     return found
 
 

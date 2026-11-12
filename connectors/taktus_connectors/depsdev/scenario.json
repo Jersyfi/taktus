@@ -1,0 +1,21 @@
+{
+  "credentials": {
+    "actions": "PACKAGES_TOKEN"
+  },
+  "read": {
+    "operation": "packages.licences.list",
+    "input": {
+      "format": "requirements.txt",
+      "manifest": "httpx==0.28.1\nmystery==0.1.0\n"
+    }
+  },
+  "writes": [],
+  "invalid": {
+    "operation": "packages.licences.list",
+    "input": {
+      "format": "pom.xml",
+      "manifest": "<project/>"
+    },
+    "expected_cause": "invalid"
+  }
+}

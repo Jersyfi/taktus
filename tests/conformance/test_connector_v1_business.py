@@ -5,13 +5,15 @@ Each connector runs as a process of its own against a fake of its product's API 
 of its own: cloud billing, a model provider's costs, error tracking, a payment provider, a
 document inbox and an accounting system (ADR-0169). Every one but the accounting connector only
 reads, so C-05 passes as not applicable; the accounting connector's two writes are marked, and
-C-05 runs on both. None has an intake, so C-07 and C-08 pass as not applicable. C-10 stays
+C-05 runs on both. One has an intake, signed webhooks under the open specification (ADR-0186),
+and C-07 and C-08 run on it; for every other they pass as not applicable. C-10 stays
 pending. Then, for every fault a connector can inject, the suite must fail on exactly the check
 the fault breaks (README §8).
 """
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 
 import pytest
@@ -22,9 +24,29 @@ from taktus.conformance.connector.rules import CHECKS
 from .conftest import BUSINESS, CONNECTORS, RunningConnector, open_standard_faults
 
 type Start = Callable[..., RunningConnector]
-SCOPED = frozenset({"stripe"})
+SCOPED = frozenset({"hubspot", "paypal", "revenuecat", "stripe"})
 """The business connectors that declare a scoped capability (C-11)."""
-WRITERS = frozenset({"accounting", "kubernetes"})
+WRITERS = frozenset(
+    {
+        "accounting",
+        "appstores",
+        "bigquery",
+        "canny",
+        "cloudfunctions",
+        "cloudrun",
+        "firebase",
+        "freshdesk",
+        "hubspot",
+        "jira",
+        "kubernetes",
+        "linear",
+        "mailchimp",
+        "resend",
+        "sanity",
+        "wordpress",
+        "zendesk",
+    }
+)
 """The business connectors with an operation that leaves the system (C-05)."""
 FAULTS = [
     (module, fault, check)
@@ -47,19 +69,20 @@ async def test_a_business_connector_passes(module: str, start_business_connector
     assert applicable is (module in WRITERS), report.render()
     text = report.to_json() + connector.log.read_text()
     for value in connector.credential_values.values():
-        assert value not in text
-        for part in value.split(":")[1:]:  # the secret half of a key pair never shows either
-            assert part not in text
+        assert value not in text and json.dumps(value)[1:-1] not in text
+        if BUSINESS[module].pair:
+            for part in value.split(":")[1:]:  # the secret half of a key pair never shows either
+                assert part not in text
 
 
 @pytest.mark.parametrize("module", sorted(BUSINESS))
 def test_every_runtime_check_has_a_fault(module: str) -> None:
     unscoped = set() if module in SCOPED else {"C-11"}
     reading = set() if module in WRITERS else {"C-05"}
+    unsigned = set() if BUSINESS[module].intake else {"C-07", "C-08"}
     assert {check for _, check in open_standard_faults(module)} == set(CHECKS) - {
         *reading,
-        "C-07",
-        "C-08",
+        *unsigned,
         "C-10",
         *unscoped,
     }, (

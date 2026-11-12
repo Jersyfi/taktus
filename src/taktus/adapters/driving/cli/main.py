@@ -9,10 +9,13 @@ the ledger (ADR-0044); `conformance list` prints every configured adapter with i
 and says which connectors serve a vendor's MCP server and under which manifest (ADR-0117).
 `run` and `submit` drive the control plane: `run` executes a bundle in this process, `submit`
 queues it for the daemon. `capacity` reports what the platform has left
-and the date a person must act by. `catalogue` lists, installs and signs the entries of a
-catalogue of signed adapters and bundles (ADR-0175). `cost` recomputes what a run cost from
-the ledger. `prices import` turns an open model price list into a new price table version, a
-file, and lists what it could not map (#327). `identity`
+and the date a person must act by; `hardware` what the machine is — processors, memory,
+accelerators — and whether each local model has what it needs there (ADR-0284). `catalogue`
+lists, installs and signs the entries of a catalogue of signed adapters and bundles
+(ADR-0175). `cost` recomputes what a run cost from the ledger. `bottlenecks` says what a higher
+limit would have bought and how to wait less on people (ADR-0283). `prices import` turns an open
+model price list into a new price table version, a file, and lists what it could not map
+(#327). `identity`
 adds identities, sets their roles, and lists and revokes the links of channel accounts
 (ADR-0040). `tenant` creates, renames and lists the instance's tenants; Taktus generates each
 identifier (ADR-0104). `first start` creates a new instance's first tenant and its administrator,
@@ -52,12 +55,17 @@ tenant's quotas per organisational unit (ADR-0166). `deadline` lists
 a tenant's open deadlines, ordered by when they fall due, and shows and sets its working time
 (ADR-0133). `trace retention` shows and sets how long the tenant keeps the trace inside a step
 (ADR-0135). `stop` stops every step an adapter serves and prints the confirmation once it
-holds (ADR-0138). `stage` declares a tenant's introduction in stages, shows each with its
+holds (ADR-0138). `domain` instantiates a tenant's domains with their owners, shows each
+owner the duties of their domains and generates the conformity evidence of their catalogue
+(ADR-0259, ADR-0280). `stage` declares a tenant's introduction in stages, shows each with its
 figures and what is missing, and opens one as a person (ADR-0137). `skill` registers, evaluates,
 approves and puts skills into production, and prints the skill part of a process's takeover
-instructions (ADR-0162). `takeover` shows a process's takeover instructions and records a trial
-of them by a person (ADR-0180). `agent` proposes a shared agent's core, sets its role profiles,
-calls it and draws it (ADR-0163). The others need
+instructions (ADR-0162). `process export` writes a process version as one package of plain
+files, read without Taktus (ADR-0285). `takeover` shows a process's takeover instructions and
+records a trial of them by a person (ADR-0180). `agent` proposes a shared agent's core, sets its
+role profiles, calls it and draws it (ADR-0163). `domain` admits a domain blueprint, instantiates
+it in dialogue as proposals at level 2 or below, offers a later version, and exports it as plain
+files (ADR-0263). The others need
 services, which the composition root provides as the typer context object (see `wiring`); the
 console script `taktusctl` therefore starts in `taktus.composition.taktusctl`, and this module
 exposes the application for it.
@@ -78,7 +86,9 @@ from taktus.adapters.driving.cli import (
     agent_command,
     alerts_command,
     anchors_command,
+    bottlenecks_command,
     bpmn_command,
+    budget_command,
     bundle_command,
     capacity_command,
     catalogue_command,
@@ -88,18 +98,22 @@ from taktus.adapters.driving.cli import (
     deactivate_command,
     deadline_command,
     defect_command,
+    domain_command,
     exactness_command,
     findings_command,
     first_command,
     guides_command,
+    hardware_command,
     identity_command,
     incident_command,
     interfaces_command,
     ledger_command,
+    load_command,
     maturation_command,
     messages_command,
     owner_channel_command,
     prices_command,
+    process_command,
     residency_command,
     resume_command,
     run_command,
@@ -108,6 +122,7 @@ from taktus.adapters.driving.cli import (
     sources_command,
     stage_command,
     stop_command,
+    structure_command,
     subject_command,
     submit_command,
     takeover_command,
@@ -143,9 +158,12 @@ app.command("deactivate")(deactivate_command.deactivate)
 app.command("exactness")(exactness_command.exactness)
 app.add_typer(bundle_command.bundle, name="bundle")
 app.add_typer(catalogue_command.catalogue, name="catalogue")
+app.add_typer(domain_command.domain, name="domain")
 app.add_typer(bpmn_command.bpmn, name="bpmn")
 app.command("capacity")(capacity_command.capacity)
+app.command("hardware")(hardware_command.hardware)
 app.command("cost")(cost_command.cost)
+app.command("bottlenecks")(bottlenecks_command.bottlenecks)
 app.add_typer(prices_command.prices, name="prices")
 app.add_typer(findings_command.findings, name="findings")
 app.command("interfaces")(interfaces_command.interfaces)
@@ -159,16 +177,20 @@ app.add_typer(signal_command.signal, name="signal")
 app.add_typer(corrections_command.corrections, name="corrections")
 app.add_typer(defect_command.defect, name="defect")
 app.add_typer(residency_command.residency, name="residency")
+app.add_typer(budget_command.budget, name="budget")
+app.add_typer(domain_command.domain, name="domain")
 app.add_typer(sources_command.sources, name="sources")
 app.add_typer(subject_command.subject, name="subject")
 app.command("evidence")(subject_command.evidence)
 app.add_typer(messages_command.messages, name="messages")
 app.add_typer(messages_command.case, name="case")
 app.add_typer(units_command.units, name="units")
+app.add_typer(structure_command.structure, name="structure")
 app.add_typer(deadline_command.deadline, name="deadline")
 app.add_typer(stop_command.stop, name="stop")
 app.add_typer(trace_command.trace, name="trace")
 app.add_typer(takeover_command.takeover, name="takeover")
+app.add_typer(process_command.process, name="process")
 app.add_typer(stage_command.stage, name="stage")
 app.add_typer(skill_command.skill, name="skill")
 app.add_typer(agent_command.agent, name="agent")
@@ -176,6 +198,7 @@ app.add_typer(owner_channel_command.owner_channel, name="owner-channel")
 app.add_typer(guides_command.guides, name="guides")
 app.add_typer(maturation_command.maturation, name="maturation")
 app.add_typer(ledger_command.ledger, name="ledger")
+app.add_typer(load_command.load, name="load")
 
 CONTRACTS = {"worker/v1", "connector/v1", "model/v1"}
 

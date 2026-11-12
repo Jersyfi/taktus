@@ -4,10 +4,10 @@ title: Planning together in dialogue
 component: command
 epic: E1
 serves: [P2, P10]
-state: building
+state: verified
 version: 0.3.0
-tests: [tests/components/command/test_commission.py::test_commissioning_is_a_recorded_act]
-adrs: {ADR-0005: 0ea928e2016b, ADR-0026: ccc4bd1f5423}
+tests: [tests/components/command/test_commission.py::test_commissioning_is_a_recorded_act, tests/components/command/test_plan_dialogue.py::test_a_plan_lacking_a_part_is_refused_and_the_refusal_names_what_is_missing, tests/components/command/test_plan_dialogue.py::test_an_estimate_without_a_basis_is_shown_as_a_guess_never_as_a_figure, tests/components/command/test_plan_dialogue.py::test_commissioning_records_the_version_and_who_and_a_change_needs_it_again, tests/components/run/test_pause_and_cancel.py::test_nothing_runs_from_a_plan_that_was_not_commissioned, tests/components/run/test_pause_and_cancel.py::test_confirming_a_step_at_level_two_is_not_commissioning_a_plan, tests/components/command/test_plan_dialogue.py::test_a_plan_results_in_a_run_or_in_a_new_process_version, tests/components/command/test_plan_dialogue.py::test_a_step_that_cannot_be_estimated_refuses_the_plan_before_anything_runs, tests/adapters/rest/test_planning.py::test_a_plan_is_worked_out_in_the_guided_mode_and_commissioned, tests/adapters/rest/test_planning.py::test_commissioning_a_draft_that_lacks_a_part_is_refused_naming_it]
+adrs: {ADR-0005: 0ea928e2016b, ADR-0026: ccc4bd1f5423, ADR-0237: 94207b391c5a, ADR-0279: 0db73bd11974}
 supersedes: null
 ---
 
@@ -56,5 +56,19 @@ rolled back from the web app and from chat.
 
 ## 5. What is proven so far
 
-Commissioning is a recorded act, by the named test. The plan as a record with its
-four parts, the estimates and their basis, and re-commissioning a changed plan are not built.
+Built by ADR-0237, and shown by the named tests:
+
+- A plan draft lacking one of the four parts is refused, and the refusal names each part it
+  lacks; a step without a figure refuses the plan before anything runs, naming the step.
+- An estimate names its basis; one without a basis reads as a guess, never as a figure.
+- Commissioning records `plan.commissioned` naming the plan's version, `<draft>@v<version>`,
+  and the identity that commissioned it. A revised version is not commissioned; the plan of the
+  version that was stays as it was until the new one is commissioned.
+- The engine refuses a plan that was not commissioned, and confirming a step at level 2 records
+  no commissioning.
+- A plan results in a run or in a new process version.
+
+The web app presents the dialogue (`#/plans`, ADR-0279) over `/plans`: a person opens a draft,
+works it out, and commissions a version as an act of its own. What Taktus proposes in the
+dialogue — alternatives, the steps of long work — is put into the draft by its caller; the record
+does not propose (ADR-0237, *Where this promise ends*).

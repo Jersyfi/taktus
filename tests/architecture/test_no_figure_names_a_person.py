@@ -108,6 +108,21 @@ QUANTITY_COLUMNS = (sa.Integer, sa.Float, sa.Numeric, sa.Interval)
 ACT = "one act: who acts, as the audit requires, with that act's own quantities"
 
 ACTS: dict[str, str] = {
+    "taktus.components.command.domain.model.planning.PlanDraft": (
+        f"{ACT}: who changed and who commissioned one plan (ADR-0237), and that plan's "
+        "version and the estimates of its steps"
+    ),
+    "taktus.components.command.domain.model.configuration.ConfigurationChange": (
+        f"{ACT}: the identity one configuration change is made for (ADR-0278), and that "
+        "change's place in its plan"
+    ),
+    "taktus.components.identity.domain.model.structure.StructureUnit": (
+        f"{ACT}: who created one unit and who belongs to it (ADR-0275, ADR-0276); the level is "
+        "the unit's place in the structure, no figure about a person"
+    ),
+    "taktus.components.command.application.service.plan_dialogue.OpenDraft": (
+        f"{ACT}: the command that opens a plan, with who opens it and its estimates"
+    ),
     "taktus.components.governance.domain.model.subjects.SubjectRequest": (
         f"{ACT}: who prepared, carried out or withdrew one data-protection request "
         "(ADR-0176), and what that one request held and did"
@@ -145,6 +160,10 @@ ACTS: dict[str, str] = {
     "taktus.components.process.domain.model.trigger_state.Firing": (
         f"{ACT}: one firing of a trigger, and who fired it by hand"
     ),
+    "taktus.components.catalog.domain.model.blueprint.DomainInstance": (
+        f"{ACT}: who started a domain's instance, answered its questions and owns it "
+        "(ADR-0263), and the autonomy level each of its processes was proposed at"
+    ),
     "taktus.components.catalog.domain.model.maturity.ConformanceResult": (
         f"{ACT}: one conformance run, and who started it"
     ),
@@ -160,6 +179,10 @@ ACTS: dict[str, str] = {
     "taktus.components.process.domain.model.proposal.Proposal": (
         f"{ACT}: one request for a change and who asked it, beside the autonomy statement of "
         "the version it proposes (ADR-0091)"
+    ),
+    "taktus.components.value.application.service.basis.BasisSet": (
+        f"{ACT}: one version of the organisation's value basis and who set it (ADR-0244 §2); "
+        "its rates are per role, never per person"
     ),
     "taktus.ports.connector.CallContext": (
         f"{ACT}: one call of a connector, for whom it acts, and its attempt"
@@ -190,10 +213,34 @@ DECLARED: dict[str, str] = {
         "a signal's corridor: the thresholds, the window and the minimum a person of the tenant "
         "sets for one signal, which measures no named person (ADR-0109)"
     ),
+    "taktus.shared.v1.autonomy.ClassLimits": (
+        "a class of request's limits: the counts, weeks and rate a process version declares for "
+        "when a class rises and falls, which measure no named person (ADR-0215)"
+    ),
 }
 """Every type whose numbers are declared parameters of a process, not figures of anyone."""
 
 OWN: dict[str, str] = {
+    "taktus.components.process.domain.service.proposing.ProcessProposal": (
+        "tests/composition/test_process_proposals.py::"
+        "test_a_process_started_by_hand_every_week_is_proposed_to_that_person_only"
+    ),
+    "taktus.components.reporting.domain.model.views.OwnView": (
+        "tests/adapters/rest/test_figures.py::"
+        "test_nobody_but_the_person_reads_their_own_view_until_they_share_it"
+    ),
+    "taktus.components.reporting.domain.service.own.OwnRelief": (
+        "tests/adapters/rest/test_figures.py::"
+        "test_nobody_but_the_person_reads_their_own_view_until_they_share_it"
+    ),
+    "taktus.components.value.domain.model.discovery.DiscoveredProcess": (
+        "tests/components/value/test_discovery.py::"
+        "test_a_pattern_found_for_a_person_is_theirs_until_they_agree"
+    ),
+    "taktus.components.value.domain.service.discovery.Pattern": (
+        "tests/components/value/test_discovery.py::"
+        "test_a_pattern_found_for_a_person_is_theirs_until_they_agree"
+    ),
     "taktus.components.decision.domain.service.response_times.ResponseTimes": (
         "tests/governance/test_anchors.py::"
         "test_another_identity_cannot_read_a_decider_s_response_time_under_their_name"

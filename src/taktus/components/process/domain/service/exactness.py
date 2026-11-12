@@ -2,11 +2,12 @@
 
 Two rules over a process version, both evaluated when a bundle registers (ADR-0082):
 
-- `findings`: a step classed `exact` declares at least one check from the catalogue; the
-  finding for one that declares none names the catalogue, row by row, with what each row covers,
-  what it does not cover and what it needs — the content of the conversation UC-4.13 asks for,
-  as a validation finding for a person who writes the bundle by hand. A recomputation is
-  declared on a step whose method gives the same result again: `rule` or `statistics`.
+- `findings`: a step classed `exact` or `sourced` declares at least one check from the
+  catalogue (UC-4.13, UC-4.10); the finding for one that declares none names the step and the
+  catalogue, row by row, with what each row covers, what it does not cover and what it needs —
+  the content of the conversation UC-4.13 asks for, as a validation finding for a person who
+  writes the bundle by hand (ADR-0233). A recomputation is declared on a step whose method
+  gives the same result again: `rule` or `statistics`.
 - `statement`: the exactness statement, generated from the steps' classes and checks. Every
   sentence is its catalogue row's, filled in with the check's own parameters; nothing else is
   said about a check. A rule, never a model, writes it.
@@ -20,6 +21,7 @@ from taktus.components.process.domain.model.exactness import (
     CATALOGUE,
     NOT_YET_MEASURED,
     ExactnessStatement,
+    measured_rate,
 )
 from taktus.shared.v1 import (
     EXACT_ADMISSIBLE,
@@ -32,8 +34,8 @@ from taktus.shared.v1 import (
 
 
 def findings(steps: Sequence[Step]) -> list[str]:
-    """What refuses the version: an exact step without a check, a recomputation that cannot
-    give the same result again."""
+    """What refuses the version: an exact or sourced step without a check, a recomputation that
+    cannot give the same result again."""
     found: list[str] = []
     for step in steps:
         if step.exactness is ExactnessClass.EXACT and not step.checks:
@@ -41,13 +43,20 @@ def findings(steps: Sequence[Step]) -> list[str]:
                 f"step {step.id!r} is classed exact and declares no check: `exact` is a claim "
                 "that a machine check makes the value right, and the check has to exist "
                 "(ADR-0014, UC-4.13). Declare one under `checks` from the catalogue — "
-                + "; ".join(
-                    f"{kind.value} ({row.name}): covers {row.covers}; does not cover "
-                    f"{row.does_not_cover}; needs {row.needs}"
-                    for kind, row in CATALOGUE.items()
-                )
+                + _rows()
                 + ". Where none fits, the step is not exact: it goes to a person (`human`), "
                 "or to `sourced` with the check that does fit"
+            )
+        elif step.exactness is ExactnessClass.SOURCED and not step.checks:
+            found.append(
+                f"step {step.id!r} is classed sourced and declares no check: a `sourced` result "
+                "is what its source holds, and a check has to say how that is found to hold — "
+                "the source read in the shape the step was written for, a count or a total "
+                "another source holds, bounds (UC-4.10, ADR-0233). Declare one under `checks` "
+                "from the catalogue — "
+                + _rows()
+                + ". Where none fits, the step is `tolerant` or `free`, and the exactness "
+                "statement names it unchecked"
             )
         for check in step.checks or ():
             if check.kind is CheckKind.RECOMPUTATION and step.method not in EXACT_ADMISSIBLE:
@@ -59,9 +68,27 @@ def findings(steps: Sequence[Step]) -> list[str]:
     return found
 
 
-def statement(process_version: str, name: str, steps: Iterable[Step]) -> ExactnessStatement:
+def _rows() -> str:
+    """The catalogue, row by row, as a finding names it."""
+    return "; ".join(
+        f"{kind.value} ({row.name}): covers {row.covers}; does not cover "
+        f"{row.does_not_cover}; needs {row.needs}"
+        for kind, row in CATALOGUE.items()
+    )
+
+
+def statement(
+    process_version: str,
+    name: str,
+    steps: Iterable[Step],
+    measured: tuple[int, int] | None = None,
+) -> ExactnessStatement:
     """The exactness statement of a version, from its steps in declared order. Raises
-    `InvalidStatement` where a statement could not be complete or would say "guaranteed"."""
+    `InvalidStatement` where a statement could not be complete or would say "guaranteed".
+
+    `measured` is the value ledger's figure for the version — how many results of its checked
+    steps a person corrected after the checks passed, and how many counted (ADR-0226). Without
+    it the residual risk says that the rate is not yet measured."""
     applies: list[str] = []
     covers: list[str] = []
     not_covered: list[str] = []
@@ -94,7 +121,7 @@ def statement(process_version: str, name: str, steps: Iterable[Step]) -> Exactne
         residual.append("Whatever a person decides wrongly, or a wait passes on wrongly.")
     if not covers:
         covers.append("Nothing: no step of this process declares a check.")
-    residual.append(NOT_YET_MEASURED)
+    residual.append(NOT_YET_MEASURED if measured is None else measured_rate(*measured))
     return ExactnessStatement(
         process_version=process_version,
         name=name,
@@ -154,12 +181,25 @@ def _applies(check: Check) -> str:
             return f"{row} — {check.count}, read through `{check.source}`"
         case CheckKind.SOURCE_SHAPE:
             return f"{row} — {_shape(check)}"
+        case CheckKind.DISTRIBUTION:
+            return f"{row} — {_band(check)}"
+
+
+def _band(check: Check) -> str:
+    return (
+        f"within {_number(round((check.band or 0) * 100, 4))} % of the median of the "
+        f"{check.window} results before it"
+    )
 
 
 def _shape(check: Check) -> str:
     said: list[str] = []
     if check.columns:
-        said.append("the columns " + ", ".join(f"`{c}`" for c in check.columns) + ", in order")
+        said.append(
+            "the columns "
+            + ", ".join(f"`{c}`" for c in check.columns)
+            + " — a table read as text in that order, an object carrying each"
+        )
     if check.pattern is not None:
         said.append(f"text matching `{check.pattern}`")
     return " and ".join(said)
@@ -210,6 +250,11 @@ def _covers(step: Step, check: Check) -> str:
             )
         case CheckKind.SOURCE_SHAPE:
             return f"{subject} counts only where what the step read has {_shape(check)}."
+        case CheckKind.DISTRIBUTION:
+            return (
+                f"{subject} is marked suspect where it does not lie {_band(check)}, or has "
+                "another sign: an order of magnitude too much or too little is found."
+            )
 
 
 def _does_not_cover(step: Step, check: Check) -> str:
@@ -250,6 +295,11 @@ def _does_not_cover(step: Step, check: Check) -> str:
             )
         case CheckKind.SOURCE_SHAPE:
             return f"A wrong value of {subject} read from a source of the right shape passes."
+        case CheckKind.DISTRIBUTION:
+            return (
+                f"A wrong value of {subject} inside the band passes, and so does a series that "
+                "drifts a little each time; the result counts before the mark."
+            )
 
 
 def _slips(step: Step, check: Check) -> str:
@@ -273,3 +323,5 @@ def _slips(step: Step, check: Check) -> str:
             return f"a part present but wrong, or {check.count} itself wrong"
         case CheckKind.SOURCE_SHAPE:
             return "a wrong value in a source of the right shape"
+        case CheckKind.DISTRIBUTION:
+            return "a wrong value inside the band, or a slow drift"

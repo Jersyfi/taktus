@@ -37,6 +37,12 @@ dev = [
 ]
 # The ML bench worker's libraries (workers/mlbench), at the exact versions its image installs, so
 # that the tests run the worker as it ships. Never part of the control plane image (DEC-0011).
+# The browser worker's driver (workers/browser), at the exact version its image installs with
+# the headless Chromium of that release; never part of the control plane image (DEC-0011).
+browser = ["playwright==1.64.0"]
+# The documentation site's builder (NTC-0272, `make docs-site`): it turns the rendered guides into
+# plain HTML files. Never part of an image.
+docs = ["zensical==0.1.1"]
 mlbench = ["scikit-learn==1.9.1", "numpy==2.5.4"]
 
 [dependency-groups]

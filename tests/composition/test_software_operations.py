@@ -63,6 +63,7 @@ from taktus_connectors.vendor.server import build_server as vendor_server
 from taktus_connectors.vendor.upstream import Upstream
 from taktus_connectors.vendor.wrapping import Wrapper, with_manifest
 
+from taktus.adapters.driven.connectors.loopback import DECLARATION as LOOPBACK
 from taktus.adapters.driven.connectors.mcp import McpActionConnector
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.adapters.driven.memory import (
@@ -512,9 +513,10 @@ def states(run: Run) -> dict[str, StepState]:
 
 
 def declared_operations() -> set[str]:
-    """What a connector of this repository declares, and what the vendor connector serves
-    under a manifest the blueprint ships (ADR-0199 §2)."""
-    names: set[str] = set()
+    """What a connector of this repository declares, what the vendor connector serves under a
+    manifest the blueprint ships (ADR-0199 §2), and what the instance serves about itself
+    through the loopback connector (ADR-0216)."""
+    names: set[str] = {o.name for o in LOOPBACK.operations}
     for path in [*CONNECTORS.glob("*/declaration.py"), *MANIFESTS.glob("*.manifest.json")]:
         names |= set(re.findall(r'"name": "([a-z][a-z0-9_.]+)"', path.read_text(encoding="utf-8")))
     return names
@@ -833,8 +835,18 @@ async def test_b_10_01_files_each_deadline_within_its_lead_time_once_a_person_co
 # --- stage 2: B-3.02 Drafting a reply -----------------------------------------------------------
 
 
-def replying(w: World, draft: str, check: str = "send", classified: str = "none") -> None:
-    w.model.answers.update({DRAFT: draft, CHECK: check, CLASSIFY: classified})
+SCORE = "You score a drafted reply"
+EVERY_DIMENSION = "answers: yes\nlanguage: yes\ntone: yes\ncomplete: yes"
+
+
+def replying(
+    w: World,
+    draft: str,
+    check: str = "send",
+    classified: str = "none",
+    dimensions: str = EVERY_DIMENSION,
+) -> None:
+    w.model.answers.update({DRAFT: draft, CHECK: check, CLASSIFY: classified, SCORE: dimensions})
 
 
 async def test_b_3_02_sends_a_checked_labelled_reply_only_once_a_person_released_it(

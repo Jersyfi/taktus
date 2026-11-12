@@ -1,4 +1,5 @@
-"""`taktusctl stop`: a stop scoped to an adapter, and its confirmation (ADR-0138, UC-7.2).
+"""`taktusctl stop`: a stop scoped to an adapter, a process, the tenant or the instance, and its
+confirmation (ADR-0138, ADR-0256, UC-7.2).
 
 `adapter NAME` stops every step the adapter serves, in every run of the tenant, at the step's
 boundary. It asks for no reason. It then waits up to `--wait` seconds for the stop to hold, and
@@ -7,6 +8,10 @@ prints the stop as JSON: once every affected run has reached its boundary, its s
 inside a step on the adapter. `show ID` prints a stop again, confirmed first if it holds now;
 `list` prints every stop of the tenant; `lift ID` hands steps to the adapter again. Lifting
 resumes no run: each run the stop halted is resumed by a person.
+
+`process NAME` stops every run of the process at its next boundary, `tenant` every run of the
+tenant, and `global` every run of every tenant the instance serves: one stop per tenant, each
+confirmed in its tenant. None of them asks for a reason, at any autonomy level.
 
 The command line authenticates by holding the instance's state, as `deadline` does; `--identity`
 names who acts, for the ledger, and to whom the confirmation is addressed.
@@ -41,12 +46,23 @@ from taktus.components.run.domain.model import StopState
 POLL_SECONDS = 1.0
 
 stop = typer.Typer(
-    help="Stop every step an adapter serves, and read the confirmation once it holds.",
+    help="Stop an adapter, a process, the tenant or the instance; read the confirmation.",
     no_args_is_help=True,
 )
 
 
 def _run[T](ctx: typer.Context, state_dir: Path, act: Callable[[Stops], Awaitable[T]]) -> T:
+    async def acted(stops: Stops, served: Callable[[], Awaitable[tuple[str, ...]]]) -> T:
+        return await act(stops)
+
+    return _run_served(ctx, state_dir, acted)
+
+
+def _run_served[T](
+    ctx: typer.Context,
+    state_dir: Path,
+    act: Callable[[Stops, Callable[[], Awaitable[tuple[str, ...]]]], Awaitable[T]],
+) -> T:
     wiring: Wiring = ctx.obj
     where = Path(os.path.expanduser(state_dir))
 
@@ -54,7 +70,7 @@ def _run[T](ctx: typer.Context, state_dir: Path, act: Callable[[Stops], Awaitabl
         async with wiring.services(state_dir=where, worker_endpoint=DEFAULT_WORKER) as services:
             if services.stops is None:
                 raise NotOperable("stops cannot be read with these services")
-            return await act(services.stops)
+            return await act(services.stops, services.tenants.served)
 
     try:
         return asyncio.run(opened())
@@ -95,6 +111,77 @@ def adapter(
             await asyncio.sleep(POLL_SECONDS)
 
     typer.echo(json.dumps(_run(ctx, state_dir, act), indent=2, ensure_ascii=False, default=str))
+
+
+async def _until_held(stops: Stops, tenant: str, stop_id: str, wait: float) -> dict[str, Any]:
+    loop = asyncio.get_running_loop()
+    until = loop.time() + wait
+    while True:
+        holding = await stops.show(tenant, stop_id)
+        if holding.stop.state is not StopState.HOLDING or loop.time() >= until:
+            return shown(holding)
+        await asyncio.sleep(POLL_SECONDS)
+
+
+Wait = Annotated[
+    float,
+    typer.Option("--wait", min=0, help="How long to wait for the stop to hold, in seconds."),
+]
+
+
+@stop.command("process")
+def process(
+    ctx: typer.Context,
+    name: Annotated[str, typer.Argument(help="The process's identifier.")],
+    wait: Wait = 60.0,
+    tenant: Tenant = DEFAULT_TENANT,
+    by: By = "operator",
+    state_dir: StateDir = Path(DEFAULT_STATE_DIR),
+) -> None:
+    """Stop every run of the process at its next boundary; print the stop once it holds."""
+
+    async def act(stops: Stops) -> dict[str, Any]:
+        requested = await stops.request_process(tenant, name, by)
+        return await _until_held(stops, tenant, requested.id, wait)
+
+    typer.echo(json.dumps(_run(ctx, state_dir, act), indent=2, ensure_ascii=False, default=str))
+
+
+@stop.command("tenant")
+def tenant_(
+    ctx: typer.Context,
+    wait: Wait = 60.0,
+    tenant: Tenant = DEFAULT_TENANT,
+    by: By = "operator",
+    state_dir: StateDir = Path(DEFAULT_STATE_DIR),
+) -> None:
+    """Stop every run of the tenant at its next boundary; print the stop once it holds."""
+
+    async def act(stops: Stops) -> dict[str, Any]:
+        requested = await stops.request_tenant(tenant, by)
+        return await _until_held(stops, tenant, requested.id, wait)
+
+    typer.echo(json.dumps(_run(ctx, state_dir, act), indent=2, ensure_ascii=False, default=str))
+
+
+@stop.command("global")
+def global_(
+    ctx: typer.Context,
+    wait: Wait = 60.0,
+    by: By = "operator",
+    state_dir: StateDir = Path(DEFAULT_STATE_DIR),
+) -> None:
+    """Stop every run of every tenant the instance serves; print one stop per tenant."""
+
+    async def act(
+        stops: Stops, served: Callable[[], Awaitable[tuple[str, ...]]]
+    ) -> list[dict[str, Any]]:
+        requested = await stops.request_everywhere(await served(), by)
+        return [await _until_held(stops, s.tenant, s.id, wait) for s in requested]
+
+    typer.echo(
+        json.dumps(_run_served(ctx, state_dir, act), indent=2, ensure_ascii=False, default=str)
+    )
 
 
 @stop.command("show")

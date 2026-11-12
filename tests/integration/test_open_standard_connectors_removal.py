@@ -16,22 +16,70 @@ from typing import Any
 import pytest
 from taktus_connectors.anthropic.operations import Config as CostReportConfig
 from taktus_connectors.anthropic.server import build_server as cost_report_server
+from taktus_connectors.appstores.operations import Config as StoresConfig
+from taktus_connectors.appstores.server import build_server as stores_server
 from taktus_connectors.aws.operations import Config as BillingConfig
 from taktus_connectors.aws.server import build_server as billing_server
+from taktus_connectors.bigquery.operations import Config as WarehouseConfig
+from taktus_connectors.bigquery.server import build_server as warehouse_server
+from taktus_connectors.canny.operations import Config as FeedbackConfig
+from taktus_connectors.canny.server import build_server as feedback_server
+from taktus_connectors.cloudfunctions.operations import Config as FunctionsConfig
+from taktus_connectors.cloudfunctions.server import build_server as functions_server
+from taktus_connectors.cloudrun.operations import Config as ServerlessConfig
+from taktus_connectors.cloudrun.server import build_server as serverless_server
+from taktus_connectors.depsdev.operations import Config as PackagesConfig
+from taktus_connectors.depsdev.server import build_server as packages_server
+from taktus_connectors.discourse.operations import Config as ForumConfig
+from taktus_connectors.discourse.server import build_server as forum_server
+from taktus_connectors.firebase.operations import Config as SiteReleasesConfig
+from taktus_connectors.firebase.server import build_server as site_releases_server
+from taktus_connectors.gcp.api import Config as CloudConfig
+from taktus_connectors.gcp.server import build_server as cloud_server
+from taktus_connectors.googleanalytics.operations import Config as AnalyticsConfig
+from taktus_connectors.googleanalytics.server import build_server as analytics_server
 from taktus_connectors.httpcheck.operations import Config as CheckConfig
 from taktus_connectors.httpcheck.server import build_server as check_server
+from taktus_connectors.hubspot.operations import Config as CrmConfig
+from taktus_connectors.hubspot.server import build_server as crm_server
+from taktus_connectors.jira.operations import Config as RestTasksConfig
+from taktus_connectors.jira.server import build_server as rest_tasks_server
 from taktus_connectors.kubernetes.operations import Config as WorkloadsConfig
 from taktus_connectors.kubernetes.server import build_server as workloads_server
+from taktus_connectors.linear.operations import Config as GraphTasksConfig
+from taktus_connectors.linear.server import build_server as graph_tasks_server
+from taktus_connectors.loki.operations import Config as LogsConfig
+from taktus_connectors.loki.server import build_server as logs_server
 from taktus_connectors.mail.protocol import Config as MailConfig
 from taktus_connectors.mail.server import build_server as mail_server
+from taktus_connectors.mailchimp.operations import Config as NewsletterConfig
+from taktus_connectors.mailchimp.server import build_server as newsletter_server
+from taktus_connectors.mastodon.operations import Config as SocialConfig
+from taktus_connectors.mastodon.server import build_server as social_server
+from taktus_connectors.mixpanel.operations import Config as EventsConfig
+from taktus_connectors.mixpanel.server import build_server as events_server
+from taktus_connectors.netlify.operations import Config as SiteDeploysConfig
+from taktus_connectors.netlify.server import build_server as site_deploys_server
 from taktus_connectors.openai.operations import Config as ModelCostsConfig
 from taktus_connectors.openai.server import build_server as model_costs_server
+from taktus_connectors.powerbi.operations import Config as FiguresConfig
+from taktus_connectors.powerbi.server import build_server as figures_server
 from taktus_connectors.prometheus.operations import Config as MetricsConfig
 from taktus_connectors.prometheus.server import build_server as metrics_server
+from taktus_connectors.resend.api import Config as MailApiConfig
+from taktus_connectors.resend.server import build_server as mail_api_server
+from taktus_connectors.sanity.operations import Config as ContentConfig
+from taktus_connectors.sanity.server import build_server as content_server
 from taktus_connectors.sentry.operations import Config as ErrorsConfig
 from taktus_connectors.sentry.server import build_server as errors_server
 from taktus_connectors.stripe.operations import Config as PaymentsConfig
 from taktus_connectors.stripe.server import build_server as payments_server
+from taktus_connectors.vault.operations import Config as SecretsConfig
+from taktus_connectors.vault.server import build_server as secrets_server
+from taktus_connectors.vercel.operations import Config as SiteDeploymentsConfig
+from taktus_connectors.vercel.server import build_server as site_deployments_server
+from taktus_connectors.wordpress.operations import Config as WebsiteConfig
+from taktus_connectors.wordpress.server import build_server as website_server
 
 from integration.test_removal_test import RECORDS, connector_services, result_of, run_removal
 from taktus.adapters.driven.connectors.mcp import McpActionConnector
@@ -48,25 +96,89 @@ SERVERS: dict[str, Any] = {
             security="none",
         )
     ),
+    "mail-api": lambda: mail_api_server(MailApiConfig("http://127.0.0.1:9", "support@example.org")),
     "metrics": lambda: metrics_server(MetricsConfig("http://127.0.0.1:9")),
     "check": lambda: check_server(CheckConfig("http://127.0.0.1:9")),
     "billing": lambda: billing_server(BillingConfig("http://127.0.0.1:9")),
     "model-costs": lambda: model_costs_server(ModelCostsConfig("http://127.0.0.1:9")),
     "cost-report": lambda: cost_report_server(CostReportConfig("http://127.0.0.1:9")),
     "errors": lambda: errors_server(ErrorsConfig("http://127.0.0.1:9", organization="example")),
+    "feedback": lambda: feedback_server(FeedbackConfig("http://127.0.0.1:9")),
+    "mentions-forum": lambda: forum_server(ForumConfig("http://127.0.0.1:9")),
+    "mentions-social": lambda: social_server(SocialConfig("http://127.0.0.1:9")),
     "payments": lambda: payments_server(PaymentsConfig("http://127.0.0.1:9")),
+    "packages": lambda: packages_server(PackagesConfig("http://127.0.0.1:9")),
     "workloads": lambda: workloads_server(WorkloadsConfig("http://127.0.0.1:9")),
+    "cloud": lambda: cloud_server(CloudConfig.at("example", target="http://127.0.0.1:9")),
+    "logs": lambda: logs_server(LogsConfig("http://127.0.0.1:9")),
+    "secrets": lambda: secrets_server(SecretsConfig("http://127.0.0.1:9")),
+    "stores": lambda: stores_server(StoresConfig("http://127.0.0.1:9", "http://127.0.0.1:9")),
+    "serverless": lambda: serverless_server(
+        ServerlessConfig("http://127.0.0.1:9", "example", "europe-west1")
+    ),
+    "functions": lambda: functions_server(
+        FunctionsConfig("http://127.0.0.1:9", "example", "europe-west1")
+    ),
+    "site-releases": lambda: site_releases_server(SiteReleasesConfig("http://127.0.0.1:9")),
+    "site-deploys": lambda: site_deploys_server(SiteDeploysConfig("http://127.0.0.1:9")),
+    "site-deployments": lambda: site_deployments_server(
+        SiteDeploymentsConfig("http://127.0.0.1:9")
+    ),
+    "newsletter": lambda: newsletter_server(NewsletterConfig("http://127.0.0.1:9")),
+    "website": lambda: website_server(WebsiteConfig("http://127.0.0.1:9")),
+    "content": lambda: content_server(ContentConfig("http://127.0.0.1:9")),
+    "analytics": lambda: analytics_server(AnalyticsConfig("http://127.0.0.1:9", "123456789")),
+    "events": lambda: events_server(EventsConfig("http://127.0.0.1:9", "1234567")),
+    "warehouse": lambda: warehouse_server(
+        WarehouseConfig("http://127.0.0.1:9", "example", "product_copy")
+    ),
+    "figures": lambda: figures_server(
+        FiguresConfig("http://127.0.0.1:9", "http://127.0.0.1:9", "example")
+    ),
+    "crm": lambda: crm_server(CrmConfig("http://127.0.0.1:9")),
+    "tasks-graph": lambda: graph_tasks_server(GraphTasksConfig("http://127.0.0.1:9")),
+    "tasks-rest": lambda: rest_tasks_server(RestTasksConfig("http://127.0.0.1:9", "TSK")),
 }
 SERVES = {
     "mail": ["channel.mail", "mail.messages"],
+    "mail-api": ["channel.mail", "mail.messages", "newsletter.broadcasts"],
     "metrics": ["metrics.series"],
     "check": ["check.http"],
-    "billing": ["billing.costs"],
-    "model-costs": ["models.costs"],
-    "cost-report": ["models.costs"],
+    "billing": ["billing.costs", "logs.query", "secrets.metadata"],
+    "model-costs": ["models.catalogue", "models.costs"],
+    "cost-report": ["models.catalogue", "models.costs"],
     "errors": ["errors.issues"],
-    "payments": ["payments.customers", "payments.subscriptions"],
+    "feedback": ["feedback.posts"],
+    "mentions-forum": ["mentions.search"],
+    "mentions-social": ["mentions.search"],
+    "payments": [
+        "payments.customers",
+        "payments.events",
+        "payments.failures",
+        "payments.invoices",
+        "payments.subscriptions",
+    ],
+    "packages": ["packages.licences"],
     "workloads": ["deployment.workloads"],
+    "cloud": ["billing.costs", "logs.query", "secrets.metadata"],
+    "logs": ["logs.query"],
+    "secrets": ["secrets.metadata"],
+    "stores": ["expiry.credentials", "stores.beta", "stores.releases", "stores.reviews"],
+    "serverless": ["deployment.workloads"],
+    "functions": ["deployment.sites"],
+    "site-releases": ["deployment.sites"],
+    "site-deploys": ["deployment.sites"],
+    "site-deployments": ["deployment.sites"],
+    "newsletter": ["newsletter.broadcasts"],
+    "website": ["website.posts"],
+    "content": ["website.posts"],
+    "analytics": ["analytics.reports"],
+    "events": ["analytics.reports"],
+    "warehouse": ["warehouse.queries"],
+    "figures": ["bi.figures"],
+    "crm": ["crm.contacts"],
+    "tasks-graph": ["tasks.items"],
+    "tasks-rest": ["tasks.items"],
 }
 
 
