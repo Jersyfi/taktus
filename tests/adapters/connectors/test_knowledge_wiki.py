@@ -325,16 +325,16 @@ async def test_the_guides_are_published_once_and_then_kept(wiki: Wiki) -> None:
         )
 
     first = await handler.execute(command("guides-first-0001"))
-    assert first.counted()["created"] == len(first.pages) == len(pages) + 2
+    assert first.counted()["created"] == len(first.pages) == len(pages) + 3
     for page in wiki.pages():
         if page["book_id"] in {p["book_id"] for p in wiki.pages() if p["name"] == "Contents"}:
             tags = {t["name"] for t in page["tags"]}
             assert "taktus-mark-0" in tags
     held = [p for p in wiki.pages() if p["name"] == "Contents"]
-    assert len(held) == 2
+    assert len(held) == 3
 
     again = await handler.execute(command("guides-again-0002"))
-    assert again.counted() == {"created": 0, "updated": 0, "kept": len(pages) + 2, "withheld": 0}
+    assert again.counted() == {"created": 0, "updated": 0, "kept": len(pages) + 3, "withheld": 0}
     marks = [
         Mark.decode(m)
         for m in [(await read(wiki, ["Taktus", "Administration", "Contents"]))[1]["output"]["mark"]]

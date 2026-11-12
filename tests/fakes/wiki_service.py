@@ -14,7 +14,7 @@ What it enforces, because the connector's checks depend on it:
   was started with (`FAKE_WIKI_TOKENS`, `value|scope,...`; scope `read` or `write`, default
   `write`). No value or an unknown one: 401. A `read` scope writing: 403. Every fault is the
   wiki's body `{"error": {"code": …, "message": …}}`.
-- **Structure.** The shelf `Taktus` holds the books `Administration` and `Using Taktus`; the
+- **Structure.** The shelf `Taktus` holds the books `Administration`, `Using Taktus` and `Developing`; the
   shelf `Scratch` the book `Conformance`; the shelf `Elsewhere` the book `Other`. The book
   `Conformance` holds the page `Seeded page`, and a chapter with the page `In a chapter`.
   Shelves and books are never created through the interface: a person makes them.
@@ -105,7 +105,7 @@ class Store:
         self.sequence = 0
         self.requests = 0
         taktus = self.shelf("Taktus")
-        for name in ("Administration", "Using Taktus"):
+        for name in ("Administration", "Using Taktus", "Developing"):
             self.book(taktus, name)
         conformance = self.book(self.shelf("Scratch"), "Conformance")
         self.book(self.shelf("Elsewhere"), "Other")
