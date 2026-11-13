@@ -663,9 +663,53 @@ class DeviationStatistic(Value):
     minimum: int = Field(default=7, ge=1, le=366)
 
 
-type StatisticsWork = DeviationStatistic
-"""What a `statistics` step computes. One statistic in this version; the next joins it as a
-union discriminated by `statistic`."""
+ALPHAS = ("0.10", "0.05", "0.01", "0.001")
+"""The significance levels a test of two rates may be held to: a closed set, each with its fixed
+critical value (`domain.service.statistics`), so that the decision needs no approximation."""
+
+type KeyPath = tuple[str, ...]
+
+
+class SignificanceStatistic(Value):
+    """Whether two rates differ beyond chance: a two-sided test of two proportions, pooled
+    (`domain.service.statistics`, ADR-0313). `rows` is a report's rows, usually a reference to an
+    analytics reading; each row names its variant at the path `variant`, its event at `event`
+    and its count at `count`, every path a list of keys. The rows of the `exposure` event are a
+    variant's trials, the rows of the `conversion` event its successes, summed per variant.
+    `control` and `treatment` are the two variants' values. Whether the difference is
+    significant is decided by comparing the statistic with the fixed critical value of `alpha`,
+    in decimal arithmetic; the same rows always give the same decision."""
+
+    statistic: Literal["significance"]
+    rows: Any
+    variant: KeyPath = Field(min_length=1)
+    event: KeyPath = Field(min_length=1)
+    count: KeyPath = Field(min_length=1)
+    control: str = Field(min_length=1)
+    treatment: str = Field(min_length=1)
+    exposure: str = Field(min_length=1)
+    conversion: str = Field(min_length=1)
+    alpha: Literal["0.10", "0.05", "0.01", "0.001"] = "0.05"
+
+    @model_validator(mode="after")
+    def _two_of_each(self) -> SignificanceStatistic:
+        if self.control == self.treatment:
+            raise ValueError("control and treatment must be two different variants")
+        if self.exposure == self.conversion:
+            raise ValueError("exposure and conversion must be two different events")
+        return self
+
+
+type StatisticsWork = DeviationStatistic | SignificanceStatistic
+"""What a `statistics` step computes, chosen by `statistic`."""
+
+
+def _statistic(given: Mapping[str, Any]) -> StatisticsWork:
+    """The statistic `given` names; any name but `significance` is read as a `deviation`, so
+    that a wrong name is refused under `statistic` itself."""
+    if given.get("statistic") == "significance":
+        return SignificanceStatistic.model_validate(given)
+    return DeviationStatistic.model_validate(given)
 
 
 class WaitUntil(Value):
@@ -1243,7 +1287,7 @@ def parse_work(
         if step.method is Method.STATISTICS:
             if given is None:
                 raise UnsupportedWork(step.id, "a statistics step names its statistic under `work`")
-            return DeviationStatistic.model_validate(given)
+            return _statistic(given)
         if step.method is Method.WAIT:
             return WaitWork.model_validate(given or {})
         if step.method is Method.WORKER:
@@ -1463,6 +1507,8 @@ def referenced_values(work: Work) -> list[Any]:
         return [work.subscriptions, work.failures, work.as_of]
     if isinstance(work, DeviationStatistic):
         return [work.days]
+    if isinstance(work, SignificanceStatistic):
+        return [work.rows]
     if isinstance(work, CommitTitleRule):
         return [work.title, work.number, work.labels, work.files, work.proposal]
     if isinstance(work, WaitWork) and work.until is not None:

@@ -139,6 +139,7 @@ processes:
   - { id: B-6.03, name: B-6.03 Recurring revenue and churn, bundle: processes/B-6.03-recurring-revenue.yaml }
   - { id: B-6.04, name: B-6.04 Failed payments, bundle: processes/B-6.04-failed-payments.yaml }
   - { id: B-6.06, name: B-6.06 Outgoing invoices, bundle: processes/B-6.06-outgoing-invoices.yaml }
+  - { id: B-6.07, name: B-6.07 Price experiments, bundle: processes/B-6.07-price-experiments.yaml }
   - { id: B-7.01, name: B-7.01 Triage, bundle: processes/B-7.01-triage.yaml }
   - { id: B-7.04, name: B-7.04 Keeping pull requests mergeable, bundle: processes/B-7.04-mergeable.yaml }
   - { id: B-7.05, name: B-7.05 Review, bundle: processes/B-7.05-review.yaml }
@@ -161,7 +162,11 @@ processes:
   - { id: B-8.08, name: B-8.08 Changelog and website, bundle: processes/B-8.08-changelog-and-website.yaml }
   - { id: B-9.02, name: B-9.02 Questions about figures, bundle: processes/B-9.02-figures.yaml }
   - { id: B-9.03, name: B-9.03 Weekly trends, bundle: processes/B-9.03-weekly-trends.yaml }
+  - { id: B-9.04, name: B-9.04 Clustering feature wishes, bundle: processes/B-9.04-wish-clusters.yaml }
   - { id: B-9.06, name: B-9.06 Onboarding drop-offs, bundle: processes/B-9.06-onboarding.yaml }
   - { id: B-9.07, name: B-9.07 Newsletter, bundle: processes/B-9.07-newsletter.yaml }
+  - { id: B-9.09, name: B-9.09 Business leads, bundle: processes/B-9.09-business-leads.yaml }
+  - { id: B-9.10, name: B-9.10 Watching competitors, bundle: processes/B-9.10-competitors.yaml }
   - { id: B-10.01, name: B-10.01 Deadline calendar, bundle: processes/B-10.01-deadlines.yaml }
+  - { id: B-10.02, name: B-10.02 Processing agreements, bundle: processes/B-10.02-outside-services.yaml }
   - { id: B-10.04, name: B-10.04 Licences of dependencies, bundle: processes/B-10.04-dependency-licences.yaml }
