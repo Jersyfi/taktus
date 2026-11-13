@@ -62,7 +62,8 @@ Its image is `Dockerfile` in this directory (`docker build -f workers/browser/Do
 the driver at the exact versions `requirements.txt` names — the extra `browser` of
 `pyproject.toml`, which the tests run with — and the headless Chromium of that release.
 Playwright brings its own Node runtime, so the image scan judges the driver's release too: a
-driver is raised when its runtime carries a fixed high or critical vulnerability.
+driver is raised when its runtime carries a fixed high or critical vulnerability. That runtime
+needs `libatomic1`, which the image installs before the driver.
 
 ## Proven
 
