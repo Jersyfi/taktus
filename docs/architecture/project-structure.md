@@ -146,7 +146,9 @@ control plane keeps its side of the port under `adapters/driven/connectors/` —
 the pool, and the loopback and directory connectors, which reach the instance itself and run in
 its process. A connector that reaches a cloud's API signs with its own copy of the key exchange
 (`auth.py` in its directory), because an image holds nothing of another connector; the release's
-list (`composition/shipped.json`, `make generate`) names each one with what it declares.
+list (`composition/shipped.json`, `make generate`) names each one with what it declares, a
+connector that serves only part of a capability's group — a models list without its costs —
+with only what it serves.
 
 `tests/architecture` fails on:
 

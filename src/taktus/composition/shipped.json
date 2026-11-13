@@ -454,6 +454,16 @@
     },
     {
       "capabilities": [
+        "models.catalogue"
+      ],
+      "image": "taktus-connector-mistral",
+      "name": "mistral",
+      "operations": [
+        "models.catalogue.list"
+      ]
+    },
+    {
+      "capabilities": [
         "analytics.reports"
       ],
       "image": "taktus-connector-mixpanel",
