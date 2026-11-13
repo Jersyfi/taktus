@@ -399,7 +399,7 @@ role it would tie the core to a model stack and the removal test would be lost.
   and never as a bundle. `InstanceScaffolds` (`composition/scaffolds.py`) reads a scaffold at
   its version in production, or a check at its newest readable one, and resolves the repository
   and the knowledge system by capability for the catalogue's `ScaffoldProjects`, which checks a
-  project against it and furnishes the missing artifacts. `shipped.json` lists
+  project against it and furnishes the missing artifacts. The loopback connector serves both as `orchestrator.scaffolds` through `LoopbackScaffolds`, and `taktusctl scaffold` (`adapters/driving/cli/scaffold_command.py`) through `Services.scaffolds` (ADR-0308). `shipped.json` lists
   `repository.files.dates`. The models
   configured in `TAKTUS_MODELS` reach the run as one pool in chain order
   (`composition/execution.py`, `composition/settings.py`, ADR-0116), and each is held to the

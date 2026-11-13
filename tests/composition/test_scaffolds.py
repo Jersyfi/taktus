@@ -4,14 +4,25 @@ furnishing a project only from production (ADR-0307, UC-13.2)."""
 
 from __future__ import annotations
 
+import asyncio
+import json
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner
 
 import composition.test_skills as sk
-from taktus.components.catalog.application.service.scaffolds import Acting, Project
+from taktus.adapters.driving.cli.scaffold_command import scaffold as scaffold_cli
+from taktus.components.catalog.application.service.scaffolds import Acting, Furnished, Project
 from taktus.components.catalog.domain.model import OriginKind, SkillError, SkillStage
-from taktus.components.catalog.domain.model.scaffold import ArtifactState
+from taktus.components.catalog.domain.model.scaffold import (
+    ArtifactFinding,
+    ArtifactState,
+    ProjectCheck,
+    System,
+)
 from taktus.composition.scaffolds import InstanceScaffolds
 from taktus.ports.connector import ResolvedConnector
 
@@ -123,3 +134,73 @@ async def test_a_skill_without_a_scaffold_yaml_is_not_a_scaffold(tmp_path: Path)
     with pytest.raises(SkillError) as unknown:
         await scaffolds.scaffold(TENANT, "no-such-scaffold")
     assert unknown.value.reason == "unknown"
+
+
+class Wired:
+    """The command line's wiring, over the scaffolds a test wires."""
+
+    def __init__(self, scaffolds: object) -> None:
+        self.scaffolds = scaffolds
+
+    @asynccontextmanager
+    async def services(self, **_: object) -> AsyncIterator[Wired]:
+        yield self
+
+
+class Missing:
+    """Scaffolds that find the use cases missing, and furnish them."""
+
+    async def check(self, tenant: str, name: str, project: Project, acting: Acting) -> ProjectCheck:
+        return ProjectCheck(
+            scaffold=f"{name}@1",
+            stage="production",
+            commit="c" * 40,
+            findings=(
+                ArtifactFinding(
+                    artifact="use-cases",
+                    title="Use cases",
+                    system=System.REPOSITORY,
+                    state=ArtifactState.MISSING,
+                ),
+            ),
+        )
+
+    async def furnish(self, tenant: str, name: str, project: Project, acting: Acting) -> Furnished:
+        check = await self.check(tenant, name, project, acting)
+        return Furnished(check=check, created=("use-cases",), branch="b", pull_request=7)
+
+
+def test_the_command_line_checks_and_furnishes_and_exits_by_what_it_found() -> None:
+    """`taktusctl scaffold` (ADR-0308): a missing artifact is exit 1, so that CI can run it; a
+    furnishing prints what it created; a scaffold not in production is refused."""
+    runner = CliRunner()
+    found = runner.invoke(
+        scaffold_cli, ["check", "development-scaffold", "--branch", "main"], obj=Wired(Missing())
+    )
+    assert found.exit_code == 1, found.output
+    assert json.loads(found.output)["missing"] == ["Use cases"]
+    made = runner.invoke(
+        scaffold_cli,
+        ["furnish", "development-scaffold", "--branch", "main", "--key", "k1"],
+        obj=Wired(Missing()),
+    )
+    assert made.exit_code == 0, made.output
+    assert json.loads(made.output)["pull_request"] == 7
+
+    world = sk.World()
+    asyncio.run(world.lifecycle.register_directory(TENANT, ROOT / "scaffolds", "1.0.0", by=WHO))
+    drafts = Wired(InstanceScaffolds(world.catalog, NoConnectors()))
+    unread = runner.invoke(
+        scaffold_cli,
+        ["check", "development-scaffold", "--branch", "main", "--tenant", TENANT],
+        obj=drafts,
+    )
+    assert unread.exit_code == 0, unread.output
+    assert json.loads(unread.output)["stage"] == "draft"
+    refused = runner.invoke(
+        scaffold_cli,
+        ["furnish", "development-scaffold", "--branch", "main", "--tenant", TENANT],
+        obj=drafts,
+    )
+    assert refused.exit_code == 1
+    assert "refused (not_in_production)" in refused.output

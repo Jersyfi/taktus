@@ -369,6 +369,28 @@ class ScaffoldProjects:
         return (await connector.call(operation, context, input)).output
 
 
+def summary(check: ProjectCheck) -> dict[str, Any]:
+    """The check as a document, with the titles of what is missing and unmaintained."""
+    return {
+        **check.model_dump(mode="json"),
+        "missing": [f.title for f in check.of(ArtifactState.MISSING)],
+        "unmaintained": [f.title for f in check.of(ArtifactState.UNMAINTAINED)],
+    }
+
+
+def furnished(done: Furnished) -> dict[str, Any]:
+    """What a furnishing created, as a document."""
+    return {
+        "scaffold": done.check.scaffold,
+        "created": list(done.created),
+        "kept": list(done.kept),
+        "branch": done.branch,
+        "pull_request": done.pull_request,
+        "pull_request_url": done.pull_request_url,
+        "check": summary(done.check),
+    }
+
+
 def _moment(value: Any) -> datetime | None:
     if not isinstance(value, str) or not value:
         return None

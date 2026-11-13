@@ -200,6 +200,7 @@ from taktus.composition.owner_channel import known_secrets, owner_channel_wiring
 from taktus.composition.personal import ConfiguredPersonalCredentials
 from taktus.composition.proposals import InstanceChanges
 from taktus.composition.residency import PoolBindings
+from taktus.composition.scaffolds import InstanceScaffolds, LoopbackScaffolds
 from taktus.composition.settings import (
     ExecutionKind,
     load_administration,
@@ -598,6 +599,7 @@ class LocalWiring:
                 ),
                 guides=InstanceGuides(pools.connectors, owner.channel, owner.raising, clock),
                 maturation=InstanceMaturation(maturation),
+                scaffolds=LoopbackScaffolds(InstanceScaffolds(skill_catalog, pools.connectors)),
                 # A change in dialogue, which S-07 runs (ADR-0091 §2).
                 changes=InstanceChanges(
                     Proposals(
@@ -944,6 +946,7 @@ class LocalWiring:
                 ),
                 stages=staged.stages,
                 skills=skill_lifecycle,
+                scaffolds=InstanceScaffolds(skill_catalog, pools.connectors),
                 agents=shared_agents,
                 shares=shares.shares,
                 catalogue_use=CatalogueUse(runs, ledger, stores.work),

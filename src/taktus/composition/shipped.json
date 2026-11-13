@@ -426,6 +426,7 @@
         "orchestrator.maturation",
         "orchestrator.maturity",
         "orchestrator.removal",
+        "orchestrator.scaffolds",
         "orchestrator.spend"
       ],
       "image": null,
@@ -445,6 +446,8 @@
         "orchestrator.maturation.propose",
         "orchestrator.maturity.record",
         "orchestrator.removal.exercise",
+        "orchestrator.scaffolds.check",
+        "orchestrator.scaffolds.furnish",
         "orchestrator.spend.cases"
       ]
     },
