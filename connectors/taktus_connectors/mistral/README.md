@@ -12,13 +12,13 @@ watches model costs (B-2.01) reads them from the providers that publish them.
 It is product support for any tenant, not a requirement: the control plane runs with it removed.
 
 ```
-uv run python -m taktus_connectors.mistral --port 9113
+uv run python -m taktus_connectors.mistral --port 9115
 ```
 
 serves MCP over streamable HTTP at `/mcp` and readiness at `GET /health`. `--target` is the
 API's address (default `https://api.mistral.ai`). `--timeout` is the longest one request may
 take, in seconds (default 30). Added to an instance by one entry of `TAKTUS_CONNECTORS`:
-`models.catalogue=http://model-catalogue-connector:9113/mcp`.
+`models.catalogue=http://model-catalogue-connector:9115/mcp`.
 
 ## What it declares
 
@@ -69,7 +69,7 @@ references none is refused. The key goes to the configured address and nowhere e
 
 ```
 uv run taktusctl conformance run --contract connector/v1 \
-    --endpoint http://127.0.0.1:9113/mcp --scenario connectors/taktus_connectors/mistral/scenario.json
+    --endpoint http://127.0.0.1:9115/mcp --scenario connectors/taktus_connectors/mistral/scenario.json
 ```
 
 [`scenario.json`](scenario.json) reads the list from the fake under

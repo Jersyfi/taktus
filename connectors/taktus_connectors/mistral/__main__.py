@@ -1,6 +1,6 @@
 """Run the model catalogue connector over the models list as a process.
 
-    uv run python -m taktus_connectors.mistral --port 9113
+    uv run python -m taktus_connectors.mistral --port 9115
 
 It serves MCP over streamable HTTP at `/mcp` and readiness at `GET /health`. `--target` is the
 API's address (default the provider's own); point it at the fake under
@@ -19,7 +19,7 @@ from taktus_connectors.mistral.server import served
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = serving.arguments("The model catalogue connector over the models list.", 9113)
+    parser = serving.arguments("The model catalogue connector over the models list.", 9115)
     parser.add_argument("--target", default=TARGET, help="the API's address")
     args = parser.parse_args(argv)
     return serving.serve(served(Config(args.target, args.timeout), args.fault), args)
