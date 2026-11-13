@@ -15,7 +15,9 @@ ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1 \
     TAKTUS_UNIT_PORT=9000 TAKTUS_UNIT_STATE_DIR=/var/lib/taktus/unit
 COPY workers/browser/requirements.txt /tmp/requirements.txt
 # The system libraries Chromium needs come with `--with-deps`, as root, before the user exists.
-RUN pip install --no-deps -r /tmp/requirements.txt \
+# The driver's own Node runtime needs libatomic before it can run at all.
+RUN apt-get update && apt-get install -y --no-install-recommends libatomic1 \
+    && pip install --no-deps -r /tmp/requirements.txt \
     && rm /tmp/requirements.txt \
     && python -m playwright install --with-deps --only-shell chromium \
     && rm -rf /var/lib/apt/lists/* \
