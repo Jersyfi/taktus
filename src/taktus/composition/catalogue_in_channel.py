@@ -22,12 +22,16 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
 
 from taktus.adapters.driving.rest.wiring import StartRefused
 from taktus.components.reporting.domain.model import OwnerChannel, PendingAct
+from taktus.components.reporting.domain.model.channel import Phrasebook
 from taktus.components.reporting.domain.service import reading as rules
 from taktus.components.reporting.ports import Deliveries, SecretValues, Sent
+from taktus.components.run.domain.model import DemandToAccept
 from taktus.composition.agent_surface import AgentSurface
 from taktus.ports.clock import Clock
 from taktus.ports.identity import IdentityResolver
@@ -121,6 +125,10 @@ class CatalogueInChannel:
         chosen = next((e for e in listed.entries if e.process == asked.process), None)
         if chosen is None or chosen.start.chat is None:
             return await self._say(found, book.start_not_done, thread, event, REFUSED)
+        # A run that needs much says its estimated demand in the reading, and the person's yes
+        # accepts it; the pending act keeps that it was said (ADR-0299 §1).
+        shown = await self._surface.demand(who, chosen.process)
+        much = shown is not None and bool(shown["much"])
         act = PendingAct(
             id=_key(address, thread),
             tenant=tenant,
@@ -129,10 +137,13 @@ class CatalogueInChannel:
             version=chosen.version.split("@", 1)[1],
             by=identity,
             asked_at=self._clock.now(),
+            result={"demand": shown["estimate"]} if much and shown is not None else None,
         )
         async with self._work.transaction(tenant):
             await self._pending.put(tenant, act)
         read = _filled(book.start_read, process=chosen.process, name=chosen.name)
+        if much and shown is not None:
+            read = f"{read} {_demand_said(book, shown)}"
         confirm = book.confirm.format(yes=book.yes_words[0], no=book.no_words[0])
         return await self._say(found, f"{read} {confirm}", thread, event, ASKED)
 
@@ -158,7 +169,17 @@ class CatalogueInChannel:
             return await self._say(found, book.start_not_done, thread, event, REFUSED)
         try:
             run = await self._surface.start(
-                who, process, {}, channel=found.channel, address=found.address
+                who,
+                process,
+                {},
+                channel=found.channel,
+                address=found.address,
+                accept_demand=waiting.result is not None,
+            )
+        except DemandToAccept as needs:
+            # It needs much now and did not when it was read: it is read again, with its demand.
+            return await self._say(
+                found, f"{_demand_said(book, needs.shown)} {book.reread}", thread, event, REFUSED
             )
         except StartRefused:
             return await self._say(found, book.start_not_done, thread, event, REFUSED)
@@ -181,6 +202,19 @@ class CatalogueInChannel:
             key=_idempotency(event),
         )
         return Starting(outcome=outcome, replied=isinstance(sent, Sent))
+
+
+def _demand_said(book: Phrasebook, shown: Mapping[str, Any]) -> str:
+    """A run's estimated demand in one sentence of the phrasebook's language (ADR-0299 §1)."""
+    estimate = ", ".join(f"{k} {v:g}" for k, v in sorted(shown["estimate"].items())) or "nothing"
+    limits = ", ".join(
+        f"{lim['limit']} ({lim['unit']})" for lim in shown["limits"] if lim["reaches"]
+    )
+    template = book.start_demand or (
+        "It is estimated at {estimate}, which reaches half or more of what remains of {limits}; "
+        "your yes accepts that."
+    )
+    return template.format(estimate=estimate, limits=limits)
 
 
 def _filled(template: str | None, **values: str) -> str:

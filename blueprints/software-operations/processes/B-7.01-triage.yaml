@@ -37,7 +37,7 @@
 # Switching it off (`taktusctl deactivate --process b-7-01`) changes nothing in the repository.
 
 id: b-7-01
-version: "3"
+version: "4"
 name: B-7.01 Triage
 autonomy:
   level: 2
@@ -558,3 +558,9 @@ takeover:
             requesting identity described in CREDENTIALS.md; a person signs in with their own
             account that may comment on issues
       done: the comment is on the issue, or nothing was to be named
+
+# What counts as an equivalent result of each variable step that no scorer scores
+# yet: its class's ceiling until its cases narrow it (UC-8.4, ADR-0300 §1).
+tolerances:
+  classify: 0.25
+  duplicate: 0.25

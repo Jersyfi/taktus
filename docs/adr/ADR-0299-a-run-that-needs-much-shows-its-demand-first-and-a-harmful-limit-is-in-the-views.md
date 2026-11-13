@@ -48,6 +48,15 @@ A start names whether a person commissions the run there (`StartRun.demand_accep
 run that needs much prints its demand, writes nothing, and exits with code 4. `--accept-demand`
 starts it.
 
+Every other surface where a person starts a run asks the same before it commissions anything:
+
+- **a start from the catalogue** — the web app's list, a person's agent — is refused with 409 and
+  the demand (`demand` in the problem), and `accept_demand` in the request starts it;
+- **commissioning in the plan dialogue** a draft that hands its description to the describe
+  process is refused with 409 and the demand of that run, and `?accept_demand=true` commissions it;
+- **a start in the owner's conversation** says the demand in the reading it asks the person to
+  confirm, and the person's yes is the acceptance.
+
 ### 2. A harmful limit is a figure of its unit and of each process it held
 
 The rule of ADR-0282 §4 also records, in the report's facts, the seconds it held per process.
@@ -95,9 +104,11 @@ configuration.
 
 ## Where this promise ends
 
-- **Only where a person commissions here.** The demand is shown where a surface names the
-  person who commissions the run — the command line's `run` and `submit` today. A start that
-  names no person, and every surface that does not ask for the demand, starts as before.
+- **Only where a person commissions here.** The demand is shown where a person starts or
+  commissions a run: the command line, the catalogue, the plan dialogue and the conversation. A
+  start that names no person — a trigger, a deadline, a reaction, a trial — starts as before.
+- **A yes in the conversation accepts what it read.** Where the run did not need much when it was
+  read and does when it is confirmed, the start is refused and read again with its demand.
 - **Much is measured against unit limits.** The share is taken of what remains of the unit limits
   on the run's path. A run's own budget, the department's quota (ADR-0166) and the tenant's
   monthly budget (ADR-0260) are shown nowhere in this estimate, and a tenant without unit limits

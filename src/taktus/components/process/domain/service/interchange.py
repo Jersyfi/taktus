@@ -377,6 +377,11 @@ def bundle_of(draft: Draft, version: str = "1") -> dict[str, Any]:
         },
         "reason": f"taken from the process model {draft.source} through a plan draft",
         "steps": steps,
+        **(
+            {"tolerances": tolerances}
+            if (tolerances := {s.id: s.tolerance for s in draft.steps if s.tolerance is not None})
+            else {}
+        ),
         "takeover": {
             "sequence": draft.sequence,
             "steps": {

@@ -91,14 +91,16 @@ def fill(document: dict[str, Any]) -> dict[str, Any]:
     answers: dict[str, dict[str, Any]] = {
         "read-invoice": {"method": "worker", "exactness": "sourced",
                          "checks": [{"kind": "sampling", "share": 0.1, "role": "accounting"}],
-                         "fallback": {"when": "the document cannot be read", "to": "human"}},
+                         "fallback": {"when": "the document cannot be read", "to": "human"},
+                         "tolerance": 0.05},
         "check-invoice": {"method": "human"},
         "approve-payment": {"method": "human",
                             "when": [{"value": {"$input": "amount"}, "matches": "^[0-9]{4,}"}]},
         "book-invoice": {"method": "rule", "exactness": "exact",
                          "checks": [{"kind": "recomputation", "subject": "the booking"}]},
         "archive-invoice": {"method": "worker", "exactness": "free",
-                            "fallback": {"when": "the archive refuses it", "to": "human"}},
+                            "fallback": {"when": "the archive refuses it", "to": "human"},
+                            "tolerance": 1.0},
     }  # fmt: skip
     for step in document["steps"]:
         step.update(answers[step["id"]])

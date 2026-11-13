@@ -14,7 +14,7 @@
 #
 # Switching it off (`taktusctl deactivate --process b-7-11`) leaves open pull requests as they are.
 id: b-7-11
-version: "2"
+version: "3"
 name: B-7.11 Documentation kept current
 autonomy:
   level: 2
@@ -402,3 +402,8 @@ takeover:
             the operator's secret store, under the parameter Repository token of the requesting
             identity described in CREDENTIALS.md
       done: the pull request carries the label taktus
+
+# What counts as an equivalent result of each variable step that no scorer scores
+# yet: its class's ceiling until its cases narrow it (UC-8.4, ADR-0300 §1).
+tolerances:
+  implement: 0.25

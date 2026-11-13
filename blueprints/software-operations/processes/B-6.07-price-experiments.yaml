@@ -23,7 +23,7 @@
 # Switching it off (`taktusctl deactivate --process b-6-07`) changes nothing: it only reads.
 
 id: b-6-07
-version: "1"
+version: "2"
 name: B-6.07 Price experiments
 autonomy:
   level: 1
@@ -203,3 +203,8 @@ takeover:
       expertise: pricing a software product
       credentials: []
       done: the recommendation is written
+
+# What counts as an equivalent result of each variable step that no scorer scores
+# yet: its class's ceiling until its cases narrow it (UC-8.4, ADR-0300 §1).
+tolerances:
+  recommend: 1

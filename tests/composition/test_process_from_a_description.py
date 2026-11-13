@@ -278,7 +278,7 @@ async def test_a_description_becomes_a_proposal_for_a_first_version_and_nothing_
 ):
     world = await World(json.dumps(described())).setup()
     run = await world.acts.ask(TENANT, "follow-up", DESCRIPTION, WHO)
-    assert run.process_version == "s08-process-from-a-description@1"
+    assert run.process_version == "s08-process-from-a-description@2"
     finished = await world.run_through(run.id)
     assert finished.state is RunState.FINISHED, finished
     (proposal,) = await world.proposals.of_process(TENANT, "follow-up")

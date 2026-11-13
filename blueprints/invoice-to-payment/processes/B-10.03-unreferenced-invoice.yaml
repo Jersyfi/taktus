@@ -22,7 +22,7 @@
 #         --input document=<the document's file name in the inbox>
 
 id: b-10-03-unreferenced-invoice
-version: "3"
+version: "4"
 name: B-10.03 Unreferenced invoice
 autonomy:
   level: 3
@@ -451,3 +451,8 @@ takeover:
             identity described in CREDENTIALS.md; a person releasing by hand uses their own
             account in the accounting system, with the right to release payments
       done: the payment is in the payment run with the checked amount, or it was not released
+
+# What counts as an equivalent result of each variable step that no scorer scores
+# yet: its class's ceiling until its cases narrow it (UC-8.4, ADR-0300 §1).
+tolerances:
+  classify: 0.25

@@ -309,6 +309,9 @@ export interface Problem {
 	status: number;
 	title: string;
 	detail: string;
+	/** A run that needs much of what remains of a unit limit: its estimated demand, shown before
+	 * it starts; the same request with the demand accepted starts it (ADR-0299). */
+	demand?: Record<string, unknown>;
 }
 
 /** One option of a decision request (ADR-0008). */

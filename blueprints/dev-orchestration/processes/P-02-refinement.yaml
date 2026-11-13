@@ -25,7 +25,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p02-refinement
-version: "8"
+version: "9"
 name: P-02 Refinement
 autonomy:
   level: 3
@@ -333,3 +333,8 @@ takeover:
             the operator's secret store, under the parameter REPOSITORY_TOKEN described in
             CREDENTIALS.md; a person may instead use their own account, if it may comment
       done: the comment is on the issue, and the issue and its labels are unchanged
+
+# What counts as an equivalent result of each variable step that no scorer scores
+# yet: its class's ceiling until its cases narrow it (UC-8.4, ADR-0300 §1).
+tolerances:
+  refine: 0.05

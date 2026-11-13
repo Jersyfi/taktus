@@ -52,16 +52,29 @@ PROCESSES = [
 class Surface:
     """The surface's catalogue as the pure view draws it; every start recorded."""
 
-    def __init__(self) -> None:
+    def __init__(self, demand: dict[str, Any] | None = None) -> None:
         self.started: list[tuple[str, str, dict[str, Any], str, str]] = []
+        self.accepted: list[bool] = []
+        self._demand = demand
 
     async def catalogue(self, who: Resolution, *, agent_may_start: bool) -> Catalogue:
         return catalogue(PROCESSES, agent_may_start=agent_may_start, chat_word="starte")
 
+    async def demand(self, who: Resolution, process: str) -> dict[str, Any] | None:
+        return self._demand
+
     async def start(
-        self, who: Resolution, process: str, inputs: Any, *, channel: str, address: str
+        self,
+        who: Resolution,
+        process: str,
+        inputs: Any,
+        *,
+        channel: str,
+        address: str,
+        accept_demand: bool = False,
     ) -> Any:
         self.started.append((who.identity, process, dict(inputs), channel, address))
+        self.accepted.append(accept_demand)
         return SimpleNamespace(id="run_9")
 
 
@@ -72,10 +85,10 @@ class Identities:
         return Resolution(tenant=tenant, identity=identity, org_path=(tenant,))
 
 
-async def given() -> tuple[World, Surface, CatalogueInChannel]:
+async def given(demand: dict[str, Any] | None = None) -> tuple[World, Surface, CatalogueInChannel]:
     world = owner_channel()
     await world.configure(view_base="https://taktus.example/a")
-    surface = Surface()
+    surface = Surface(demand)
     handler = CatalogueInChannel(
         channels=MemoryRepository(world.persistence, OwnerChannel),
         pending=MemoryRepository(world.persistence, PendingAct),
@@ -143,3 +156,30 @@ async def test_an_unseen_process_one_that_needs_an_input_and_an_outsider_are_ref
     )
     assert elsewhere is None, "another address is not this handler's"
     assert await say(handler, "zeige prozess daily", n=9) is None, "not a start"
+
+
+MUCH = {
+    "much": True,
+    "estimate": {"money.eur": 40.0},
+    "limits": [{"limit": "team_month", "unit": "sales", "reaches": ["money.eur"]}],
+}
+
+
+async def test_a_start_that_needs_much_says_its_demand_and_the_yes_accepts_it() -> None:
+    """UC-8.10 §2, ADR-0299 §1: the reading names the estimated demand and the limit it reaches;
+    the person's yes is the acceptance, and the run starts with it."""
+    world, surface, handler = await given(MUCH)
+    await say(handler, "starte daily")
+    reading = world.deliveries.said[-1].text
+    assert "money.eur 40" in reading and "team_month (sales)" in reading
+    assert "Dein Ja nimmt das an" in reading, "the shipped German phrasebook says it"
+    done = await say(handler, "ja", n=2)
+    assert done is not None and done.outcome == STARTED
+    assert surface.accepted == [True]
+
+
+async def test_a_start_that_needs_little_is_started_without_an_acceptance() -> None:
+    _, surface, handler = await given()
+    await say(handler, "starte daily")
+    await say(handler, "ja", n=2)
+    assert surface.accepted == [False], "the engine asks again if it needs much by then"

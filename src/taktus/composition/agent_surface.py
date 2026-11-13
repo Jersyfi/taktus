@@ -42,7 +42,7 @@ from taktus.components.reporting.domain.service.catalogue import (
     catalogue,
 )
 from taktus.components.run.application.service import RunEngine, StartRun
-from taktus.components.run.domain.model import Run, RunError
+from taktus.components.run.domain.model import DemandToAccept, Run, RunError
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.identity import Resolution
 from taktus.ports.ledger import Fact, Ledger
@@ -153,8 +153,11 @@ class AgentSurface:
         *,
         channel: str = CHANNEL,
         address: str = "ledger",
+        accept_demand: bool = False,
     ) -> Run:
-        """The active version started as `who`, by the one start command, on `channel`."""
+        """The active version started as `who`, by the one start command, on `channel`. A run
+        that needs much is refused with `DemandToAccept`, carrying its estimated demand, until
+        the person accepts it; nothing is commissioned before (ADR-0299 §1)."""
         version = await self._version(who, process_id)
         missing = [name for name in version.required_inputs if name not in inputs]
         if missing:
@@ -166,6 +169,16 @@ class AgentSurface:
         except ValueError as error:
             raise StartRefused(f"{version.ref}: `limits`: {error}") from error
         given = dict(inputs)
+        if not accept_demand:
+            shown = await self._engine.demand(
+                who.tenant,
+                process_version=version.ref,
+                identity=who.identity,
+                org_unit=who.org_path[1] if len(who.org_path) > 1 else None,
+                budget=budget,
+            )
+            if shown["much"]:
+                raise DemandToAccept(shown)
         command = start_command(
             id=self._ids.new("cmd"),
             channel=channel,
@@ -197,10 +210,31 @@ class AgentSurface:
                     tenant=who.tenant,
                     inputs=given,
                     actions=version.autonomy.action_levels,
+                    demand_accepted=accept_demand,
                 )
             )
+        except DemandToAccept:
+            raise
         except RunError as error:
             raise StartRefused(str(error)) from error
+
+    async def demand(self, who: Resolution, process_id: str) -> dict[str, Any] | None:
+        """The estimated demand of a run of the process's active version, as `who` would start
+        it (ADR-0299 §1); None where the version names no budget."""
+        version = await self._version(who, process_id)
+        if version.limits is None:
+            return None
+        try:
+            budget = Limits.model_validate(dict(version.limits))
+        except ValueError:
+            return None
+        return await self._engine.demand(
+            who.tenant,
+            process_version=version.ref,
+            identity=who.identity,
+            org_unit=who.org_path[1] if len(who.org_path) > 1 else None,
+            budget=budget,
+        )
 
     async def called(
         self,

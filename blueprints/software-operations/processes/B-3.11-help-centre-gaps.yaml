@@ -25,7 +25,7 @@
 # draft until a person publishes or deletes it.
 
 id: b-3-11
-version: "2"
+version: "3"
 name: B-3.11 Gaps in the help centre
 autonomy:
   level: 2
@@ -322,3 +322,9 @@ takeover:
             identity described in CREDENTIALS.md; a person signs in with their own agent account
             that may create articles
       done: the draft exists unpublished in the section, or nothing was created for a stated reason
+
+# What counts as an equivalent result of each variable step that no scorer scores
+# yet: its class's ceiling until its cases narrow it (UC-8.4, ADR-0300 §1).
+tolerances:
+  draft: 1
+  original: 1

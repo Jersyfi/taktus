@@ -17,7 +17,7 @@
 # reaches itself (docs/architecture/contracts.md §4).
 
 id: s08-process-from-a-description
-version: "1"
+version: "2"
 name: S-08 Process from a description
 autonomy:
   level: 3
@@ -149,3 +149,8 @@ takeover:
       expertise: reading the check's findings
       credentials: []
       done: the bundle would register, and the proposal is with the person who described it
+
+# What counts as an equivalent result of each variable step that no scorer scores
+# yet: its class's ceiling until its cases narrow it (UC-8.4, ADR-0300 §1).
+tolerances:
+  propose: 0.25

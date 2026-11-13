@@ -754,7 +754,7 @@
             ],
             "text": "Process Example (example@1) at autonomy level 2: 1 run working, 1 waiting; running now: score in run_example, draft in run_example, review in run_example.",
             "exactness": {
-              "process_version": "six-times-seven@3",
+              "process_version": "six-times-seven@4",
               "name": "Six times seven, checked",
               "parts": [
                 {
@@ -1290,7 +1290,7 @@
     ],
     "summary": "1 of 10 steps completed. Now: score (statistics), draft (language model), review (person), pipeline (wait). It waits for a person.",
     "exactness": {
-      "process_version": "six-times-seven@3",
+      "process_version": "six-times-seven@4",
       "name": "Six times seven, checked",
       "parts": [
         {
@@ -1768,7 +1768,7 @@
     ],
     "summary": "10 steps: 6 reproducible, 2 variable, 1 with a person, 1 waiting. 3 steps running now.",
     "exactness": {
-      "process_version": "six-times-seven@3",
+      "process_version": "six-times-seven@4",
       "name": "Six times seven, checked",
       "parts": [
         {

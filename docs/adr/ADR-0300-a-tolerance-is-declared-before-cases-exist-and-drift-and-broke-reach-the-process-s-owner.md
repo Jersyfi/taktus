@@ -30,7 +30,8 @@ A bundle takes `tolerances`, a share from 0 to 1 per step, beside its steps:
 tolerances: { classify: 0.05 }
 ```
 
-It names a variable step that produces a result. Registration refuses one that names any other
+It names a step that produces a result — a variable one, or one a step moved off a model keeps.
+Registration refuses one that names any other
 step, one wider than the ceiling of the step's class (ADR-0250 §1), and a step declared both
 here and under `evaluation.tolerances`.
 
@@ -38,7 +39,10 @@ A step declared here holds its tolerance before its process has any case. Once a
 the step, the same declaration is the step's tolerance: the evaluation copies it, as it copies one
 declared under `evaluation.tolerances`, and the rule of ADR-0250 §1 that a scored variable step
 declares a tolerance is met by either place. `ProcessVersion.undeclared_tolerances` names every
-variable step that produces a result and declares no tolerance in either place.
+variable step that produces a result and declares no tolerance in either place, and registration
+refuses a version where it names one. Every shipped bundle declares its variable steps'
+tolerances: the class's ceiling where nothing narrower is measured, a narrower one where its
+evaluation declares it.
 
 ### 2. Every drift is a finding, raised to the process's owner
 
@@ -55,6 +59,21 @@ facts name the integration, the steps that broke with the verdict's reason for e
 the removal test, and the role it is addressed to: the process's escalation role, else `owner`.
 The composition raises it after the catalog recorded the verdict, through the governance
 component's `RemovalBroke`.
+
+### 4. A unit limit states what it can promise when it is set
+
+Setting a unit limit (ADR-0282 §1) states, for each of its lines, how admission holds it, as a
+run's budget does when it is set (ADR-0005). It is kept with the limit and shown with it:
+
+- **money in the price table's currency**: as an estimate — every step's reservation is priced at
+  the table before it is admitted; a model the table does not price, or one billed as a share of
+  a time window, is held only in the seconds and tokens the limit names;
+- **money in another currency, or without a price table**: not held;
+- **compute seconds**: held — reserved before every step and measured after it, crossed by at
+  most the one inner step's overrun;
+- **tokens**: as an estimate — the input counted and the output limit reserved;
+- **runners at once**: held — the admission is checked again under the limit's claim
+  (ADR-0298 §1).
 
 ## Alternatives
 
@@ -78,15 +97,23 @@ component's `RemovalBroke`.
   `composition/evaluations.py` raises every drift.
 - `governance/application/service/removal_broke.py`: `RemovalBroke`; the incident kind
   `removal.broke`. `composition/loopback.py` raises it for a *broke* verdict.
-- `tests/components/process/test_tolerances.py`, `tests/composition/test_evaluations.py`,
+- `governance/domain/model/unit_limits.py`: `LimitPromise`, `promises`, `UnitLimit.promises`;
+  the composition hands `UnitLimits` the price table's currency and version.
+- A plan draft taken from a process model carries a step's `tolerance` into the bundle
+  (`process/domain/service/interchange.py`). Every shipped bundle declares its tolerances, each
+  one version higher.
+- `tests/components/process/test_tolerances.py`, `tests/components/governance/test_limit_promises.py`, `tests/composition/test_evaluations.py`,
   `tests/integration/test_removal_broke.py`.
 
 ## Where this promise ends
 
-- **Registration does not yet refuse a variable step without a tolerance.** The rule is
-  `undeclared_tolerances`; turning it into a refusal needs a tolerance on 59 steps of 34 bundles
-  of this repository, 25 of them in `blueprints/software-operations/`, each a new bundle version.
-  Until that is done, a variable step may declare none.
+- **A version stored before the rule.** A version registered before the refusal is read as it is,
+  without tolerances; its next version declares them.
+- **The ceiling is a declaration, not a measurement.** A shipped bundle that declares its class's
+  ceiling says that nothing narrower has been measured for the step yet.
+- **What a limit promises is stated, not verified.** The statement says how admission holds each
+  line at the configuration of the moment it was set. A price table changed later is not read
+  back into a stored statement; setting the limit again states it anew.
 - **A tolerance without cases measures nothing.** A step whose process has no case declares what
   counts as equivalent; whether its results stay within it is measured only once cases exist.
 - **The owner is a role.** A process whose escalation names no role is raised to `owner`. Who in

@@ -644,7 +644,7 @@ def test_implementation_admits_a_ready_issue_claims_it_and_refuses_the_rest(
         "to-taktus",
     ]
     (announced,) = comments_on(outside, tasks.ready)
-    assert re.match(r"Taktus took this issue: run `run_\w+` of `p03-implementation@25`", announced)
+    assert re.match(r"Taktus took this issue: run `run_\w+` of `p03-implementation@26`", announced)
 
     ref = outside.get(f"/repos/{REPOSITORY}/git/ref/heads/taktus/issue-{tasks.ready}")
     assert isinstance(ref, dict)
@@ -1066,8 +1066,8 @@ def test_roadmap_control_reports_each_disagreement_once(outside: Outside, tmp_pa
 
 BUNDLES = {
     "P-01-roadmap-control.yaml": "p01-roadmap-control@7",
-    "P-02-refinement.yaml": "p02-refinement@8",
-    "P-03-implementation.yaml": "p03-implementation@25",
+    "P-02-refinement.yaml": "p02-refinement@9",
+    "P-03-implementation.yaml": "p03-implementation@26",
 }
 REPOSITORY_CONNECTOR = "connector.channel.repo"
 TAKEN_OVER: dict[str, dict[str, set[str]]] = {
@@ -1078,8 +1078,8 @@ TAKEN_OVER: dict[str, dict[str, set[str]]] = {
             "read-open-records",
             "write-report",
         },
-        "p02-refinement@8": {"read-issue", "read-comments", "write-sections"},
-        "p03-implementation@25": {
+        "p02-refinement@9": {"read-issue", "read-comments", "write-sections"},
+        "p03-implementation@26": {
             "read-issue",
             "read-comments",
             "read-open-issues",
@@ -1101,8 +1101,8 @@ TAKEN_OVER: dict[str, dict[str, set[str]]] = {
             "announce-give-back",
         },
     },
-    "worker.endpoint": {"p03-implementation@25": {"implement"}},
-    "model.endpoint": {"p02-refinement@8": {"refine"}},
+    "worker.endpoint": {"p03-implementation@26": {"implement"}},
+    "model.endpoint": {"p02-refinement@9": {"refine"}},
 }
 """Per integration, the steps of P-01 to P-03 it serves, which a person takes over without it."""
 

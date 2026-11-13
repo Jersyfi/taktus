@@ -449,7 +449,10 @@ def decision_wiring(
     ledger: Ledger,
     clock: Clock,
     directory: IdentityDirectory,
+    pricing: tuple[str, str] | None = None,
 ) -> DecisionWiring:
+    """`pricing`: the currency and version of the instance's price table, which a unit limit's
+    statement of what it can promise names (ADR-0300 §4)."""
     configurations: Repository[AnchorConfiguration] = of(AnchorConfiguration)
     requests: Repository[Request] = of(Request)
     register: Repository[RegisterEntry] = of(RegisterEntry)
@@ -515,6 +518,7 @@ def decision_wiring(
                 work,
                 clock,
                 lambda t, n: _is_identity(directory, t, n),
+                pricing,
             ),
             placed_in(directory),
             clock,

@@ -79,6 +79,9 @@ steps:
       values:
         note: { $from: draft }
 
+tolerances:
+  draft: 1.0
+
 takeover:
   sequence: >
     Every Monday morning, a member of the team writes the note and signs it.
@@ -96,6 +99,10 @@ takeover:
       credentials: []
       done: the signed note is ready to send
 ```
+
+A step on a model or a worker varies, so it declares under `tolerances` what counts as an
+equivalent result: a share from 0 to 1, no wider than its exactness class admits — `free`
+admits any. Registration refuses a varying step without one.
 
 The `draft` step names a **purpose**, `writing`, not a model. The instance's configuration
 decides which model serves it (*Adding a model provider*).

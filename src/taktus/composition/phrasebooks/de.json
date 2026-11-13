@@ -125,6 +125,7 @@
   "catalogue_line": "{name}: schreibe „{start}“",
   "catalogue_needs": "{name}: braucht {inputs}; starte es in der Web-App",
   "start_read": "Ich verstehe das so: {process} ({name}) in deinem Namen starten.",
+  "start_demand": "Geschätzt sind {estimate}; das erreicht die Hälfte oder mehr dessen, was von {limits} bleibt. Dein Ja nimmt das an.",
   "started": "{process} läuft als Lauf {run}.",
   "start_not_done": "Das lässt sich von hier nicht starten; die Liste in der Web-App sagt, warum."
 }

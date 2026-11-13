@@ -710,7 +710,7 @@ class ProcessVersion(Value):
         return found
 
     def _version_tolerance_findings(self) -> list[str]:
-        """A tolerance declared beside the steps names a variable step that produces a result,
+        """A tolerance declared beside the steps names a step that produces a result,
         is a share from 0 to 1 within its class's ceiling, and is declared once (ADR-0300 §1)."""
         found: list[str] = []
         steps = {step.id: step for step in self.steps}
@@ -723,10 +723,11 @@ class ProcessVersion(Value):
         )
         for step_id, share in sorted(self.tolerances.items()):
             step = steps.get(step_id)
-            if step is None or step.method not in VARIABLE or step.exactness is None:
+            if step is None or step.exactness is None:
+                # A step a rule produces may keep one, as a step moved off a model does.
                 found.append(
-                    f"`tolerances` names {step_id!r}, which is no variable step of this process "
-                    "that produces a result"
+                    f"`tolerances` names {step_id!r}, which is no step of this process that "
+                    "produces a result"
                 )
                 continue
             ceiling = TOLERANCE_CEILING[ExactnessClass(step.exactness)]

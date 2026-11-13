@@ -145,6 +145,29 @@ class ProposalActs:
             instead="hand over the changed bundle instead",
         )
 
+    async def describe_demand(self, tenant: Tenant, by: str) -> dict[str, Any] | None:
+        """The estimated demand of a run of the configured describe process, as `by` would
+        commission it; None where none is configured or it names no budget (ADR-0299 §1)."""
+        if self._describe_process is None:
+            return None
+        async with self._work.transaction(tenant):
+            found = await self._processes.get(tenant, self._describe_process)
+            version = (
+                None
+                if found is None or found.active_version is None
+                else await self._versions.get(tenant, f"{found.id}@{found.active_version}")
+            )
+        placed = await self._identities.identity(tenant, by)
+        if version is None or version.limits is None or placed is None:
+            return None
+        return await self._engine.demand(
+            tenant,
+            process_version=version.ref,
+            identity=placed.identity,
+            org_unit=placed.org_path[1] if len(placed.org_path) > 1 else None,
+            budget=Limits.model_validate(dict(version.limits)),
+        )
+
     async def _started(
         self,
         tenant: Tenant,

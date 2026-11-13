@@ -31,7 +31,7 @@
 # README.md.
 
 id: p05-triage
-version: "4"
+version: "5"
 name: P-05 Triage of contributions
 autonomy:
   level: 3
@@ -459,3 +459,8 @@ takeover:
             CREDENTIALS.md; a person may instead use their own account, if it may close issues
             and pull requests
       done: the declined item is closed with the comment, or the step did not apply
+
+# What counts as an equivalent result of each variable step that no scorer scores
+# yet: its class's ceiling until its cases narrow it (UC-8.4, ADR-0300 §1).
+tolerances:
+  classify: 0.25

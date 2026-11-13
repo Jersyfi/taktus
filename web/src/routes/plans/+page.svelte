@@ -68,10 +68,16 @@
 		if (view) await act(read<PlanDraftView>(base(), `${path()}?mode=${next}`));
 	}
 
-	async function commission() {
+	async function commission(accepted = false) {
 		busy = true;
-		const done = await send<{ id: string; status: string }>(base(), `${path()}/commission`, {});
+		const where = `${path()}/commission${accepted ? '?accept_demand=true' : ''}`;
+		const done = await send<{ id: string; status: string }>(base(), where, {});
 		busy = false;
+		if (!done.ok && done.problem.demand && !accepted) {
+			// The run it starts needs much: its estimated demand is shown first (ADR-0299).
+			if (confirm(`${done.problem.detail}\n\nAccept this demand and commission?`))
+				return commission(true);
+		}
 		if (done.ok) {
 			message = `Commissioned as ${done.body.id}. It runs as planned from now on.`;
 			await load();

@@ -2549,6 +2549,18 @@ paths:
         schema:
           type: string
           title: Draft Id
+      - name: accept_demand
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: 'You saw the estimated demand of the run the commissioning starts and accept it:
+            one that needs much of what remains of a unit limit is refused with its demand until then
+            (ADR-0299).'
+          default: false
+          title: Accept Demand
+        description: 'You saw the estimated demand of the run the commissioning starts and accept it:
+          one that needs much of what remains of a unit limit is refused with its demand until then (ADR-0299).'
       - name: authorization
         in: header
         required: false
@@ -8773,6 +8785,12 @@ components:
           type: object
           title: Inputs
           description: The process's inputs by name, as its catalogue entry lists them.
+        accept_demand:
+          type: boolean
+          title: Accept Demand
+          description: 'You saw the run''s estimated demand and accept it: a run that needs much of what
+            remains of a unit limit starts only with it (ADR-0299).'
+          default: false
       type: object
       title: StartBody
     taktus__adapters__driving__rest__chains__StartBody:

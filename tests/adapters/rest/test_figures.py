@@ -382,18 +382,18 @@ async def test_the_same_work_with_and_without_a_knowledge_source_is_compared_for
     bundle = yaml.safe_load(K_01.read_text(encoding="utf-8"))
     await register.execute(RegisterProcessVersion(bundle, tenant=TENANT, by="idn_owner"))
     for run, served, end in (("run_k1", True, "run.finished"), ("run_k2", False, "run.escalated")):
-        await fact(given, "run.created", run, version="k-01@1")
+        await fact(given, "run.created", run, version="k-01@2")
         await fact(
             given,
             "step.finished",
             run,
-            version="k-01@1",
+            version="k-01@2",
             step="search",
             outcome="succeeded",
             method=Method.RULE if served else Method.HUMAN,
             adapter="connector.knowledge" if served else None,
         )
-        await fact(given, end, run, version="k-01@1")
+        await fact(given, end, run, version="k-01@2")
     owner = await http.get(f"{base}/value/knowledge", headers=bearer(keys["idn_owner"]))
     assert owner.status_code == 200, owner.text
     found = {f["id"]: f for f in owner.json()["figures"] if f["subject"] == "k-01"}

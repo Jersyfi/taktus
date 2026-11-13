@@ -22,7 +22,7 @@
 # Switching it off (`taktusctl deactivate --process b-9-07`) changes nothing at the service.
 
 id: b-9-07
-version: "2"
+version: "3"
 name: B-9.07 Newsletter
 autonomy:
   level: 2
@@ -276,3 +276,8 @@ takeover:
             identity described in CREDENTIALS.md; a person working by hand uses their own account,
             which may send campaigns
       done: the campaign is sent, or the decision not to send it is recorded
+
+# What counts as an equivalent result of each variable step that no scorer scores
+# yet: its class's ceiling until its cases narrow it (UC-8.4, ADR-0300 §1).
+tolerances:
+  write: 1

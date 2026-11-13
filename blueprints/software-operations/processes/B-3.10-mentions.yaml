@@ -259,3 +259,8 @@ takeover:
       expertise: none
       credentials: []
       done: the criticism is written down and counted
+
+# What counts as an equivalent result of each variable step that no scorer scores
+# yet: its class's ceiling until its cases narrow it (UC-8.4, ADR-0300 §1).
+tolerances:
+  sort: 1

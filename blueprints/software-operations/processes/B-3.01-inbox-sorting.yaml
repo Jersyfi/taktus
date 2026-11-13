@@ -31,7 +31,7 @@
 # stays closed, and a person reopens it in the helpdesk.
 
 id: b-3-01
-version: "2"
+version: "3"
 name: B-3.01 Sorting the inbox
 autonomy:
   level: 2
@@ -309,3 +309,8 @@ takeover:
             the operator's secret store, under the parameter Helpdesk token of the requesting
             identity described in CREDENTIALS.md; a person signs in with their own agent account
       done: the ticket carries the tag and is solved, or it is a request and is left open
+
+# What counts as an equivalent result of each variable step that no scorer scores
+# yet: its class's ceiling until its cases narrow it (UC-8.4, ADR-0300 §1).
+tolerances:
+  classify: 1
