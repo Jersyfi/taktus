@@ -232,6 +232,7 @@ from taktus.components.run.domain.model import (
     RunState,
     RunSteering,
     ScreenRule,
+    SignificanceStatistic,
     SpamRule,
     SteeringKind,
     SteeringReply,
@@ -6022,6 +6023,9 @@ class RunEngine:
         if isinstance(work, DeviationStatistic):
             (days,), read = await self._resolved(run, [work.days])
             return statistics.deviation(work, days), Trace(inputs=read), None, None
+        if isinstance(work, SignificanceStatistic):
+            (rows,), read = await self._resolved(run, [work.rows])
+            return statistics.significance(work, rows), Trace(inputs=read), None, None
         if isinstance(work, ConnectorRule):
             return await self._connector_call(run, step_run, work, span)
         if isinstance(work, LlmWork):

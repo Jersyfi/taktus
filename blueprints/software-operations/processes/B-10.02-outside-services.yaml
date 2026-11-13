@@ -1,0 +1,290 @@
+# B-10.02 Processing agreements — UC-03 §4.10: a new outside service found in a pull request,
+# and filed for a person to check its processing agreement, data region and retention (UC-15.5).
+# Concluding the agreement stays with a person.
+#
+# The pull request's changed files are read at the head the service names, with their patches,
+# through the capability `repository.pullrequests` (ADR-0194): source, configuration and the
+# dependency manifests alike. The rule `hosts` takes every host an added line names after
+# `http://` or `https://`, less every host of the tenant's known services: the addresses of the
+# services it holds an agreement with, which its version names. A host left is a new outside
+# service. The pull request is filed as one issue naming its new hosts, once: the issue carries
+# the mark `outside-services:pr-<number>`, and a pull request whose mark an open or closed issue
+# carries is not filed again. The record of processing is the business's document; the issue is
+# where a person brings it up to date.
+#
+# Not found here: a service a new dependency reaches without naming its address in the change,
+# such as a vendor's library that carries the address inside; and a host written without its
+# scheme. A person reviewing the dependency still sees it in the pull request.
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-10.02-outside-services.yaml \
+#         --input pull=42 --input 'known=["https://api.payments.example"]'
+#
+# Switching it off (`taktusctl deactivate --process b-10-02`) changes nothing else.
+
+id: b-10-02
+version: "1"
+name: B-10.02 Processing agreements
+autonomy:
+  level: 2
+  reason: >
+    the hosts are found by a fixed rule over the repository's own patches; filing the issue
+    leaves the system, so at level 2 a person confirms it, as every process of UC-03 starts at
+    level 1 or 2 when its stage opens
+  toward_next: >
+    UC-03 sets this process's target at level 2; it stays there, and concluding an agreement
+    stays with a person at every level (UC-7.1)
+author: the repository
+reason: no outside service enters the product without a person checking its processing agreement (UC-03 B-10.02)
+
+inputs:
+  pull:
+    description: the number of the pull request
+    example: 42
+  known:
+    description: >
+      the addresses of the outside services the business holds a processing agreement with,
+      each as a URL with its scheme
+    example: ["https://api.payments.example"]
+
+limits:
+  quota: { units: 160 }
+
+steps:
+  - id: files
+    method: rule
+    reason: the paths the pull request changes are read with their patches at the head commit the service names
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.pullrequests.files answered", columns: [complete, count, files, head_sha] }
+    fallback:
+      when: the connector serving repository.pullrequests is unavailable
+      to: human
+      role: owner
+    work:
+      checking: { select: output }
+      rule: connector
+      operation: repository.pullrequests.files
+      input:
+        number: { $input: pull }
+        patches: true
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the service did not list every path" }
+
+  - id: changes
+    method: rule
+    reason: the changed files are written as one text, so that a pattern reads their added lines
+    rejected:
+      - method: llm
+        why: a fixed composition needs no model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "^changes " }
+    depends_on: [files]
+    work:
+      rule: template
+      text: "changes ${files}"
+      values:
+        files: { $from: files, $select: output.files }
+
+  - id: hosts
+    method: rule
+    reason: >
+      a host an added line names after its scheme, less the known services' hosts, is a fixed
+      pattern over the patches; nothing is guessed
+    rejected:
+      - method: llm
+        why: a model could leave a host out, or name one the change does not
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the outside hosts the pull request adds }
+    depends_on: [changes]
+    work:
+      rule: extract
+      # In the composed text a patch's line break is the two characters \n; an added line
+      # starts with +. A known service is given as a URL alone, matched from its start.
+      values: [{ $from: changes }]
+      excluding: { $input: known }
+      pattern: "(?:\\\\n\\+|^)(?:(?!\\\\n).)*?https?://(?P<host>[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+)"
+      text: "${host}"
+
+  - id: read-filed
+    method: rule
+    reason: the issues are read verbatim, so that a pull request already filed is not filed twice
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.list answered", columns: [complete, issues] }
+    fallback:
+      when: the connector serving repository.issues is unavailable
+      to: human
+      role: owner
+    work:
+      checking: { select: output }
+      rule: connector
+      operation: repository.issues.list
+      input:
+        state: all
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the issues were not all read" }
+
+  - id: new
+    method: rule
+    reason: >
+      a pull request that adds a host and carries no filed mark yet is filed; a fixed rule over
+      the hosts found and the issues read
+    rejected:
+      - method: llm
+        why: a selection by a count and a mark needs no judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: whether the pull request adds an outside service not yet filed }
+    depends_on: [hosts, read-filed]
+    work:
+      rule: filter
+      items:
+        - { number: { $input: pull }, hosts: { $from: hosts, $select: extracted } }
+      all:
+        - { field: hosts, not_matches: "^\\[\\]$" }
+      excluding: { $from: read-filed, $select: output.issues }
+      within: body
+      marker: "outside-services:pr-${number}"
+
+  - id: compose
+    method: rule
+    reason: the issue's text is the hosts found between fixed words, with the mark that keeps it from being filed twice
+    rejected:
+      - method: llm
+        why: a fixed composition needs no model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "Filed by Taktus, process B-10\\.02 Processing agreements" }
+    depends_on: [new]
+    work:
+      when:
+        - { value: { $from: new, $select: count }, not_matches: "^0$" }
+      rule: template
+      text: |
+        Pull request #${number} adds outside services the business holds no processing agreement with:
+        ${hosts}
+
+        Before it is merged, a person checks for each: the processing agreement, the region its
+        data is kept in, and how long it keeps it, and brings the record of processing up to
+        date. Concluding an agreement stays with a person.
+
+        Filed by Taktus, process B-10.02 Processing agreements, once a person confirmed it.
+        outside-services:pr-${number}
+      values:
+        number: { $from: new, $select: first.number }
+        hosts: { $from: new, $select: first.hosts }
+
+  - id: file
+    method: rule
+    reason: opening the issue is an API call; the effect leaves the system, so at level 2 a person confirms it first
+    rejected:
+      - method: worker
+        why: nothing here needs a sandbox or tools
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.create answered", columns: [author, body, created_at, is_pull_request, labels, milestone, number, state, title, updated_at, url] }
+    fallback:
+      when: the connector serving repository.issues is unavailable
+      to: human
+      role: owner
+    depends_on: [new, compose]
+    work:
+      checking: { select: output }
+      when:
+        - { value: { $from: new, $select: count }, not_matches: "^0$" }
+      rule: connector
+      operation: repository.issues.create
+      input:
+        title: "A new outside service: check its processing agreement"
+        body: { $from: compose }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+takeover:
+  sequence: >
+    The process runs for every pull request; whoever keeps the record of processing takes it
+    over. Read the lines the pull request adds, note every host they name after http:// or
+    https://, leave out the hosts of services the business holds an agreement with, and file an
+    issue naming the rest, once per pull request.
+  steps:
+    files:
+      system: the repository hosting service, the pull request
+      do: >
+        open the pull request's changed files and read their changes.
+      expertise: reading a pull request's changes
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md; a person working by hand uses their
+            own account, which may read the repository
+      done: the changes are open
+    changes:
+      system: none
+      do: >
+        nothing to do by hand; the changes are read in the next step.
+      expertise: none
+      credentials: []
+      done: the changes are read
+    hosts:
+      system: the changes
+      do: >
+        note every host an added line names after http:// or https://, and leave out the hosts
+        of the services on the business's list of agreements.
+      expertise: reading a diff
+      credentials: []
+      done: the new hosts are noted
+    read-filed:
+      system: the repository hosting service, its issues
+      do: >
+        search the issues, open and closed, for the mark outside-services:pr- followed by the
+        pull request's number.
+      expertise: searching issues
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md; a person working by hand uses their
+            own account, which may read the repository
+      done: it is known whether the pull request was filed
+    new:
+      system: the notes
+      do: >
+        the pull request is to be filed when it adds a new host and no issue carries its mark.
+      expertise: none
+      credentials: []
+      done: it is decided whether to file
+    compose:
+      system: the notes
+      do: >
+        Only if it is to be filed: write the issue naming the pull request and its new hosts,
+        what a person checks for each, and the mark on its last line.
+      expertise: none
+      credentials: []
+      done: the issue's text is written
+    file:
+      system: the repository hosting service, its issues
+      do: >
+        Only if it is to be filed: open the issue with the text written.
+      expertise: opening an issue
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md; a person working by hand uses their
+            own account, which may open issues
+      done: the issue is open, or none was needed

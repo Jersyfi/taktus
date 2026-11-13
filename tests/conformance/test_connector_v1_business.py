@@ -34,6 +34,7 @@ WRITERS = frozenset(
         "canny",
         "cloudfunctions",
         "cloudrun",
+        "erpnext",
         "firebase",
         "freshdesk",
         "hubspot",

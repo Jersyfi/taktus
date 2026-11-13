@@ -877,13 +877,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def _patch_issue(self, repo: Repository, number: int, body: Json) -> None:
         """An issue or a pull request changed as the issue interface changes it: its state
-        (closed with a reason, or open) and its milestone by number. A pull request closed so
-        is closed, never merged."""
+        (closed with a reason, or open), its title and text, and its milestone by number. A pull
+        request closed so is closed, never merged."""
         issue = repo.issues.get(number)
         if issue is None:
             self._send(404, {"message": "Not Found"})
             return
-        changes: Json = {}
+        changes: Json = {k: str(body[k]) for k in ("title", "body") if k in body}
         if "state" in body:
             if body["state"] not in ("open", "closed"):
                 self._send(422, {"message": "Validation Failed: state"})

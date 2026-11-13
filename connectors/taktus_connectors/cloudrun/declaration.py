@@ -1,11 +1,12 @@
 """What the serverless connector declares about itself: the document served as the resource
 `taktus://connector/v1/capabilities`, in the shape of `Connector.json#/$defs/Capabilities`.
 
-One read and two writes of `deployment.workloads`, the operations the cluster connector serves
-under the same names, so that a release process runs on either. Scaling is not served: the
-service scales its instances itself. A release and a rollback leave the system, `marked`: the
-release's key is an annotation of the template every revision keeps, the rollback's an
-annotation of the service.
+One read and three writes of `deployment.workloads`. The read, the release and the rollback are
+the operations the cluster connector serves under the same names, so that a release process runs
+on either. The split is the platform's own: a share of the traffic on a canary revision beside
+the stable one (ADR-0312). Scaling is not served: the service scales its instances itself. Every
+write leaves the system, `marked`: the release's key is an annotation of the template every
+revision keeps, the rollback's and the split's an annotation of the service.
 """
 
 from __future__ import annotations
@@ -50,6 +51,19 @@ OPERATIONS: list[Json] = [
         "`revision` names, or the newest before the one serving. The service carries the "
         "idempotency key as an annotation, where a repeat finds it. No earlier revision is "
         "not_found.",
+    },
+    {
+        "name": "deployment.workloads.split",
+        "demand": {"quota_units": 5},
+        "capability": CAPABILITY,
+        "effect": "write",
+        "idempotency": "marked",
+        "summary": "Send a share of a service's traffic, `percent` from 0 to 100, to a canary "
+        "revision, the one `revision` names or the latest ready one, and the rest to the stable "
+        "revision: the other one that takes the most traffic. 100 promotes the canary, 0 puts "
+        "all traffic back on the stable one. No template is changed and no revision made. The "
+        "service carries the idempotency key as an annotation, where a repeat finds it. A canary "
+        "that is not ready, or no stable revision beside it, is not_found.",
     },
 ]
 

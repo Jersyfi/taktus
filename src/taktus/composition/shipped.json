@@ -133,7 +133,8 @@
       "operations": [
         "deployment.workloads.read",
         "deployment.workloads.release",
-        "deployment.workloads.rollback"
+        "deployment.workloads.rollback",
+        "deployment.workloads.split"
       ]
     },
     {
@@ -177,6 +178,17 @@
       "operations": [
         "documents.invoices.list",
         "documents.invoices.read"
+      ]
+    },
+    {
+      "capabilities": [
+        "accounting.invoices"
+      ],
+      "image": "taktus-connector-erpnext",
+      "name": "erpnext",
+      "operations": [
+        "accounting.invoices.export",
+        "accounting.invoices.read"
       ]
     },
     {

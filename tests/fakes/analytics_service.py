@@ -9,7 +9,9 @@ with `dimensions`, `metrics`, one `dateRanges` entry, `limit` and `orderBys`. Th
 from a seeded table: for each of the 56 days up to and including today, and each of the events
 `page_view`, `sign_up` and `purchase`, the metrics `activeUsers`, `newUsers`, `eventCount` and
 `sessions`. It groups by the dimensions asked — `date` (YYYYMMDD, as the API writes it),
-`eventName` and `isoYearIsoWeek` — and sums the metrics; it orders, cuts at `limit`, and counts
+`eventName`, `isoYearIsoWeek` and the event-scoped custom dimension `customEvent:variant` of a
+price experiment, `A` on even days and `B` on odd ones — and sums the metrics; it orders, cuts
+at `limit`, and counts
 every group in `rowCount`. Values are text, as the API gives them. A dimension or metric it does
 not know is 400 `INVALID_ARGUMENT` in Google's error shape; another property is 403
 `PERMISSION_DENIED`. Dates are YYYY-MM-DD, `today`, `yesterday` or `NdaysAgo`.
@@ -17,7 +19,8 @@ not know is 400 `INVALID_ARGUMENT` in Google's error shape; another property is 
 And `POST /token`, the OAuth token endpoint (`google_oauth.py`): every other request needs a
 token it issued. Test-only: `GET /_fake/state` counts the reports answered;
 `POST /_fake/metadata` with `{"subjectToThresholding": true}` or `{"dataLossFromOtherRow": true}`
-sets the metadata of every later report; `POST /_fake/reset` restores the start. Runnable as
+sets the metadata of every later report; `POST /_fake/lift` with `{"lift": 2}` multiplies the
+purchases of variant `B`; `POST /_fake/reset` restores the start. Runnable as
 `python3 tests/fakes/analytics_service.py --port 9237`.
 """
 
@@ -43,29 +46,36 @@ type Json = dict[str, Any]
 
 PROPERTY = "123456789"
 EVENTS = ("page_view", "sign_up", "purchase")
-DIMENSIONS = ("date", "eventName", "isoYearIsoWeek")
+VARIANT = "customEvent:variant"
+"""An event-scoped custom dimension a business registers for a price experiment: each day's
+events carry variant `A` on even days and `B` on odd ones."""
+DIMENSIONS = ("date", "eventName", "isoYearIsoWeek", VARIANT)
 METRICS = ("activeUsers", "newUsers", "eventCount", "sessions")
 DAYS = 56
 RELATIVE = re.compile(r"^(\d+)daysAgo$")
 
 
-def table(today: date) -> list[Json]:
-    """Eight weeks of daily figures per event, the same every time the fake starts."""
+def table(today: date, lift: int = 1) -> list[Json]:
+    """Eight weeks of daily figures per event, the same every time the fake starts. `lift`
+    multiplies the purchases of variant `B`, as a price that sells better would."""
     rows = []
     for back in range(DAYS):
         day = today - timedelta(days=back)
         base = 100 + (day.toordinal() % 7) * 10
+        variant = "A" if day.toordinal() % 2 == 0 else "B"
         for n, event in enumerate(EVENTS):
             iso = day.isocalendar()
+            lifted = lift if variant == "B" and event == "purchase" else 1
             rows.append(
                 {
                     "day": day,
                     "date": day.strftime("%Y%m%d"),
                     "eventName": event,
                     "isoYearIsoWeek": f"{iso.year}{iso.week:02d}",
+                    VARIANT: variant,
                     "activeUsers": base // (n + 1),
                     "newUsers": base // (4 * (n + 1)),
-                    "eventCount": base * (3 - n),
+                    "eventCount": base * (3 - n) * lifted,
                     "sessions": base // (n + 1) + 5,
                 }
             )
@@ -99,6 +109,7 @@ class State:
     def reset(self) -> None:
         self.reports = 0
         self.metadata: Json = {}
+        self.lift = 1
 
     def report(self, body: Json) -> tuple[int, Json]:
         dims = [d.get("name") for d in body.get("dimensions") or []]
@@ -120,7 +131,7 @@ class State:
         if start is None or end is None or start > end:
             return 400, error(400, "INVALID_ARGUMENT", "Invalid date range.")
         groups: dict[tuple[str, ...], Json] = {}
-        for row in table(today):
+        for row in table(today, self.lift):
             if not start <= row["day"] <= end:
                 continue
             key = tuple(str(row[d]) for d in dims)
@@ -193,6 +204,10 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
                 return
             if path == "/_fake/metadata":
                 state.metadata.update(json.loads(raw or b"{}"))
+                self.answer(200, {})
+                return
+            if path == "/_fake/lift":
+                state.lift = int(json.loads(raw or b"{}").get("lift", 1))
                 self.answer(200, {})
                 return
             if not state.tokens.admits(self.headers.get("Authorization")):

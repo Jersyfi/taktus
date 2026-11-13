@@ -578,6 +578,47 @@ def test_every_bundle_of_the_blueprint_is_named_by_its_stages_and_starts_at_most
         assert bundle["id"] == "b-" + number.replace(".", "-"), path.name
 
 
+def test_every_process_a_stage_names_is_a_bundle_or_declared_where_it_is_served() -> None:
+    """The reverse of the test above (#439): a stage names a process some blueprint's bundle
+    carries — this blueprint's, or the one that serves it, as P-02 and P-03 serve B-7.02 and
+    B-7.03 — or one `blueprint.yaml` declares without a bundle, with the bundles that serve it,
+    with none where the instance itself does it, or as not built. Nothing is declared that has
+    a bundle here, and every bundle a declaration names exists."""
+    floor = blueprint_stages(ROOT / "blueprints/software-operations/stages.yaml")
+    named = {p for s in floor.stages for p in s.processes}
+    every = {
+        yaml.safe_load(path.read_text(encoding="utf-8")).get("id")
+        for path in (ROOT / "blueprints").glob("*/processes/*.yaml")
+    }
+    own = {
+        yaml.safe_load(path.read_text(encoding="utf-8"))["id"]
+        for path in (ROOT / "blueprints/software-operations/processes").glob("*.yaml")
+    }
+    document = yaml.safe_load(
+        (ROOT / "blueprints/software-operations/blueprint.yaml").read_text(encoding="utf-8")
+    )
+    declared: dict[str, dict[str, Any]] = {}
+    for entry in document["processes"]:
+        if "bundle" in entry:
+            continue
+        process = "b-" + entry["id"].removeprefix("B-").replace(".", "-").lower()
+        declared[process] = entry
+        assert process not in own, f"{entry['id']} has a bundle and is declared without one"
+        served = entry.get("served_by")
+        assert (served is None) is bool(entry.get("not_built")), (
+            f"{entry['id']} is served by bundles or not built, one of the two"
+        )
+        for bundle in served or ():
+            assert bundle in every, f"{entry['id']} is served by {bundle}, which no bundle carries"
+    for process in sorted(named):
+        assert process in every or process in declared, (
+            f"a stage names {process}, which no bundle carries and blueprint.yaml does not declare"
+        )
+    assert {"p02-refinement", "p03-implementation"} <= named, (
+        "stage 4 names the bundles that serve B-7.02 and B-7.03, whose runs it counts"
+    )
+
+
 # --- a stage counts only processes that run (ADR-0191) -------------------------------------------
 
 

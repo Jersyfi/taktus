@@ -105,6 +105,11 @@ COPY --chown=connector:connector connectors/taktus_connectors/einvoice /app/takt
 ENTRYPOINT ["python", "-m", "taktus_connectors.einvoice"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
+FROM base AS erpnext
+COPY --chown=connector:connector connectors/taktus_connectors/erpnext /app/taktus_connectors/erpnext
+ENTRYPOINT ["python", "-m", "taktus_connectors.erpnext"]
+CMD ["--host", "0.0.0.0", "--port", "9158"]
+
 FROM base AS expiry
 COPY --chown=connector:connector connectors/taktus_connectors/expiry /app/taktus_connectors/expiry
 ENTRYPOINT ["python", "-m", "taktus_connectors.expiry"]

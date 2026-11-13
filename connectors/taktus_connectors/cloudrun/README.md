@@ -21,7 +21,7 @@ The documentation followed:
 [`projects.locations.services`](https://cloud.google.com/run/docs/reference/rest/v2/projects.locations.services)
 with its `get` and `patch`,
 [`services.revisions`](https://cloud.google.com/run/docs/reference/rest/v2/projects.locations.services.revisions)
-with its `list`, [`Condition`](https://cloud.google.com/run/docs/reference/rest/v2/Condition),
+with its `list`, [`TrafficTarget`](https://cloud.google.com/run/docs/reference/rest/v2/TrafficTarget), [`Condition`](https://cloud.google.com/run/docs/reference/rest/v2/Condition),
 and [OAuth 2.0 for server to server applications](https://developers.google.com/identity/protocols/oauth2/service-account#httprest).
 
 ## What it declares
@@ -31,9 +31,14 @@ and [OAuth 2.0 for server to server applications](https://developers.google.com/
 | `deployment.workloads.read` | read | — | `GET services/<name>`: the containers with their images, the latest ready revision as `revision`, the `key` the template carries, and `rolled_out` — the service is not reconciling, its terminal condition succeeded, its latest ready revision is its latest created one, it observed its newest generation, and that revision takes all the traffic. `replicas`, `updated`, `ready` and `available` are null: the service has instances, not a number of replicas wanted |
 | `deployment.workloads.release` | write | marked | one container's image set in the service's template, which makes the service create a revision, and the traffic set to the latest revision, 100 percent. The body carries the service's `etag` as read; a service changed in between is refused, `conflict`. The template carries the key as the annotation `taktus.eu/idempotency-key`, and every revision keeps the annotations of the template it was made from. Before writing, the service and its revisions are read: a template that carries the key is the original, replayed |
 | `deployment.workloads.rollback` | write | marked | all traffic sent to an earlier ready revision: the one `revision` names, or the newest ready before the one serving. The template is left as it is, so that no revision is made. The key is put on the service's own annotations, where a repeat finds it. No earlier revision is `not_found` |
+| `deployment.workloads.split` | write | marked | `percent` of the traffic, a whole number from 0 to 100, sent to a canary revision — the one `revision` names, or the latest ready — and the rest to the stable revision: the other ready revision that takes the most traffic now. 100 promotes the canary; 0 puts all traffic back on the stable one. The template is left as it is, and no revision is made. The key is put on the service's own annotations, where a repeat finds it. A canary that is not ready, or no stable revision beside it, is `not_found`. The output carries `traffic`, each revision with its share (ADR-0312) |
 
 **No `scale`.** The service starts and stops instances itself, by its requests; it has no number
-of replicas wanted to set. B-8.04, which raises a canary's replicas, does not run on it.
+of replicas wanted to set. B-8.04's cluster version, which raises a canary's replicas, does not
+run on it; its serverless version raises the canary's share of the traffic with `split`
+(`blueprints/software-operations/processes/B-8.04-traffic-canary.yaml`). The canary revision is
+deployed beside the stable one without traffic by the business's own build (the platform's
+`--no-traffic`); the connector makes none.
 
 A write answers a long-running operation; the connector does not wait for it, and a reading
 says whether the rollout is complete. A release made while a rollback holds the traffic sends

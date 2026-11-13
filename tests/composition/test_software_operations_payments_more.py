@@ -23,7 +23,7 @@ from fakes import FakeIdentifiers, FakeWorker, package_index_service, payment_se
 from fakes import app_subscriptions_service as in_app
 from fakes import billing_plans_service as plans
 from fakes.maturity import VERIFIED
-from fakes.owner_channel import TENANT
+from fakes.owner_channel import OWNER, TENANT
 from taktus_connectors.depsdev.operations import Config as PackagesConfig
 from taktus_connectors.depsdev.server import build_server as packages_server
 from taktus_connectors.github.server import Config as RepositoryConfig
@@ -36,8 +36,8 @@ from taktus.adapters.driven.models import StaticModelPool
 from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.components.reporting.domain.model import Level
-from taktus.components.run.application.service import EngineOptions, RunEngine
-from taktus.components.run.domain.model import Run, RunState
+from taktus.components.run.application.service import ConfirmSteps, EngineOptions, RunEngine
+from taktus.components.run.domain.model import Run, RunState, StepState
 
 from .test_software_operations import (
     REPOSITORY,
@@ -196,6 +196,22 @@ OCTOBER = 1790812800
 """2026-10-01 00:00 UTC."""
 
 
+async def until_export(w: World, run: Run) -> Run:
+    """A person confirms every step of B-6.06 that waits for one, but the export."""
+    for _ in range(10):
+        waiting = tuple(
+            s.step_id
+            for s in run.step_runs
+            if s.state is StepState.WAITING_HUMAN and s.step_id != "export"
+        )
+        if run.state is not RunState.WAITING_HUMAN or not waiting:
+            break
+        run = await w.engine.confirm(
+            ConfirmSteps(run_id=run.id, steps=waiting, actor=OWNER, tenant=TENANT)
+        )
+    return run
+
+
 async def test_b_6_06_collects_the_months_invoices_and_names_those_owed(
     outside: Outside, provider: Provider
 ) -> None:
@@ -219,8 +235,10 @@ async def test_b_6_06_collects_the_months_invoices_and_names_those_owed(
     posted(provider.url, "invoices", records)
     w = await PaymentsWorld(outside, provider).ready()
     version = await w.registered("B-6.06-outgoing-invoices.yaml")
-    run = await w.start(version, month="2026-10")
-    assert run.state is RunState.FINISHED, failed(run)
+    # At level 2 a person confirms each step; the export into the books is left waiting here and
+    # runs in `test_software_operations_books.py` (ADR-0314).
+    run = await until_export(w, await w.start(version, month="2026-10"))
+    assert [s.step_id for s in run.step_runs if s.state is StepState.WAITING_HUMAN] == ["export"]
     issued = await w.result(run, "issued")
     assert issued["count"] == 2 and issued["first"]["total"] == 999
     owed = await w.result(run, "owed")

@@ -17,8 +17,11 @@
 # The last stage's condition is the same four weeks: the business runs dark while it holds.
 #
 # A stage opens only once every process it adds runs for the tenant, and holds only while they
-# do (ADR-0191 §1). A process is named by the identifier of its bundle: `b-<area>-<number>`,
-# the bundle under `processes/` once there is one. B-9.01, the daily report, is no process of
+# do (ADR-0191 §1). A process is named by the identifier of the bundle that serves it:
+# `b-<area>-<number>`, the bundle under `processes/`, or the bundle of another blueprint that
+# serves it — B-7.02 and B-7.03 are the dev-orchestration blueprint's P-02 and P-03. A process
+# without a bundle is declared in `blueprint.yaml` with where it is served or why it is not built;
+# a tenant's plan names the bundle that serves it, or leaves it out until one does. B-9.01, the daily report, is no process of
 # the tenant: it is the instance's daily report of signals (UC-6.13), which every tenant with a
 # corridor receives. Stage 0 counts the days it did not come (`reports_missed`, ADR-0191 §2).
 
@@ -125,8 +128,8 @@ stages:
     # step under a written policy (UC-03 §4.7). People keep the policy and the roadmap.
     processes:
       b-7-01: 3   # B-7.01
-      b-7-02: 3   # B-7.02
-      b-7-03: 4   # B-7.03
+      p02-refinement: 3       # B-7.02, the dev-orchestration blueprint's P-02
+      p03-implementation: 4   # B-7.03, the dev-orchestration blueprint's P-03
       b-7-04: 4   # B-7.04
       b-7-05: 4   # B-7.05
       b-7-06: 4   # B-7.06

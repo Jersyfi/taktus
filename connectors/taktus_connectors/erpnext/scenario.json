@@ -1,0 +1,36 @@
+{
+  "credentials": {
+    "actions": "BOOKS_TOKEN"
+  },
+  "read": {
+    "operation": "accounting.invoices.read",
+    "input": {
+      "name": "ACC-SINV-2026-00001"
+    }
+  },
+  "writes": [
+    {
+      "operation": "accounting.invoices.export",
+      "input": {
+        "invoices": [
+          {
+            "number": "CONF-{{unique}}",
+            "currency": "EUR",
+            "status": "paid",
+            "total": 1190,
+            "tax": 190,
+            "issued_at": 1790899200,
+            "due_at": 1792108800
+          }
+        ]
+      }
+    }
+  ],
+  "invalid": {
+    "operation": "accounting.invoices.read",
+    "input": {
+      "name": "?not a name"
+    },
+    "expected_cause": "invalid"
+  }
+}

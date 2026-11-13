@@ -189,7 +189,9 @@ class ReleaseWorld(RepositoryWorld):
         *,
         serverless: bool = False,
         answers: dict[str, str] | None = None,
+        checked: str | None = None,
     ) -> None:
+        """`checked` is the address `check.http` reaches, the checked service's by default."""
         super().__init__(outside, cluster)
         self.systems = systems
         # The independent check and the classification of a text for the team (ADR-0142).
@@ -216,7 +218,9 @@ class ReleaseWorld(RepositoryWorld):
             ),
             (
                 "connector.check",
-                served(check_server(CheckConfig(f"{outside.metrics}/service", timeout=5.0))),
+                served(
+                    check_server(CheckConfig(checked or f"{outside.metrics}/service", timeout=5.0))
+                ),
             ),
             ("connector.metrics", served(metrics_server(MetricsConfig(outside.metrics, 5.0)))),
             ("connector.workloads", served(workloads)),
@@ -396,6 +400,51 @@ async def test_b_8_06_runs_unchanged_on_a_serverless_platform(
     assert images == ([serverless_service.IMAGE] if rolled_back else [release["image"]])
 
 
+@pytest.mark.parametrize(("rate", "promoted"), [("0.001", True), ("0.2", False)])
+async def test_b_8_04_on_a_serverless_platform_shares_the_traffic_and_promotes_or_puts_it_back(
+    outside: Outside,
+    cluster: str,
+    systems: Systems,
+    rate: str,
+    promoted: bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ADR-0312: the canary revision takes a rising share while its rate holds and all traffic
+    after the third stage; on a rise all traffic goes back to the stable revision by rule."""
+    serverless_key(monkeypatch)
+    w = await ReleaseWorld(outside, cluster, systems, serverless=True).ready()
+    systems.fake(
+        "serverless", "/_fake/deploy", {"service": "web", "image": "registry.example/app:1.1.0"}
+    )
+    stable, canary = systems.state("serverless")["services"]["web"]["revisions"]
+    version = await w.registered("B-8.04-traffic-canary.yaml")
+    run = await w.confirmed(
+        await w.start(
+            version,
+            service="web",
+            first=5,
+            second=25,
+            third=50,
+            error_rate_query=rate,
+            max_error_rate="0.02",
+        )
+    )
+    finished(run)
+    traffic = systems.state("serverless")["services"]["web"]["traffic"]
+    if promoted:
+        assert traffic == {canary: 100}
+        assert (await w.result(run, "share-3"))["output"]["traffic"][0]["percent"] == 50
+        assert (await w.result(run, "halt-3"))["skipped"] is True
+    else:
+        assert traffic == {stable: 100}
+        assert (await w.result(run, "share-1"))["output"]["traffic"] == [
+            {"revision": stable, "percent": 95},
+            {"revision": canary, "percent": 5},
+        ]
+        assert (await w.result(run, "share-2"))["skipped"] is True
+        assert (await w.result(run, "promote"))["skipped"] is True
+
+
 # --- B-8.02, B-8.03, B-8.04 at an app store (ADR-0210) -----------------------------------------
 
 
@@ -515,15 +564,26 @@ def merged_change(outside: Outside, name: str, title: str) -> None:
 POST = "<p>Signing in works again.</p><ul><li>Fixed: sign-in</li></ul>"
 
 
-async def test_b_8_08_drafts_the_post_and_publishes_it_only_once_a_person_decided(
-    outside: Outside, cluster: str, systems: Systems
+@pytest.mark.parametrize(("term", "found"), [("Signing in", True), ("dark mode", False)])
+async def test_b_8_08_drafts_the_post_publishes_it_on_a_persons_word_and_checks_its_page(
+    outside: Outside, cluster: str, systems: Systems, term: str, found: bool
 ) -> None:
+    """The published page answers at its address and carries the search term, or the check's
+    failure is counted for the corridor (UC-03 B-8.08)."""
     w = await ReleaseWorld(
-        outside, cluster, systems, answers={"You write the website post": POST}
+        outside,
+        cluster,
+        systems,
+        answers={"You write the website post": POST},
+        checked=systems.website,
     ).ready()
     merged_change(outside, "fix/sign-in", "Fix sign-in")
     version = await w.registered("B-8.08-changelog-and-website.yaml")
-    run = await w.confirmed(await w.start(version, release="2.0", since_hours=336))
+    run = await w.confirmed(
+        await w.start(
+            version, release="2.0", since_hours=336, search_term=term, page_path="/${slug}/"
+        )
+    )
     assert states(run)["publish"] is StepState.WAITING_HUMAN
     posts = systems.state("website")["posts"]
     [drafted] = [p for p in posts.values() if p["status"] == "draft"]
@@ -532,6 +592,12 @@ async def test_b_8_08_drafts_the_post_and_publishes_it_only_once_a_person_decide
     finished(run)
     statuses = [p["status"] for p in systems.state("website")["posts"].values()]
     assert statuses.count("publish") == 2 and "draft" not in statuses
+    page = (await w.result(run, "page"))["output"]
+    link = (await w.result(run, "publish"))["output"]["link"]
+    assert link.endswith(page["path"]) and page["path"].startswith("/taktus-")
+    assert page["status"] == 200
+    assert (await w.result(run, "unfound"))["count"] == (0 if found else 1)
+    assert page["outcome"] == ("passed" if found else "failed")
 
 
 async def test_b_9_07_drafts_the_newsletter_and_sends_it_only_once_a_person_decided(

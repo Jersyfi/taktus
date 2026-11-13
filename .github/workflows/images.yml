@@ -164,6 +164,9 @@ jobs:
           - name: taktus-connector-einvoice
             dockerfile: connectors/Dockerfile
             target: einvoice
+          - name: taktus-connector-erpnext
+            dockerfile: connectors/Dockerfile
+            target: erpnext
           - name: taktus-connector-expiry
             dockerfile: connectors/Dockerfile
             target: expiry
