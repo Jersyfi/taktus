@@ -75,6 +75,8 @@ def bundle_of(
         bundle["deadlines"] = {
             name: _deadline(deadline) for name, deadline in version.deadlines.items()
         }
+    if version.tolerances:
+        bundle["tolerances"] = dict(version.tolerances)
     if version.evaluation is not None:
         bundle["evaluation"] = version.evaluation.document()
     if version.case is not None:

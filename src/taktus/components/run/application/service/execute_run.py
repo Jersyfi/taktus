@@ -204,6 +204,7 @@ from taktus.components.run.domain.model import (
     ConnectorRule,
     ConstantRule,
     Control,
+    DemandToAccept,
     DeviationStatistic,
     Ended,
     ExtractRule,
@@ -356,6 +357,7 @@ from taktus.ports.model import (
     Permitted,
     PriceTable,
     Prompt,
+    ResolvedModel,
     WeightingTable,
     admits,
     host_location,
@@ -363,6 +365,7 @@ from taktus.ports.model import (
 )
 from taktus.ports.objectstore import ObjectStore
 from taktus.ports.persistence import (
+    Claims,
     PersistenceError,
     ProvenanceStore,
     Repository,
@@ -519,6 +522,11 @@ class StartRun:
     quotas hold it. None runs for the tenant itself."""
     remedy: Remedy | None = None
     """For a remediation run: the wrong result it produces again (ADR-0179 §3)."""
+    demand_accepted: bool | None = None
+    """Whether the person who commissions the run here saw its estimated demand and accepted
+    it (ADR-0299 §1). None: no person commissions it here — a trigger, a deadline, a reaction,
+    a trial — and nothing is shown. False: a run that needs much is refused with
+    `DemandToAccept`, which carries its demand, and nothing is written. True: accepted."""
     carried: tuple[StepRun, ...] = ()
     """For a remediation run: the step runs it starts with, done — every step the wrong result
     is not built on, as the wrong run left it, and the corrected step with the value a person
@@ -778,6 +786,10 @@ class EngineOptions:
     seeds: tuple[budgeting.Seed, ...] = budgeting.SEED
     """What calibration starts from for an adapter nothing has measured yet."""
     uncalibrated_margin: float = budgeting.UNCALIBRATED_MARGIN
+    demand_share: float = 0.5
+    """A run needs much where its estimated demand reaches this share of what remains of a
+    unit limit on its path: its demand is then shown to the person who commissions it before
+    it starts (ADR-0299 §1)."""
     """What a worker with no calibration history reserves beyond its estimate (DEC-0034)."""
     capacity: CapacityRules = field(default_factory=CapacityRules)
     """What admission against the platform holds a job to (docs/architecture/platform.md)."""
@@ -867,7 +879,11 @@ class RunEngine:
         citations: Citations | None = None,
         grants: WriteGrants | None = None,
         unit_limits: UnitLimitsPort | None = None,
+        claims: Claims | None = None,
     ) -> None:
+        self._claims = claims
+        """The claim per unit limit that serialises admissions against it (ADR-0298 §1). None:
+        two runners admitting against one limit at once may each cross it by one step."""
         self._steering = steering
         """Where a person's pause or cancellation of a run waits for its next boundary
         (ADR-0236). None: no run is paused or cancelled at a boundary."""
@@ -1116,6 +1132,17 @@ class RunEngine:
             raise RunError(
                 f"plan {command.plan.id!r} is {command.plan.status}: only a commissioned plan runs"
             )
+        if command.demand_accepted is False and not command.rehearsal:
+            # A run that needs much starts only once its demand was shown (ADR-0299 §1).
+            shown = await self.demand(
+                command.tenant,
+                process_version=command.process_version,
+                identity=command.identity,
+                org_unit=command.org_unit,
+                budget=command.budget,
+            )
+            if shown["much"]:
+                raise DemandToAccept(shown)
         org_unit = command.org_unit
         if self._org_units is not None:
             # A run is in its process's unit, where the structure places one (ADR-0275 §2).
@@ -4481,6 +4508,108 @@ class RunEngine:
         )
         return self._lines(priced, compute)
 
+    async def demand(
+        self,
+        tenant: Tenant,
+        *,
+        process_version: str,
+        identity: str,
+        org_unit: str | None,
+        budget: Limits,
+    ) -> dict[str, Any]:
+        """A run's estimated demand before it starts, as the person who commissions it sees it
+        (ADR-0299 §1, UC-8.10): what the process's runs of the last 28 days cost, on average and
+        at most; what the run's budget allows at most; and every unit limit on its path with
+        what remains of it. It needs much where the estimate reaches the engine's demand share
+        of what remains of a limit, in any line. The estimate is the runs' mean, or the budget
+        where the process has no run in the window. A rule over the stored runs; a limit held
+        per person counts only the commissioning person's own runs (ADR-0282 §6)."""
+        process = process_of(process_version)
+        path = await self._placed(tenant, identity, org_unit)
+        limits = (
+            []
+            if self._unit_limits is None
+            else list(await self._unit_limits.applying(tenant, path, process))
+        )
+        now = self._clock.now()
+        since = now - timedelta(days=UNIT_HISTORY_DAYS)
+        async with self._work.transaction(tenant):
+            stored = list(await self._runs.list(tenant))
+        past = [
+            self._lines(self._cost(r), r.compute_by_class())
+            for r in stored
+            if not r.rehearsal
+            and r.state is RunState.FINISHED
+            and process_of(r.process_version) == process
+            and r.created_at >= since
+        ]
+        names = sorted({line for lines in past for line in lines})
+        mean = {n: round(sum(p.get(n, 0.0) for p in past) / len(past), 6) for n in names}
+        most = {n: round(max(p.get(n, 0.0) for p in past), 6) for n in names}
+        allowed = self._budget_lines(budget)
+        estimate, basis = (
+            (mean, f"the mean of the process's {len(past)} finished run(s) since {since:%Y-%m-%d}")
+            if past
+            else (allowed, "the run's budget: the process has no finished run in 28 days")
+        )
+        costs = await self._unit_costs(tenant, None, limits, identity, stored) if limits else {}
+        share = self._options.demand_share
+        shown_limits: list[dict[str, Any]] = []
+        much = False
+        for limit in limits:
+            spent, _ = costs[limit.name]
+            left = {
+                line: round(max(amount - spent.get(line, 0.0), 0.0), 6)
+                for line, amount in limit.lines.items()
+            }
+            reaches = sorted(
+                line
+                for line, remains in left.items()
+                if line in estimate and estimate[line] >= share * remains - 1e-9
+            )
+            much = much or bool(reaches)
+            shown_limits.append(
+                {
+                    "limit": limit.name,
+                    "unit": limit.where(),
+                    "period": limit.key,
+                    "remaining": left,
+                    "reaches": reaches,
+                }
+            )
+        return {
+            "process": process,
+            "unit": "/".join(path) if path else "company",
+            "estimate": estimate,
+            "basis": basis,
+            "mean": mean,
+            "most": most,
+            "runs": len(past),
+            "at_most": allowed,
+            "limits": shown_limits,
+            "share": share,
+            "much": much,
+        }
+
+    def _budget_lines(self, budget: Limits) -> dict[str, float]:
+        """What a run's budget allows at most, as a unit limit's lines: money per currency,
+        compute seconds with their money at the instance's table where it has a price, and
+        tokens."""
+        lines = {f"money.{c}": float(v) for c, v in (budget.currency or {}).items()}
+        table = self._options.prices
+        if budget.compute is not None:
+            lines["compute_seconds"] = float(budget.compute.seconds)
+            price_of = (
+                None if table is None else (table.compute or {}).get(budget.compute.resource_class)
+            )
+            if not budget.currency and table is not None and price_of is not None:
+                key = f"money.{table.currency}"
+                lines[key] = round(lines.get(key, 0.0) + budget.compute.seconds * price_of, 6)
+        if budget.tokens is not None:
+            given = budget.tokens
+            lines["tokens"] = float((given.tokens_in or 0) + (given.tokens_out or 0))
+        return lines
+
     async def unit_costs(
         self, tenant: Tenant, viewer: str | None
     ) -> dict[str, tuple[dict[str, float], dict[date, dict[str, float]]]]:
@@ -4498,6 +4627,7 @@ class RunEngine:
         run: Run | None,
         limits: Sequence[AppliedLimit],
         own: str | None,
+        stored: Sequence[Run] | None = None,
     ) -> dict[str, tuple[dict[str, float], dict[date, dict[str, float]]]]:
         """Per limit: what its runs of the period cost, and what they cost per day, from the
         period's start or the 28 days before today, whichever is earlier. A run counts on the
@@ -4508,9 +4638,11 @@ class RunEngine:
         earliest = min(
             [now - timedelta(days=UNIT_HISTORY_DAYS + 1), *(lim.starts for lim in limits)]
         )
-        async with self._work.transaction(tenant):
-            stored = list(await self._runs.list(tenant))
-        runs = stored if run is None else [run, *(r for r in stored if r.id != run.id)]
+        if stored is None:
+            # Read in a unit of work of its own; `stored` is given where one is open already.
+            async with self._work.transaction(tenant):
+                stored = list(await self._runs.list(tenant))
+        runs = list(stored) if run is None else [run, *(r for r in stored if r.id != run.id)]
         found: dict[str, tuple[dict[str, float], dict[date, dict[str, float]]]] = {
             lim.name: ({}, {}) for lim in limits
         }
@@ -4538,29 +4670,121 @@ class RunEngine:
                         spent[line] = spent.get(line, 0.0) + value
         return found
 
-    async def _unit_refusal(
-        self, run: Run, reservation: ConsumptionQuantities
-    ) -> _UnitRefusal | None:
-        """Whether the step's reservation, priced, does not fit what remains of a unit limit
-        on the run's path. Every limit that applies is seen, for its alerts and anomalies;
-        `halt` wins over `wait` where several refuse (ADR-0282 §2)."""
+    async def _limits_of(self, run: Run) -> list[AppliedLimit]:
+        """Every unit limit on the run's path; none for a rehearsal (ADR-0282 §2)."""
         if self._unit_limits is None or run.rehearsal:
-            return None
-        limits = list(
+            return []
+        return list(
             await self._unit_limits.applying(
                 run.tenant, self._path(run), process_of(run.process_version)
             )
         )
-        if not limits:
-            return None
+
+    async def _unit_refusal(
+        self, run: Run, reservation: ConsumptionQuantities, limits: Sequence[AppliedLimit]
+    ) -> tuple[_UnitRefusal | None, _Costs]:
+        """Whether the step's reservation, priced, does not fit what remains of a unit limit
+        on the run's path, and what each limit's runs cost. Every limit that applies is seen,
+        for its alerts and anomalies (ADR-0282 §2)."""
+        if self._unit_limits is None or not limits:
+            return None, {}
         costs = await self._unit_costs(run.tenant, run, limits, run.identity)
-        demand = self._demand_lines(reservation)
-        refusals: list[_UnitRefusal] = []
         for limit in limits:
             spent, daily = costs[limit.name]
             await self._unit_limits.observed(
                 run.tenant, limit.name, spent, daily, run.process_version
             )
+        return self._refused_by(limits, costs, self._demand_lines(reservation)), costs
+
+    def _reserved(
+        self, run: Run, step: Step, demand: _Demand, quantities: ConsumptionQuantities
+    ) -> ConsumptionQuantities:
+        """What admission reserves for an estimate: scaled by the measured error of the
+        adapter it came from (ADR-0005 §4)."""
+        scale = (
+            {}
+            if demand.adapter is None
+            else budgeting.scale_for(
+                demand.adapter,
+                step.method,
+                demand.capabilities,
+                self._observed.get(run.id, []),
+                self._options.seeds,
+                self._options.uncalibrated_margin,
+                budgeting.models_of(quantities),
+                step=step_key(run.process_version, step.id),
+            )[0]
+        )
+        return budgeting.reserve(quantities, scale)
+
+    async def _cheaper(
+        self,
+        run: Run,
+        step: Step,
+        work: LlmWork,
+        demand: _Demand,
+        reservation: ConsumptionQuantities,
+        limits: Sequence[AppliedLimit],
+        costs: _Costs,
+    ) -> tuple[_Demand, ConsumptionQuantities, dict[str, Any]] | None:
+        """The policy `cheaper` at a unit limit (ADR-0298 §2): the member of the step's purpose
+        chain that the route admits for this step — its residency, its exactness class, a
+        trial on the process's cases, a share, no cool-down — whose priced reservation costs
+        less money than the one refused, fits the run's own budget and every limit on the
+        run's path; the cheapest of them. None where none does. A rule over the price table
+        and the stored runs, never a model."""
+        table = self._options.prices
+        if table is None:
+            return None
+        refused = self._demand_lines(reservation).get(f"money.{table.currency}")
+        if refused is None:
+            return None
+        line = self._line(run)
+        left = remaining(line, self._spent(_released(run, step.id)))
+        found: list[tuple[float, str, _Demand, ConsumptionQuantities]] = []
+        for member in await self._members(run, step, work):
+            if member.adapter == demand.adapter:
+                continue
+            try:
+                other = await self._llm_demand(run, step, work, member=member)
+            except (_StepFailed, _AdapterStopped):
+                continue
+            if other.quantities is None:
+                continue
+            held = self._reserved(run, step, other, other.quantities)
+            lines = self._demand_lines(held)
+            money = lines.get(f"money.{table.currency}")
+            if money is None or money >= refused - 1e-12:
+                continue
+            if not admit(self._priced(run, held), left, line).fits:
+                continue
+            if self._refused_by(limits, costs, lines) is not None:
+                continue
+            found.append((money, member.adapter, other, held))
+        if not found:
+            return None
+        money, chosen, other, held = min(found, key=lambda f: (f[0], f[1]))
+        facts = {
+            "from": demand.adapter,
+            "to": chosen,
+            "purpose": work.purpose,
+            "refused": round(refused, 6),
+            "reserved": round(money, 6),
+            "currency": table.currency,
+        }
+        return other, held, facts
+
+    def _refused_by(
+        self,
+        limits: Sequence[AppliedLimit],
+        costs: _Costs,
+        demand: Mapping[str, float],
+    ) -> _UnitRefusal | None:
+        """The limit a demand does not fit, given what each limit's runs cost: a rule over the
+        runs' records. `halt` wins over `wait` where several refuse (ADR-0282 §2)."""
+        refusals: list[_UnitRefusal] = []
+        for limit in limits:
+            spent, _ = costs[limit.name]
             over = [
                 line
                 for line, amount in limit.lines.items()
@@ -4570,7 +4794,7 @@ class RunEngine:
             if over:
                 check_at = (
                     None
-                    if limit.policy == "halt"
+                    if limit.policy != "wait"
                     else min(
                         self._clock.now() + timedelta(seconds=limit.check_every_seconds),
                         limit.ends,
@@ -4579,8 +4803,35 @@ class RunEngine:
                 refusals.append(_UnitRefusal(limit, spent, demand, tuple(over), check_at))
         if not refusals:
             return None
-        halting = [r for r in refusals if r.limit.policy == "halt"]
-        return (halting or refusals)[0]
+        # The strictest policy wins: `halt`, then `wait`, then `cheaper` (ADR-0298 §2).
+        for policy in ("halt", "wait"):
+            strictest = [r for r in refusals if r.limit.policy == policy]
+            if strictest:
+                return strictest[0]
+        return refusals[0]
+
+    def _rechecked(
+        self, run: Run, limits: Sequence[AppliedLimit], demand: Mapping[str, float]
+    ) -> Callable[[], Awaitable[None]] | None:
+        """The check made again inside the transaction that admits the step, under the claim
+        of every limit on the run's path, taken in the order of their names: a runner that
+        admitted against one of them meanwhile has committed, and its reservation is counted
+        (ADR-0298 §1). Raises `_UnitRace` with the refusal where the step no longer fits;
+        the transaction then writes nothing. None where nothing is claimed."""
+        claims = self._claims
+        if claims is None or not limits:
+            return None
+
+        async def recheck() -> None:
+            for name in sorted({limit.name for limit in limits}):
+                await claims.hold(run.tenant, f"unit_limit:{name}")
+            stored = list(await self._runs.list(run.tenant))
+            costs = await self._unit_costs(run.tenant, run, limits, run.identity, stored)
+            refusal = self._refused_by(limits, costs, demand)
+            if refusal is not None:
+                raise _UnitRace(refusal)
+
+        return recheck
 
     async def _held_at_unit(
         self,
@@ -4591,10 +4842,12 @@ class RunEngine:
         reservation: ConsumptionQuantities,
         refusal: _UnitRefusal,
         span: Span,
+        released: Sequence[Mapping[str, Any]] = (),
         **changes: Any,
     ) -> tuple[Run, StepRun, bool]:
         """The step does not fit a unit limit: refused, its block names the limit, and the run
-        halts for a person (`halt`) or parks until the next check or period (`wait`)."""
+        halts for a person (`halt`) or parks until the next check or period (`wait`).
+        `released`: the end of an earlier hold, booked in the same transaction."""
         span.record_failure("held at a unit limit")
         limit = refusal.limit
         newly = step_run.block is None or step_run.block.limit != limit.name
@@ -4623,6 +4876,8 @@ class RunEngine:
             if refusal.check_at is not None
             else "a person raises the limit and resumes the run"
         )
+        if limit.policy == "cheaper":
+            then = "no cheaper model the process allows for the step fits; " + then
         step_run = step_run.to(
             StepState.REJECTED,
             adapter=adapter,
@@ -4635,7 +4890,8 @@ class RunEngine:
             ),
             **changes,
         )
-        self._unit_held[run.id] = limit.policy
+        # A `cheaper` that found no cheaper model halts, as the default does (ADR-0298 §2).
+        self._unit_held[run.id] = "wait" if limit.policy == "wait" else "halt"
         held = {
             "kind": UNIT_LIMIT_HELD,
             "step": step_run,
@@ -4648,6 +4904,7 @@ class RunEngine:
             "step.rejected",
             step=step_run,
             outcome="rejected_by_unit_limit",
+            before=tuple(released),
             after=(held,) if newly else (),
         )
         if self._unit_limits is not None:
@@ -5219,7 +5476,14 @@ class RunEngine:
         if stopped is not None:
             return await self._stop_repeating(run, step_run, stopped, span)
         run, step_run, admitted = await self._admit(
-            run, step, step_run, demand, span, retryable=None, attempt=attempt
+            run,
+            step,
+            step_run,
+            demand,
+            span,
+            llm=work if isinstance(work, LlmWork) else None,
+            retryable=None,
+            attempt=attempt,
         )
         if not admitted:
             return run, step_run
@@ -5936,14 +6200,17 @@ class RunEngine:
             return await self._llm_demand(run, step, work)
         return _Demand(NOTHING)
 
-    async def _llm_demand(self, run: Run, step: Step, work: LlmWork) -> _Demand:
+    async def _llm_demand(
+        self, run: Run, step: Step, work: LlmWork, member: ResolvedModel | None = None
+    ) -> _Demand:
         """Input counted before the call, output bounded by the limit the step sets; money at
         the price table, with every input token priced as the dearest input kind, because
-        whether it will be read from a cache is not knowable before the call."""
+        whether it will be read from a cache is not knowable before the call. On `member`
+        where one is given, else on the route's."""
         routed = await self._route(run, step, work)
         # Every member that fits cooling down: the step admits on the first, and waits at its
         # boundary without a call (ADR-0116 §6).
-        resolved = routed.chosen or routed.fitting
+        resolved = member or routed.chosen or routed.fitting
         if resolved is None:
             raise _StepFailed(
                 reason=_no_model(routed),
@@ -6008,6 +6275,7 @@ class RunEngine:
         step_run: StepRun,
         demand: _Demand,
         span: Span,
+        llm: LlmWork | None = None,
         **changes: Any,
     ) -> tuple[Run, StepRun, bool]:
         """Reserve the step's demand against what remains of the line the run is held to, or
@@ -6035,21 +6303,7 @@ class RunEngine:
                 run.with_step_run(step_run), "step.rejected", step=step_run, outcome="no_estimate"
             )
             return run, step_run, False
-        scale, _ = (
-            ({}, "")
-            if adapter is None
-            else budgeting.scale_for(
-                adapter,
-                step.method,
-                demand.capabilities,
-                self._observed.get(run.id, []),
-                self._options.seeds,
-                self._options.uncalibrated_margin,
-                budgeting.models_of(demand.quantities),
-                step=step_key(run.process_version, step.id),
-            )
-        )
-        reservation = budgeting.reserve(demand.quantities, scale)
+        reservation = self._reserved(run, step, demand, demand.quantities)
         line = self._line(run)
         spent = self._spent(_released(run, step_run.step_id))
         left = remaining(line, spent)
@@ -6113,11 +6367,28 @@ class RunEngine:
                 outcome="rejected_by_admission",
             )
             return run, step_run, False
-        refusal = await self._unit_refusal(run, reservation)
+        limits = await self._limits_of(run)
+        refusal, costs = await self._unit_refusal(run, reservation, limits)
+        cheaper: Mapping[str, Any] | None = None
+        if refusal is not None and refusal.limit.policy == "cheaper" and llm is not None:
+            moved = await self._cheaper(run, step, llm, demand, reservation, limits, costs)
+            if moved is not None:
+                demand, reservation, facts = moved
+                adapter = demand.adapter
+                digest = await self._objects.put(_canonical({**facts, "limit": refusal.limit.name}))
+                cheaper = {
+                    "kind": UNIT_LIMIT_CHEAPER,
+                    "step": step_run,
+                    "outcome": refusal.limit.name,
+                    "digest": digest,
+                    "bare": True,
+                }
+                refusal = None
         if refusal is not None:
             return await self._held_at_unit(
                 run, step_run, adapter, demand, reservation, refusal, span, **changes
             )
+        before_admission = run
         released: list[Mapping[str, Any]] = []
         if step_run.block is not None and step_run.block.cause in block.CLOSED_BY_ADMISSION:
             # What refused the step now lets it through: the block ends here.
@@ -6133,6 +6404,7 @@ class RunEngine:
                     }
                 )
             run, step_run = await self._close_block(run, step_run)
+        held_up = step_run
         step_run = step_run.to(
             StepState.ADMITTED,
             adapter=adapter,
@@ -6141,19 +6413,40 @@ class RunEngine:
             reason=None,
             **changes,
         )
-        run = await self._commit(
-            run.with_step_run(step_run),
-            "step.admitted",
-            step=step_run,
-            before=(
-                *released,
-                *(
-                    ({"kind": RETRIED, "step": step_run, "outcome": "after_failure"},)
-                    if retried
-                    else ()
+        try:
+            run = await self._commit(
+                run.with_step_run(step_run),
+                "step.admitted",
+                step=step_run,
+                before=(
+                    *(() if cheaper is None else (cheaper,)),
+                    *released,
+                    *(
+                        ({"kind": RETRIED, "step": step_run, "outcome": "after_failure"},)
+                        if retried
+                        else ()
+                    ),
                 ),
-            ),
-        )
+                inside=self._rechecked(
+                    before_admission.with_step_run(held_up),
+                    limits,
+                    self._demand_lines(reservation),
+                ),
+            )
+        except _UnitRace as race:
+            # Another runner admitted against the limit first: this step is held as if it
+            # had been refused at once, and what ended its earlier hold is booked with it.
+            return await self._held_at_unit(
+                run,
+                held_up,
+                adapter,
+                demand,
+                reservation,
+                race.refusal,
+                span,
+                released=released,
+                **changes,
+            )
         if reservation != demand.quantities:
             run = await self._commit(
                 run, "step.reserved", step=step_run, outcome="capped" if capped else "calibrated"
@@ -6224,6 +6517,18 @@ class RunEngine:
         that answered goes into the provenance as the adapter's version, because a variable
         method is reproducible only at a pinned one."""
         routed = await self._route(run, run.step(step_run.step_id), work)
+        if (
+            step_run.adapter is not None
+            and routed.chosen is not None
+            and routed.chosen.adapter != step_run.adapter
+        ):
+            # Admission reserved for another member — the one a `cheaper` policy moved the
+            # step to: it stays the step's model while it fits (ADR-0298 §2).
+            admitted = await self._route(
+                run, run.step(step_run.step_id), work, first=step_run.adapter
+            )
+            if admitted.chosen is not None and admitted.chosen.adapter == step_run.adapter:
+                routed = admitted
         resolved = routed.chosen
         if resolved is None and routed.fitting is not None:
             # Every member that fits is cooling down: nothing is called, and the step waits at
@@ -6321,10 +6626,27 @@ class RunEngine:
             resolved.adapter,
         )
 
-    async def _route(self, run: Run, step: Step, work: LlmWork) -> routing.Route:
-        """The step's route through its purpose's chain, at this moment (ADR-0116 §4)."""
+    async def _members(self, run: Run, step: Step, work: LlmWork) -> list[ResolvedModel]:
+        """Every member of the purpose's chain the route admits for the step now (ADR-0298 §2)."""
+        found: list[ResolvedModel] = []
         models = self._model_pool(run)
-        chain = [] if models is None else await models.chain(work.purpose)
+        for member in [] if models is None else await models.chain(work.purpose):
+            routed = await self._route(run, step, work, first=member.adapter)
+            if routed.chosen is not None and routed.chosen.adapter == member.adapter:
+                found.append(member)
+        return found
+
+    async def _route(
+        self, run: Run, step: Step, work: LlmWork, first: str | None = None
+    ) -> routing.Route:
+        """The step's route through its purpose's chain, at this moment (ADR-0116 §4). The
+        member `first` names is tried before the others, where the chain holds it."""
+        models = self._model_pool(run)
+        chain = [] if models is None else list(await models.chain(work.purpose))
+        if first is not None:
+            chain = [m for m in chain if m.adapter == first] + [
+                m for m in chain if m.adapter != first
+            ]
         permitted: Permitted = "anywhere"
         if self._residency is not None:
             permitted = await self._residency.permitted(
@@ -8358,6 +8680,8 @@ ORG_UNIT_ADMITTED = "org_unit.admitted"
 """A run committed its budget to its organisational unit's budget quota (ADR-0166)."""
 ORG_UNIT_HELD = "org_unit.held"
 TENANT_BUDGET_HELD = "budget.held"
+UNIT_LIMIT_CHEAPER = "unit_limit.cheaper"
+"""A step a unit limit refused was admitted on a cheaper model of its purpose (ADR-0298 §2)."""
 UNIT_LIMIT_HELD = "unit_limit.held"
 UNIT_LIMIT_RELEASED = "unit_limit.released"
 UNIT_HISTORY_DAYS = 28
@@ -8395,6 +8719,19 @@ class _Recount(Exception):
     def __init__(self, flying: frozenset[str]) -> None:
         super().__init__("recount")
         self.flying = flying
+
+
+type _Costs = Mapping[str, tuple[dict[str, float], dict[date, dict[str, float]]]]
+"""Per unit limit: what its runs of the period cost, and what they cost per day."""
+
+
+class _UnitRace(Exception):
+    """The check made again under the limits' claims found that the step no longer fits: a
+    runner admitted against the limit first (ADR-0298 §1)."""
+
+    def __init__(self, refusal: _UnitRefusal) -> None:
+        super().__init__("unit limit race")
+        self.refusal = refusal
 
 
 @dataclass(frozen=True)

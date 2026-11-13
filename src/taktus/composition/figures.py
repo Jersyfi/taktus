@@ -15,11 +15,16 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from taktus.components.accounting.application.service.spend import SpendHandler, SpendOfProcess
 from taktus.components.catalog.domain.model import AdapterMaturity, AgentCore
 from taktus.components.governance.domain.model.domains import Domain
+from taktus.components.governance.domain.model.incident import (
+    Incident,
+    IncidentKind,
+    IncidentState,
+)
 from taktus.components.identity.application.service import IdentityDirectory
 from taktus.components.process.application.service.streams import ValueStreams
 from taktus.components.process.domain.model import Process, ProcessVersion, TakeoverTrial
@@ -61,7 +66,15 @@ LEVEL_FIGURES = {
 }
 """The process level's and the run level's figures in the export (UC-6.10 §2, UC-5.7): each
 read from the level itself, so that the export carries the level's own value."""
-KNOWN = frozenset({*value.DEFINITIONS, *RUN_FIGURES, *LEVEL_FIGURES, warehouse.FIGURE})
+LIMIT_FIGURE = "limit.held_seconds"
+LIMIT_DEFINITION = (
+    "the seconds a unit limit held work in the tenant's watch window, where it held more runs "
+    "or longer than the watch allows: its harm report, with the change recommended, its cost "
+    "and its benefit in the basis (ADR-0282 §4, ADR-0299 §2)"
+)
+KNOWN = frozenset(
+    {*value.DEFINITIONS, *RUN_FIGURES, *LEVEL_FIGURES, warehouse.FIGURE, LIMIT_FIGURE}
+)
 """Every figure an owner hands in: what a view may name."""
 
 
@@ -171,6 +184,7 @@ class FigureReads:
         domains: Repository[Domain] | None = None,
         agents: Repository[AgentCore] | None = None,
         runs: Repository[Run] | None = None,
+        incidents: Repository[Incident] | None = None,
     ) -> None:
         """`domains`, `agents` and `runs` give the groups the balance is summed over: the
         governance component's domains, the catalogue's agents by their flow, the chains by
@@ -178,6 +192,9 @@ class FigureReads:
         self._domains = domains
         self._agents = agents
         self._runs = runs
+        self._incidents = incidents
+        """The governance component's incidents: a limit's harm report is a figure of the views
+        too (ADR-0299 §2). None: no limit figure is handed in."""
         self._processes = processes
         self._versions = versions
         self._streams = streams
@@ -281,6 +298,7 @@ class FigureReads:
             *(shown(f) for f in figures),
             *await self._run_figures(reader, visible),
             *await self._level_figures(reader, visible, since, end),
+            *await self._limit_figures(tenant, visible),
         ]
         return Gathered(
             shown=out,
@@ -322,6 +340,61 @@ class FigureReads:
         for chain, processes in linked.items():
             found.append(value.Group(scope="chain", subject=chain, processes=tuple(processes)))
         return found
+
+    async def _limit_figures(self, tenant: Tenant, visible: frozenset[str]) -> list[Shown]:
+        """A limit's harm report as a figure: the last one raised for each limit and still
+        open (ADR-0299 §2), once for the limit's unit — the views of the administrator and of
+        the team affected — and once for each visible process it held, which the views grouped
+        by process show. It names the limit, the work held, the change recommended with its
+        cost and benefit, and the role that owns the limit — never a person; a limit held per
+        person counts every person's holds together (ADR-0282 §6)."""
+        if self._incidents is None:
+            return []
+        async with self._work.transaction(tenant):
+            reports = [
+                i
+                for i in await self._incidents.list(tenant)
+                if i.kind is IncidentKind.LIMIT_HARMFUL and i.state is IncidentState.OPEN
+            ]
+        last: dict[str, Incident] = {}
+        for report in sorted(reports, key=lambda i: (i.raised_at, i.id)):
+            last[str(report.facts.get("limit") or report.process_id)] = report
+        out: list[Shown] = []
+        for name, report in sorted(last.items()):
+            window = report.facts.get("window_days")
+            basis = {"limit": name, "incident": report.id, **dict(report.facts)}
+            subjects: list[tuple[Literal["unit", "process"], str, Any]] = [
+                (
+                    "unit",
+                    str((report.facts.get("unit")) or "company"),
+                    report.facts.get("held_seconds"),
+                )
+            ]
+            for key, seconds in sorted(report.facts.items()):
+                process = key.removeprefix("held_seconds.")
+                if key.startswith("held_seconds.") and process in visible:
+                    subjects.append(("process", process, seconds))
+            for scope, subject, held in subjects:
+                out.append(
+                    Shown(
+                        id=LIMIT_FIGURE,
+                        component="governance",
+                        definition=LIMIT_DEFINITION,
+                        unit="seconds",
+                        scope=scope,
+                        subject=subject,
+                        since=None
+                        if not isinstance(window, float)
+                        else report.raised_at - timedelta(days=window),
+                        until=report.raised_at,
+                        value=float(held) if isinstance(held, int | float) else None,
+                        withheld=None if isinstance(held, int | float) else "no seconds read",
+                        method="a rule over the ledger's unit_limit.held and "
+                        "unit_limit.released (ADR-0282 §4)",
+                        basis=basis,
+                    )
+                )
+        return out
 
     async def _run_figures(self, reader: Reader, visible: frozenset[str]) -> list[Shown]:
         """The overview's own counts, read from the overview level itself (UC-6.10)."""

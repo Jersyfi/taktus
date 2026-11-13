@@ -38,7 +38,13 @@ from taktus.components.process.application.service.register_version import (
 from taktus.components.process.domain.model import InvalidProcess, ProcessVersion, RaiseRefused
 from taktus.components.run.application.query import ProvenanceOfRun
 from taktus.components.run.application.service import ConfirmSteps, ResumeRun, StartRun
-from taktus.components.run.domain.model import Run, RunError, RunState, parse_work
+from taktus.components.run.domain.model import (
+    DemandToAccept,
+    Run,
+    RunError,
+    RunState,
+    parse_work,
+)
 from taktus.components.run.domain.model.block import FELL_BACK
 from taktus.components.run.domain.service import autonomy
 from taktus.components.run.domain.service.provenance import ChainVerification
@@ -156,12 +162,22 @@ def run(
             "the version it replaces. Admitted only with the quality history that version names.",
         ),
     ] = False,
+    accept_demand: Annotated[
+        bool,
+        typer.Option(
+            "--accept-demand",
+            help="Start a run that needs much of what remains of a unit limit, after its "
+            "estimated demand was shown (ADR-0299).",
+        ),
+    ] = False,
 ) -> None:
     """Run a process bundle against a worker and print the ledger and the consumption.
 
     Exit code 0: the run finished. Exit code 3: the run halted, escalated or waits for a person;
     the output says why and how to continue. Exit code 2: the bundle or the invocation is wrong,
-    or a raise of its autonomy level is refused.
+    or a raise of its autonomy level is refused. Exit code 4: the run needs much of what
+    remains of a unit limit; its estimated demand is shown, nothing started, and
+    `--accept-demand` starts it.
     """
     wiring: Wiring = ctx.obj
     try:
@@ -196,8 +212,12 @@ def run(
                 approve_raise=approve_raise,
                 corrected=corrected,
                 rejected=rejected,
+                accept_demand=accept_demand,
             )
         )
+    except DemandToAccept as error:
+        typer.echo(demand_shown(error.shown), err=True)
+        raise typer.Exit(code=4) from error
     except RaiseRefused as error:
         refused(error)
         raise typer.Exit(code=2) from error
@@ -321,6 +341,7 @@ async def _run(
     approve_raise: bool = False,
     corrected: dict[str, dict[str, Any]] | None = None,
     rejected: tuple[str, ...] = (),
+    accept_demand: bool = False,
 ) -> Run:
     async with wiring.services(state_dir=state_dir, worker_endpoint=worker_endpoint) as services:
         typer.echo(f"state  {services.storage}")
@@ -336,7 +357,9 @@ async def _run(
         budget = _budget(version)
         if resume is None:
             require_inputs(version, inputs)
-            run = await _start(services, version, budget, placed, tenant, stop_after, inputs)
+            run = await _start(
+                services, version, budget, placed, tenant, stop_after, inputs, accept_demand
+            )
         elif answer is not None or rejected:
             steps, performed = answer if answer is not None else (rejected, False)
             run = await services.engine.confirm(
@@ -377,8 +400,10 @@ async def _start(
     tenant: str,
     stop_after: int | None,
     inputs: dict[str, Any],
+    accept_demand: bool = False,
 ) -> Run:
     command = _command(services, version, placed, inputs)
+    await shown_first(services, version, budget, placed, tenant, command, accept_demand)
     plan = await services.commission.execute(
         CommissionPlan(
             command=command,
@@ -400,8 +425,56 @@ async def _start(
             stop_after=stop_after,
             inputs=inputs,
             actions=version.autonomy.action_levels,
+            demand_accepted=accept_demand,
         )
     )
+
+
+async def shown_first(
+    services: Services,
+    version: ProcessVersion,
+    budget: Limits,
+    placed: Resolution,
+    tenant: str,
+    command: Command,
+    accept_demand: bool,
+) -> None:
+    """Before anything is commissioned: a run that needs much is refused with its estimated
+    demand unless the person accepted it (ADR-0299 §1). The engine holds the same rule."""
+    if accept_demand:
+        return
+    shown = await services.engine.demand(
+        tenant,
+        process_version=version.ref,
+        identity=placed.identity,
+        org_unit=command.org_unit,
+        budget=budget,
+    )
+    if shown["much"]:
+        raise DemandToAccept(shown)
+
+
+def demand_shown(shown: dict[str, Any]) -> str:
+    """A run's estimated demand as the person who commissions it reads it (ADR-0299 §1)."""
+
+    def figures(lines: dict[str, float]) -> str:
+        return ", ".join(f"{name} {value:g}" for name, value in sorted(lines.items())) or "nothing"
+
+    out = [
+        f"the run of {shown['process']} for {shown['unit']} needs much; nothing was started",
+        f"  estimated  {figures(shown['estimate'])} — {shown['basis']}",
+    ]
+    if shown["runs"]:
+        out.append(f"  at most    {figures(shown['most'])} — the dearest of those runs")
+    out.append(f"  budget     {figures(shown['at_most'])} — what the run may use at most")
+    for limit in shown["limits"]:
+        mark = "reaches" if limit["reaches"] else "fits"
+        out.append(
+            f"  limit      {limit['limit']} ({limit['unit']}, {limit['period']}): "
+            f"{figures(limit['remaining'])} remain — {mark} {shown['share']:.0%} of it"
+        )
+    out.append("start it with --accept-demand")
+    return "\n".join(out)
 
 
 def _command(

@@ -18,6 +18,7 @@ from taktus.components.run.domain.model.deadline import (
 )
 from taktus.components.run.domain.model.errors import (
     ClaimLost,
+    DemandToAccept,
     IllegalTransition,
     MessageRefused,
     NoConnector,
@@ -155,6 +156,7 @@ __all__ = [
     "DeadlineAction",
     "DeadlineRule",
     "DeadlineState",
+    "DemandToAccept",
     "DeviationStatistic",
     "Ended",
     "Expectation",

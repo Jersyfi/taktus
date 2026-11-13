@@ -21,6 +21,7 @@ from taktus.components.accounting.application.service.spend import SpendHandler,
 from taktus.components.catalog.domain.model import AdapterMaturity, AgentCore
 from taktus.components.decision.domain.model import Request
 from taktus.components.governance.domain.model.domains import Domain
+from taktus.components.governance.domain.model.incident import Incident
 from taktus.components.identity.application.service import IdentityDirectory
 from taktus.components.process.application.service.streams import ValueStreams
 from taktus.components.process.domain.model import (
@@ -508,6 +509,7 @@ def reading_wiring(
         domains=of(Domain),
         agents=of(AgentCore),
         runs=of(Run),
+        incidents=of(Incident),
     )
     return ReadingWiring(
         figures=figures,

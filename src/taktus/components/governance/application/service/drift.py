@@ -45,6 +45,11 @@ class DriftSeen:
     models: Mapping[str, str] = field(default_factory=dict)
     """The models that answered, by step, in this evaluation and the earlier one:
     `<step>` and `<step>@before`."""
+    outward: bool = True
+    """Whether the process sends anything outward. A drift is raised either way, as a finding
+    of deviation detection (UC-8.4 §2, ADR-0300 §2); the facts say which."""
+    role: str = "owner"
+    """Whom it is addressed to: the role the process names for its escalation, else `owner`."""
 
 
 class Drifts:
@@ -79,6 +84,8 @@ class Drifts:
             "score": seen.score,
             "previous": seen.previous,
             "tolerance": seen.tolerance,
+            "outward": "yes" if seen.outward else "no",
+            "role": seen.role,
         }
         facts.update({f"model:{step}": model for step, model in sorted(seen.models.items())})
         incident = Incident(

@@ -10,6 +10,7 @@ test.
 
 from taktus.adapters.driven.postgres.archive import PostgresTenantArchive
 from taktus.adapters.driven.postgres.backup_log import PostgresBackupLog
+from taktus.adapters.driven.postgres.claims import PostgresClaims
 from taktus.adapters.driven.postgres.leadership import PostgresLeadership
 from taktus.adapters.driven.postgres.ledger_store import PostgresLedgerStore
 from taktus.adapters.driven.postgres.migrate import SchemaOutOfDate, check_schema, upgrade
@@ -27,6 +28,7 @@ from taktus.adapters.driven.postgres.trace_store import PostgresTraceStore
 
 __all__ = [
     "PostgresBackupLog",
+    "PostgresClaims",
     "PostgresLeadership",
     "PostgresLedgerSignal",
     "PostgresLedgerStore",

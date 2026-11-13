@@ -66,6 +66,7 @@ from taktus.components.catalog.domain.model import (
 from taktus.components.catalog.domain.service import removal
 from taktus.components.catalog.ports import NotConfigured, NotRunnable
 from taktus.components.command.application.service import CommissionPlan, CommissionPlanHandler
+from taktus.components.governance.application.service.removal_broke import RemovalBroke
 from taktus.components.process.domain.model import ProcessVersion
 from taktus.components.run.application.query import RecordedResponses
 from taktus.components.run.application.service import RunEngine, StartRun
@@ -108,7 +109,11 @@ class Loopback:
         clock: Clock,
         ids: Identifiers,
         conformance: RunConformanceHandler | None = None,
+        broke: RemovalBroke | None = None,
     ) -> None:
+        self._broke = broke
+        """Where a verdict of *broke* is raised to each broken process's owner (ADR-0300 §3).
+        None: it is recorded and raised to nobody."""
         self._pools = pools
         self._conformance = conformance
         self._recordings = recordings
@@ -244,6 +249,7 @@ class Loopback:
     async def record(self, tenant: Tenant, result: dict[str, Any]) -> dict[str, Any]:
         parsed = RemovalResult.model_validate(result)
         maturity, entry = await self._record.execute(RecordRemovalResult(parsed, tenant))
+        await self._raise_broke(tenant, parsed)
         current = await self._pools.configuration(maturity.id)
         return {
             "integration": maturity.id,
@@ -284,6 +290,30 @@ class Loopback:
             "ledger_seq": entry.seq,
             "content_digest": entry.content_digest,
         }
+
+    async def _raise_broke(self, tenant: Tenant, result: RemovalResult) -> None:
+        """Every process the verdict found broken, raised to its owner: the role its escalation
+        names, else `owner` (UC-8.9 §2, ADR-0300 §3). Nothing for any other verdict."""
+        if self._broke is None or result.verdict is not Verdict.BROKE:
+            return
+        for finding in result.processes:
+            if finding.verdict is not Verdict.BROKE:
+                continue
+            async with self._work.transaction(tenant):
+                version = await self._versions.get(tenant, finding.process)
+            role = (
+                "owner"
+                if version is None or version.escalation is None
+                else (version.escalation.role)
+            )
+            await self._broke.raised(
+                tenant,
+                integration=result.integration,
+                run_id=result.run_id,
+                process_version=finding.process,
+                steps=[(s.step, s.reason) for s in finding.steps if s.verdict is Verdict.BROKE],
+                role=role,
+            )
 
     # --- helpers -------------------------------------------------------------------------------
 

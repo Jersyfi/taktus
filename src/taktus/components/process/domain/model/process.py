@@ -483,6 +483,10 @@ class ProcessVersion(Value):
     evaluation: EvaluationSpec | None = None
     """The process's evaluation cases, its scorers and the schedule they run on without a
     change (ADR-0134 §1). None: a change is held to no cases, and nothing measures drift."""
+    tolerances: Mapping[StepId, float] = Field(default_factory=dict)
+    """Per variable step that no scorer scores yet, its tolerance: what counts as an equivalent
+    result, a share from 0 to 1 within its class's ceiling (ADR-0300 §1). It is held once
+    cases exist: a scorer added later scores the step against it."""
     case: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_]*$")
     """The input that names a run's case — the support message, the pull request — by which
     its spend is grouped (ADR-0216). None: the process's runs are counted per run alone."""
@@ -651,7 +655,7 @@ class ProcessVersion(Value):
     def _evaluation_findings(self) -> list[str]:
         """Why the declared evaluation cannot hold against this version (ADR-0134 §1)."""
         if self.evaluation is None:
-            return []
+            return self._version_tolerance_findings()
         producing = {step.id for step in self.steps if step.exactness is not None}
         found = [
             f"`evaluation`: a scorer scores the step {scorer.step!r}, which is not a step of "
@@ -680,12 +684,60 @@ class ProcessVersion(Value):
                 found.append(f"{where} gives no value for the input(s) {', '.join(missing)}")
         return found
 
+    def _version_tolerance_findings(self) -> list[str]:
+        """A tolerance declared beside the steps names a variable step that produces a result,
+        is a share from 0 to 1 within its class's ceiling, and is declared once (ADR-0300 §1)."""
+        found: list[str] = []
+        steps = {step.id: step for step in self.steps}
+        twice = set(self.tolerances) & set(
+            {} if self.evaluation is None else self.evaluation.tolerances
+        )
+        found.extend(
+            f"`tolerances` and `evaluation.tolerances` both declare {step_id!r}; declare it once"
+            for step_id in sorted(twice)
+        )
+        for step_id, share in sorted(self.tolerances.items()):
+            step = steps.get(step_id)
+            if step is None or step.method not in VARIABLE or step.exactness is None:
+                found.append(
+                    f"`tolerances` names {step_id!r}, which is no variable step of this process "
+                    "that produces a result"
+                )
+                continue
+            ceiling = TOLERANCE_CEILING[ExactnessClass(step.exactness)]
+            if not 0 <= share <= ceiling + 1e-9:
+                found.append(
+                    f"`tolerances`: {step_id!r} is {step.exactness} and admits a tolerance from "
+                    f"0 to {ceiling:g}, not {share:g}; room for creativity exists only where the "
+                    "class is `free`"
+                )
+        return found
+
+    def undeclared_tolerances(self) -> tuple[str, ...]:
+        """Every variable step that produces a result and declares no tolerance, under
+        `tolerances` or `evaluation.tolerances` (UC-8.4 §2, ADR-0300 §1)."""
+        declared = self.declared_tolerances()
+        return tuple(
+            step.id
+            for step in self.steps
+            if step.method in VARIABLE and step.exactness is not None and step.id not in declared
+        )
+
+    def declared_tolerances(self) -> dict[str, float]:
+        """Every tolerance the version declares, beside its steps or under its evaluation."""
+        return {
+            **self.tolerances,
+            **({} if self.evaluation is None else dict(self.evaluation.tolerances)),
+        }
+
     def _tolerance_findings(self, scored: frozenset[str]) -> list[str]:
         """Every variable step the evaluation scores declares its tolerance, within what its
-        class admits; a tolerance names a scored step (ADR-0250 §1)."""
+        class admits; a tolerance under `evaluation` names a scored step (ADR-0250 §1). A
+        tolerance declared beside the steps before cases existed counts for a step a scorer
+        scores now (ADR-0300 §1)."""
+        found = self._version_tolerance_findings()
         if self.evaluation is None:
-            return []
-        found: list[str] = []
+            return found
         declared = self.evaluation.tolerances
         steps = {step.id: step for step in self.steps}
         for step_id, share in sorted(declared.items()):
@@ -702,7 +754,12 @@ class ProcessVersion(Value):
                 )
         for step_id in sorted(scored):
             step = steps.get(step_id)
-            if step is not None and step.method in VARIABLE and step_id not in declared:
+            if (
+                step is not None
+                and step.method in VARIABLE
+                and step_id not in declared
+                and step_id not in self.tolerances
+            ):
                 found.append(
                     f"`evaluation`: the {step.method} step {step_id!r} varies and declares its "
                     "tolerance under `evaluation.tolerances`: what counts as an equivalent result"
@@ -719,7 +776,12 @@ class ProcessVersion(Value):
             exactness = steps[step_id].exactness if step_id in steps else None
             if exactness is not None:
                 ceilings[step_id] = TOLERANCE_CEILING[ExactnessClass(exactness)]
-        return dict(self.evaluation.tolerances), ceilings
+        held = {
+            step_id: share
+            for step_id, share in self.declared_tolerances().items()
+            if step_id in self.evaluation.scored_steps
+        }
+        return held, ceilings
 
     @property
     def expected_schedules(self) -> tuple[str, ...]:

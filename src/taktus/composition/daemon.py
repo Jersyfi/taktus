@@ -41,6 +41,7 @@ from taktus.adapters.driven.models.pool import StaticModelPool
 from taktus.adapters.driven.platform import HostPlatform
 from taktus.adapters.driven.postgres import (
     PostgresBackupLog,
+    PostgresClaims,
     PostgresLeadership,
     PostgresLedgerSignal,
     PostgresLedgerStore,
@@ -110,6 +111,7 @@ from taktus.components.governance.application.service import (
     SubjectRequests,
     TenantOrgUnits,
 )
+from taktus.components.governance.application.service.removal_broke import RemovalBroke
 from taktus.components.governance.application.service.stop_incidents import StopIncidents
 from taktus.components.governance.domain.model import (
     AnchorConfiguration,
@@ -824,6 +826,7 @@ async def wire(
                     stops=stops,
                     tenant_budget=decisions.budget_of_the_run,
                     unit_limits=decisions.unit_limits,
+                    claims=PostgresClaims(persistence),
                     messages=decisions.messages,
                     statements=VersionStatements(
                         persistence,
@@ -978,6 +981,9 @@ async def wire(
                     recordings=recordings,
                     clock=clock,
                     ids=ids,
+                    broke=RemovalBroke(
+                        PostgresRepository(persistence, Incident), ledger, persistence, clock
+                    ),
                 ),
                 guides=InstanceGuides(pools.connectors, owner.channel, owner.raising, clock),
                 # Method maturation, which S-06 runs on its schedule (ADR-0086).

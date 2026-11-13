@@ -30,7 +30,7 @@ NAME_PATTERN = r"^[a-z][a-z0-9_]{0,63}$"
 UNIT_PART = r"^[^/\s][^/]{0,199}$"
 
 type Period = Literal["day", "week", "month"]
-type Policy = Literal["halt", "wait"]
+type Policy = Literal["halt", "wait", "cheaper"]
 type Children = Literal["within", "over"]
 
 ALERT_SHARE = 0.8
@@ -289,6 +289,8 @@ class Harm(Value):
     seconds: float
     exceeded: Literal["runs", "seconds", "both"]
     """Which figure of the watch was reached."""
+    by_process: Mapping[str, float] = Field(default_factory=dict)
+    """The seconds held per process: what a view grouped by process shows (ADR-0299 §2)."""
 
 
 def harm(holds: Sequence[Held], watch: LimitWatch) -> Harm | None:
@@ -299,9 +301,13 @@ def harm(holds: Sequence[Held], watch: LimitWatch) -> Harm | None:
     by_seconds = watch.held_seconds is not None and seconds >= watch.held_seconds
     if not (by_runs or by_seconds):
         return None
+    by_process: dict[str, float] = {}
+    for h in holds:
+        by_process[h.process] = by_process.get(h.process, 0.0) + h.seconds
     return Harm(
         runs=runs,
-        processes=tuple(sorted({h.process for h in holds})),
+        processes=tuple(sorted(by_process)),
         seconds=round(seconds, 3),
         exceeded="both" if by_runs and by_seconds else "runs" if by_runs else "seconds",
+        by_process={p: round(s, 3) for p, s in sorted(by_process.items())},
     )
