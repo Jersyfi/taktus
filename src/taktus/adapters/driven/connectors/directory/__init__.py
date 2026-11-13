@@ -13,7 +13,7 @@ file can delete it; the page is then one Taktus did not write, and is never over
 Three operations, each counted as one call:
 
 - `knowledge.pages.list`, a read: every page at or below a `place`, each with its `place`,
-  `digest` and `mark`, as `pages`;
+  `digest`, `mark` and `changed_at` — the file's modification time (ADR-0307 §5) — as `pages`;
 - `knowledge.pages.read`, a read: one page at a `place` — its `body`, `digest` and `mark`;
   `not_found` where no page is;
 - `knowledge.pages.write`, a write with idempotency `marked`: a `body` and a `mark` put at a
@@ -38,6 +38,7 @@ import os
 import re
 import tempfile
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -155,7 +156,13 @@ class DirectoryConnector:
 
     def _entry(self, place: tuple[str, ...], path: Path) -> dict[str, Any]:
         body, kept = _parse(path.read_text(encoding="utf-8"))
-        return {"place": list(place), "digest": digest(body), "mark": kept.get("mark")}
+        changed = datetime.fromtimestamp(path.stat().st_mtime, UTC)
+        return {
+            "place": list(place),
+            "digest": digest(body),
+            "mark": kept.get("mark"),
+            "changed_at": changed.isoformat(timespec="seconds").replace("+00:00", "Z"),
+        }
 
     def _read(self, place: tuple[str, ...]) -> dict[str, Any]:
         path = self._path(place)

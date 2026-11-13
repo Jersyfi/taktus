@@ -369,6 +369,51 @@ async def read_many(api: Api, input: Json, key: str) -> Outcome:
     return Outcome(output, read_effect())
 
 
+async def file_dates(api: Api, input: Json, key: str) -> Outcome:
+    """When each path last changed, at one ref (ADR-0307 §5). The ref is resolved to a commit
+    once, as `read_many` resolves it; the commit's own date is read, and for every path the
+    newest commit at or before it that changed anything at or below the path — a file or a
+    directory. A path nothing ever changed is answered with `changed_at` and `changed_in`
+    null, never left out: the reader decides what it means."""
+    paths = [_tree_path(path) for path in _paths(input, "paths")]
+    if not paths:
+        raise invalid("paths names at least one path")
+    if len(paths) > MAX_FILES:
+        raise invalid(f"paths names {len(paths)} paths; one call reads at most {MAX_FILES}")
+    ref = _str(input, "ref")
+    commit = ref if SHA.match(ref) else await _ref(api, ref)
+    if commit is None:
+        raise TargetError("not_found", "none", False, f"ref {ref!r} is not a branch or a commit")
+    head = await api.get(api.repo(f"git/commits/{commit}"))
+    files: list[Json] = []
+    for path in dict.fromkeys(paths):
+        found = await api.get(api.repo("commits"), {"sha": commit, "path": path, "per_page": 1})
+        last = found[0] if isinstance(found, list) and found else None
+        files.append(
+            {
+                "path": path,
+                "changed_at": _committed(last.get("commit")) if isinstance(last, dict) else None,
+                "changed_in": str(last.get("sha", "")) or None if isinstance(last, dict) else None,
+            }
+        )
+    output: Json = {
+        "ref": ref,
+        "commit": commit,
+        "committed_at": _committed(head),
+        "files": files,
+    }
+    return Outcome(output, read_effect())
+
+
+def _committed(commit: Any) -> str | None:
+    """The committer's date of a commit as the service answers it, or None."""
+    if not isinstance(commit, dict):
+        return None
+    committer = commit.get("committer")
+    date = committer.get("date") if isinstance(committer, dict) else None
+    return str(date) if isinstance(date, str) and date else None
+
+
 async def list_files(api: Api, input: Json, key: str) -> Outcome:
     """The entries of one directory at a ref, resolved to a commit first as `read_file` does:
     each with its name, its path and its type — `file`, `dir`, `symlink` or `submodule` —
@@ -1397,5 +1442,6 @@ OPERATIONS: dict[str, Operation] = {
     "repository.files.read": read_file,
     "repository.files.read_many": read_many,
     "repository.files.list": list_files,
+    "repository.files.dates": file_dates,
     "repository.members.list": list_members,
 }

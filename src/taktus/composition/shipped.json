@@ -258,6 +258,7 @@
         "repository.branches.update",
         "repository.comments.create",
         "repository.comments.list",
+        "repository.files.dates",
         "repository.files.list",
         "repository.files.read",
         "repository.files.read_many",

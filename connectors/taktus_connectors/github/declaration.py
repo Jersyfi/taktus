@@ -363,6 +363,17 @@ OPERATIONS: list[Json] = [
         "or a commit — each with its name, path and type, with the commit the ref resolved to.",
     },
     {
+        "name": "repository.files.dates",
+        "demand": {"quota_units": 102},
+        "capability": "repository.files",
+        "effect": "read",
+        "summary": "When each of up to 100 paths last changed, at one ref resolved to a commit "
+        "once: the commit's own date, and for every path — a file or a directory — the date "
+        "and the commit of the newest commit at or before it that changed anything at or below "
+        "the path, or null for both where none did. One request to resolve the ref, one for "
+        "the commit's date and one per path.",
+    },
+    {
         "name": "repository.members.list",
         "demand": {"quota_units": 20},
         "capability": "repository.members",

@@ -149,7 +149,15 @@ class PublishGuidesHandler:
         )
         found: dict[tuple[str, ...], Held] = {}
         for entry in _list(result.output.get("pages")):
-            held = Held.model_validate({**entry, "place": tuple(entry.get("place") or ())})
+            # The guides read the place, the digest and the mark; a field a later reading adds,
+            # such as `changed_at` (ADR-0307 §5), is not theirs.
+            held = Held.model_validate(
+                {
+                    "place": tuple(entry.get("place") or ()),
+                    "digest": entry.get("digest"),
+                    "mark": entry.get("mark"),
+                }
+            )
             found[held.place] = held
         return found
 

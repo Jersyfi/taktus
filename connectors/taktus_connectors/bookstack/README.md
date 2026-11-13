@@ -36,7 +36,7 @@ The resource `taktus://connector/v1/capabilities` ([`declaration.py`](declaratio
 
 | Operation | Effect | Idempotency | Input | Output |
 |---|---|---|---|---|
-| `knowledge.pages.list` | read | — | `place` of one to three names | `pages`: every page at or below the place, each with `place`, `digest` and `mark` |
+| `knowledge.pages.list` | read | — | `place` of one to three names | `pages`: every page at or below the place, each with `place`, `digest`, `mark` and `changed_at`, the wiki's `updated_at` of the page (ADR-0307 §5) |
 | `knowledge.pages.read` | read | — | `place` of three names | `place`, `body`, `digest`, `mark`; `not_found` where no page is |
 | `knowledge.pages.write` | write | marked | `place` of three names, `body`, `mark`, `expected` | `place`, `digest`; `conflict` where the page does not hold `expected`, or a page is there when `expected` is `null` |
 | `knowledge.documents.search` | read | — | `query`, `count` from 1 to 10, 5 where none is given | `documents`: each page the wiki's search found and shows the token, with `document`, `title`, `url`, `version`, `digest` and `body` |
