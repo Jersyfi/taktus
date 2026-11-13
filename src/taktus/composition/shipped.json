@@ -134,7 +134,8 @@
         "deployment.workloads.read",
         "deployment.workloads.release",
         "deployment.workloads.rollback",
-        "deployment.workloads.split"
+        "deployment.workloads.split",
+        "deployment.workloads.throttle"
       ]
     },
     {
@@ -247,6 +248,7 @@
         "channel.repo",
         "repository.advisories",
         "repository.branches",
+        "repository.code",
         "repository.comments",
         "repository.files",
         "repository.issues",
@@ -268,6 +270,7 @@
         "repository.branches.list",
         "repository.branches.read",
         "repository.branches.update",
+        "repository.code.search",
         "repository.comments.create",
         "repository.comments.list",
         "repository.files.dates",
@@ -454,6 +457,7 @@
       "name": "mail",
       "operations": [
         "channel.mail.reply",
+        "mail.messages.flagged",
         "mail.messages.read",
         "mail.messages.send"
       ]
@@ -478,6 +482,16 @@
       "name": "mastodon",
       "operations": [
         "mentions.search.query"
+      ]
+    },
+    {
+      "capabilities": [
+        "models.catalogue"
+      ],
+      "image": "taktus-connector-mistral",
+      "name": "mistral",
+      "operations": [
+        "models.catalogue.list"
       ]
     },
     {

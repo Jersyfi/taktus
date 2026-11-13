@@ -1,0 +1,28 @@
+{
+  "credentials": {
+    "actions": "CHAT_TOKEN"
+  },
+  "read": {
+    "operation": "chat.threads.read",
+    "input": {
+      "address": "team",
+      "thread": "1759309200.000100"
+    }
+  },
+  "writes": [
+    {
+      "operation": "chat.threads.post",
+      "input": {
+        "address": "team",
+        "text": "Suite message {{unique}}"
+      }
+    }
+  ],
+  "invalid": {
+    "operation": "chat.threads.read",
+    "input": {
+      "address": "team"
+    },
+    "expected_cause": "invalid"
+  }
+}

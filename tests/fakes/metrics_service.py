@@ -16,10 +16,12 @@ What it enforces, because the connector's checks depend on it:
 - **Series.** `up` for two instances of the job `service`, `1` and `0`;
   `http_requests_total` for one, `1027`; `queue_depth` with the value `NaN`. For the stage 1
   watchers (ADR-0198): `function_duration_seconds` by function, `export` 4.2, `login` 0.3 and
-  `resize` `NaN`; `function_calls_per_second`, `sync` 180 and `export` 2; `backup_age_seconds`,
-  `database` 3600 and `files` 7200; `restore_drill_age_seconds`, `database` 2851200 (33 days);
-  `quota_used_ratio` by service, `mail` 0.42 and `payments` 0.91. A range repeats each
-  value at every step from `start` to `end`, at most 11000 points.
+  `resize` `NaN`; `function_calls_per_second`, `sync` 180 and `export` 2;
+  `service_calls_per_second`, `web` 240 and `web-canary` 3;
+  `db_query_seconds` by query, `egress_bytes` by service, `storage_bytes` by bucket;
+  `backup_age_seconds`, `database` 3600 and `files` 7200; `restore_drill_age_seconds`,
+  `database` 2851200 (33 days); `quota_used_ratio` by service, `mail` 0.42 and `payments`
+  0.91. A range repeats each value at every step from `start` to `end`, at most 11000 points.
 
 The same process serves the check connector's target under `/service/`: `/service/health`
 answers 200 with `ready`, `/service/slow` answers after `FAKE_CHECK_SLOW_SECONDS` (default 1.5),
@@ -55,6 +57,16 @@ SERIES: list[tuple[dict[str, str], str]] = [
     ({"__name__": "function_duration_seconds", "function": "resize"}, "NaN"),
     ({"__name__": "function_calls_per_second", "function": "sync"}, "180"),
     ({"__name__": "function_calls_per_second", "function": "export"}, "2"),
+    # By the service that runs each function, as a tenant's query labels it for B-1.03's brake.
+    ({"__name__": "service_calls_per_second", "function": "web"}, "240"),
+    ({"__name__": "service_calls_per_second", "function": "web-canary"}, "3"),
+    # B-1.02's other cost drivers: per database query, bytes sent out, bytes stored.
+    ({"__name__": "db_query_seconds", "query": "orders_by_customer"}, "5400"),
+    ({"__name__": "db_query_seconds", "query": "session_lookup"}, "120"),
+    ({"__name__": "egress_bytes", "service": "media"}, "9.1e11"),
+    ({"__name__": "egress_bytes", "service": "api"}, "2.0e9"),
+    ({"__name__": "storage_bytes", "bucket": "uploads"}, "4.4e12"),
+    ({"__name__": "storage_bytes", "bucket": "logs"}, "NaN"),
     ({"__name__": "backup_age_seconds", "job": "database"}, "3600"),
     ({"__name__": "backup_age_seconds", "job": "files"}, "7200"),
     ({"__name__": "restore_drill_age_seconds", "job": "database"}, "2851200"),

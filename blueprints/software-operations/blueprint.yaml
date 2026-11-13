@@ -56,6 +56,7 @@ requires:
     - capability: payments.subscriptions
     - capability: repository.advisories
     - capability: repository.branches
+    - capability: repository.code
     - capability: repository.comments
     - capability: repository.files
     - capability: repository.issues
@@ -103,7 +104,7 @@ value_criteria:
 # bundles of one process are alternatives: an instance keeps one (B-8.04, B-8.05).
 processes:
   - { id: B-1.01, name: B-1.01 Daily cost, bundle: processes/B-1.01-daily-cost.yaml }
-  - { id: B-1.02, name: B-1.02 Run times, bundle: processes/B-1.02-run-times.yaml }
+  - { id: B-1.02, name: B-1.02 Cost drivers, bundle: processes/B-1.02-run-times.yaml }
   - { id: B-1.03, name: B-1.03 Runaway guard, bundle: processes/B-1.03-runaway.yaml }
   - { id: B-1.04, name: B-1.04 Error rate, bundle: processes/B-1.04-error-rate.yaml }
   - { id: B-1.05, name: B-1.05 New errors, bundle: processes/B-1.05-new-errors.yaml }
@@ -119,6 +120,7 @@ processes:
   - { id: B-2.02, name: B-2.02 Cost per case, bundle: processes/B-2.02-cost-per-case.yaml }
   - { id: B-2.03, name: B-2.03 Quotas, bundle: processes/B-2.03-quotas.yaml }
   - { id: B-2.04, name: B-2.04 Retired models, bundle: processes/B-2.04-retired-models.yaml }
+  - { id: B-2.06, name: B-2.06 Subscription inventory, bundle: processes/B-2.06-subscription-inventory.yaml }
   - { id: B-3.01, name: B-3.01 Sorting the inbox, bundle: processes/B-3.01-inbox-sorting.yaml }
   - { id: B-3.02, name: B-3.02 Drafting a reply, bundle: processes/B-3.02-draft-reply.yaml }
   - { id: B-3.04, name: B-3.04 Paid but not unlocked, bundle: processes/B-3.04-paid-not-unlocked.yaml }
@@ -179,7 +181,6 @@ processes:
   # Nothing is proposed for them; `tests/governance/test_stages.py` holds every process a stage
   # names to a bundle or to one of these.
   - { id: B-2.05, name: B-2.05 Comparing models, served_by: [], autonomy: { level: 2, reason: "the model trial of UC-8.14, run by the instance for every process that asks for a purpose when a model is introduced, proposed or changed; no bundle of its own (ADR-0149, ADR-0200, NTC-0266)" } }
-  - { id: B-2.06, name: B-2.06 Subscription inventory, not_built: true, autonomy: { level: 2, reason: "not built: no source a capability reads states a subscription's real use" } }
   - { id: B-3.03, name: B-3.03 Sending automatically, served_by: [b-3-02], autonomy: { level: 2, reason: "B-3.02's level per class of request, which the frame of UC-7.6 holds; part of B-3.02 (ADR-0215, NTC-0263)" } }
   - { id: B-3.12, name: B-3.12 Response limit, served_by: [b-3-02], autonomy: { level: 2, reason: "B-3.02's deadline, the response limit a rule of the tool keeps (UC-4.17); part of B-3.02 (NTC-0263)" } }
   - { id: B-4.01, name: B-4.01 Evaluation on change, served_by: [b-3-02], autonomy: { level: 2, reason: "B-3.02's evaluation cases, run as a gate on a change (UC-4.18); part of B-3.02 (NTC-0263)" } }

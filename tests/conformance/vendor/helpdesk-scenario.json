@@ -1,0 +1,25 @@
+{
+  "credentials": {
+    "actions": "HELPDESK_TOKEN"
+  },
+  "read": {
+    "operation": "helpdesk.tickets.list",
+    "input": {}
+  },
+  "writes": [
+    {
+      "operation": "helpdesk.tickets.note",
+      "input": {
+        "id": "101",
+        "text": "Suite note {{unique}}"
+      }
+    }
+  ],
+  "invalid": {
+    "operation": "helpdesk.tickets.list",
+    "input": {
+      "status": "somewhere"
+    },
+    "expected_cause": "invalid"
+  }
+}

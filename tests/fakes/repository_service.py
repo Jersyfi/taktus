@@ -901,6 +901,33 @@ class Handler(BaseHTTPRequestHandler):
             repo.pulls[number].update(changes, updated_at=now())
         self._send(200, issue)
 
+    def _search_code(self, query: Json) -> None:
+        """The service's code search, as far as a connector asks it: `"<text>"` and one
+        `repo:<owner>/<name>`, matched as a substring of each file's text on `main`, paged by
+        `per_page` and `page`, in the service's shape — `total_count`, `incomplete_results`,
+        `items` with `name`, `path`, `sha` and the repository."""
+        m = re.fullmatch(r'"([^"]+)" repo:([^/\s]+)/([^/\s]+)', str(query.get("q", "")))
+        if m is None:
+            self._send(422, {"message": "Validation Failed"})
+            return
+        repo = self.store.repository(m.group(2), m.group(3))
+        items = [
+            {"name": p.rsplit("/", 1)[-1], "path": p, "sha": e["sha"],
+             "repository": {"full_name": repo.full_name}}
+            for p, e in sorted(self.store.files_at(repo, repo.refs.get("main")).items())
+            if m.group(1) in self.store.text(repo, e)
+        ]  # fmt: skip
+        per_page = max(1, min(100, int(query.get("per_page", 30))))
+        page = max(1, int(query.get("page", 1)))
+        self._send(
+            200,
+            {
+                "total_count": len(items),
+                "incomplete_results": False,
+                "items": items[(page - 1) * per_page : page * per_page],
+            },
+        )
+
     def _get(self, path: str, query: Json) -> None:
         store = self.store
         store.answered += 1
@@ -913,6 +940,9 @@ class Handler(BaseHTTPRequestHandler):
                 "graphql": {"limit": 5000, "used": 0, "remaining": 5000, "reset": reset},
             }
             self._send(200, {"resources": resources, "rate": resources["core"]})
+            return
+        if path == "/search/code":
+            self._search_code(query)
             return
         if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/actions/runners", path):
             repo = store.repository(m.group(1), m.group(2))

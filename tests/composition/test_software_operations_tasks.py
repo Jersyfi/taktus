@@ -244,6 +244,50 @@ async def test_b_5_01_a_finished_task_is_neither_reminded_nor_escalated(
     assert states(run)["remind"] is StepState.SUCCEEDED and w.tracker_comments() == []
 
 
+def flagged_message(mid: str, date: str) -> bytes:
+    return (
+        f"From: A customer <{SENDER}>\r\nTo: {MAILBOX}\r\nSubject: Invoice question\r\n"
+        f"Date: {date}\r\nMessage-ID: {mid}\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n"
+        "Could you check the invoice?\r\n"
+    ).encode()
+
+
+async def test_b_5_01_without_a_task_lists_the_flagged_messages_by_age_and_escalates_by_role(
+    outside: Outside, systems: dict[str, str], tracker: str
+) -> None:
+    """The second flow: the mailbox's flagged messages, oldest first; a week old or more is the
+    corridor's figure. Nothing is written to anyone, and no sender is listed."""
+    w = await BackOfficeWorld(outside, systems, tracker).ready()
+    version = await w.registered("B-5.01-overdue-tasks.yaml")
+    for mid, date, flags in (
+        ("<week-old@mail.example>", "Mon, 01 Jan 2024 08:00:00 +0000", "\\Flagged"),
+        ("<today@mail.example>", "Fri, 13 Nov 2099 08:00:00 +0000", "\\Flagged"),
+        ("<unflagged@mail.example>", "Mon, 01 Jan 2024 08:00:00 +0000", ""),
+    ):
+        outside.mail.store.put("INBOX", flagged_message(mid, date), set(flags.split()))
+    await w.corridor(
+        "mail.flagged",
+        version.process_id,
+        step="flagged-escalated",
+        select="count",
+        bounds="fixed",
+        direction="above",
+        yellow=0.5,
+        red=0.5,
+    )
+    run = await w.confirmed(await w.start(version, flagged_days=1))
+    assert run.state is RunState.FINISHED, [(s.step_id, s.reason) for s in run.step_runs]
+    listed = await w.result(run, "flagged-by-age")
+    assert [m["message_id"] for m in listed["items"]] == ["<week-old@mail.example>"]
+    assert (await w.result(run, "flagged-escalated"))["count"] == 1
+    assert (await w.result(run, "read-task"))["skipped"] is True
+    assert (await w.result(run, "remind"))["skipped"] is True
+    assert SENDER not in str(listed), "no sender is listed"
+    assert w.tracker_comments() == [] and outside.submitted() == 0, "nothing is written"
+    (judged,) = (await w.signals.watch.look(TENANT)).judged
+    assert judged.level is Level.RED and judged.run_id == run.id
+
+
 # --- B-5.05 Customer system upkeep ---------------------------------------------------------------
 
 

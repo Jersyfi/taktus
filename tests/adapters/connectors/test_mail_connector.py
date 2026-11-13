@@ -249,6 +249,34 @@ async def test_a_reply_lands_in_the_thread_once(mail: mail_fake.Running) -> None
     assert "Auto-Submitted: auto-replied" in sent
 
 
+async def test_the_flagged_messages_are_listed_oldest_first_without_a_sender(
+    mail: mail_fake.Running,
+) -> None:
+    """B-5.01 (UC-03): the inbox's flagged messages by age; an unflagged one is not listed."""
+    old = message("<old-1@mail.example>").replace(
+        b"Fri, 16 Oct 2026 08:15:00", b"Mon, 01 Jan 2024 08:00:00"
+    )
+    mail.store.put("INBOX", old, {"\\Flagged"})
+    mail.store.put("INBOX", message("<new-1@mail.example>"), {"\\Flagged", "\\Seen"})
+    mail.store.put("INBOX", message("<plain-1@mail.example>"))
+    connector = McpActionConnector(build_server(config_of(mail)))
+    listed = await connector.call("mail.messages.flagged", context("flagged"), {})
+    assert listed.effect.kind == "read"
+    ids = [m["message_id"] for m in listed.output["messages"]]
+    assert ids == ["<old-1@mail.example>", "<new-1@mail.example>"], "oldest first"
+    assert listed.output["count"] == 2 and listed.output["complete"] is True
+    first = listed.output["messages"][0]
+    assert first["days_old"] > 365 and first["date"] == "2024-01-01T08:00:00Z"
+    assert "customer@mail.example" not in json.dumps(listed.output), "no sender is listed"
+    older = await connector.call(
+        "mail.messages.flagged", context("flagged"), {"older_than_days": 30, "limit": 1}
+    )
+    assert [m["message_id"] for m in older.output["messages"]] == ["<old-1@mail.example>"]
+    with pytest.raises(Exception, match="invalid"):
+        await connector.call("mail.messages.flagged", context("flagged"), {"limit": 0})
+    assert all("\\Seen" not in m.flags for m in inbox(mail) if b"old-1" in m.raw), "unread"
+
+
 async def test_a_wrong_password_is_unauthenticated_and_nothing_is_sent(
     mail: mail_fake.Running, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

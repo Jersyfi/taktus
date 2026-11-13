@@ -39,6 +39,7 @@ message to the instance's intake, signed ([`relay.py`](relay.py)); `--once` make
 | Operation | Effect | Idempotency | Input | How a repeat is recognised |
 |---|---|---|---|---|
 | `mail.messages.read` | read | — | `message_id`, `folder` (`inbox` or `sent`, default `inbox`) | — ; the addresses, subject, date, the text of the plain part and the names of the attachments, never their content |
+| `mail.messages.flagged` | read | — | `older_than_days` (0 to 3650, default 0), `limit` (1 to 1000, default 100) | — ; the inbox's messages flagged `\Flagged`, oldest first, each with its identifier, subject, date and `days_old` — the whole days since its date, as IMAP keeps no moment a flag was set — and `count`, `complete`; never a sender or an address |
 | `mail.messages.send` | delivery | marked | `to` (an address or up to 50), `subject`, `text`, `in_reply_to` (optional) | the message identifier is derived from the key; the copy in the sent folder is found by it before sending |
 | `channel.mail.reply` | delivery | marked | `address`, `thread` (optional), `text` | as `mail.messages.send`; the subject is `Re:` and the original's, and the message says `Auto-Submitted: auto-replied` (contract §7) |
 

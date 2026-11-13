@@ -159,6 +159,65 @@ async def read(config: Config, call: Call, input: Json) -> Outcome:
     )
 
 
+MAX_FLAGGED = 1000
+DAY = 86_400
+
+
+def _count(value: Any, name: str, default: int, low: int, high: int) -> int:
+    if value is None:
+        return default
+    if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
+        raise invalid(f"{name} must be a whole number from {low} to {high}")
+    return value
+
+
+def _flagged_sync(config: Config, call: Call) -> list[bytes]:
+    call.count()
+    with imap(config, call.token) as session:
+        session.select(config.inbox)
+        return [session.fetch(uid) for uid in session.search("FLAGGED")]
+
+
+async def flagged(config: Config, call: Call, input: Json) -> Outcome:
+    """The inbox's messages that carry the flag `\\Flagged`, each with its age in whole days
+    from its `Date` to now, oldest first. IMAP keeps no moment at which a flag was set, so the
+    age is the message's, not the flag's. A message is named by its identifier and subject,
+    never by its sender: who flagged it, or wrote it, is not listed (principle 14)."""
+    older = _count(input.get("older_than_days"), "older_than_days", 0, 0, 3650)
+    limit = _count(input.get("limit"), "limit", 100, 1, MAX_FLAGGED)
+    raws = await asyncio.to_thread(_flagged_sync, config, call)
+    now = datetime.now(UTC)
+    found: list[Json] = []
+    for raw in raws:
+        message = parse(raw)
+        date = moment_of(message)
+        days = (
+            None
+            if date is None
+            else int((now - datetime.fromisoformat(date.replace("Z", "+00:00"))).total_seconds())
+            // DAY
+        )
+        if days is None or days < older:
+            continue
+        found.append(
+            {
+                "message_id": str(message.get("Message-ID", "")).strip(),
+                "subject": str(message.get("Subject", "")),
+                "date": date,
+                "days_old": days,
+            }
+        )
+    found.sort(key=lambda m: (-m["days_old"], m["message_id"]))
+    return Outcome(
+        output={
+            "messages": found[:limit],
+            "count": len(found),
+            "complete": len(found) <= limit,
+        },
+        effect={"kind": "read"},
+    )
+
+
 def _compose(
     config: Config,
     mid: str,
@@ -278,5 +337,6 @@ async def reply(config: Config, call: Call, input: Json) -> Outcome:
 OPERATIONS = {
     "mail.messages.read": read,
     "mail.messages.send": send,
+    "mail.messages.flagged": flagged,
     "channel.mail.reply": reply,
 }

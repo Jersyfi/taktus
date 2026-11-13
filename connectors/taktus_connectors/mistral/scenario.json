@@ -1,0 +1,17 @@
+{
+  "credentials": {
+    "actions": "MODELS_TOKEN"
+  },
+  "read": {
+    "operation": "models.catalogue.list",
+    "input": {}
+  },
+  "writes": [],
+  "invalid": {
+    "operation": "models.catalogue.list",
+    "input": {
+      "limit": 0
+    },
+    "expected_cause": "invalid"
+  }
+}

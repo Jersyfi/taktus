@@ -37,7 +37,13 @@ from taktus.adapters.driven.memory import MemoryQueue
 from taktus.adapters.driven.models import StaticModelPool
 from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
-from taktus.components.run.application.service import ConfirmSteps, EngineOptions, RunEngine
+from taktus.components.decision.application.service import AnswerRequest, ConfirmRequest
+from taktus.components.run.application.service import (
+    ConfirmSteps,
+    DecideSteps,
+    EngineOptions,
+    RunEngine,
+)
 from taktus.components.run.domain.model import Run, RunState, StepState
 from taktus.shared.v1 import Method
 
@@ -135,6 +141,10 @@ class AccountsWorld(World):
                 [("model.fake", ["triage", "support", "check"], self.model, "fake-model@1")]
             ),
             messages=self.told,
+            # A step that asks raises its decision request with the tenant's decisions (ADR-0088).
+            anchors=self.given.decisions.anchors,
+            decisions=self.given.decisions.requests,
+            levels=self.given.decisions.levels,
         )
         self.deadlines._engine = self.engine  # the deadlines start runs on this engine
 
@@ -152,7 +162,9 @@ class AccountsWorld(World):
             waiting = tuple(
                 s.step_id
                 for s in run.step_runs
-                if s.state is StepState.WAITING_HUMAN and s.step_id not in own
+                if s.state is StepState.WAITING_HUMAN
+                and s.step_id not in own
+                and not (s.anchoring is not None and s.anchoring.requests)
             )
             if not waiting:
                 break
@@ -166,6 +178,21 @@ class AccountsWorld(World):
         return await self.engine.confirm(
             ConfirmSteps(run_id=run.id, steps=(step,), actor=OWNER, tenant=TENANT, performed=True)
         )
+
+    async def decided(self, run: Run, step: str, option: str) -> Run:
+        """A person answers the step's decision request — A to act, B to decline — and
+        confirms it."""
+        anchoring = run.step_run(step).anchoring
+        assert anchoring is not None and anchoring.requests, "a decision request was raised"
+        (request_id,) = anchoring.requests
+        decisions = self.given.decisions
+        await decisions.answer.execute(
+            AnswerRequest(tenant=TENANT, request_id=request_id, identity=OWNER, option=option)
+        )
+        await decisions.confirm.execute(
+            ConfirmRequest(tenant=TENANT, request_id=request_id, identity=OWNER, confirmed=True)
+        )
+        return await self.engine.decide(DecideSteps(run_id=run.id, actor=OWNER, tenant=TENANT))
 
     def prepared(self) -> list[dict[str, Any]]:
         found: list[dict[str, Any]] = self.accounts.document()["prepared"]
@@ -269,9 +296,40 @@ async def test_b_3_08_prepares_a_verified_senders_erasure_and_its_month_ends_wit
     (open_,) = await w.keeper.open(TENANT)
     assert open_.run_id == run.id, "the statutory month runs until a person carried it out"
     run = await w.performed(run, "carried-out")
+    assert states(run)["extension"] is StepState.WAITING_HUMAN, "was it extended?"
+    run = await w.decided(run, "extension", "B")
     assert run.state is RunState.FINISHED, reasons(run)
+    assert states(run)["carried-out-extended"] is StepState.SUCCEEDED
+    assert (await w.result(run, "carried-out-extended"))["skipped"] is True
     assert await w.keeper.open(TENANT) == []
     assert w.calls() == {"verify_address": 1, "prepare_request": 1}
+
+
+async def test_b_3_08_an_extended_request_is_watched_for_two_more_months_until_carried_out(
+    outside: Outside,
+) -> None:
+    """GDPR Art. 12(3): told within the month, the request may take two further months; the
+    month is met, and 59 days from the extension are watched until a person carried it out."""
+    w = await AccountsWorld(outside).ready()
+    version = await w.registered("B-3.08-data-protection-requests.yaml")
+    w.model.answers[REQUEST] = "kind: access"
+    run = await w.confirmed(await w.start(version, message=SEED, customer="cus_fake1"))
+    w.clock.current += timedelta(days=20)
+    run = await w.performed(run, "carried-out")  # the customer told of the extension
+    run = await w.decided(run, "extension", "A")
+    assert states(run)["carried-out-extended"] is StepState.WAITING_HUMAN
+    found = await w.keeper.open(TENANT)
+    assert [(d.name, d.run_id) for d in found] == [("extended", run.id)], found
+    w.clock.current += timedelta(days=10)
+    assert await w.deadlines.tick() == [], "the month was met by telling the customer"
+    w.clock.current += timedelta(days=36)  # 46 days since the extension
+    assert [f"{t.kind}:{t.outcome}" for t in await w.deadlines.tick()] == ["deadline.lead:remind"]
+    w.clock.current += timedelta(days=14)  # 60 days
+    assert [f"{t.kind}:{t.outcome}" for t in await w.deadlines.tick()] == [
+        "deadline.reached:escalate"
+    ]
+    run = await w.performed(run, "carried-out-extended")
+    assert run.state is RunState.FINISHED, reasons(run)
 
 
 async def test_b_3_08_a_sender_who_is_not_the_accounts_verified_address_prepares_nothing(

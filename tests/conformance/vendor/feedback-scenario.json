@@ -1,0 +1,30 @@
+{
+  "credentials": {
+    "actions": "FEEDBACK_TOKEN"
+  },
+  "read": {
+    "operation": "feedback.posts.list",
+    "input": {
+      "board": "board_1"
+    }
+  },
+  "writes": [
+    {
+      "operation": "feedback.posts.create",
+      "input": {
+        "board": "board_1",
+        "title": "Suite post {{unique}}",
+        "details": "Written by the conformance suite.",
+        "email": "customer@mail.example"
+      }
+    }
+  ],
+  "invalid": {
+    "operation": "feedback.posts.list",
+    "input": {
+      "board": "board_1",
+      "limit": 0
+    },
+    "expected_cause": "invalid"
+  }
+}

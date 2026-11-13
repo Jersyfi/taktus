@@ -148,7 +148,8 @@ the pool, and the loopback and directory connectors, which reach the instance it
 its process. A connector that reaches a cloud's API signs with its own copy of the key exchange
 (`auth.py` in its directory), because an image holds nothing of another connector; the release's
 list (`composition/shipped.json`, `make generate`) names each one with what it declares, the
-books connector's `accounting.invoices` among them (ADR-0314).
+books connector's `accounting.invoices` among them (ADR-0314), and a connector that serves only
+part of a capability's group — a models list without its costs — with only what it serves.
 
 `tests/architecture` fails on:
 
@@ -278,7 +279,8 @@ role it would tie the core to a model stack and the removal test would be lost.
   a document still in an inbox — starts no second run; its read takes the trigger's fixed
   `arguments` (ADR-0188). The release's list of what it ships (`composition/shipped.json`)
   names the operations every connector declares, the logs, secret metadata, signing
-  credentials and model catalogue of ADR-0202 to ADR-0204 among them, generated from the
+  credentials and model catalogue of ADR-0202 to ADR-0204 and the flagged messages, code
+  search and throttle of ADR-0310 among them, generated from the
   connectors' declarations (`make generate`), so that a new connector reaches it without a hand
   edit. The tick also makes the capacity
   report, and once a minute it watches that every expected run happened: one that did not

@@ -204,6 +204,7 @@ from taktus.components.run.domain.model import (
     ConnectorRule,
     ConstantRule,
     Control,
+    CountStatistic,
     DemandToAccept,
     DeviationStatistic,
     Ended,
@@ -242,6 +243,7 @@ from taktus.components.run.domain.model import (
     Takeover,
     TakeoverRefused,
     TemplateRule,
+    TotalStatistic,
     UnknownRun,
     UnknownTakeover,
     UnsupportedWork,
@@ -6026,6 +6028,12 @@ class RunEngine:
         if isinstance(work, SignificanceStatistic):
             (rows,), read = await self._resolved(run, [work.rows])
             return statistics.significance(work, rows), Trace(inputs=read), None, None
+        if isinstance(work, TotalStatistic):
+            (days,), read = await self._resolved(run, [work.days])
+            return statistics.total(work, days), Trace(inputs=read), None, None
+        if isinstance(work, CountStatistic):
+            (items,), read = await self._resolved(run, [work.items])
+            return statistics.count(work, items), Trace(inputs=read), None, None
         if isinstance(work, ConnectorRule):
             return await self._connector_call(run, step_run, work, span)
         if isinstance(work, LlmWork):

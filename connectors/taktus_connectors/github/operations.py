@@ -442,6 +442,47 @@ async def list_files(api: Api, input: Json, key: str) -> Outcome:
     return Outcome(output, read_effect())
 
 
+SEARCH_PAGES = 10  # the service answers at most 1000 results, 100 a page
+SEARCH_TEXT = re.compile(r'^[^"\r\n\x00]{1,128}$')
+
+
+async def search_code(api: Api, input: Json, key: str) -> Outcome:
+    """The files of the repository's default branch whose text contains `text`, through the
+    service's code search, `"<text>" repo:<owner>/<name>`: each file's path and the blob it
+    was found in, sorted by path. Read page by page, 100 at a time, up to the service's 1000;
+    `complete` says whether the service searched everything and every result was read. The
+    service searches only the default branch, and only files it has indexed: a file too large
+    or too new for its index is not found, so a reader that must be certain reads the file."""
+    text = input.get("text")
+    if not isinstance(text, str) or SEARCH_TEXT.match(text) is None:
+        raise invalid("text must be 1 to 128 characters on one line, without a double quote")
+    query = f'"{text}" repo:{api.repository}'
+    found: dict[str, Json] = {}
+    total = 0
+    incomplete = False
+    for page in range(1, SEARCH_PAGES + 1):
+        answer = await api.get("/search/code", {"q": query, "per_page": 100, "page": page})
+        if not isinstance(answer, dict):
+            raise TargetError("unexpected", "none", False, "the code search answered no object")
+        total = int(answer.get("total_count") or 0)
+        incomplete = incomplete or bool(answer.get("incomplete_results"))
+        items = [i for i in answer.get("items") or [] if isinstance(i, dict)]
+        for item in items:
+            path = str(item.get("path", ""))
+            if path:
+                found[path] = {"path": path, "sha": str(item.get("sha", ""))}
+        if len(items) < 100 or len(found) >= total:
+            break
+    files = [found[p] for p in sorted(found)]
+    output = {
+        "text": text,
+        "files": files,
+        "total": total,
+        "complete": not incomplete and len(files) >= total,
+    }
+    return Outcome(output, read_effect())
+
+
 async def _content_of(api: Api, found: Json) -> bytes:
     """The bytes of a file the contents interface answered with. A file above that
     interface's size limit comes without content (`encoding: none`) and is read as a blob."""
@@ -1443,5 +1484,6 @@ OPERATIONS: dict[str, Operation] = {
     "repository.files.read_many": read_many,
     "repository.files.list": list_files,
     "repository.files.dates": file_dates,
+    "repository.code.search": search_code,
     "repository.members.list": list_members,
 }

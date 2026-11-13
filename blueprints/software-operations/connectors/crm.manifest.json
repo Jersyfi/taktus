@@ -1,0 +1,47 @@
+{
+  "contract": "connector/v1",
+  "capabilities": [
+    "crm.contacts"
+  ],
+  "credential": "CRM_TOKEN",
+  "operations": [
+    {
+      "tool": "find_contacts",
+      "name": "crm.contacts.find",
+      "capability": "crm.contacts",
+      "effect": "read",
+      "subject": "email",
+      "summary": "Every contact that carries the address email, oldest first: {email, contacts, count}, each contact {id, email, created_at, updated_at, lifecycle_stage} and nothing else of the person; two or more are duplicates. Scoped: a call that serves a case answers only the case's subject."
+    },
+    {
+      "tool": "create_contact",
+      "name": "crm.contacts.create",
+      "capability": "crm.contacts",
+      "effect": "write",
+      "idempotency": "native",
+      "key_argument": "request_id",
+      "replayed": "/replayed",
+      "record": {
+        "kind": "crm.contact",
+        "id": "/id"
+      },
+      "subject": "email",
+      "summary": "Create a contact with the address email, and nothing else of the person: answered as a found contact, with replayed. The product's tool recognises a repeated request_id itself. Scoped as the read is."
+    },
+    {
+      "tool": "note_contact",
+      "name": "crm.contacts.note",
+      "capability": "crm.contacts",
+      "effect": "write",
+      "idempotency": "native",
+      "key_argument": "request_id",
+      "replayed": "/replayed",
+      "record": {
+        "kind": "crm.note",
+        "id": "/note"
+      },
+      "subject": "email",
+      "summary": "Write text as a note of a touchpoint on the oldest contact carrying email: answered {contact, note, replayed}. The product's tool recognises a repeated request_id itself. Scoped as the read is."
+    }
+  ]
+}

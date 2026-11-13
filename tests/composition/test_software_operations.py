@@ -609,6 +609,114 @@ async def test_b_7_01_an_issue_a_person_classified_is_left_as_it_is(outside: Out
     assert w.model.prompts == [], "no model was asked"
 
 
+DUPLICATE = "You compare an issue"
+
+
+async def test_b_7_01_names_an_open_issue_the_model_finds_the_same_once_a_person_confirmed(
+    outside: Outside,
+) -> None:
+    """The model is shown the open issues; a number it names is held to an open issue by rule,
+    the issue gets one comment naming it, and nothing is closed (UC-03 B-7.01)."""
+    w = await World(outside).ready()
+    version = await w.registered("B-7.01-triage.yaml")
+    first = outside.send(
+        "POST", f"/repos/{REPOSITORY}/issues", {"title": "Export fails", "body": "CSV breaks."}
+    )
+    second = outside.send(
+        "POST",
+        f"/repos/{REPOSITORY}/issues",
+        {"title": "CSV export broken", "body": "The export stops with an error."},
+    )
+    w.model.answers[TRIAGE] = "class: defect\n"
+    w.model.answers[DUPLICATE] = f"duplicate: #{first['number']}\n"
+    run = await w.start(version, issue=second["number"])
+    assert run.state is RunState.WAITING_HUMAN, "at level 2 nothing is written before a person"
+    run = await w.confirmed(run)
+    assert run.state is RunState.FINISHED, [(s.step_id, s.reason) for s in run.step_runs]
+    shown = json.dumps(str(w.model.prompts[-1]))
+    assert "Export fails" in shown, "the model saw the open issues"
+    [named] = (await w.result(run, "duplicate-of"))["differing"]
+    assert named["right"]["number"] == first["number"]
+    comments = outside.send("GET", f"/repos/{REPOSITORY}/issues/{second['number']}/comments")
+    [comment] = comments
+    assert f"duplicate-of:{first['number']}" in comment["body"]
+    assert f"#{first['number']}" in comment["body"] and "Nothing is closed" in comment["body"]
+    assert outside.send("GET", f"/repos/{REPOSITORY}/issues/{first['number']}")["state"] == "open"
+    assert all(i["state"] == "open" for i in outside.issues())
+
+    # A second run for the same issue — its label removed by a person — names it no second time.
+    outside.send("DELETE", f"/repos/{REPOSITORY}/issues/{second['number']}/labels/type:defect")
+    again = await w.confirmed(await w.start(version, issue=second["number"]))
+    assert again.state is RunState.FINISHED, [(s.step_id, s.reason) for s in again.step_runs]
+    assert (await w.result(again, "unnamed"))["count"] == 0
+    assert len(outside.send("GET", f"/repos/{REPOSITORY}/issues/{second['number']}/comments")) == 1
+
+
+def unlabelled(outside: Outside, number: int, label: str) -> None:
+    """The label taken off the issue, where it carries it."""
+    httpx.delete(
+        f"{outside.repository}/repos/{REPOSITORY}/issues/{number}/labels/{label}",
+        headers={"Authorization": f"Bearer {TOKEN}"},
+        timeout=5,
+    )
+
+
+async def test_b_7_01_the_issues_own_number_or_none_names_no_duplicate(outside: Outside) -> None:
+    w = await World(outside).ready()
+    version = await w.registered("B-7.01-triage.yaml")
+    opened = outside.send("POST", f"/repos/{REPOSITORY}/issues", {"title": "A", "body": "a"})
+    w.model.answers[TRIAGE] = "class: question\n"
+    for answer in (f"duplicate: {opened['number']}\n", "duplicate: none\n", "duplicate: 4711\n"):
+        w.model.answers[DUPLICATE] = answer
+        unlabelled(outside, opened["number"], "type:question")
+        run = await w.confirmed(await w.start(version, issue=opened["number"]))
+        assert run.state is RunState.FINISHED, [(s.step_id, s.reason) for s in run.step_runs]
+        assert (await w.result(run, "duplicate-of"))["differing"] == [], answer
+        assert states(run)["comment"] is StepState.SUCCEEDED
+        assert (await w.result(run, "comment"))["skipped"] is True
+    assert outside.send("GET", f"/repos/{REPOSITORY}/issues/{opened['number']}/comments") == []
+
+
+def classify_all(outside: Outside) -> None:
+    for issue in outside.issues():
+        if issue["state"] == "open" and not issue["labels"]:
+            outside.send(
+                "POST",
+                f"/repos/{REPOSITORY}/issues/{issue['number']}/labels",
+                {"labels": ["type:question"]},
+            )
+
+
+async def test_b_7_01_the_weekly_run_takes_the_oldest_unclassified_open_issue(
+    outside: Outside,
+) -> None:
+    w = await World(outside).ready()
+    version = await w.registered("B-7.01-triage.yaml")
+    assert [t.schedule for t in version.triggers if t.schedule] == ["0 7 * * 1"]
+    classify_all(outside)  # what the fake holds already
+    outside.send(
+        "POST",
+        f"/repos/{REPOSITORY}/issues",
+        {"title": "Dark mode", "body": "Please.", "labels": ["type:feature"]},
+    )
+    left = outside.send("POST", f"/repos/{REPOSITORY}/issues", {"title": "Crash", "body": "x"})
+    outside.send("POST", f"/repos/{REPOSITORY}/issues", {"title": "Later", "body": "y"})
+    w.model.answers[TRIAGE] = "class: defect\n"
+    run = await w.confirmed(await w.start(version))
+    assert run.state is RunState.FINISHED, [(s.step_id, s.reason) for s in run.step_runs]
+    assert (await w.result(run, "pick"))["first"]["number"] == left["number"]
+    labelled = outside.send("GET", f"/repos/{REPOSITORY}/issues/{left['number']}")
+    assert [label["name"] for label in labelled["labels"]] == ["type:defect"]
+
+    classify_all(outside)
+    prompts = len(w.model.prompts)
+    run = await w.confirmed(await w.start(version))
+    assert run.state is RunState.FINISHED, [(s.step_id, s.reason) for s in run.step_runs]
+    assert (await w.result(run, "pick"))["count"] == 0
+    assert (await w.result(run, "read-issue"))["skipped"] is True
+    assert len(w.model.prompts) == prompts, "nothing unclassified, no model asked"
+
+
 # --- stage 1: watchers ---------------------------------------------------------------------------
 
 
@@ -676,10 +784,8 @@ async def test_b_1_04_takes_the_function_with_the_highest_rate_as_the_store_gave
 @pytest.mark.parametrize(
     ("name", "inputs", "step", "label", "value", "corridor", "level"),
     [
-        # The fake's run times: export 4.2, login 0.3, resize NaN, which is left out.
-        ("B-1.02-run-times.yaml", {"query": "function_duration_seconds"}, "slowest",
-         ("function", "export"), 4.2, ("cost.function_run_time", 2, 4), Level.RED),
-        ("B-1.03-runaway.yaml", {"query": "function_calls_per_second"}, "busiest",
+        ("B-1.03-runaway.yaml", {"query": "function_calls_per_second", "throttle_above": 1000,
+                                  "throttle_to": 1}, "busiest",
          ("function", "sync"), 180, ("load.function_calls", 50, 100), Level.RED),
         ("B-2.03-quotas.yaml", {"query": "quota_used_ratio"}, "fullest",
          ("service", "payments"), 0.91, ("cost.quota_used", 0.8, 0.95), Level.YELLOW),
@@ -716,6 +822,59 @@ async def test_a_figure_watcher_takes_the_highest_value_as_the_store_gave_it_and
     assert selected["first"]["values"][0]["value"] == value
     (judged,) = (await w.signals.watch.look(TENANT)).judged
     assert judged.level is level
+
+
+DRIVERS = {
+    "query": "function_duration_seconds",
+    "queries_query": "db_query_seconds",
+    "egress_query": "egress_bytes",
+    "storage_query": "storage_bytes",
+    "label": "ready",
+}
+
+
+async def test_b_1_02_names_the_four_cost_drivers_and_files_one_proposal_once(
+    outside: Outside,
+) -> None:
+    """Run time, queries, egress and storage, the largest of each by rule; the slowest judged by
+    its corridor; one issue as P-03's goal once a person confirmed it, never twice."""
+    w = await World(outside).ready()
+    version = await w.registered("B-1.02-run-times.yaml")
+    await w.corridor(
+        "cost.function_run_time",
+        version.process_id,
+        step="slowest",
+        select="first.values.0.value",
+        bounds="fixed",
+        direction="above",
+        yellow=2,
+        red=4,
+    )
+    before = len(outside.issues())
+    run = await w.start(version, **DRIVERS)
+    assert run.state is RunState.WAITING_HUMAN, "at level 2 nothing starts before a person"
+    run = await w.confirmed(run)
+    assert run.state is RunState.FINISHED, [(s.step_id, s.reason) for s in run.step_runs]
+    # The fake's run times: export 4.2, login 0.3, resize NaN, which is left out.
+    slowest = await w.result(run, "slowest")
+    assert slowest["first"]["labels"]["function"] == "export"
+    assert slowest["first"]["values"][0]["value"] == 4.2
+    assert (await w.result(run, "costliest-query"))["first"]["labels"]["query"] == (
+        "orders_by_customer"
+    )
+    assert (await w.result(run, "most-egress"))["first"]["labels"]["service"] == "media"
+    assert (await w.result(run, "most-storage"))["first"]["labels"]["bucket"] == "uploads"
+    [filed] = outside.issues()[: len(outside.issues()) - before]
+    assert filed["title"] == "Lower the cost drivers of the month"
+    body = filed["body"]
+    assert "export" in body and "orders_by_customer" in body and "media" in body
+    assert "uploads" in body and "cost-drivers:export" in body
+    assert [label["name"] for label in filed["labels"]] == ["ready"]
+    (judged,) = (await w.signals.watch.look(TENANT)).judged
+    assert judged.level is Level.RED
+    again = await w.confirmed(await w.start(version, **DRIVERS))
+    assert (await w.result(again, "unfiled"))["count"] == 0, "filed once while open"
+    assert len(outside.issues()) == before + 1
 
 
 async def test_b_1_08_judges_the_oldest_backup_and_the_oldest_restore_drill_each_by_its_corridor(

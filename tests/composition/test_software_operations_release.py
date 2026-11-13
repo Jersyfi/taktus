@@ -68,13 +68,16 @@ from taktus.adapters.driven.memory import MemoryQueue
 from taktus.adapters.driven.models import StaticModelPool
 from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
-from taktus.components.run.application.service import EngineOptions, RunEngine
+from taktus.components.process.application.service.register_version import (
+    RegisterProcessVersion,
+)
+from taktus.components.run.application.service import ConfirmSteps, EngineOptions, RunEngine
 from taktus.components.run.domain.model import Run, RunState, StepState
 from taktus.composition.personal import ConfiguredPersonalCredentials
 from taktus.ports.connector import CallContext, idempotency_key
 from taktus.ports.worker import CredentialReference
 
-from .test_software_operations import REPOSITORY, TOKEN, Outside, states
+from .test_software_operations import REPOSITORY, TOKEN, Outside, bundle, states
 from .test_software_operations import outside as outside  # the fixture, requested by name
 from .test_software_operations_repository import (
     RepositoryWorld,
@@ -443,6 +446,55 @@ async def test_b_8_04_on_a_serverless_platform_shares_the_traffic_and_promotes_o
         ]
         assert (await w.result(run, "share-2"))["skipped"] is True
         assert (await w.result(run, "promote"))["skipped"] is True
+
+
+# --- B-1.03's brake on a serverless platform (ADR-0310) -----------------------------------------
+
+BRAKE = {"query": "service_calls_per_second", "throttle_above": 100, "throttle_to": 1}
+
+
+async def test_b_1_03_at_level_1_proposes_the_throttle_and_a_person_performs_it(
+    outside: Outside, cluster: str, systems: Systems, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """As shipped, at level 1: the runaway is named by rule and the throttle waits for a person
+    to perform it; the platform is not touched by Taktus."""
+    serverless_key(monkeypatch)
+    w = await ReleaseWorld(outside, cluster, systems, serverless=True).ready()
+    version = await w.registered("B-1.03-runaway.yaml")
+    run = await w.start(version, **BRAKE)
+    assert run.state is RunState.WAITING_HUMAN
+    assert states(run)["throttle"] is StepState.WAITING_HUMAN
+    runaway = await w.result(run, "runaway")
+    assert runaway["count"] == 1 and runaway["first"]["labels"]["function"] == "web"
+    assert len(systems.state("serverless")["services"]["web"]["revisions"]) == 1
+    run = await w.engine.confirm(
+        ConfirmSteps(run_id=run.id, steps=("throttle",), actor=OWNER, tenant="t", performed=True)
+    )
+    finished(run)
+    assert len(systems.state("serverless")["services"]["web"]["revisions"]) == 1, "a person did"
+
+
+async def test_b_1_03_at_level_2_throttles_the_runaway_once_a_person_confirmed(
+    outside: Outside, cluster: str, systems: Systems, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A tenant's version at level 2: the brake is set once confirmed, and names the limit
+    before; below the threshold nothing is throttled."""
+    serverless_key(monkeypatch)
+    w = await ReleaseWorld(outside, cluster, systems, serverless=True).ready()
+    raised = bundle("B-1.03-runaway.yaml")
+    raised["autonomy"] = {**raised["autonomy"], "level": 2}
+    version = await w.register.execute(RegisterProcessVersion(raised, tenant="t", by=OWNER))
+    calm = await w.confirmed(await w.start(version, **{**BRAKE, "throttle_above": 1000}))
+    finished(calm)
+    assert (await w.result(calm, "throttle"))["skipped"] is True
+    run = await w.start(version, **BRAKE)
+    assert run.state is RunState.WAITING_HUMAN, "at level 2 nothing starts before a person"
+    run = await w.confirmed(run)
+    finished(run)
+    throttled = (await w.result(run, "throttle"))["output"]
+    assert throttled["name"] == "web" and throttled["max_instances"] == 1
+    assert throttled["max_instances_before"] is None
+    assert len(systems.state("serverless")["services"]["web"]["revisions"]) == 2
 
 
 # --- B-8.02, B-8.03, B-8.04 at an app store (ADR-0210) -----------------------------------------

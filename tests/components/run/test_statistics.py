@@ -13,9 +13,11 @@ from typing import Any
 import pytest
 
 from taktus.components.run.domain.model import (
+    CountStatistic,
     DeviationStatistic,
     RuleFailed,
     SignificanceStatistic,
+    TotalStatistic,
     UnsupportedWork,
     parse_work,
 )
@@ -132,6 +134,8 @@ def test_a_statistics_step_parses_its_statistic() -> None:
     work = parse_work(step, {"statistic": "deviation", "days": {"$from": "read"}})
     assert isinstance(work, DeviationStatistic)
     assert (work.window, work.minimum) == (28, 7)
+    total = parse_work(step, {"statistic": "total", "days": {"$from": "read"}})
+    assert isinstance(total, TotalStatistic)
 
 
 # --- significance: two rates (ADR-0313) -----------------------------------------------------------
@@ -256,3 +260,79 @@ def test_a_statistics_step_parses_the_significance_and_refuses_a_level_outside_t
         parse_work(step, {**given, "alpha": "0.2"}, {"dimension": "v"})
     with pytest.raises(UnsupportedWork):
         parse_work(step, {**given, "treatment": "A"}, {"dimension": "v"})
+
+
+# --- total (ADR-0310) ----------------------------------------------------------------------------
+
+
+def summed(days: Any) -> dict[str, Any]:
+    return statistics.total(TotalStatistic(statistic="total", days=None), days)
+
+
+def test_each_group_is_summed_over_the_week_largest_first_in_decimal() -> None:
+    days = [
+        day("2026-09-07", build="1.10", storage="0.20"),
+        day("2026-09-06", build="0.70"),
+        day("2026-09-05", build="0.30", storage="0.10", network="0.05"),
+    ]
+    result = summed(days)
+    assert (result["from"], result["until"], result["days"]) == ("2026-09-05", "2026-09-07", 3)
+    assert result["total_text"] == "2.45"
+    assert result["groups"] == [
+        {"group": "build", "amount": "2.10", "value": 2.1},
+        {"group": "storage", "amount": "0.30", "value": 0.3},
+        {"group": "network", "amount": "0.05", "value": 0.05},
+    ]
+
+
+@pytest.mark.parametrize(
+    ("days", "fragment"),
+    [
+        ([], "non-empty"),
+        ([day("2026-09-01", a="1"), day("2026-09-01", a="2")], "occurs twice"),
+        ([{"date": "2026-09-01", "total": "3", "groups": [{"group": "a", "amount": "1"}]}], "sum"),
+    ],
+)
+def test_a_series_the_total_cannot_read_fails_the_step(days: Any, fragment: str) -> None:
+    with pytest.raises(RuleFailed, match=fragment):
+        summed(days)
+
+
+# --- count (ADR-0309) ----------------------------------------------------------------------------
+
+
+def counted(items: Any, by: str = "version") -> dict[str, Any]:
+    return statistics.count(CountStatistic(statistic="count", items=items, by=by), items)
+
+
+def test_count_counts_each_value_most_first_and_a_missing_field_under_null() -> None:
+    items = [
+        {"version": "2.1"},
+        {"version": "2.0"},
+        {"version": "2.1"},
+        {"version": None},
+        {"rating": 1},
+        {"version": "2.0"},
+        {"version": "2.1"},
+    ]
+    result = counted(items)
+    assert result["items"] == 7
+    assert result["groups"] == [
+        {"value": "2.1", "count": 3},
+        {"value": "2.0", "count": 2},
+        {"value": None, "count": 2},
+    ]
+    assert result["first"] == {"value": "2.1", "count": 3}
+
+
+def test_count_reads_a_dotted_path_and_an_empty_list_names_nothing() -> None:
+    assert counted([{"app": {"version": 3}}], by="app.version")["groups"] == [
+        {"value": "3", "count": 1}
+    ]
+    assert counted([])["first"] is None
+
+
+@pytest.mark.parametrize("items", [{"version": "1"}, ["x"], [{"version": ["1"]}]])
+def test_count_fails_on_what_is_not_a_list_of_objects_with_a_value(items: Any) -> None:
+    with pytest.raises(RuleFailed):
+        counted(items)

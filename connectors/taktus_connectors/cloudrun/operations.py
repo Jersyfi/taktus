@@ -407,9 +407,63 @@ async def split(config: Config, call: Call, input: Json) -> Outcome:
     return _write(output, config, name, call.key, replayed=False)
 
 
+MAX_INSTANCES = 1000
+
+
+def _max_instances(template: Json) -> int | None:
+    scaling = template.get("scaling") or {}
+    value = scaling.get("maxInstanceCount") if isinstance(scaling, dict) else None
+    return _int(value) if value is not None else None
+
+
+async def throttle(config: Config, call: Call, input: Json) -> Outcome:
+    """The most instances a service may run, `template.scaling.maxInstanceCount`, set to
+    `max_instances`: the emergency brake on a function caught in a loop (B-1.03, ADR-0310). The
+    template changes, so the API makes a revision of the same containers, and the traffic stays
+    with the latest. A service whose traffic is held on an earlier revision — after a rollback
+    — is refused: a new revision from its template would roll it forward. The key is the
+    template's annotation, as a release carries it; the limit set before is in the output, so
+    that a person can put it back."""
+    name = _name(input)
+    wanted = input.get("max_instances")
+    if isinstance(wanted, bool) or not isinstance(wanted, int) or not 1 <= wanted <= MAX_INSTANCES:
+        raise invalid(f"max_instances must be a whole number from 1 to {MAX_INSTANCES}")
+    token = await access_token(call, SCOPE, config.timeout, config.token())
+    found = await _service(config, call, token, name)
+    template = found["template"]
+    if _annotations(template).get(KEY_ANNOTATION) == call.key or any(
+        _annotations(r).get(KEY_ANNOTATION) == call.key
+        for r in await _revisions(config, call, token, name)
+    ):
+        output = {**service_output(found, config), "max_instances": _max_instances(template)}
+        return _write(output, config, name, call.key, replayed=True)
+    if _serving(found) != _short(found.get("latestReadyRevision")):
+        raise TargetError(
+            "conflict",
+            "none",
+            False,
+            f"the traffic of {name!r} is held on an earlier revision; a new revision from its "
+            "template would roll it forward",
+        )
+    before = _max_instances(template)
+    changed = copy.deepcopy(found)
+    changed["template"].setdefault("scaling", {})["maxInstanceCount"] = wanted
+    changed["template"].setdefault("annotations", {})[KEY_ANNOTATION] = call.key
+    changed["traffic"] = [{"type": LATEST, "percent": 100}]
+    await _request(config, call, token, "PATCH", f"{config.services()}/{name}", body=changed)
+    written = await _service(config, call, token, name)
+    output = {
+        **service_output(written, config),
+        "max_instances": _max_instances(written["template"]),
+        "max_instances_before": before,
+    }
+    return _write(output, config, name, call.key, replayed=False)
+
+
 OPERATIONS = {
     "deployment.workloads.read": read_service,
     "deployment.workloads.release": release,
     "deployment.workloads.rollback": rollback,
     "deployment.workloads.split": split,
+    "deployment.workloads.throttle": throttle,
 }

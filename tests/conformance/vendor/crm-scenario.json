@@ -1,0 +1,36 @@
+{
+  "credentials": {
+    "actions": "CRM_TOKEN"
+  },
+  "read": {
+    "operation": "crm.contacts.find",
+    "input": {
+      "email": "customer@mail.example"
+    }
+  },
+  "writes": [
+    {
+      "operation": "crm.contacts.create",
+      "input": {
+        "email": "suite{{unique}}@mail.example"
+      }
+    }
+  ],
+  "invalid": {
+    "operation": "crm.contacts.find",
+    "input": {
+      "email": "not an address"
+    },
+    "expected_cause": "invalid"
+  },
+  "scoped": {
+    "operation": "crm.contacts.find",
+    "subject": "customer@mail.example",
+    "own": {
+      "email": "customer@mail.example"
+    },
+    "other": {
+      "email": "other@mail.example"
+    }
+  }
+}

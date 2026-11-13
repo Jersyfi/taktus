@@ -199,6 +199,11 @@ COPY --chown=connector:connector connectors/taktus_connectors/mastodon /app/takt
 ENTRYPOINT ["python", "-m", "taktus_connectors.mastodon"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
+FROM base AS mistral
+COPY --chown=connector:connector connectors/taktus_connectors/mistral /app/taktus_connectors/mistral
+ENTRYPOINT ["python", "-m", "taktus_connectors.mistral"]
+CMD ["--host", "0.0.0.0", "--port", "9100"]
+
 FROM base AS mixpanel
 COPY --chown=connector:connector connectors/taktus_connectors/mixpanel /app/taktus_connectors/mixpanel
 ENTRYPOINT ["python", "-m", "taktus_connectors.mixpanel"]

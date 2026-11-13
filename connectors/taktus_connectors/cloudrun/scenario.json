@@ -16,6 +16,13 @@
         "container": "app",
         "image": "registry.example/app:conformance-{{unique}}"
       }
+    },
+    {
+      "operation": "deployment.workloads.throttle",
+      "input": {
+        "name": "web",
+        "max_instances": 3
+      }
     }
   ],
   "invalid": {

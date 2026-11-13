@@ -700,15 +700,43 @@ class SignificanceStatistic(Value):
         return self
 
 
-type StatisticsWork = DeviationStatistic | SignificanceStatistic
+class TotalStatistic(Value):
+    """Every group's amount summed over the days of a series, and the series' total
+    (`domain.service.statistics`, ADR-0310): the week's cost of each service from a costs
+    reading. `days` is the series in the shape `deviation` reads. The result is exact: the
+    same series always gives the same sums, in decimal arithmetic."""
+
+    statistic: Literal["total"]
+    days: Any
+
+
+class CountStatistic(Value):
+    """The items of a list counted per value of a field (`domain.service.statistics`,
+    ADR-0309): the low ratings of a store counted per app version. `items` is a list of
+    objects; `by` a dotted path into each. An item without the field, or with null, counts
+    under null. The result is exact: the same list always gives the same counts."""
+
+    statistic: Literal["count"]
+    items: Any
+    by: str = Field(min_length=1)
+
+
+type StatisticsWork = DeviationStatistic | SignificanceStatistic | TotalStatistic | CountStatistic
 """What a `statistics` step computes, chosen by `statistic`."""
+
+_STATISTICS: dict[str, type[SignificanceStatistic | TotalStatistic | CountStatistic]] = {
+    "significance": SignificanceStatistic,
+    "total": TotalStatistic,
+    "count": CountStatistic,
+}
 
 
 def _statistic(given: Mapping[str, Any]) -> StatisticsWork:
-    """The statistic `given` names; any name but `significance` is read as a `deviation`, so
-    that a wrong name is refused under `statistic` itself."""
-    if given.get("statistic") == "significance":
-        return SignificanceStatistic.model_validate(given)
+    """The statistic `given` names; any name but `significance`, `total` and `count` is read as
+    a `deviation`, so that a wrong name is refused under `statistic` itself."""
+    chosen = _STATISTICS.get(given.get("statistic"))  # type: ignore[arg-type]
+    if chosen is not None:
+        return chosen.model_validate(given)
     return DeviationStatistic.model_validate(given)
 
 
@@ -1505,10 +1533,12 @@ def referenced_values(work: Work) -> list[Any]:
         return [work.left.items, work.right.items]
     if isinstance(work, RecurringRule):
         return [work.subscriptions, work.failures, work.as_of]
-    if isinstance(work, DeviationStatistic):
+    if isinstance(work, DeviationStatistic | TotalStatistic):
         return [work.days]
     if isinstance(work, SignificanceStatistic):
         return [work.rows]
+    if isinstance(work, CountStatistic):
+        return [work.items]
     if isinstance(work, CommitTitleRule):
         return [work.title, work.number, work.labels, work.files, work.proposal]
     if isinstance(work, WaitWork) and work.until is not None:
