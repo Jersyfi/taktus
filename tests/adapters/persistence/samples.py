@@ -1441,6 +1441,58 @@ def discovered_process(tenant: str = "t") -> Any:
     )
 
 
+def _chain() -> Any:
+    from taktus.components.process.domain.model.chain import Chain
+
+    return Chain.model_validate(
+        {
+            "id": "procure-to-pay",
+            "name": "Procure to pay",
+            "links": [
+                {"process_version": "purchase-order@1"},
+                {
+                    "process_version": "book-invoice@1",
+                    "handover": [
+                        {
+                            "input": "order",
+                            "step": "order",
+                            "select": "number",
+                            "clause": "the invoice is booked against its order",
+                        }
+                    ],
+                },
+            ],
+            "slo": {"latency": "PT2H", "completion": 0.9},
+            "escalation": {"role": "accounting", "react_within": "PT4H", "path": "channel"},
+        }
+    )
+
+
+def declared_chain(tenant: str = "t") -> Any:
+    from taktus.components.process.domain.model.chain import DeclaredChain
+
+    return DeclaredChain(id="procure-to-pay", chain=_chain(), declared_at=AT)
+
+
+def chain_run(tenant: str = "t") -> Any:
+    from taktus.components.process.domain.model.chain import ChainRun, ChainState
+
+    return ChainRun(
+        id="chr_procure-to-pay_1",
+        chain=_chain(),
+        state=ChainState.FINISHED,
+        started_at=AT,
+        updated_at=AT,
+        link=1,
+        runs=("run_1", "run_2"),
+        handovers=("sha256:" + "a" * 64,),
+        reason="stopped by a person",
+        missing=("amount",),
+        ended_at=AT,
+        measured="met",
+    )
+
+
 def org_structure(tenant: str = "t") -> OrgStructure:
     return OrgStructure(id=tenant, tenant=tenant, levels=("company", "area", "team", "project"))
 

@@ -502,7 +502,16 @@ role it would tie the core to a model stack and the removal test would be lost.
   component holds a version's `contracts` (`domain/model/process.py`) and its rule
   (`domain/service/partners.py`), and a chain's shape and rules (`domain/model/chain.py`,
   `domain/service/chains.py`); `composition/chains.py`'s `ChainRuns` runs a chain link by link
-  and records every handover.
+  and records every handover. A failed import or export check names the contract's clause it
+  breaks: `run/domain/service/checking.py` says what is lacking, `partners.breach` the clause,
+  and `composition/escalations.py` hands it to the governance component's `Escalated.breaks`
+  (ADR-0303). The instance stores a chain and every run of it (`DeclaredChain`, `ChainRun`;
+  tables `declared_chain`, `chain_run`, migration 0111) and shows them through
+  `adapters/driving/rest/chains.py` and the web app's `/chains`; the scheduler's `chains_tick`
+  goes on with a waiting chain once its link finished (ADR-0301). A halted handover's package is
+  the governance component's `handover_package`, raised in the owner-facing channel; a person's
+  decision goes through `ChainRuns.decide`; a chain that ended is measured against its own
+  objectives (ADR-0302).
 - **The load measurement** (S-04, ADR-0223) is `adapters/driving/cli/load_command.py`: it
   submits the probe `blueprints/self-operation/processes/S-04-load-probe.yaml`, which the control
   plane's image carries, through the same services as `taktusctl submit`, and reads each run's

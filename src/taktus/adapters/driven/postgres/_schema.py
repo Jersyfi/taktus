@@ -1336,3 +1336,7 @@ value_basis = _document_table("value_basis")
 """One row per version of a tenant's value basis, written once (ADR-0244 §2)."""
 discovered_process = _document_table("discovered_process")
 """One row per discovered process, at its stage (ADR-0245 §2)."""
+declared_chain = _document_table("declared_chain")
+"""One row per chain a tenant declared, under the chain's identifier (ADR-0301 §1)."""
+chain_run = _document_table("chain_run")
+"""One row per run of a chain, its state moving on (ADR-0301 §2)."""

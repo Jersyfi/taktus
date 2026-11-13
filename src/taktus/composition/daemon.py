@@ -147,6 +147,7 @@ from taktus.components.process.domain.model import (
     TriggerState,
     ValueStream,
 )
+from taktus.components.process.domain.model.chain import ChainRun, DeclaredChain
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.application.service import (
     Alerts,
@@ -187,6 +188,7 @@ from taktus.composition.assistants import Assistants
 from taktus.composition.capacity import capacity_report, capacity_tick, rules_of
 from taktus.composition.case_spend import InstanceSpend
 from taktus.composition.catalogue_in_channel import CatalogueInChannel
+from taktus.composition.chains import ChainRuns, chains_tick
 from taktus.composition.change_in_channel import ChangeInChannel
 from taktus.composition.conformance import InstanceSuites, worker_suites
 from taktus.composition.contents import StepContents
@@ -410,6 +412,9 @@ class Wired:
     agent: AgentSurface
     streams: StreamReads
     """The organisation as value streams, and their declaration (ADR-0159)."""
+    chains: ChainRuns
+    """End-to-end chains across domains: stored, started, decided, and gone on with by the
+    scheduler (ADR-0301, ADR-0302)."""
     profiles: RoleProfiles
     """A role's profile, derived from the processes (ADR-0167)."""
     reading: ReadingWiring
@@ -1378,6 +1383,19 @@ async def wire(
                     trials=PostgresRepository(persistence, TakeoverTrial),
                 ),
                 agent=agent,
+                chains=ChainRuns(
+                    engine=engine,
+                    versions=PostgresRepository(persistence, ProcessVersion),
+                    objects=objects,
+                    ledger=ledger,
+                    work=persistence,
+                    clock=clock,
+                    runs=runs,
+                    declared=PostgresRepository(persistence, DeclaredChain),
+                    chain_runs=PostgresRepository(persistence, ChainRun),
+                    channels=owner.channel,
+                    raising=owner.raising,
+                ),
                 streams=StreamReads(
                     streams=ValueStreams(
                         PostgresRepository(persistence, ValueStream),
@@ -1864,6 +1882,8 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
         # And it measures every ended run against its process's objectives, and says a
         # failure healed again and again (ADR-0254).
         measure_objectives = objectives_tick(wired.objectives, wired.tenants, wired.clock)
+        # And it goes on with every chain whose link finished since it waited (ADR-0301 §3).
+        advance_chains = chains_tick(wired.chains, wired.tenants, wired.clock)
         signal_ledger = ledger_signal_tick(wired.ledger_signal, wired.tenants, wired.clock)
         # And it judges every signal against its corridor, and raises the daily report
         # (ADR-0109).
@@ -1919,6 +1939,7 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
             await watch_expected()
             await watch_escalations()
             await measure_objectives()
+            await advance_chains()
             await signal_ledger()
             await tick()
             await send_findings()

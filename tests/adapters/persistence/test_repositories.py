@@ -61,6 +61,7 @@ from taktus.components.process.domain.model import (
     TriggerState,
     ValueStream,
 )
+from taktus.components.process.domain.model.chain import ChainRun, DeclaredChain
 from taktus.components.reporting.domain.model import Corridor, OwnerChannel, Report
 from taktus.components.reporting.domain.model.views import (
     OwnView,
@@ -139,6 +140,8 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (OwnView, samples.own_view),
     (ValueBasis, samples.value_basis),
     (DiscoveredProcess, samples.discovered_process),
+    (DeclaredChain, samples.declared_chain),
+    (ChainRun, samples.chain_run),
     (OrgStructure, samples.org_structure),
     (StructureUnit, samples.structure_unit),
     (Placement, samples.placement),
