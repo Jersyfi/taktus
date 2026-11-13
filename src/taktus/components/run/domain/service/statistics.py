@@ -10,17 +10,25 @@ rose most above its own median is the `driver`: the part behind a jump.
 Every figure is computed from the decimal text the series gave and reported twice: as that text,
 and as a number for a corridor to read (ADR-0109). A day whose total is not the sum of its parts
 fails the step. Nothing here estimates, rounds before the end, or reads words.
+
+`significance` reads a report's rows and tests whether two variants' rates differ beyond chance:
+a two-sided test of two proportions with the pooled rate (ADR-0313). Each variant's trials are
+the counts of its exposure event, its successes those of its conversion event. The statistic
+`z` is computed in decimal arithmetic and compared with the fixed critical value of the chosen
+level, so that the decision is the same every time. The p-value is reported beside it as
+information, rounded; it decides nothing.
 """
 
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Mapping
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation, localcontext
 from typing import Any
 
 from taktus.components.run.domain.model.errors import RuleFailed
-from taktus.components.run.domain.model.work import DeviationStatistic
+from taktus.components.run.domain.model.work import DeviationStatistic, SignificanceStatistic
 
 DATE = re.compile(r"^\d{4}-\d\d-\d\d$")
 DRIVER = ("group", "amount", "median", "change")
@@ -137,4 +145,106 @@ def deviation(statistic: DeviationStatistic, days: Any) -> dict[str, Any]:
         "history": len(history),
         "groups": groups,
         "driver": None if driver is None else {k: driver[k] for k in DRIVER},
+    }
+
+
+CRITICAL = {
+    "0.10": Decimal("1.6448536269514722"),
+    "0.05": Decimal("1.9599639845400542"),
+    "0.01": Decimal("2.5758293035489004"),
+    "0.001": Decimal("3.2905267314918945"),
+}
+"""The two-sided critical values of the standard normal distribution, one per level a test may
+be held to, to sixteen decimals."""
+SHOWN = Decimal("0.000001")
+
+
+def _at(row: Any, path: tuple[str, ...], what: str, index: int) -> Any:
+    found = row
+    for key in path:
+        if not isinstance(found, Mapping) or key not in found:
+            raise RuleFailed(f"row {index} has no {what} at {'.'.join(path)}")
+        found = found[key]
+    return found
+
+
+def _count(value: Any, index: int) -> Decimal:
+    number = _decimal(value, f"the count of row {index}")
+    if number < 0 or number != number.to_integral_value():
+        raise RuleFailed(f"the count of row {index} is not a whole number of events: {value!r}")
+    return number
+
+
+def _shown(number: Decimal | None) -> str | None:
+    return None if number is None else _text(number.quantize(SHOWN, rounding=ROUND_HALF_EVEN))
+
+
+def significance(statistic: SignificanceStatistic, rows: Any) -> dict[str, Any]:
+    """The two variants' rates, their difference, the statistic `z`, and whether the difference
+    is significant at the level `alpha`. A variant without trials, or with more successes than
+    trials, fails the step; rates that cannot differ — both nothing or both everything — give no
+    `z` and are not significant."""
+    if not isinstance(rows, list):
+        raise RuleFailed("rows must be a list of a report's rows")
+    sums = {
+        (variant, event): Decimal(0)
+        for variant in (statistic.control, statistic.treatment)
+        for event in (statistic.exposure, statistic.conversion)
+    }
+    for index, row in enumerate(rows):
+        variant = str(_at(row, statistic.variant, "variant", index))
+        event = str(_at(row, statistic.event, "event", index))
+        if (variant, event) in sums:
+            sums[(variant, event)] += _count(_at(row, statistic.count, "count", index), index)
+    with localcontext() as context:
+        context.prec = 40
+        figures: dict[str, dict[str, Any]] = {}
+        rates: dict[str, Decimal] = {}
+        for role, variant in (("control", statistic.control), ("treatment", statistic.treatment)):
+            trials = sums[(variant, statistic.exposure)]
+            successes = sums[(variant, statistic.conversion)]
+            if trials == 0:
+                raise RuleFailed(f"the variant {variant!r} has no {statistic.exposure!r} event")
+            if successes > trials:
+                raise RuleFailed(
+                    f"the variant {variant!r} has more {statistic.conversion!r} than "
+                    f"{statistic.exposure!r} events"
+                )
+            rate = successes / trials
+            rates[role] = rate
+            figures[role] = {
+                "variant": variant,
+                "trials": _text(trials),
+                "successes": _text(successes),
+                "rate": float(rate),
+                "rate_text": _shown(rate),
+            }
+        n1 = sums[(statistic.control, statistic.exposure)]
+        n2 = sums[(statistic.treatment, statistic.exposure)]
+        pooled = (
+            sums[(statistic.control, statistic.conversion)]
+            + sums[(statistic.treatment, statistic.conversion)]
+        ) / (n1 + n2)
+        difference = rates["treatment"] - rates["control"]
+        variance = pooled * (1 - pooled) * (1 / n1 + 1 / n2)
+        z = None if variance == 0 else difference / variance.sqrt()
+        critical = CRITICAL[statistic.alpha]
+        significant = z is not None and abs(z) >= critical
+        p = None if z is None else round(math.erfc(float(abs(z)) / math.sqrt(2)), 6)
+        difference_text, z_text = _shown(difference), _shown(z)
+    better = None
+    if significant:
+        better = "treatment" if difference > 0 else "control"
+    return {
+        "control": figures["control"],
+        "treatment": figures["treatment"],
+        "difference": float(difference),
+        "difference_text": difference_text,
+        "z": None if z is None else float(z),
+        "z_text": z_text,
+        "alpha": statistic.alpha,
+        "critical_text": _text(critical),
+        "significant": significant,
+        "better": better,
+        "p": p,
     }
