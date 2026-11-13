@@ -15,6 +15,20 @@
       "decider": { "role": "owner" }
     },
     {
+      "id": "anc-staff",
+      "class": "strategic",
+      "act": "staff and partnerships: hiring, a contract of employment or of partnership, ending one, a change of what a person or a partner is given (UC-03 §6); no figure about a person is kept (principle 14)",
+      "applies_to": { "actions": ["staff.*", "partnerships.*"] },
+      "decider": { "role": "owner" }
+    },
+    {
+      "id": "anc-limits",
+      "class": "strategic",
+      "act": "its own limits: a guardrail, a budget or an autonomy level changed (UC-03 §6); a raise needs a person (UC-7.1), a limit is changed by a person (ADR-0005), a fall is by rule (UC-7.5)",
+      "applies_to": { "actions": ["orchestrator.limits.*", "orchestrator.levels.*", "orchestrator.guardrails.*"] },
+      "decider": { "role": "owner" }
+    },
+    {
       "id": "anc-correction",
       "class": "correction",
       "act": "correct a result that has left the system (ADR-0022)",
