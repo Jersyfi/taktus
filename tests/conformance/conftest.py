@@ -1296,6 +1296,20 @@ BUSINESS: dict[str, BusinessConnector] = {
     "einvoice": BusinessConnector(
         "einvoice", FAKES / "document_inbox_service.py", "DOCUMENTS_TOKEN"
     ),
+    "erpnext": BusinessConnector(
+        "erpnext",
+        FAKES / "books_service.py",
+        "BOOKS_TOKEN",
+        (
+            "--customer",
+            "Online customers",
+            "--income-account",
+            "Sales - EX",
+            "--tax-account",
+            "VAT - EX",
+        ),
+        pair=True,
+    ),
     "expiry": BusinessConnector("expiry", FAKES / "expiry_service.py", "EXPIRY_TOKEN"),
     "firebase": BusinessConnector(
         "firebase", FAKES / "hosting_releases_service.py", "SITES_TOKEN", key="google"

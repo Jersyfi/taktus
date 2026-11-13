@@ -181,6 +181,17 @@
     },
     {
       "capabilities": [
+        "accounting.invoices"
+      ],
+      "image": "taktus-connector-erpnext",
+      "name": "erpnext",
+      "operations": [
+        "accounting.invoices.export",
+        "accounting.invoices.read"
+      ]
+    },
+    {
+      "capabilities": [
         "expiry.certificates",
         "expiry.domains"
       ],

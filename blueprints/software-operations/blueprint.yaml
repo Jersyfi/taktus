@@ -19,6 +19,7 @@ metadata:
 requires:
   connectors:
     - capability: accounts.customers
+    - capability: accounting.invoices
     - capability: accounts.requests
     - capability: analytics.reports
     - capability: audit.events
