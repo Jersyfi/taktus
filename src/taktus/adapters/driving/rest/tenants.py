@@ -21,6 +21,7 @@ from fastapi import APIRouter, Header, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
+from taktus.adapters.driving.inventory import read_recorded
 from taktus.adapters.driving.rest.problems import problem
 from taktus.adapters.driving.rest.wiring import RestServices
 from taktus.components.identity.application.service import BadName, NoSuchTenant
@@ -88,9 +89,12 @@ def router(services: RestServices) -> APIRouter:
     async def listed(authorization: str | None = Header(default=None)) -> JSONResponse:
         if (refusal := admitted(authorization)) is not None:
             return refusal
-        return JSONResponse(
-            {"tenants": [tenant_document(e) for e in await services.tenants.every()]}
-        )
+        every = await services.tenants.every()
+        for entry in every:
+            await read_recorded(
+                services.ledger, services.work, entry.id, "tenant.list", "administrator"
+            )
+        return JSONResponse({"tenants": [tenant_document(e) for e in every]})
 
     @routes.post(
         "/administration/tenants",

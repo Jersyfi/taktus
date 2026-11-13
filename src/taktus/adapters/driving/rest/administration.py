@@ -34,6 +34,7 @@ from fastapi import APIRouter, Header
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from taktus.adapters.driving.inventory import read_recorded
 from taktus.adapters.driving.rest.operation import backup_standing
 from taktus.adapters.driving.rest.problems import MEDIA_TYPE, problem
 from taktus.adapters.driving.rest.wiring import RestServices
@@ -195,6 +196,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         if isinstance(who, JSONResponse):
             return who
         listed = await services.identities.links(who.tenant)
+        await read_recorded(
+            services.ledger, services.work, who.tenant, "identity.links", who.identity
+        )
         return JSONResponse({"links": [link.document() for link in listed]})
 
     @routes.delete(
@@ -225,6 +229,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         if isinstance(who, JSONResponse):
             return who
         granted = await services.identities.granted(who.tenant)
+        await read_recorded(
+            services.ledger, services.work, who.tenant, "identity.rights", who.identity
+        )
         return JSONResponse(
             {
                 "roles": [{"role": r.id, "rights": [str(x) for x in r.rights]} for r in granted],
@@ -281,6 +288,7 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         if isinstance(who, JSONResponse):
             return who
         quotas = await services.org_units.quotas(who.tenant)
+        await read_recorded(services.ledger, services.work, who.tenant, "units.show", who.identity)
         return JSONResponse({"quotas": [q.document() for q in quotas]})
 
     @routes.put(
@@ -349,6 +357,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         backup = await services.operation.backup(who.tenant)
         alerts = await services.operation.alerts(who.tenant)
         incidents = await services.operation.incidents(who.tenant)
+        await read_recorded(
+            services.ledger, services.work, who.tenant, "instance.health", who.identity
+        )
         return JSONResponse(
             {
                 "release": release(),

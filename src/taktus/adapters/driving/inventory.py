@@ -6,12 +6,20 @@ or its list is marked `data-act="<act>"`. `tests/adapters/test_administration_in
 walks the list and finds each in all three. An act added to one way in and not to the other
 fails it.
 
-Every act is a ledger entry naming the identity that did it, by the use case both ways call.
+Every act is a ledger entry naming the identity that did it: an act that changes something by
+the use case both ways call, an act that reads as `administration.read`, which `read_recorded`
+writes with the act's name and the identity and nothing of what was read (NTC-0273).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+
+from taktus.ports.ledger import Fact, Ledger
+from taktus.ports.persistence import Tenant, UnitOfWork
+from taktus.shared.v1 import LedgerRefs
+
+READ = "administration.read"
 
 
 @dataclass(frozen=True)
@@ -25,6 +33,11 @@ class Act:
     """The HTTP surface's operation, as `api/openapi.yaml` names it."""
     page: str
     """The web app's route, under `#/`."""
+
+    @property
+    def reads(self) -> bool:
+        """Whether the act reads and changes nothing: its entry is `administration.read`."""
+        return self.name in READS
 
 
 ACTS: tuple[Act, ...] = (
@@ -254,3 +267,38 @@ ACTS: tuple[Act, ...] = (
         "health",
     ),
 )
+
+READS = frozenset(
+    {
+        "tenant.list",
+        "identity.links",
+        "identity.rights",
+        "units.show",
+        "structure.show",
+        "structure.where",
+        "adapter.list",
+        "backup.list",
+        "instance.health",
+    }
+)
+"""The acts that read: each is answered and leaves `administration.read` (NTC-0273)."""
+
+NAMED = {a.name for a in ACTS}
+
+
+async def read_recorded(
+    ledger: Ledger, work: UnitOfWork, tenant: Tenant, act: str, by: str | None
+) -> None:
+    """A read act as a ledger entry of the tenant read: who read, and which act, with nothing of
+    what was read (UC-10.2 §2, NTC-0273)."""
+    if act not in READS:
+        raise ValueError(f"{act!r} is not an administrative act that reads")
+    async with work.transaction(tenant):
+        await ledger.record(
+            tenant,
+            Fact(
+                kind=READ,
+                refs=LedgerRefs(tenant=tenant, actor=by, action=act),
+                outcome="read",
+            ),
+        )

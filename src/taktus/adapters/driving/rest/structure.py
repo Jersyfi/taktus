@@ -27,6 +27,7 @@ from fastapi import APIRouter, Header
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from taktus.adapters.driving.inventory import read_recorded
 from taktus.adapters.driving.rest.problems import MEDIA_TYPE, problem
 from taktus.adapters.driving.rest.wiring import RestServices
 from taktus.components.command.application.service.sessions import SessionError
@@ -142,6 +143,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
             for p in await structure.placements(who.tenant)
             if p.unit in seen and not (p.kind is PlacedKind.PROCESS and p.object in unseen)
         ]
+        await read_recorded(
+            services.ledger, services.work, who.tenant, "structure.show", who.identity
+        )
         return JSONResponse(
             {
                 "levels": list(levels.levels),
@@ -258,6 +262,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         if kind is PlacedKind.PROCESS and name in who.unseen:
             return problem(404, f"nothing filed for {name!r} that you may see")
         found = await org().where(who.tenant, kind, name)
+        await read_recorded(
+            services.ledger, services.work, who.tenant, "structure.where", who.identity
+        )
         if found is None:
             return problem(404, f"nothing filed for {name!r}")
         return JSONResponse(found.document())

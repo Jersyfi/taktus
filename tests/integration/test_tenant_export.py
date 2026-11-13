@@ -128,6 +128,10 @@ async def test_an_export_imported_into_a_fresh_instance_verifies_there_and_runs_
     document = json.loads(export.read_text(encoding="utf-8"))
     assert document["ledger"]["verified"] is True
     assert set(document["objects"]) >= digests_of(before["runs"])
+    newest = (await everything(postgres_url))["ledger"][-1]
+    assert (newest["kind"], newest["refs"]["actor"]) == ("tenant.exported", "idn_test"), (
+        "the export is an entry naming who took it (UC-10.2)"
+    )
 
     read = ctl(fresh, second, "tenant", "import", str(export))
     assert read.returncode == 0, read.stdout + read.stderr
@@ -140,6 +144,7 @@ async def test_an_export_imported_into_a_fresh_instance_verifies_there_and_runs_
     assert document["ledger"]["entries"] == len(before["ledger"])
     assert after["ledger"][: len(before["ledger"])] == before["ledger"]
     assert [e["kind"] for e in after["ledger"]][-1] == "tenant.imported"
+    assert after["ledger"][-1]["refs"]["actor"] == "idn_test"
     assert after["runs"] == before["runs"] and after["provenance"] == before["provenance"]
     objects = MemoryObjectStore(second / "objects")
     for digest in digests_of(before["runs"]):

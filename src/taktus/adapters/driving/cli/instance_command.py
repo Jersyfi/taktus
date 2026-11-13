@@ -39,6 +39,7 @@ from taktus.adapters.driving.cli.run_command import (
     DEFAULT_WORKER,
 )
 from taktus.adapters.driving.cli.wiring import NotOperable, Services, Wiring
+from taktus.adapters.driving.inventory import read_recorded
 from taktus.components.command.application.service import PlanningError
 
 backup = typer.Typer(help="The instance's backups, as the backup program recorded them.")
@@ -80,6 +81,7 @@ def age(at: datetime, now: datetime) -> str:
 
 def health(
     ctx: typer.Context,
+    by: Annotated[str, typer.Option("--identity", envvar="TAKTUS_IDENTITY")] = "operator",
     tenant: Tenant = DEFAULT_TENANT,
     state_dir: StateDir = Path(DEFAULT_STATE_DIR),
 ) -> None:
@@ -87,6 +89,7 @@ def health(
     incidents. Exit code 2 when the state does not answer."""
 
     async def act(services: Services) -> list[str]:
+        await read_recorded(services.ledger, services.work, tenant, "instance.health", by)
         lines = [
             f"release     {release()}",
             f"state       {services.storage}",
@@ -109,6 +112,7 @@ def health(
 @backup.command("list")
 def listed(
     ctx: typer.Context,
+    by: Annotated[str, typer.Option("--identity", envvar="TAKTUS_IDENTITY")] = "operator",
     tenant: Tenant = DEFAULT_TENANT,
     state_dir: StateDir = Path(DEFAULT_STATE_DIR),
 ) -> None:
@@ -119,6 +123,7 @@ def listed(
         if services.alerts is None:
             raise NotOperable("the backups cannot be read with these services")
         watched = await services.alerts.backup(tenant)
+        await read_recorded(services.ledger, services.work, tenant, "backup.list", by)
         now = services.clock.now()
         lines = [f"{watched.standing.replace('_', ' ')}"]
         for run in watched.state.recent:

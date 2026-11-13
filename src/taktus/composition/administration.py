@@ -57,6 +57,7 @@ from taktus.shared.v1 import (
     Step,
 )
 
+PREPARED = "administration.prepared"
 CARRIED_OUT = "administration.carried_out"
 UPDATE_COMMISSIONED = "instance.update_commissioned"
 VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$")
@@ -283,6 +284,25 @@ class AdministrationPlans:
         await self._carried_out(tenant, identity, part)
         return plan
 
+    async def prepared(self, tenant: Tenant, identity: str, draft: PlanDraft) -> None:
+        """The act asked in dialogue, as an entry naming who asked and which act, before anything
+        is carried out (UC-10.2 §2, NTC-0273)."""
+        part = draft.administration
+        if part is None:
+            return
+        async with self._work.transaction(tenant):
+            await self._ledger.record(
+                tenant,
+                Fact(
+                    kind=PREPARED,
+                    refs=LedgerRefs(
+                        tenant=tenant, plan_id=draft.plan_id, actor=identity, action=part.act
+                    ),
+                    outcome="prepared",
+                    content_digest=_digest({"act": part.act, "arguments": part.arguments}),
+                ),
+            )
+
     async def _checked(self, tenant: Tenant, part: AdministrationPart) -> None:
         """The act's target exists and its arguments hold, before anything is written."""
         given = part.arguments
@@ -316,7 +336,9 @@ class AdministrationPlans:
                 tenant,
                 Fact(
                     kind=kind,
-                    refs=LedgerRefs(tenant=tenant, plan_id=plan_id, actor=identity),
+                    refs=LedgerRefs(
+                        tenant=tenant, plan_id=plan_id, actor=identity, action=part.act
+                    ),
                     outcome="commissioned" if kind == UPDATE_COMMISSIONED else "carried_out",
                     content_digest=_digest({"act": part.act, "arguments": part.arguments}),
                 ),

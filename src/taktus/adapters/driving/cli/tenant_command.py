@@ -26,6 +26,7 @@ import typer
 
 from taktus.adapters.driving.cli.run_command import DEFAULT_STATE_DIR, DEFAULT_WORKER
 from taktus.adapters.driving.cli.wiring import NotOperable, Services, Wiring
+from taktus.adapters.driving.inventory import read_recorded
 from taktus.components.identity.application.service import TenantError
 from taktus.ports.persistence import TenantImported, TenantNotEmpty
 
@@ -93,15 +94,19 @@ def rename(
 @tenant.command("list")
 def listed(
     ctx: typer.Context,
+    by: By = None,
     state_dir: StateDir = Path(DEFAULT_STATE_DIR),
 ) -> None:
-    """Every tenant the instance serves, oldest first."""
+    """Every tenant the instance serves, oldest first. The read is an entry of each tenant's
+    ledger (NTC-0273)."""
 
     async def act(services: Services) -> list[str]:
-        return [
-            f"{entry.id}  {entry.created_at:%Y-%m-%d %H:%M}  {entry.name}"
-            for entry in await services.tenants.every()
-        ]
+        every = await services.tenants.every()
+        for entry in every:
+            await read_recorded(
+                services.ledger, services.work, entry.id, "tenant.list", by or "operator"
+            )
+        return [f"{entry.id}  {entry.created_at:%Y-%m-%d %H:%M}  {entry.name}" for entry in every]
 
     lines = _with(ctx, state_dir, act)
     typer.echo("\n".join(lines) if lines else "this instance serves no tenant")
