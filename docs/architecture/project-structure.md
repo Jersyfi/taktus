@@ -507,6 +507,12 @@ role it would tie the core to a model stack and the removal test would be lost.
   submits the probe `blueprints/self-operation/processes/S-04-load-probe.yaml`, which the control
   plane's image carries, through the same services as `taktusctl submit`, and reads each run's
   latency from its record.
+- **The export of the figures** (UC-5.7, ADR-0241) is `adapters/driving/rest/figures.py`,
+  `GET /figures` and `GET /figures.csv`, over `composition/figures.py`'s `FigureReads`. It
+  gathers every owner's figures, among them the levels' own (UC-6.10): the overview's counts,
+  the process level's runs (`process.runs`), and what a run and each of its steps consumed
+  (`run.consumed`, `step.consumed`, of the scopes `run` and `step` of the reporting
+  component's `Shown`), each read from the level through the predicate the read API asks.
 - **A tenant's export and import** (ADR-0221): the port `TenantArchive` of
   `ports/persistence.py`, implemented over every table with a `tenant` column by
   `adapters/driven/postgres/archive.py`; `composition/tenant_export.py`'s `TenantExports`

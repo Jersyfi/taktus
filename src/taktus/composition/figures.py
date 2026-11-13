@@ -4,9 +4,10 @@ a person's own view (ADR-0241 §1, ADR-0244).
 The facts come from components that never import each other: the process component's active
 versions, value streams, takeover trials and proposals; the catalog's removal verdicts; the
 identity component's structure; accounting's spend; the value component's ledger and stated
-basis; and the overview level's counts. The value component computes its figures from them;
-`reporting` selects among them. Only the processes the reader may see are gathered: a process
-outside `visible` contributes nothing.
+basis; the overview level's counts; and the process level's and the run level's figures — the
+runs of a version, and what each run and each of its steps consumed (UC-6.10). The value
+component computes its figures from them; `reporting` selects among them. Only the processes
+the reader may see are gathered: a process outside `visible` contributes nothing.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ from taktus.components.reporting.domain.model.signal import Corridor, Judged
 from taktus.components.reporting.domain.model.views import Shown, ViewConfiguration
 from taktus.components.reporting.domain.service import views as selection
 from taktus.components.reporting.domain.service import warehouse
+from taktus.components.reporting.domain.service.levels import RunLevel
 from taktus.components.run.domain.model import Run
 from taktus.components.value.application.query import ValueLedger
 from taktus.components.value.application.service import ValueBases
@@ -49,7 +51,17 @@ RUN_FIGURES = {
     "run.working": "runs of the process working now, by the run component's definition WORKING",
     "run.waiting": "runs of the process waiting now, by the run component's definition WAITING",
 }
-KNOWN = frozenset({*value.DEFINITIONS, *RUN_FIGURES, warehouse.FIGURE})
+LEVEL_FIGURES = {
+    "process.runs": "runs of the process's active version the reader may see, as the process "
+    "level draws them",
+    "run.consumed": "what the run has consumed so far of the quantity its unit names: the run "
+    "component's own sum (Run.consumed), as the run level shows it",
+    "step.consumed": "what one step of the run used of the quantity its unit names, as the run "
+    "component recorded it and the run level shows it",
+}
+"""The process level's and the run level's figures in the export (UC-6.10 §2, UC-5.7): each
+read from the level itself, so that the export carries the level's own value."""
+KNOWN = frozenset({*value.DEFINITIONS, *RUN_FIGURES, *LEVEL_FIGURES, warehouse.FIGURE})
 """Every figure an owner hands in: what a view may name."""
 
 
@@ -265,7 +277,11 @@ class FigureReads:
             *index.figures,
             *units,
         ]
-        out = [shown(f) for f in figures] + await self._run_figures(reader, visible)
+        out = [
+            *(shown(f) for f in figures),
+            *await self._run_figures(reader, visible),
+            *await self._level_figures(reader, visible, since, end),
+        ]
         return Gathered(
             shown=out,
             index=index,
@@ -328,6 +344,51 @@ class FigureReads:
                             method="counted now, as the overview counts it",
                         )
                     )
+        return out
+
+    async def _level_figures(
+        self, reader: Reader, visible: frozenset[str], since: datetime, until: datetime
+    ) -> list[Shown]:
+        """The process level's count of runs and the run level's consumption, read from the
+        levels themselves, through the one predicate the read API asks: a process or a run the
+        reader may not see contributes nothing (UC-6.10 §2). A run is in the period when it was
+        created in it."""
+        overview = await self.levels.overview(reader)
+        out: list[Shown] = []
+        for area in overview.areas:
+            for summary in area.processes:
+                if summary.id not in visible:
+                    continue
+                active = await self.levels.process(reader, summary.id)
+                if active is None:
+                    continue
+                out.append(
+                    Shown(
+                        id="process.runs",
+                        component="run",
+                        definition=LEVEL_FIGURES["process.runs"],
+                        unit="runs",
+                        scope="process",
+                        subject=summary.id,
+                        value=len(active.runs),
+                        method="counted, as the process level draws its runs",
+                        basis={"version": active.process.version},
+                    )
+                )
+                for ref in active.process.versions:
+                    level = (
+                        active
+                        if ref.version == active.process.version
+                        else await self.levels.process(reader, summary.id, ref.version)
+                    )
+                    if level is None:
+                        continue
+                    for at in level.runs:
+                        if not since <= at.created_at <= until:
+                            continue
+                        run = await self.levels.run(reader, at.id)
+                        if run is not None:
+                            out.extend(_consumed(summary.id, run, since, until))
         return out
 
     async def _process_facts(
@@ -485,3 +546,44 @@ def _digest(document: Mapping[str, Any]) -> str:
 
 def known() -> Sequence[str]:
     return sorted(KNOWN)
+
+
+def _consumed(process: str, level: RunLevel, since: datetime, until: datetime) -> list[Shown]:
+    """What the run and each of its steps consumed, one figure for each quantity the run level
+    names, with the level's own name and value."""
+    run = level.run
+    basis = {"process": process, "process_version": run.process_version}
+    out = [
+        Shown(
+            id="run.consumed",
+            component="run",
+            definition=LEVEL_FIGURES["run.consumed"],
+            unit=f.name,
+            scope="run",
+            subject=run.id,
+            since=since,
+            until=until,
+            value=f.value,
+            method="summed by the run component, as the run level shows it",
+            basis=basis,
+        )
+        for f in run.consumed
+    ]
+    for step in level.steps:
+        out.extend(
+            Shown(
+                id="step.consumed",
+                component="run",
+                definition=LEVEL_FIGURES["step.consumed"],
+                unit=f.name,
+                scope="step",
+                subject=f"{run.id}/{step.id}",
+                since=since,
+                until=until,
+                value=f.value,
+                method="recorded by the run component, as the run level shows it",
+                basis={**basis, "attempt": step.attempt},
+            )
+            for f in step.consumption
+        )
+    return out
