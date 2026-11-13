@@ -21,7 +21,11 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from taktus.components.run.domain.model.errors import RuleFailed
-from taktus.components.run.domain.model.work import DeviationStatistic, TotalStatistic
+from taktus.components.run.domain.model.work import (
+    CountStatistic,
+    DeviationStatistic,
+    TotalStatistic,
+)
 
 DATE = re.compile(r"^\d{4}-\d\d-\d\d$")
 DRIVER = ("group", "amount", "median", "change")
@@ -111,6 +115,32 @@ def total(statistic: TotalStatistic, days: Any) -> dict[str, Any]:
             {"group": name, "amount": _text(amount), "value": float(amount)}
             for name, amount in ordered
         ],
+    }
+
+
+def count(statistic: CountStatistic, items: Any) -> dict[str, Any]:
+    """Every item counted per value of the field `by`, most first, ties by value (ADR-0309):
+    the low ratings per app version. An item without the field, or with null, counts under
+    null; a value that is not a text, a number or null fails the step."""
+    if not isinstance(items, list):
+        raise RuleFailed("items must be a list of objects")
+    counts: dict[str | None, int] = {}
+    for index, item in enumerate(items):
+        if not isinstance(item, Mapping):
+            raise RuleFailed(f"item {index} is not an object")
+        value: Any = item
+        for part in statistic.by.split("."):
+            value = value.get(part) if isinstance(value, Mapping) else None
+        if isinstance(value, bool) or not isinstance(value, str | int | float | type(None)):
+            raise RuleFailed(f"item {index} has {statistic.by} {value!r}, not a text or a number")
+        key = None if value is None else str(value)
+        counts[key] = counts.get(key, 0) + 1
+    ordered = sorted(counts.items(), key=lambda pair: (-pair[1], pair[0] is None, pair[0] or ""))
+    return {
+        "by": statistic.by,
+        "items": len(items),
+        "groups": [{"value": value, "count": n} for value, n in ordered],
+        "first": {"value": ordered[0][0], "count": ordered[0][1]} if ordered else None,
     }
 
 

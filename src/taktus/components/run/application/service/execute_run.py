@@ -204,6 +204,7 @@ from taktus.components.run.domain.model import (
     ConnectorRule,
     ConstantRule,
     Control,
+    CountStatistic,
     DeviationStatistic,
     Ended,
     ExtractRule,
@@ -5762,6 +5763,9 @@ class RunEngine:
         if isinstance(work, TotalStatistic):
             (days,), read = await self._resolved(run, [work.days])
             return statistics.total(work, days), Trace(inputs=read), None, None
+        if isinstance(work, CountStatistic):
+            (items,), read = await self._resolved(run, [work.items])
+            return statistics.count(work, items), Trace(inputs=read), None, None
         if isinstance(work, ConnectorRule):
             return await self._connector_call(run, step_run, work, span)
         if isinstance(work, LlmWork):

@@ -39,6 +39,8 @@ MET = "deadline.met"
 RUN_CREATED = "run.created"
 RUN_FINISHED = "run.finished"
 STEP_FINISHED = "step.finished"
+STEP_PERFORMED = "step.performed"
+"""A person's own step reported performed (ADR-0167 §1): its finish, as far as a deadline goes."""
 NOT_AN_ANSWER = frozenset({"failed", "skipped"})
 """The outcomes of a step's finish that meet no deadline: the step did not answer."""
 
@@ -52,14 +54,20 @@ def starts(rule: DeadlineRule, kind: str, step_id: str | None, outcome: str | No
     """Whether the entry is the moment the rule starts from."""
     if rule.start is Start.AFTER:
         return (
-            kind == STEP_FINISHED and step_id == rule.after and (outcome or "") not in NOT_AN_ANSWER
+            kind in (STEP_FINISHED, STEP_PERFORMED)
+            and step_id == rule.after
+            and (outcome or "") not in NOT_AN_ANSWER
         )
     return kind == RUN_CREATED
 
 
 def meets(rule: DeadlineRule, kind: str, step_id: str | None, outcome: str | None) -> str | None:
     """What the entry meets the rule by: `step`, `run_finished`, or None."""
-    if kind == STEP_FINISHED and step_id == rule.until and (outcome or "") not in NOT_AN_ANSWER:
+    if (
+        kind in (STEP_FINISHED, STEP_PERFORMED)
+        and step_id == rule.until
+        and (outcome or "") not in NOT_AN_ANSWER
+    ):
         return "step"
     if kind == RUN_FINISHED:
         return "run_finished"

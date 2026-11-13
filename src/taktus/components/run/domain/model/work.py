@@ -673,11 +673,24 @@ class TotalStatistic(Value):
     days: Any
 
 
-type StatisticsWork = DeviationStatistic | TotalStatistic
+class CountStatistic(Value):
+    """The items of a list counted per value of a field (`domain.service.statistics`,
+    ADR-0309): the low ratings of a store counted per app version. `items` is a list of
+    objects; `by` a dotted path into each. An item without the field, or with null, counts
+    under null. The result is exact: the same list always gives the same counts."""
+
+    statistic: Literal["count"]
+    items: Any
+    by: str = Field(min_length=1)
+
+
+type StatisticsWork = DeviationStatistic | TotalStatistic | CountStatistic
 """What a `statistics` step computes, discriminated by `statistic`."""
 
-_STATISTIC: TypeAdapter[DeviationStatistic | TotalStatistic] = TypeAdapter(
-    Annotated[DeviationStatistic | TotalStatistic, Field(discriminator="statistic")]
+_STATISTIC: TypeAdapter[DeviationStatistic | TotalStatistic | CountStatistic] = TypeAdapter(
+    Annotated[
+        DeviationStatistic | TotalStatistic | CountStatistic, Field(discriminator="statistic")
+    ]
 )
 
 
@@ -1476,6 +1489,8 @@ def referenced_values(work: Work) -> list[Any]:
         return [work.subscriptions, work.failures, work.as_of]
     if isinstance(work, DeviationStatistic | TotalStatistic):
         return [work.days]
+    if isinstance(work, CountStatistic):
+        return [work.items]
     if isinstance(work, CommitTitleRule):
         return [work.title, work.number, work.labels, work.files, work.proposal]
     if isinstance(work, WaitWork) and work.until is not None:

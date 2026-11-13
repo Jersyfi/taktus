@@ -67,6 +67,7 @@ def test_only_an_answer_or_the_run_finishing_meets_a_deadline() -> None:
     assert rules.meets(r, "step.finished", "answer", "failed") is None
     assert rules.meets(r, "step.finished", "answer", "skipped") is None, "skipped is no answer"
     assert rules.meets(r, "step.finished", "triage", "succeeded") is None
+    assert rules.meets(r, "step.performed", "answer", None) == "step", "a person's own step"
     assert rules.meets(r, "run.finished", None, "succeeded") == "run_finished"
     assert rules.meets(r, "run.escalated", None, "failed") is None, "the case is still open"
 
