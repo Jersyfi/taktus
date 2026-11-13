@@ -25,6 +25,7 @@ from typing import Any
 from fastapi import APIRouter, Header
 from fastapi.responses import JSONResponse
 
+from taktus.adapters.driving.inventory import read_recorded
 from taktus.adapters.driving.rest.problems import MEDIA_TYPE, problem
 from taktus.adapters.driving.rest.wiring import RestServices
 from taktus.components.governance.domain.model import Incident, IncidentState
@@ -350,7 +351,11 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
             return problem(401, NEEDS_KEY)
         if not await owners(reader):
             return problem(403, NOT_A_READER)
-        return JSONResponse(backup_view(await services.operation.backup(reader.tenant)))
+        watched = await services.operation.backup(reader.tenant)
+        await read_recorded(
+            services.ledger, services.work, reader.tenant, "backup.list", reader.identity
+        )
+        return JSONResponse(backup_view(watched))
 
     @routes.get(
         "/signals",

@@ -24,6 +24,7 @@ from typing import Annotated, Any
 import typer
 
 from taktus.adapters.driving.cli.incident_command import By, StateDir, Tenant
+from taktus.adapters.driving.cli.reads import recorded
 from taktus.adapters.driving.cli.run_command import (
     DEFAULT_STATE_DIR,
     DEFAULT_TENANT,
@@ -70,6 +71,7 @@ def _print(document: Any) -> None:
 def show(
     ctx: typer.Context,
     tenant: Tenant = DEFAULT_TENANT,
+    by: By = "operator",
     state_dir: StateDir = Path(DEFAULT_STATE_DIR),
 ) -> None:
     """Print the levels, every unit and every placement, as JSON."""
@@ -83,7 +85,9 @@ def show(
             "placements": [p.document() for p in await found.placements(tenant)],
         }
 
-    _print(_run(ctx, state_dir, act))
+    shown = _run(ctx, state_dir, act)
+    recorded(ctx, state_dir, tenant, "structure.show", by)
+    _print(shown)
 
 
 @structure.command("levels")
@@ -161,6 +165,7 @@ def where(
     kind: Kind,
     name: Name,
     tenant: Tenant = DEFAULT_TENANT,
+    by: By = "operator",
     state_dir: StateDir = Path(DEFAULT_STATE_DIR),
 ) -> None:
     """Print every place something is documented, each with its link."""
@@ -170,6 +175,7 @@ def where(
         return None if filed is None else filed.document()
 
     filed = _run(ctx, state_dir, act)
+    recorded(ctx, state_dir, tenant, "structure.where", by)
     if filed is None:
         typer.echo(f"nothing is filed for {kind} {name}", err=True)
         raise typer.Exit(code=1)

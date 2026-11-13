@@ -110,7 +110,7 @@ class PlanActs:
             received_at=now,
         )
         goal = said.strip() or None
-        return await self._dialogue.open(
+        draft = await self._dialogue.open(
             OpenDraft(
                 command=command,
                 tenant=tenant,
@@ -123,6 +123,9 @@ class PlanActs:
                 results_in=PlanResult.RUN if describes is None else PlanResult.PROCESS_VERSION,
             )
         )
+        if part is not None and self._administration is not None:
+            await self._administration.prepared(tenant, identity, draft)
+        return draft
 
     async def mine(self, tenant: Tenant, identity: str) -> list[PlanDraft]:
         """The drafts of the person's own commands, newest change first."""

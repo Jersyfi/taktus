@@ -568,7 +568,10 @@ role it would tie the core to a model stack and the removal test would be lost.
   stays by hand (`BY_HAND_ONLY`); its `AdministrationPlans` checks the right and carries the act
   out through the identity component when the plan is commissioned. `composition/planning.py`,
   `composition/workspace.py`, the daemon and `composition/local.py` wire it, the command line's
-  `Services.planning` included.
+  `Services.planning` included. Every act of the inventory that reads leaves
+  `administration.read` through `read_recorded` of `adapters/driving/inventory.py`, called by each
+  read route and command, and by `adapters/driving/cli/reads.py` where a command holds no
+  services of its own (NTC-0273).
 - **Data-protection requests and the processing evidence** (ADR-0176) are served on the HTTP
   surface by `adapters/driving/rest/subjects.py` through the ports `SubjectActs` and
   `EvidenceReads` of `adapters/driving/rest/wiring.py`; the daemon's `Wired` builds the

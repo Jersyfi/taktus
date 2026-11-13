@@ -4,10 +4,14 @@ nothing (ADR-0295, ADR-0296, UC-10.2)."""
 
 from __future__ import annotations
 
+import asyncio
 import os
 import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+
+from taktus.adapters.driving.inventory import READ, READS
+from taktus.composition.local import LocalWiring
 
 from .test_first_slice import PLAIN, taktusctl
 
@@ -76,3 +80,38 @@ def test_an_update_is_prepared_and_commissioned_by_a_person_and_applies_nothing(
     done = ctl(state, "update", "commission", prepared("idn_admin"), "--identity", "idn_admin")
     assert done.returncode == 0, done.stdout + done.stderr
     assert "commissioned by idn_admin; nothing was applied" in done.stdout
+
+
+READ_COMMANDS: dict[str, tuple[str, ...]] = {
+    "tenant.list": ("tenant", "list"),
+    "identity.links": ("identity", "links"),
+    "identity.rights": ("identity", "rights"),
+    "units.show": ("units", "show"),
+    "structure.show": ("structure", "show"),
+    "structure.where": ("structure", "where", "process", "invoices"),
+    "adapter.list": ("conformance", "list"),
+    "backup.list": ("backup", "list"),
+    "instance.health": ("health",),
+}
+
+
+def test_every_act_that_reads_is_a_ledger_entry_on_the_command_line(tmp_path: Path) -> None:
+    """UC-10.2 §2 on the command line: each act of the inventory that reads leaves
+    `administration.read` naming the act and `--identity`, and nothing of what was read
+    (NTC-0273). An act that changes something is recorded by the use case it calls, the same
+    the HTTP surface calls."""
+    assert set(READ_COMMANDS) == READS
+    state = tmp_path / "state"
+    for act, words in READ_COMMANDS.items():
+        done = ctl(state, *words, "--identity", "idn_reader")
+        assert done.returncode in (0, 1), f"{act}: {done.stdout}{done.stderr}"
+
+    async def read() -> list[tuple[str | None, str | None, str | None]]:
+        async with LocalWiring().services(
+            state_dir=state, worker_endpoint="http://127.0.0.1:1"
+        ) as services:
+            async with services.work.transaction("default"):
+                found = await services.ledger.entries("default")
+        return [(e.refs.action, e.refs.actor, e.content_digest) for e in found if e.kind == READ]
+
+    assert sorted(asyncio.run(read())) == sorted((act, "idn_reader", None) for act in READ_COMMANDS)

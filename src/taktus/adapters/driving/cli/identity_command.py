@@ -31,6 +31,7 @@ from taktus.adapters.driving.cli.run_command import (
     DEFAULT_WORKER,
 )
 from taktus.adapters.driving.cli.wiring import NotOperable, Services, Wiring
+from taktus.adapters.driving.inventory import read_recorded
 from taktus.components.identity.application.service import IdentityError, IdentityExists
 from taktus.components.identity.domain.model import Right
 
@@ -151,11 +152,15 @@ def roles(
 def links(
     ctx: typer.Context,
     tenant: Tenant = DEFAULT_TENANT,
+    by: By = None,
     state_dir: StateDir = Path(DEFAULT_STATE_DIR),
 ) -> None:
     """List every link of the tenant: active and revoked, oldest first."""
 
     async def act(services: Services) -> list[str]:
+        await read_recorded(
+            services.ledger, services.work, tenant, "identity.links", by or "operator"
+        )
         lines = []
         for link in await services.identities.links(tenant):
             state = "active" if link.active else f"revoked {link.revoked_at:%Y-%m-%d %H:%M}"
@@ -252,11 +257,15 @@ def withdraw(
 def rights(
     ctx: typer.Context,
     tenant: Tenant = DEFAULT_TENANT,
+    by: By = None,
     state_dir: StateDir = Path(DEFAULT_STATE_DIR),
 ) -> None:
     """List every role of the tenant that holds a right on the MCP surface."""
 
     async def act(services: Services) -> list[str]:
+        await read_recorded(
+            services.ledger, services.work, tenant, "identity.rights", by or "operator"
+        )
         return [f"{r.id}: {', '.join(r.rights)}" for r in await services.identities.granted(tenant)]
 
     listed = _with(ctx, state_dir, act)

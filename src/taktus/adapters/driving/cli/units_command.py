@@ -33,6 +33,7 @@ from typing import Annotated, Any
 import typer
 
 from taktus.adapters.driving.cli.incident_command import By, StateDir, Tenant
+from taktus.adapters.driving.cli.reads import recorded
 from taktus.adapters.driving.cli.run_command import (
     DEFAULT_STATE_DIR,
     DEFAULT_TENANT,
@@ -92,6 +93,7 @@ def money(given: list[str]) -> dict[str, float]:
 def show(
     ctx: typer.Context,
     tenant: Tenant = DEFAULT_TENANT,
+    by: By = "operator",
     state_dir: StateDir = Path(DEFAULT_STATE_DIR),
 ) -> None:
     """Print every quota the tenant holds, by unit, as JSON."""
@@ -99,7 +101,9 @@ def show(
     async def act(found: TenantOrgUnits) -> list[dict[str, Any]]:
         return [q.document() for q in await found.quotas(tenant)]
 
-    typer.echo(json.dumps(_run(ctx, state_dir, act), indent=2, ensure_ascii=False))
+    shown = _run(ctx, state_dir, act)
+    recorded(ctx, state_dir, tenant, "units.show", by)
+    typer.echo(json.dumps(shown, indent=2, ensure_ascii=False))
 
 
 @units.command("set")
