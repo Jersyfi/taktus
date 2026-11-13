@@ -288,10 +288,35 @@ class DataContract(Value):
     frequency: timedelta | None = None
     responsible: Responsible
     steps: tuple[StepId, ...] = Field(min_length=1)
+    mapping: Mapping[str, str] | None = None
+    """How the partner's message corresponds to the contract's fields, as a person confirmed
+    it: each field by the dotted path that carries it in the partner's message (ADR-0315). It
+    is part of the version; a draft Taktus proposed from sample data is never applied until a
+    person registers a version that carries it."""
 
     @property
     def required(self) -> tuple[str, ...]:
         return tuple(f.name for f in self.fields if f.required)
+
+
+class MappingDraft(Value):
+    """A mapping Taktus proposed from a partner's sample messages, by rule, for a person to
+    confirm or correct (UC-15.3, ADR-0315). It is stored nowhere and applied to nothing: what a
+    person confirms enters a contract's `mapping` as a new version."""
+
+    proposed: Mapping[str, str] = Field(default_factory=dict)
+    """Each field by the one path of the samples whose name matches it."""
+    why: Mapping[str, str] = Field(default_factory=dict)
+    """For each proposed field, how its path was found."""
+    ambiguous: Mapping[str, tuple[str, ...]] = Field(default_factory=dict)
+    """A field more than one path matches: the person chooses."""
+    unmatched: tuple[str, ...] = ()
+    """The fields no path of the samples matches: the person names the path, or the partner's
+    message does not carry them."""
+    unused: tuple[str, ...] = ()
+    """The paths every sample carries that no field takes."""
+    question: str = Field(min_length=1)
+    """What the person is asked, the proposal reflected back (ADR-0008)."""
 
 
 class TaskState(Value):

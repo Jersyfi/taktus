@@ -523,7 +523,11 @@ role it would tie the core to a model stack and the removal test would be lost.
   and records every handover. A failed import or export check names the contract's clause it
   breaks: `run/domain/service/checking.py` says what is lacking, `partners.breach` the clause,
   and `composition/escalations.py` hands it to the governance component's `Escalated.breaks`
-  (ADR-0303). The instance stores a chain and every run of it (`DeclaredChain`, `ChainRun`;
+  (ADR-0303). `partners.propose_mapping` proposes a contract's `mapping` from sample data, answered
+  by `adapters/driving/rest/partners.py` and confirmed only by registering a version that
+  carries it; `composition/partner_exchange.py`'s `ContractControl`, in front of `TaskControl`
+  on the engine's boundary port, stops a message that came before the contract's frequency
+  allows, and its `ContractWatch` delivers the deviation (ADR-0315). The instance stores a chain and every run of it (`DeclaredChain`, `ChainRun`;
   tables `declared_chain`, `chain_run`, migration 0111) and shows them through
   `adapters/driving/rest/chains.py` and the web app's `/chains`; the scheduler's `chains_tick`
   goes on with a waiting chain once its link finished (ADR-0301). A halted handover's package is

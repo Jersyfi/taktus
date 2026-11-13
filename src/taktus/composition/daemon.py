@@ -248,6 +248,11 @@ from taktus.composition.owner_channel import (
     owner_channel_wiring,
 )
 from taktus.composition.participants import ParticipantAnswers
+from taktus.composition.partner_exchange import (
+    ContractControl,
+    ContractWatch,
+    contracts_tick,
+)
 from taktus.composition.personal import ConfiguredPersonalCredentials
 from taktus.composition.planning import PlanActs
 from taktus.composition.process_proposals import ProcessProposals
@@ -361,6 +366,9 @@ class Wired:
     """A tenant's introduction in stages, looked at by the scheduler once an hour while it
     leads (ADR-0137)."""
     escalations: EscalationWatch
+    contracts: ContractWatch
+    """A partner's message that arrived more often than its data contract allows, delivered
+    to a person once (ADR-0315)."""
     """Every failure's escalation delivered with its situation package, and watched against
     its process's time to react, by the scheduler once a minute while it leads (ADR-0252)."""
     objectives: ObjectivesWatch
@@ -840,10 +848,16 @@ async def wire(
                     steering=steering_store,
                     shares=shares,
                     evaluated=validations,
-                    control=TaskControl(
+                    control=ContractControl(
                         versions=PostgresRepository(persistence, ProcessVersion),
-                        connectors=connectors,
+                        ledger=ledger,
                         work=persistence,
+                        clock=clock,
+                        inner=TaskControl(
+                            versions=PostgresRepository(persistence, ProcessVersion),
+                            connectors=connectors,
+                            work=persistence,
+                        ),
                     ),
                     personal=ConfiguredPersonalCredentials(settings.personal_credentials),
                     citations=IndexedCitations(
@@ -1549,6 +1563,15 @@ async def wire(
                     raising=owner.raising,
                 ),
                 ledger_signal=LedgerSignal(ledger_store, persistence, telemetry),
+                contracts=ContractWatch(
+                    ledger=ledger,
+                    runs=runs,
+                    versions=PostgresRepository(persistence, ProcessVersion),
+                    work=persistence,
+                    clock=clock,
+                    channels=owner.channel,
+                    raising=owner.raising,
+                ),
                 escalations=EscalationWatch(
                     ledger=ledger,
                     runs=runs,
@@ -1922,6 +1945,9 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
         measure_objectives = objectives_tick(wired.objectives, wired.tenants, wired.clock)
         # And it goes on with every chain whose link finished since it waited (ADR-0301 §3).
         advance_chains = chains_tick(wired.chains, wired.tenants, wired.clock)
+        # And it says every partner's message that came more often than its contract allows
+        # (ADR-0315).
+        deliver_deviations = contracts_tick(wired.contracts, wired.tenants, wired.clock)
         signal_ledger = ledger_signal_tick(wired.ledger_signal, wired.tenants, wired.clock)
         # And it judges every signal against its corridor, and raises the daily report
         # (ADR-0109).
@@ -1987,6 +2013,7 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
             await watch_escalations()
             await measure_objectives()
             await advance_chains()
+            await deliver_deviations()
             await signal_ledger()
             await tick()
             await send_findings()
