@@ -133,7 +133,8 @@
       "operations": [
         "deployment.workloads.read",
         "deployment.workloads.release",
-        "deployment.workloads.rollback"
+        "deployment.workloads.rollback",
+        "deployment.workloads.split"
       ]
     },
     {

@@ -9,18 +9,31 @@
 # person as a decision request whether to publish it, at every level. The draft stays on the
 # website until a person publishes or deletes it there.
 #
-# Links and search terms are not checked: the post links nothing the model was not given, and
-# the search terms are the business's own choice in the website's editor.
+# Once published, the post's page is checked through the capability `check.http` (ADR-0111): its
+# address — the tenant's path for a post's page with the slug the website answered — must answer
+# 200, and the page must carry the search term the run names, the business's own choice. The post
+# itself links nothing: the model's answer is refused when it carries a link, so the page's own
+# address is the one link to check. A headless content store answers no public address; the
+# business's own front end serves the page, at the path the tenant names. A failed
+# check is counted by rule; the tenant's corridor on the count sends it to its role:
+#
+#     uv run taktusctl signal configure website.post_unchecked --process b-8-08 \
+#         --step unfound --select count --bounds fixed --direction above \
+#         --yellow 0.5 --red 0.5 --fresh 60d --role <role> --case <where the website is kept>
+#
+# `check.http` reaches one address, configured on the instance; the website's pages must be
+# under it for the check to reach them.
 #
 # By hand:
 #
 #     uv run taktusctl run --process blueprints/software-operations/processes/B-8.08-changelog-and-website.yaml \
-#         --input release=2.0 --input since_hours=336
+#         --input release=2.0 --input since_hours=336 --input "search_term=release notes" \
+#         --input 'page_path=/${slug}/'
 #
 # Switching it off (`taktusctl deactivate --process b-8-08`) changes nothing on the website.
 
 id: b-8-08
-version: "2"
+version: "3"
 name: B-8.08 Changelog and website
 autonomy:
   level: 2
@@ -41,9 +54,15 @@ inputs:
   since_hours:
     description: the hours since the last release; the changes merged within them are the release's
     example: 336
+  search_term:
+    description: the term the post's page must carry to be found for it, as the business chose it
+    example: release notes
+  page_path:
+    description: the path of a post's public page on the website, with ${slug} where the post's slug goes
+    example: /${slug}/
 
 limits:
-  quota: { units: 160 }
+  quota: { units: 170 }
 
 steps:
   - id: read-merged
@@ -193,13 +212,72 @@ steps:
       credentials:
         - { name: WEBSITE_TOKEN, injected_as: env }
 
+  - id: address
+    method: rule
+    reason: the page's path is the tenant's pattern for a post's page with the slug the website answered, a fixed composition
+    rejected:
+      - method: llm
+        why: a fixed composition needs no model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed path, pattern: "^/" }
+    depends_on: [publish]
+    work:
+      rule: template
+      text: { $input: page_path }
+      values:
+        slug: { $from: publish, $select: output.slug }
+
+  - id: page
+    method: rule
+    reason: one request to the published page tells whether its address answers and whether it carries the search term; the check observes and changes nothing
+    rejected:
+      - method: worker
+        why: a browser adds nothing to one request and a text in its answer
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what check.http.run answered", columns: [outcome, failures] }
+    fallback:
+      when: the connector serving check.http is unavailable
+      to: human
+      role: owner
+    depends_on: [address]
+    work:
+      checking: { select: output }
+      rule: connector
+      operation: check.http.run
+      input:
+        path: { $from: address }
+        expect:
+          status: 200
+          body_contains: { $input: search_term }
+      credentials:
+        - { name: CHECK_TOKEN, injected_as: env }
+
+  - id: unfound
+    method: rule
+    reason: each part of the check that did not hold is counted by a fixed rule, for the tenant's corridor
+    rejected:
+      - method: llm
+        why: counting the failures the check named needs no judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the parts of the page check that did not hold }
+    depends_on: [page]
+    work:
+      rule: filter
+      items: { $from: page, $select: output.failures }
+      all:
+        - { field: expected, matches: "." }
+
 takeover:
   sequence: >
     Whoever looks after the website starts the process when a release is out; the run names the
-    release and the hours since the last one. The steps run in order: list the closed pull
-    requests, keep those merged within those hours, write the post from their titles, give it
-    its title, draft it on the website, and decide whether to publish it. Publishing is a
-    person's decision at every level.
+    release, the hours since the last one and the search term the post's page must carry. The
+    steps run in order: list the closed pull requests, keep those merged within those hours,
+    write the post from their titles, give it its title, draft it on the website, and decide
+    whether to publish it. Publishing is a person's decision at every level. Once published, open
+    the post's page and check that it answers and carries the search term.
   steps:
     read-merged:
       system: the repository hosting service, the repository's closed pull requests
@@ -261,3 +339,32 @@ takeover:
             identity described in CREDENTIALS.md; a person working by hand uses their own account,
             which may publish posts
       done: the post is published, or the decision not to publish it is recorded
+    address:
+      system: the published post's slug
+      do: >
+        Only if the post was published: write down the path of its public page, the path the run
+        was started with, with the post's slug in the place it marks for the slug.
+      expertise: none
+      credentials: []
+      done: the path is written down, or the post was not published
+    page:
+      system: the website, the published post's page
+      do: >
+        Only if the post was published: open its page. Write down whether it answers without an
+        error, and whether its text carries the search term the run was started with.
+      expertise: opening a page and searching its text
+      credentials:
+        - parameter: CHECK_TOKEN
+          where: >
+            the operator's secret store, under the parameter Check token of the requesting
+            identity described in CREDENTIALS.md; a person working by hand opens the public page
+            in a browser and needs none
+      done: it is written down whether the page answers and carries the search term
+    unfound:
+      system: what was written down
+      do: >
+        count what did not hold: a page that did not answer, a search term it does not carry.
+        Tell whoever looks after the website if the count is not zero.
+      expertise: none
+      credentials: []
+      done: the count is written down

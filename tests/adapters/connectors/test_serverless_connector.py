@@ -210,3 +210,88 @@ async def test_a_service_changed_between_the_reading_and_the_write_is_a_conflict
         operations._service = real  # type: ignore[assignment]
     assert stale.value.error.cause.value == "conflict"
     assert len(state(url)["web"]["revisions"]) == 1
+
+
+# --- a canary's share of the traffic (ADR-0312) ---------------------------------------------------
+
+
+def deploy_canary(url: str, image: str = NEW) -> None:
+    """A canary revision deployed beside the stable one without traffic, as the business's build
+    deploys it."""
+    httpx.post(
+        f"{url}/_fake/deploy", json={"service": "web", "image": image}, timeout=5
+    ).raise_for_status()
+
+
+async def test_a_split_shares_the_traffic_between_the_canary_and_the_stable_revision_once(
+    api: tuple[str, str],
+) -> None:
+    url, _ = api
+    deploy_canary(url)
+    canary = state(url)["web"]["revisions"][-1]
+    assert state(url)["web"]["traffic"] == {"web-00001-abc": 100}, "deployed without traffic"
+    first = await connector(url).call(
+        "deployment.workloads.split", context("split-1"), {"name": "web", "percent": 10}
+    )
+    assert first.effect.replayed is False
+    assert first.output["traffic"] == [
+        {"revision": "web-00001-abc", "percent": 90},
+        {"revision": canary, "percent": 10},
+    ]
+    assert state(url)["web"]["traffic"] == {"web-00001-abc": 90, canary: 10}
+    assert len(state(url)["web"]["revisions"]) == 2, "a split makes no revision"
+    again = await connector(url).call(
+        "deployment.workloads.split", context("split-1"), {"name": "web", "percent": 10}
+    )
+    assert again.effect.replayed is True and again.effect.records == first.effect.records
+
+    raised = await connector(url).call(
+        "deployment.workloads.split", context("split-2"), {"name": "web", "percent": 50}
+    )
+    assert {t["percent"] for t in raised.output["traffic"]} == {50}
+    promoted = await connector(url).call(
+        "deployment.workloads.split", context("promote"), {"name": "web", "percent": 100}
+    )
+    assert promoted.output["traffic"] == [{"revision": canary, "percent": 100}]
+    assert promoted.output["rolled_out"] is True
+    assert state(url)["web"]["images"] == [NEW]
+
+
+async def test_a_split_to_nothing_puts_all_traffic_back_on_the_stable_revision(
+    api: tuple[str, str],
+) -> None:
+    url, _ = api
+    deploy_canary(url)
+    await connector(url).call(
+        "deployment.workloads.split", context("split-1"), {"name": "web", "percent": 30}
+    )
+    back = await connector(url).call(
+        "deployment.workloads.split", context("halt"), {"name": "web", "percent": 0}
+    )
+    assert back.output["traffic"] == [{"revision": "web-00001-abc", "percent": 100}]
+    assert state(url)["web"]["images"] == ["registry.example/app:1.0.0"]
+
+
+async def test_a_split_without_a_stable_revision_or_with_a_wrong_share_writes_nothing(
+    api: tuple[str, str],
+) -> None:
+    url, _ = api
+    with pytest.raises(CallFailed) as alone:
+        await connector(url).call(
+            "deployment.workloads.split", context("split"), {"name": "web", "percent": 10}
+        )
+    assert alone.value.error.cause.value == "not_found", "the only revision is no canary"
+    for percent in (-1, 101, "10", True):
+        with pytest.raises(CallFailed) as wrong:
+            await connector(url).call(
+                "deployment.workloads.split", context("split"), {"name": "web", "percent": percent}
+            )
+        assert wrong.value.error.cause.value == "invalid"
+    with pytest.raises(CallFailed) as unknown:
+        await connector(url).call(
+            "deployment.workloads.split",
+            context("split"),
+            {"name": "web", "percent": 10, "revision": "web-00009-zzz"},
+        )
+    assert unknown.value.error.cause.value == "not_found"
+    assert state(url)["web"]["traffic"] == {"web-00001-abc": 100}

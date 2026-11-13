@@ -156,6 +156,7 @@ processes:
   - { id: B-8.03, name: B-8.03 Store submission, bundle: processes/B-8.03-store-submission.yaml }
   - { id: B-8.04, name: B-8.04 Staged rollout, bundle: processes/B-8.04-staged-rollout.yaml }
   - { id: B-8.04-store, name: "B-8.04 Staged rollout, at an app store", bundle: processes/B-8.04-store-rollout.yaml }
+  - { id: B-8.04-serverless, name: "B-8.04 Staged rollout, on a serverless platform", bundle: processes/B-8.04-traffic-canary.yaml }
   - { id: B-8.05, name: B-8.05 Web deployment, bundle: processes/B-8.05-web-deployment.yaml }
   - { id: B-8.05-site, name: "B-8.05 Web deployment, on a hosted site", bundle: processes/B-8.05-site-deployment.yaml }
   - { id: B-8.06, name: B-8.06 Backend deployment, bundle: processes/B-8.06-backend-deployment.yaml }
