@@ -50,6 +50,8 @@ from taktus.adapters.driving.cli.wiring import Services
 from taktus.components.catalog.application.service import REMOVAL_TESTED, RecordRemovalResultHandler
 from taktus.components.catalog.domain.model import AdapterMaturity
 from taktus.components.command.application.service import CommissionPlan, CommissionPlanHandler
+from taktus.components.governance.application.service.removal_broke import RemovalBroke
+from taktus.components.governance.domain.model.incident import Incident
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersion,
@@ -384,6 +386,7 @@ def connector_services(
             recordings=recordings,
             clock=clock,
             ids=ids,
+            broke=RemovalBroke(MemoryRepository(persistence, Incident), ledger, persistence, clock),
         )
     )
     placed = directory((TENANT,), persistence=persistence, clock=clock)

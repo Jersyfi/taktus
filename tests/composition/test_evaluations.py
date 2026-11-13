@@ -5,7 +5,7 @@ A proposal that changes a step is run on the process's cases beside the active v
 is rehearsed, and commissioned only once its evaluation passed, or against a regression with a
 person's reason. A judge scores inside a run and falls back to its rule. The same cases run on
 the process's schedule with no change, and a fall beyond the tolerance is a drift, an incident
-where the process sends outward. Every evaluation names the model the provider reported. A
+for every process, outward or not. Every evaluation names the model the provider reported. A
 corrected draft is proposed as a case, reduced to what scoring needs, and enters the set once a
 person confirmed it; one that would keep personal data the tenant does not allow is withheld.
 """
@@ -617,7 +617,9 @@ async def test_maturation_reads_a_step_s_newest_score_on_the_cases_as_evidence()
     assert await scores.tolerance(TENANT) == 0.05, "the shipped tolerance (NTC-0228)"
 
 
-async def test_a_drift_of_a_process_that_sends_nothing_outward_raises_no_incident() -> None:
+async def test_a_drift_of_a_process_that_sends_nothing_outward_is_raised_as_a_finding() -> None:
+    """A drift is a finding of deviation detection whether the process sends outward or not;
+    the incident says which, and the role it is addressed to (UC-8.4 §2, ADR-0300 §2)."""
     world = await World(outward=False).setup(schedule="hourly")
     await world.evaluations.look(TENANT)
     await world.drain()
@@ -628,7 +630,9 @@ async def test_a_drift_of_a_process_that_sends_nothing_outward_raises_no_inciden
     await world.drain()
     (scored,) = await world.evaluations.look(TENANT)
     assert scored.verdict is Verdict.DRIFT
-    assert await _incidents(world) == []
+    (incident,) = await _incidents(world)
+    assert incident.kind is IncidentKind.DRIFT
+    assert incident.facts["outward"] == "no" and incident.facts["role"] == "owner"
 
 
 async def test_a_corrected_draft_is_proposed_as_a_case_and_enters_the_set_once_confirmed() -> None:

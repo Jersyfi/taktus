@@ -6,8 +6,8 @@ epic: E8
 serves: [P8, P10, P12]
 state: building
 version: 0.5.0
-tests: [tests/components/run/test_engine.py::test_a_step_that_does_not_fit_is_rejected_before_it_starts, tests/components/run/test_engine.py::test_a_stop_mid_step_lands_on_the_worker_s_boundary_and_resume_duplicates_nothing, tests/components/run/test_engine.py::test_a_rejected_run_resumes_with_a_raised_limit, tests/components/run/test_capacity_admission.py::test_admission_against_the_platform, tests/components/governance/test_capacity.py::test_the_owner_s_example_reads_as_a_figure_and_a_date, tests/components/run/test_unit_limits.py::test_a_step_that_does_not_fit_a_team_s_limit_is_refused_before_it_starts, tests/components/run/test_unit_limits.py::test_a_child_never_lets_a_step_through_its_parent, tests/components/run/test_unit_limits.py::test_the_company_s_limit_holds_every_unit_below_it, tests/components/run/test_unit_limits.py::test_a_limit_that_holds_too_many_runs_is_reported_with_a_recommendation, tests/components/run/test_unit_limits.py::test_a_limit_held_per_person_tells_no_role_and_names_no_one, tests/components/run/test_unit_limits.py::test_what_applies_to_a_run_names_every_limit_with_its_unit, tests/components/governance/test_unit_limits.py::test_a_limit_does_harm_where_it_held_more_runs_or_longer_than_the_watch, tests/components/governance/test_unit_limits.py::test_a_limit_held_per_person_raises_no_alert_to_a_role, tests/integration/test_units_command.py::test_an_operator_sets_a_unit_limit_watches_it_and_sees_its_consumption]
-adrs: {ADR-0005: 0ea928e2016b, ADR-0015: 3a42705e5561, ADR-0031: e81473d81850, ADR-0282: c98f98a54368}
+tests: [tests/components/run/test_engine.py::test_a_step_that_does_not_fit_is_rejected_before_it_starts, tests/components/run/test_engine.py::test_a_stop_mid_step_lands_on_the_worker_s_boundary_and_resume_duplicates_nothing, tests/components/run/test_engine.py::test_a_rejected_run_resumes_with_a_raised_limit, tests/components/run/test_capacity_admission.py::test_admission_against_the_platform, tests/components/governance/test_capacity.py::test_the_owner_s_example_reads_as_a_figure_and_a_date, tests/components/run/test_unit_limits.py::test_a_step_that_does_not_fit_a_team_s_limit_is_refused_before_it_starts, tests/components/run/test_unit_limits.py::test_a_child_never_lets_a_step_through_its_parent, tests/components/run/test_unit_limits.py::test_the_company_s_limit_holds_every_unit_below_it, tests/components/run/test_unit_limits.py::test_a_limit_that_holds_too_many_runs_is_reported_with_a_recommendation, tests/components/run/test_unit_limits.py::test_a_limit_held_per_person_tells_no_role_and_names_no_one, tests/components/run/test_unit_limits.py::test_what_applies_to_a_run_names_every_limit_with_its_unit, tests/components/governance/test_unit_limits.py::test_a_limit_does_harm_where_it_held_more_runs_or_longer_than_the_watch, tests/components/governance/test_unit_limits.py::test_a_limit_held_per_person_raises_no_alert_to_a_role, tests/integration/test_units_command.py::test_an_operator_sets_a_unit_limit_watches_it_and_sees_its_consumption, tests/components/run/test_unit_limits.py::test_two_runners_admitting_against_one_limit_at_once_never_cross_it, tests/components/run/test_run_demand.py::test_a_run_that_needs_much_shows_its_demand_before_it_starts, tests/components/run/test_run_demand.py::test_a_run_no_person_commissions_is_not_asked, tests/components/run/test_run_demand.py::test_the_demand_shown_counts_only_the_person_s_own_runs_against_a_limit_per_person, tests/adapters/rest/test_limit_figures.py::test_a_limit_s_harm_report_is_in_the_views_of_administration_management_and_team]
+adrs: {ADR-0005: 0ea928e2016b, ADR-0015: 3a42705e5561, ADR-0031: e81473d81850, ADR-0282: c98f98a54368, ADR-0298: 0e99d1d289d8, ADR-0299: 0642681ae2ab}
 supersedes: null
 ---
 
@@ -97,6 +97,21 @@ the limit's role as `limit.harmful`, by a rule over the ledger entries `unit_lim
 recommended with its cost per period and its benefit. Taktus never changes the limit. What
 one person's runs used against a limit held per person is shown only to that person.
 
-Not built: the estimated demand shown to the person who commissions a run before a run that
-needs much starts; and the report reaches the limit's role as an incident, not a view of the
-administrator, management and the team affected of its own. The state stays `building`.
+Two runners admitting against one limit at once no longer both fit it: the admission is
+checked again under the limit's claim before it commits (ADR-0298 §1), by the named test.
+
+The estimated demand before a run starts (ADR-0299 §1), by the named tests in
+`test_run_demand.py`: the mean of the process's runs of 28 days, or the run's budget where it
+has none, against what remains of every unit limit on the run's path. A run a person
+commissions that needs much — its estimate reaches half of what remains of a limit — is refused
+with its demand and starts once the person accepts it; nothing is written before. `taktusctl
+run` and `submit` print it and take `--accept-demand`. Against a limit held per person only the
+person's own runs count. The harm report is also in the views (ADR-0299 §2), by the named test
+in `test_limit_figures.py`: the figure `limit.held_seconds`, of the limit's unit for the views of
+the administrator and the team affected, and of each process it held for the views grouped by
+process, with the limit, the work held, the change recommended, its cost and its benefit, and
+no person named; the default views `administration`, `management` and `team` show it.
+
+Not built: the demand is shown only where a surface names the person who commissions the run —
+the command line's `run` and `submit`. A run commissioned in the plan dialogue of the web app or
+through a channel starts without it. The state stays `building`.

@@ -12,7 +12,8 @@
   against its verdict with a person's reason (`ProposalActs.commission`).
 - **Drift.** While it leads, the scheduler starts a drift evaluation at every slot of a process's
   evaluation schedule, advances every evaluation that is not scored, and proposes a case for
-  every correction of a scored step. A drift of a process that sends outward raises an incident.
+  every correction of a scored step. A drift raises an incident, whether the process sends
+  outward or not (ADR-0300).
 
 This is wiring, because each act crosses components — process, command, run and governance —
 and only the composition root may hold them all (`composition/README.md`).
@@ -886,14 +887,10 @@ class Evaluations:
     async def _drifted(self, tenant: Tenant, scored: Evaluation, previous: Evaluation) -> None:
         async with self._work.transaction(tenant):
             version = await self._versions.get(tenant, scored.version)
-        if version is None or not await self._outward(version):
-            log.warning(
-                "a drift on the evaluation cases; the process sends nothing outward",
-                tenant=tenant,
-                evaluation=scored.id,
-                process=scored.version,
-            )
+        if version is None:
             return
+        # A drift is a finding whether the process sends outward or not (ADR-0300 §2).
+        outward = await self._outward(version)
         models: dict[str, str] = {}
         for result in previous.results:
             models.update({f"{step}@before": model for step, model in result.models.items()})
@@ -912,6 +909,8 @@ class Evaluations:
                 previous=before,
                 tolerance=scored.tolerance or 0.0,
                 models=models,
+                outward=outward,
+                role="owner" if version.escalation is None else version.escalation.role,
             ),
         )
 

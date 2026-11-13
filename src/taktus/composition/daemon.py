@@ -110,6 +110,7 @@ from taktus.components.governance.application.service import (
     SubjectRequests,
     TenantOrgUnits,
 )
+from taktus.components.governance.application.service.removal_broke import RemovalBroke
 from taktus.components.governance.application.service.stop_incidents import StopIncidents
 from taktus.components.governance.domain.model import (
     AnchorConfiguration,
@@ -970,6 +971,9 @@ async def wire(
                     recordings=recordings,
                     clock=clock,
                     ids=ids,
+                    broke=RemovalBroke(
+                        PostgresRepository(persistence, Incident), ledger, persistence, clock
+                    ),
                 ),
                 guides=InstanceGuides(pools.connectors, owner.channel, owner.raising, clock),
                 # Method maturation, which S-06 runs on its schedule (ADR-0086).

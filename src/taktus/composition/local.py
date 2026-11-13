@@ -107,6 +107,7 @@ from taktus.components.governance.application.service import (
     SubjectRequests,
 )
 from taktus.components.governance.application.service.domains import ConformityEvidence
+from taktus.components.governance.application.service.removal_broke import RemovalBroke
 from taktus.components.governance.application.service.stop_incidents import StopIncidents
 from taktus.components.governance.domain.model import (
     Incident,
@@ -593,6 +594,7 @@ class LocalWiring:
                     clock=clock,
                     ids=ids,
                     conformance=conformance,
+                    broke=RemovalBroke(stores.of(Incident), ledger, stores.work, clock),
                 ),
                 guides=InstanceGuides(pools.connectors, owner.channel, owner.raising, clock),
                 maturation=InstanceMaturation(maturation),

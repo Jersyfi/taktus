@@ -4,10 +4,10 @@ title: Changing a vendor breaks nothing
 component: catalog
 epic: E8
 serves: [P3, P4, P13]
-state: building
+state: built
 version: 0.5.0
-tests: [tests/components/catalog/test_removal.py::test_a_step_changes_with_an_alternative_or_a_person_and_breaks_otherwise, tests/components/catalog/test_removal.py::test_a_process_breaks_if_any_step_does, tests/components/catalog/test_removal.py::test_the_integration_breaks_if_any_process_does_and_changes_when_nothing_uses_it, tests/components/catalog/test_removal.py::test_the_database_is_the_known_exception, tests/components/catalog/test_removal.py::test_verified_needs_both_halves_and_the_record_names_what_is_missing, tests/integration/test_removal_test.py::test_withholding_the_only_worker_changes_the_example_and_is_recorded, tests/integration/test_dev_orchestration.py::test_removing_each_integration_of_the_three_processes_changes_them, tests/integration/test_two_coding_workers.py::test_withholding_either_coding_worker_changes_the_step_to_the_other, tests/integration/test_two_coding_workers.py::test_an_instance_configured_with_both_says_changed_for_each, tests/composition/test_model_validation.py::test_a_replacement_reaches_real_runs_only_after_its_validation_run_held, tests/composition/test_process_package.py::test_everything_that_defines_a_process_leaves_as_one_package_read_without_taktus, tests/composition/test_process_package.py::test_a_skill_a_step_uses_travels_in_its_open_format_and_a_missing_one_is_named]
-adrs: {ADR-0003: d0268914fed9, ADR-0011: f25413d512b9, ADR-0027: 8f3f450eeecb, ADR-0078: 5988b2bd75b6, ADR-0249: 96644d826d42, ADR-0285: 0ef93d2b972f}
+tests: [tests/components/catalog/test_removal.py::test_a_step_changes_with_an_alternative_or_a_person_and_breaks_otherwise, tests/components/catalog/test_removal.py::test_a_process_breaks_if_any_step_does, tests/components/catalog/test_removal.py::test_the_integration_breaks_if_any_process_does_and_changes_when_nothing_uses_it, tests/components/catalog/test_removal.py::test_the_database_is_the_known_exception, tests/components/catalog/test_removal.py::test_verified_needs_both_halves_and_the_record_names_what_is_missing, tests/integration/test_removal_test.py::test_withholding_the_only_worker_changes_the_example_and_is_recorded, tests/integration/test_dev_orchestration.py::test_removing_each_integration_of_the_three_processes_changes_them, tests/integration/test_two_coding_workers.py::test_withholding_either_coding_worker_changes_the_step_to_the_other, tests/integration/test_two_coding_workers.py::test_an_instance_configured_with_both_says_changed_for_each, tests/composition/test_model_validation.py::test_a_replacement_reaches_real_runs_only_after_its_validation_run_held, tests/composition/test_process_package.py::test_everything_that_defines_a_process_leaves_as_one_package_read_without_taktus, tests/composition/test_process_package.py::test_a_skill_a_step_uses_travels_in_its_open_format_and_a_missing_one_is_named, tests/integration/test_time_triggers.py::test_the_removal_test_runs_weekly_from_its_trigger, tests/integration/test_removal_broke.py::test_a_broke_verdict_is_raised_to_the_owner_of_each_process_that_broke, tests/integration/test_removal_broke.py::test_a_changed_verdict_raises_nothing]
+adrs: {ADR-0003: d0268914fed9, ADR-0011: f25413d512b9, ADR-0027: 8f3f450eeecb, ADR-0078: 5988b2bd75b6, ADR-0249: 96644d826d42, ADR-0285: 0ef93d2b972f, ADR-0300: eb9fcb2fa1f6}
 supersedes: null
 ---
 
@@ -59,8 +59,13 @@ replacement belongs with repeatability (definition `UC-8.4`). Definition `UC-8.9
 ## 5. What is proven so far
 
 The verdict rules, the exception, and a removal recorded in the ledger, by the
-named tests; the weekly run is started by a workflow of the repository host, not yet by Taktus's
-own scheduler.
+named tests. The weekly run is started by Taktus's own scheduler: S-01 registered with its
+weekly trigger starts one run per configured integration when the week turns, and each runs to
+its verdict (`test_the_removal_test_runs_weekly_from_its_trigger`). A verdict of *broke* raises
+the incident `removal.broke` for every process that broke, naming the integration, the steps
+that lost their only adapter with the reason for each, and the role it is addressed to — the
+process's escalation role, else `owner` — once per process, integration and removal run
+(ADR-0300 §3); a *changed* verdict raises nothing. By the named tests.
 
 Replacing the model behind a purpose is followed by its validation run: a trial of the purpose
 runs every process that asks it on its cases, and reports per process whether the quality held.
@@ -86,3 +91,7 @@ both since #209 (ADR-0078): S-01 run on it for each coding worker says *changed*
 as its alternative, and the removal half of each passes, by the named test. On Taktus's own
 instance the coding step still rests on a person until the second coding worker's image exists
 and is configured there (#208).
+
+The state is `built`: every condition is implemented and tested. Its verification on the live
+instance is the weekly S-01 run there, and no test yet holds every bundle and blueprint to naming
+no provider; the architecture tests hold the core and the contracts to it.
