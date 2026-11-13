@@ -103,3 +103,16 @@ Nothing.
 ## 7. How to answer
 
 "DEC-0177: Option A.", "Option B.", "Option C." or your own wording — in the issue.
+
+## Outcome
+
+**Decided:** 2026-11-13
+**Answer:** Option C with a requirement written now, chosen by the owner in conversation: "Nach
+1.0, Meilenstein 2.0.0 (Empfohlen)", on the offer that the use case is written now and built with
+`2.0.0`.
+**Reasoning given:** the vision places "Taktus managing its own infrastructure" after 1.0; 1.0
+stays lean.
+**What it changes:** Nothing of it is built before `1.0.0`. The requirement *Taktus rents
+execution capacity within a budget*, as Option A describes it, is written as a use case for
+version `2.0.0`, and an issue in milestone `2.0.0` carries its building.
+**Recorded in:** the pull request of the final round (DEC-0236)
