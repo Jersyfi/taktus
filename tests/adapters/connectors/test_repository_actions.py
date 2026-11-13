@@ -1035,6 +1035,89 @@ async def test_many_files_are_read_at_the_one_commit_a_ref_resolved_to(service: 
         assert refused["cause"] == cause, (input, refused)
 
 
+@pytest.mark.usefixtures("credentials")
+async def test_the_dates_of_paths_are_their_last_change_at_the_commit_a_ref_resolved_to(
+    service: Service,
+) -> None:
+    """`repository.files.dates` (ADR-0307 §5): for a file and a directory, the newest commit
+    at or before the resolved one that changed anything at or below the path, with its date;
+    a path nothing changed is answered with null; the commit's own date is read once."""
+    connector = Connector(config(service))
+    error, first = await call(
+        connector,
+        "repository.branches.create",
+        context("b", "run_01:dates-a:1-0123456789"),
+        {
+            "name": "taktus/dates",
+            "base": "main",
+            "files": [
+                {"path": "docs/usecases/UC-1.md", "content": "# UC-1\n"},
+                {"path": "docs/dod.md", "content": "# Done\n"},
+            ],
+        },
+    )
+    assert not error, first
+    _service_post(
+        service,
+        "/_fake/date",
+        {"repository": REPOSITORY, "sha": first["output"]["sha"], "date": "2026-01-02T03:04:05Z"},
+    )
+    error, second = await call(
+        connector,
+        "repository.branches.commit",
+        context("c", "run_01:dates-b:1-0123456789"),
+        {
+            "name": "taktus/dates",
+            "expected": first["output"]["sha"],
+            "message": "a second use case",
+            "files": [{"path": "docs/usecases/UC-2.md", "content": "# UC-2\n"}],
+        },
+    )
+    assert not error, second
+    head = second["output"]["sha"]
+    _service_post(
+        service,
+        "/_fake/date",
+        {"repository": REPOSITORY, "sha": head, "date": "2026-06-07T08:09:10Z"},
+    )
+    error, dates = await call(
+        connector,
+        "repository.files.dates",
+        context("dates", "run_01:dates-r:1-0123456789"),
+        {
+            "paths": ["docs/dod.md", "docs/usecases", "docs/gone.md", "docs/dod.md"],
+            "ref": "taktus/dates",
+        },
+    )
+    assert not error, dates
+    assert dates["effect"] == {"kind": "read"}
+    output = dates["output"]
+    assert output["commit"] == head
+    assert output["committed_at"] == "2026-06-07T08:09:10Z"
+    assert output["files"] == [
+        {
+            "path": "docs/dod.md",
+            "changed_at": "2026-01-02T03:04:05Z",
+            "changed_in": first["output"]["sha"],
+        },
+        {"path": "docs/usecases", "changed_at": "2026-06-07T08:09:10Z", "changed_in": head},
+        {"path": "docs/gone.md", "changed_at": None, "changed_in": None},
+    ]
+    assert dates["consumption"]["quota_units"] == 5, "the ref, the commit's date, each path once"
+
+    for input, cause in [
+        ({"paths": [], "ref": "main"}, "invalid"),
+        ({"paths": ["../outside"], "ref": "main"}, "invalid"),
+        ({"paths": [f"f{n}.md" for n in range(101)], "ref": "main"}, "invalid"),
+        ({"paths": ["docs"], "ref": "taktus/nowhere"}, "not_found"),
+    ]:
+        error, refused = await call(
+            connector, "repository.files.dates", context("d", "run_01:dates-x:1-0123456789"), input
+        )
+        assert error, input
+        assert refused["cause"] == cause, (input, refused)
+
+
 def _base_with_executable(service: Service, path: str) -> str:
     """A branch of the fake service whose tree carries `path` as an executable file, built
     through the service's own object interface, so that the connector has a real base to

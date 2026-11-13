@@ -121,7 +121,9 @@ async def test_an_untouched_page_reads_with_the_digest_of_the_text_written(wiki:
         wiki, declaration.LIST, context("list"), {"place": ["Taktus", "Administration"]}
     )
     assert not failed, listed
-    assert listed["output"]["pages"] == [{"place": PLACE, "digest": digest(BODY), "mark": MARK}]
+    (entry,) = listed["output"]["pages"]
+    assert isinstance(entry.pop("changed_at"), str), "the wiki's `updated_at` (ADR-0307)"
+    assert entry == {"place": PLACE, "digest": digest(BODY), "mark": MARK}
 
 
 async def test_a_text_the_wiki_keeps_as_written_needs_no_second_write(wiki: Wiki) -> None:

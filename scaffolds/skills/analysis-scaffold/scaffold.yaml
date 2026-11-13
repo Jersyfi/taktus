@@ -1,0 +1,40 @@
+scaffold: 1
+work: analysis
+artifacts:
+  - id: question
+    title: Question
+    why: What is to be found out, for whom, and which decision it serves.
+    system: repository
+    path: analysis/question.md
+    shape: file
+    template: templates/question.md
+  - id: data-sources
+    title: Data sources
+    why: Every source with where it comes from, when it was read and who may see it.
+    system: repository
+    path: analysis/sources.md
+    shape: file
+    template: templates/sources.md
+    maintained_days: 30
+  - id: method
+    title: Method
+    why: How the question is answered, and why this method over the others.
+    system: repository
+    path: analysis/method.md
+    shape: file
+    template: templates/method.md
+    maintained_days: 90
+  - id: findings
+    title: Findings
+    why: One file per finding, each naming the sources and the step it rests on.
+    system: repository
+    path: analysis/findings
+    shape: directory
+    template: templates/finding.md
+    maintained_days: 60
+  - id: assumptions
+    title: Assumptions
+    why: What the analysis takes as given, so that a reader can challenge it.
+    system: knowledge
+    page: Assumptions
+    template: templates/assumptions.md

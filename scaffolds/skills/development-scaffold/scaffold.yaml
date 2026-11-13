@@ -1,0 +1,41 @@
+scaffold: 1
+work: development
+artifacts:
+  - id: use-cases
+    title: Use cases
+    why: What the project must achieve, each requirement with how it is verified.
+    system: repository
+    path: docs/usecases
+    shape: directory
+    template: templates/use-case.md
+    maintained_days: 90
+  - id: architecture-decisions
+    title: Architecture decisions
+    why: How the project was decided, each decision with the alternatives it rejected.
+    system: repository
+    path: docs/adr
+    shape: directory
+    template: templates/decision.md
+    maintained_days: 180
+  - id: test-strategy
+    title: Test strategy
+    why: Which levels are tested, what each proves, and what runs before a change merges.
+    system: repository
+    path: docs/test-strategy.md
+    shape: file
+    template: templates/test-strategy.md
+    maintained_days: 180
+  - id: definition-of-done
+    title: Definition of done
+    why: The list every change is held to before it counts as done.
+    system: repository
+    path: docs/definition-of-done.md
+    shape: file
+    template: templates/definition-of-done.md
+    maintained_days: 365
+  - id: glossary
+    title: Glossary
+    why: Every term the project uses, explained once.
+    system: knowledge
+    page: Glossary
+    template: templates/glossary.md

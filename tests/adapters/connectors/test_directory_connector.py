@@ -64,7 +64,9 @@ async def test_a_page_is_a_file_that_shows_the_page_and_keeps_its_mark_out_of_si
     read = await connector.call(READ, context("read"), {"place": PLACE})
     assert read.output == {"place": PLACE, "body": BODY, "digest": digest(BODY), "mark": "m1"}
     listed = await connector.call(LIST, context("list"), {"place": ["Taktus"]})
-    assert listed.output == {"pages": [{"place": PLACE, "digest": digest(BODY), "mark": "m1"}]}
+    (entry,) = listed.output["pages"]
+    assert isinstance(entry.pop("changed_at"), str), "the file's modification time (ADR-0307)"
+    assert entry == {"place": PLACE, "digest": digest(BODY), "mark": "m1"}
 
 
 async def test_a_hand_edit_of_the_file_changes_the_digest_and_keeps_the_mark(
@@ -123,6 +125,6 @@ async def test_a_missing_page_is_not_found_and_a_file_without_a_mark_has_none(
     assert missing.value.error.cause is Cause.NOT_FOUND
     (tmp_path / "Notes.md").write_text("Our notes.\n", encoding="utf-8")
     listed = await connector.call(LIST, context("list"), {"place": []})
-    assert listed.output == {
-        "pages": [{"place": ["Notes"], "digest": digest("Our notes.\n"), "mark": None}]
-    }
+    (entry,) = listed.output["pages"]
+    assert isinstance(entry.pop("changed_at"), str)
+    assert entry == {"place": ["Notes"], "digest": digest("Our notes.\n"), "mark": None}
