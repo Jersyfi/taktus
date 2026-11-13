@@ -16,8 +16,11 @@ outside it reads and sends nothing.
 
 from __future__ import annotations
 
+from collections.abc import Collection, Sequence
+from datetime import timedelta
 from typing import Any
 
+import pytest
 from fakes import FakeConnector, FakeIdentifiers
 from fakes.connector import READ, WRITE
 from fakes.maturity import VERIFIED
@@ -31,11 +34,16 @@ from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersion,
     RegisterProcessVersionHandler,
+    parse_bundle,
 )
-from taktus.components.process.domain.model import Process, ProcessVersion
+from taktus.components.process.domain.model import InvalidProcess, Process, ProcessVersion
+from taktus.components.process.domain.service import partners
 from taktus.components.run.application.service import EngineOptions, RunEngine, StartRun
 from taktus.components.run.domain.model import Run, RunState, StepState
+from taktus.components.run.ports.shares import CallerCall, Shares
 from taktus.composition.escalations import EscalationWatch, report_id
+from taktus.composition.partner_exchange import ContractControl, ContractWatch
+from taktus.composition.partner_exchange import report_id as deviation_report
 from taktus.ports.model import Location, Permitted
 from taktus.ports.worker import Limits
 from taktus.shared.v1 import EGRESS_KINDS, Commissioned, Plan, PlanResult, PlanStatus
@@ -161,7 +169,13 @@ class Rule:
 
 
 class World:
-    def __init__(self, *, location: Location = "eu", rule: Rule | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        location: Location = "eu",
+        rule: Rule | None = None,
+        shares: Shares | None = None,
+    ) -> None:
         self.given = owner_channel()
         self.persistence = self.given.persistence
         self.clock = self.given.clock
@@ -185,6 +199,10 @@ class World:
                 locations={"connector.partner": location},
             ),
             residency=rule,
+            shares=shares,
+            control=ContractControl(
+                versions=self.versions, ledger=self.ledger, work=self.persistence, clock=self.clock
+            ),
             options=EngineOptions(uncalibrated_margin=0.0),
         )
         self.register = RegisterProcessVersionHandler(
@@ -192,6 +210,15 @@ class World:
             self.persistence,
             MemoryRepository(self.persistence, Process),
             ledger=self.ledger,
+        )
+        self.contracts = ContractWatch(
+            ledger=self.ledger,
+            runs=self.runs,
+            versions=self.versions,
+            work=self.persistence,
+            clock=self.clock,
+            channels=self.given.owner.channel,
+            raising=self.given.owner.raising,
         )
         self.watch = EscalationWatch(
             ledger=self.ledger,
@@ -204,9 +231,11 @@ class World:
             reports=self.given.owner.queries,
         )
 
-    async def run(self, bundle: dict[str, Any]) -> Run:
+    async def run(self, bundle: dict[str, Any], identity: str = OWNER) -> Run:
         await self.given.configure()
-        version = await self.register.execute(
+        async with self.persistence.transaction(TENANT):
+            known = await self.versions.get(TENANT, f"{bundle['id']}@{bundle['version']}")
+        version = known or await self.register.execute(
             RegisterProcessVersion(bundle, tenant=TENANT, by=OWNER)
         )
         plan = Plan(
@@ -217,7 +246,7 @@ class World:
             steps=version.ordered(),
             results_in=PlanResult.RUN,
             status=PlanStatus.COMMISSIONED,
-            commissioned=Commissioned(by=OWNER, at=self.clock.now()),
+            commissioned=Commissioned(by=identity, at=self.clock.now()),
         )
         return await self.engine.start(
             StartRun(
@@ -225,7 +254,7 @@ class World:
                 work=version.work,
                 budget=Limits.model_validate(dict(version.limits or {})),
                 process_version=version.ref,
-                actor=OWNER,
+                actor=identity,
                 tenant=TENANT,
             )
         )
@@ -306,3 +335,128 @@ async def test_partner_data_is_held_to_the_tenants_residency_rule() -> None:
     assert reading.partner.calls == [], "from where the rule does not admit"
     inside = World(location="eu", rule=Rule("eu"))
     assert (await inside.run(exporting(INVOICE))).state is RunState.FINISHED
+
+
+# --- the frequency, the access rights of the source, and the mapping (ADR-0315) -------------
+
+
+def daily() -> dict[str, Any]:
+    """The import under a contract that expects one message a day."""
+    document = importing()
+    document["contracts"]["supplier-invoices"]["frequency"] = "1d"
+    document["expect"] = {"gap": "1d"}
+    return document
+
+
+async def test_a_message_that_arrives_more_often_than_the_contract_allows_is_escalated() -> None:
+    w = World()
+    w.partner.reads["R-1"] = INVOICE
+    first = await w.run(daily())
+    assert first.state is RunState.FINISHED
+    w.clock.current += timedelta(hours=3)
+    early = await w.run(daily())
+    assert early.state is RunState.HALTED, "stopped at the boundary after the read"
+    assert early.step_run("read").state is StepState.SUCCEEDED
+    assert early.step_run("map").state is StepState.PLANNED, "nothing of it is mapped"
+    assert early.reason is not None and "the clause `frequency` expects one every 1d" in (
+        early.reason
+    )
+    assert "arrived 3h after the one before" in early.reason
+    assert await w.outcomes(early, "contract.deviated") == ["too_frequent"]
+    assert await w.contracts.look(TENANT) == (early.id,)
+    report = await w.given.owner.queries.one(TENANT, deviation_report(early.id, "read"))
+    assert report is not None and "data contract 'supplier-invoices'" in report.title
+    assert any("Ask the partner" in s for s in report.steps)
+    assert await w.contracts.look(TENANT) == (), "delivered once"
+    w.clock.current += timedelta(days=1, hours=1)
+    on_time = await w.run(daily())
+    assert on_time.state is RunState.FINISHED, "a message on time is mapped"
+
+
+class Circle:
+    """The connector's share: only `idn_owner` may read the partner's system, with their own
+    credential (ADR-0247, ADR-0294)."""
+
+    def __init__(self) -> None:
+        self.asked: list[tuple[str, str]] = []
+
+    async def unshared_models(
+        self, tenant: str, identity: str, adapters: Collection[str]
+    ) -> frozenset[str]:
+        return frozenset()
+
+    async def connector_call(
+        self,
+        tenant: str,
+        identity: str,
+        adapter: str,
+        names: Sequence[str],
+        *,
+        process: str | None = None,
+    ) -> CallerCall:
+        self.asked.append((identity, adapter))
+        if identity != OWNER:
+            return CallerCall(
+                refusal="outside_circle", why=f"{identity} is inside no circle of the share"
+            )
+        return CallerCall(names=("OWNER_PARTNER_TOKEN",))
+
+
+async def test_partner_data_is_read_only_with_the_access_rights_of_its_source() -> None:
+    circle = Circle()
+    w = World(shares=circle)
+    w.partner.reads["R-1"] = INVOICE
+    outside = await w.run(importing(), identity="idn_outsider")
+    assert outside.step_run("read").state is StepState.FAILED
+    assert "was not called" in (outside.step_run("read").reason or "")
+    assert w.partner.calls == [], "nothing of the partner's system was read"
+    inside = await w.run(importing())
+    assert inside.state is RunState.FINISHED
+    ((_, context, _),) = w.partner.calls
+    assert [c.name for c in context.credentials] == ["OWNER_PARTNER_TOKEN"], (
+        "read with the caller's own access to the source system"
+    )
+    assert circle.asked == [("idn_outsider", "connector.partner"), (OWNER, "connector.partner")]
+
+
+def test_a_mapping_is_proposed_from_samples_and_asked_back_never_applied() -> None:
+    contract = parse_bundle(importing()).contracts["supplier-invoices"]
+    samples = [
+        {"InvoiceNumber": "R-1", "issue_date": "2026-11-01", "Currency": "EUR",
+         "seller": {"name": "S"}, "buyer": {"name": "B"}, "note": "x"},
+        {"InvoiceNumber": "R-2", "issue_date": "2026-11-02", "Currency": "EUR",
+         "seller": {"name": "T"}, "buyer": {"name": "C"}},
+    ]  # fmt: skip
+    draft = partners.propose_mapping(contract, samples)
+    assert draft.proposed == {
+        "issue_date": "issue_date",
+        "currency": "Currency",
+        "seller": "seller",
+    }
+    assert draft.why["issue_date"] == "the same name"
+    assert draft.why["currency"].startswith("the same name, once case")
+    assert draft.unmatched == ("number",), "InvoiceNumber is not guessed to be the number"
+    assert "buyer.name" in draft.unused and "note" not in draft.unused, "every sample carries it"
+    assert "Name the path, or say the partner does not send: number" in draft.question
+    assert "Nothing is applied until a version" in draft.question
+    assert contract.mapping is None, "the draft changed nothing of the contract"
+
+
+def test_a_confirmed_mapping_is_part_of_the_version_and_covers_every_required_field() -> None:
+    document = importing()
+    confirmed = {
+        "number": "InvoiceNumber",
+        "issue_date": "issue_date",
+        "currency": "Currency",
+        "seller": "seller.name",
+    }
+    document["contracts"]["supplier-invoices"]["mapping"] = confirmed
+    version = parse_bundle(document)
+    assert dict(version.contracts["supplier-invoices"].mapping or {}) == confirmed
+    lacking = {k: v for k, v in confirmed.items() if k != "currency"}
+    document["contracts"]["supplier-invoices"]["mapping"] = lacking
+    with pytest.raises(InvalidProcess, match="does not say where the partner's message carries"):
+        parse_bundle(document)
+    document["contracts"]["supplier-invoices"]["mapping"] = {**confirmed, "iban": "IBAN"}
+    with pytest.raises(InvalidProcess, match="maps 'iban', which is not one of its fields"):
+        parse_bundle(document)

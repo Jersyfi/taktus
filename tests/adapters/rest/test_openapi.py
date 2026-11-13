@@ -106,6 +106,7 @@ def test_the_document_is_openapi_3_1_with_the_prefix_as_a_server_variable() -> N
         "/chains/{chain}",
         "/chains/{chain}/runs",
         "/chain-runs/{chain_run}/decision",
+        "/contracts/mapping-drafts",
         "/roles",
         "/roles/{role}",
         "/roles/{role}/description",

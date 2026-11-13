@@ -6056,6 +6056,45 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /contracts/mapping-drafts:
+    post:
+      tags:
+      - partners
+      summary: Propose a mapping of a partner's messages from sample data
+      description: 'Each field of the contract takes the one path every sample carries whose name matches
+        it, letter for letter or once case and separators are set aside. A field two paths match, or none,
+        is asked back, never guessed. The draft is stored nowhere and applied to nothing: the person confirms
+        it by registering a version whose contract carries `mapping`.'
+      operationId: draft_contracts_mapping_drafts_post
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DraftBody'
+      responses:
+        '200':
+          description: The draft and the question it asks back.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: The contract or the samples do not validate.
+          content:
+            application/problem+json: {}
   /roles:
     get:
       tags:
@@ -8117,6 +8156,27 @@ components:
       - occasion
       - model
       title: DeclineBody
+    DraftBody:
+      properties:
+        contract:
+          additionalProperties: true
+          type: object
+          title: Contract
+          description: The data contract as a bundle states it under `contracts.<name>`.
+        samples:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          maxItems: 50
+          minItems: 1
+          title: Samples
+          description: The partner's sample messages, as objects.
+      type: object
+      required:
+      - contract
+      - samples
+      title: DraftBody
     FieldsBody:
       properties:
         fields:
