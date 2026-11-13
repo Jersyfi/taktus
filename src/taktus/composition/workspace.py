@@ -195,9 +195,9 @@ def workspace_of(
     (ADR-0292); None where the wiring has none. `describe`: what turns a commissioned plan's
     goal into a proposal for the process it describes (ADR-0290); None where no describe
     process is named. `identities`: where an administrative act a plan carries is carried out
-    (ADR-0296); None where the wiring has none. `knowledge`: what a session reads beside what Taktus holds of a project —
-    its source systems, with the participant's own credential (`composition/sessions.py`,
-    ADR-0304); None: only what Taktus holds."""
+    (ADR-0296); None where the wiring has none. `knowledge`: what a session reads beside what
+    Taktus holds of a project — its source systems, with the participant's own credential
+    (`composition/sessions.py`, ADR-0304); None: only what Taktus holds."""
     commands = stored(Command)
     drafts = stored(PlanDraft)
     versions = stored(ProcessVersion)
