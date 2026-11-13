@@ -132,11 +132,7 @@ def backup_standing(watched: BackupWatched) -> str:
     """`failing` where the newest runs failed, `missing` where none succeeded within the
     expected interval, `ok` where the last success is recent enough, `not_recorded` where no
     backup was recorded and none is watched."""
-    if watched.state.failed_count > 0:
-        return "failing"
-    if watched.alert is not None:
-        return "missing"
-    return "ok" if watched.state.last_ok is not None else "not_recorded"
+    return watched.standing
 
 
 def backup_view(watched: BackupWatched) -> dict[str, Any]:
@@ -151,6 +147,10 @@ def backup_view(watched: BackupWatched) -> dict[str, Any]:
         if state.last_ok is None
         else {"name": state.last_ok.name, "at": state.last_ok.at.isoformat()},
         "failed_count": state.failed_count,
+        "listed": [
+            {"name": r.name, "at": r.at.isoformat(), "outcome": r.outcome, "reason": r.reason}
+            for r in state.recent
+        ],
         "newest_failed": None
         if newest is None
         else {"name": newest.name, "at": newest.at.isoformat(), "reason": newest.reason},

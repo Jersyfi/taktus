@@ -227,7 +227,7 @@ from taktus.composition.stages import stage_wiring
 from taktus.composition.stops import RuleStops, StopIncidentsOfGovernance
 from taktus.composition.subjects import ProcessingEvidence, RunHoldings
 from taktus.composition.tenant_export import TenantExports
-from taktus.composition.workspace import structure_of
+from taktus.composition.workspace import structure_of, workspace_of
 from taktus.ports.backups import BackupLog
 from taktus.ports.configuration import Configuration, ConfigurationError
 from taktus.ports.org_units import OrgUnitSpends
@@ -938,6 +938,15 @@ class LocalWiring:
                 agents=shared_agents,
                 shares=shares.shares,
                 catalogue_use=CatalogueUse(runs, ledger, stores.work),
+                planning=workspace_of(
+                    stores.of,
+                    stores.work,
+                    ledger,
+                    clock,
+                    ids,
+                    structure,
+                    identities=identities,
+                ).planning,
                 subjects=subjects,
                 evidence=evidence,
                 exports=None

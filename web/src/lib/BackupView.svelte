@@ -4,10 +4,11 @@
 	recorded success does not say that it restores, which the restore drill shows.
 -->
 <script lang="ts">
-	import { backupSentence, moment, type BackupRecord } from './operation';
+	import { backupAge, backupSentence, moment, type BackupRecord } from './operation';
 	import OperationPage from './OperationPage.svelte';
 
-	let { backup }: { backup: BackupRecord } = $props();
+	let { backup, now = new Date() }: { backup: BackupRecord; now?: Date } = $props();
+	const listed = $derived(backup.listed ?? []);
 
 	const look = $derived(backup.standing === 'failing' || backup.standing === 'missing');
 	const sentence = $derived(backupSentence(backup));
@@ -50,6 +51,18 @@
 			</dd>
 			{#if backup.expected_hours}<dt>Interval</dt><dd>{backup.expected_hours} hours</dd>{/if}
 		</dl>
+		<h2>The newest backups</h2>
+		<ol class="listed" data-act="backup.list">
+			{#each listed as run (run.name)}
+				<li data-outcome={run.outcome}>
+					<code>{run.name}</code>, {moment(run.at)}, {backupAge(run.at, now)}:
+					{#if run.outcome === 'ok'}succeeded{:else}failed at the step <code>{run.reason ?? 'unknown'}</code>{/if}
+				</li>
+			{:else}
+				<li>No backup recorded.</li>
+			{/each}
+		</ol>
+		<p class="hint">Restoring one is a person's act, by the guide <em>Restoring</em>; Taktus offers none.</p>
 		{#if backup.alert}
 			<details open>
 				<summary>{backup.alert.title}</summary>
@@ -65,6 +78,13 @@
 </OperationPage>
 
 <style>
+	.hint {
+		color: var(--text-secondary);
+		font-size: 0.88rem;
+	}
+	.listed {
+		padding-left: 1.2rem;
+	}
 	.backup {
 		max-width: 44rem;
 	}

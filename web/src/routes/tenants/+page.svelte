@@ -7,6 +7,9 @@
 	import { readAs, surface } from '../../lib/api';
 	import {
 		currentAdministrationKey,
+		exportTenant,
+		importSentence,
+		importTenant,
 		keepAdministrationKey,
 		writeTenant,
 		type Tenant
@@ -48,6 +51,32 @@
 		else message = done.problem.detail || done.problem.title;
 		await load();
 	}
+
+	async function exported(id: string) {
+		if (!key) return;
+		busy = true;
+		const done = await exportTenant(surface(location.href), key, id);
+		busy = false;
+		if (!done.ok) {
+			message = done.problem.detail || done.problem.title;
+			return;
+		}
+		const link = document.createElement('a');
+		link.href = URL.createObjectURL(done.body);
+		link.download = `${id}-export.json`;
+		link.click();
+		URL.revokeObjectURL(link.href);
+		message = `Exported ${id}. Keep the file as a backup is kept.`;
+	}
+
+	async function imported(file: File) {
+		if (!key) return;
+		busy = true;
+		const done = await importTenant(surface(location.href), key, file);
+		busy = false;
+		message = done.ok ? importSentence(done.body) : done.problem.detail || done.problem.title;
+		await load();
+	}
 </script>
 
 {#if !key}
@@ -71,7 +100,10 @@
 		<p class="hint">Not an account key. Kept for this browser tab only, and sent to this instance and nowhere else.</p>
 	</form>
 {:else if tenants}
-	<TenantsView {tenants} {message} {busy} onCreate={(name) => write(name, null)} onRename={(id, name) => write(name, id)} />
+	<TenantsView {tenants} {message} {busy} onCreate={(name) => write(name, null)} onRename={(id, name) => write(name, id)}
+		onExport={exported}
+		onImport={imported}
+	/>
 {:else if refused}
 	<p role="alert">{refused}</p>
 {:else}

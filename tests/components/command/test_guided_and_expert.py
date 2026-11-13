@@ -141,6 +141,7 @@ async def test_every_setting_is_shown_in_the_guided_mode_with_its_value_and_why(
         "process_version",
         "agent",
         "domain",
+        "administration",
         "describes",
     }
     for setting in shown.values():

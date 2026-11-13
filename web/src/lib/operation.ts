@@ -2,6 +2,8 @@
 // each page lives, and the sentence each page opens with (UC-6.10). Every figure in a sentence
 // is one the surface handed over; nothing is counted here that the surface did not count.
 
+import { duration } from './duration';
+
 /** `GET /operation`: one entry per kind. A kind the reader may not read carries no figure. */
 export interface OperationSummary {
 	tenant: string;
@@ -76,7 +78,37 @@ export interface BackupRecord {
 	last_ok: { name: string; at: string } | null;
 	failed_count: number;
 	newest_failed: { name: string; at: string; reason: string | null } | null;
+	/** The newest runs, succeeded or failed, newest first (ADR-0295). */
+	listed?: BackupListed[];
 	alert: { id: string; title: string; summary: string; needed: string[]; steps: string[] } | null;
+}
+
+/** `GET /administration/health`: the instance's health, for a role holding tenant.administer
+ * (ADR-0295). */
+export interface Health {
+	release: string;
+	ready: boolean;
+	reason: string | null;
+	roles: string[];
+	leading: boolean;
+	backup: BackupStanding;
+	alerts_in_effect: number;
+	incidents_open: number;
+}
+
+export interface BackupListed {
+	name: string;
+	at: string;
+	outcome: 'ok' | 'failed';
+	reason: string | null;
+}
+
+/** How long ago a backup ran, as a person reads it: from the time it recorded and the reader's
+ * clock. Presentation only. */
+export function backupAge(at: string, now: Date): string {
+	const then = new Date(at);
+	if (Number.isNaN(then.getTime())) return 'unknown';
+	return `${duration((now.getTime() - then.getTime()) / 1000)} ago`;
 }
 
 export type SignalLevel = 'normal' | 'yellow' | 'red' | 'unmeasured';

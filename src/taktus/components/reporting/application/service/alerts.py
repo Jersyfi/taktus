@@ -106,6 +106,17 @@ class BackupWatched:
     """None where a missing backup is not watched."""
     alert: Alert | None
 
+    @property
+    def standing(self) -> str:
+        """`failing` where the newest runs failed, `missing` where none succeeded within the
+        expected interval, `ok` where the last success is recent enough, `not_recorded` where
+        no backup was recorded and none is watched."""
+        if self.state.failed_count > 0:
+            return "failing"
+        if self.alert is not None:
+            return "missing"
+        return "ok" if self.state.last_ok is not None else "not_recorded"
+
 
 class Alerts:
     def __init__(

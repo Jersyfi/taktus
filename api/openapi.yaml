@@ -2538,7 +2538,9 @@ paths:
         your identity. Refused, writing nothing, when a part is missing or a step cannot be estimated
         before it starts (ADR-0237, ADR-0005). An agent draft's agent is registered in the catalogue by
         the same act, and named in the answer (ADR-0292). A draft that describes a process hands its goal
-        to the describe process, and the answer names that run (ADR-0290).
+        to the describe process, and the answer names that run (ADR-0290). A draft that carries an administrative
+        act carries it out by the same act, with your identity as its actor, and is refused with 403 when
+        your roles do not hold the right the act needs by hand (ADR-0296).
       operationId: commission_plans__draft_id__commission_post
       parameters:
       - name: draft_id
@@ -2561,6 +2563,10 @@ paths:
           content:
             application/json:
               schema: {}
+        '403':
+          description: Your roles do not hold the act's right.
+          content:
+            application/problem+json: {}
         '400':
           description: Refused; the detail says why.
           content:
@@ -3985,6 +3991,96 @@ paths:
             application/json:
               schema:
                 title: Response Clear Unit Administration Units  Unit  Delete
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not hold tenant.administer.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /administration/health:
+    get:
+      tags:
+      - administration
+      summary: The instance's health
+      description: The release this process runs, whether it may receive traffic and, if not, why, the
+        roles it serves and whether it leads; for your tenant, how the backup stands, how many alerts
+        are in effect and how many incidents are open (ADR-0295). `taktusctl health` shows the same.
+      operationId: health_administration_health_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The instance's health.
+          content:
+            application/json:
+              schema:
+                title: Response Health Administration Health Get
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not hold tenant.administer.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /administration/update:
+    post:
+      tags:
+      - administration
+      summary: Prepare an update of Taktus as a plan
+      description: 'A plan draft for the update to the release named: a backup, the upgrade and the check,
+        each a person''s step from the upgrading guide, with the way back to the release before. You state
+        when it is due and at which level, and commission it in the plan dialogue; commissioning records
+        `instance.update_commissioned` and applies nothing: a person carries the steps out (ADR-0296,
+        ADR-0013 D).'
+      operationId: update_administration_update_post
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBody'
+      responses:
+        '201':
+          description: The draft, in the guided mode.
+          content:
+            application/json:
+              schema:
+                title: Response Update Administration Update Post
         '400':
           description: Refused; the detail says why.
           content:
@@ -7830,6 +7926,20 @@ components:
           title: Describes
           description: 'The process what was said describes: commissioning the draft hands it to the describe
             process, whose run proposes the process''s version (ADR-0290).'
+        act:
+          anyOf:
+          - type: string
+            pattern: ^[a-z][a-z-]*\.[a-z][a-z-]*$
+          - type: 'null'
+          title: Act
+          description: An administrative act the draft carries out once commissioned, named as the inventory
+            of administrative acts names it; its steps come with it (ADR-0296).
+        arguments:
+          additionalProperties:
+            type: string
+          type: object
+          title: Arguments
+          description: The act's arguments known so far, by name.
       type: object
       title: OpenBody
     PlaceBody:
@@ -8262,6 +8372,23 @@ components:
       - name
       - parent
       title: UnitBody
+    UpdateBody:
+      properties:
+        to:
+          type: string
+          pattern: ^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$
+          title: To
+          description: 'The release to update to, as 1.0.1: one release after the running one.'
+        said:
+          type: string
+          maxLength: 2000
+          title: Said
+          description: Why, in your words.
+          default: ''
+      type: object
+      required:
+      - to
+      title: UpdateBody
     taktus__adapters__driving__rest__app__AnswerBody:
       properties:
         option:

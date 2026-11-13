@@ -1345,6 +1345,7 @@ async def wire(
                     structure,
                     agents=agent_catalog,
                     describe=None if settings.describe_process is None else proposal_acts,
+                    identities=identities,
                 ),
                 gallery=Gallery(
                     settings.gallery_directory,

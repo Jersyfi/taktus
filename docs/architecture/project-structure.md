@@ -513,7 +513,20 @@ role it would tie the core to a model stack and the removal test would be lost.
   writes and reads the document and checks the chains after an import. `taktusctl tenant
   export` and `import` (`adapters/driving/cli/tenant_command.py`) and the administration routes
   of `adapters/driving/rest/tenants.py` reach it; `composition/local.py` and the daemon's `Wired`
-  give it where the state is a database.
+  give it where the state is a database. The web app's page `#/tenants` exports and imports by
+  the same routes (ADR-0295).
+- **The instance's health, the backup's listing and administrative plans** (ADR-0295,
+  ADR-0296): the port `BackupLog` of `ports/backups.py` answers a tenant's newest backup runs
+  as `BackupHistory.recent`, which both backup log adapters fill and `composition/alerts.py`
+  carries into the reporting component's `BackupState`. `adapters/driving/cli/instance_command.py`
+  is `taktusctl health`, `backup list` and `update`; `adapters/driving/rest/administration.py`
+  answers `/administration/health` and opens an update's plan at `/administration/update`;
+  `rest/planning.py` opens a draft with an act. `composition/administration.py` names the acts a
+  plan carries out (`IN_DIALOGUE`) and why every other act of `adapters/driving/inventory.py`
+  stays by hand (`BY_HAND_ONLY`); its `AdministrationPlans` checks the right and carries the act
+  out through the identity component when the plan is commissioned. `composition/planning.py`,
+  `composition/workspace.py`, the daemon and `composition/local.py` wire it, the command line's
+  `Services.planning` included.
 - **Data-protection requests and the processing evidence** (ADR-0176) are served on the HTTP
   surface by `adapters/driving/rest/subjects.py` through the ports `SubjectActs` and
   `EvidenceReads` of `adapters/driving/rest/wiring.py`; the daemon's `Wired` builds the

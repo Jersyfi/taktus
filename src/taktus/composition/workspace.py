@@ -32,6 +32,7 @@ from taktus.components.identity.domain.model.structure import (
 )
 from taktus.components.identity.domain.service.structure import StructureRefused
 from taktus.components.process.domain.model import ProcessVersion
+from taktus.composition.administration import AdministeredIdentities, AdministrationPlans
 from taktus.composition.planning import Describing, PlanActs
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.ledger import Ledger
@@ -165,11 +166,13 @@ def workspace_of(
     *,
     agents: AgentCatalog | None = None,
     describe: Describing | None = None,
+    identities: AdministeredIdentities | None = None,
 ) -> Workspace:
     """`agents`: the catalogue an agent drafted in the plan dialogue is registered in
     (ADR-0292); None where the wiring has none. `describe`: what turns a commissioned plan's
     goal into a proposal for the process it describes (ADR-0290); None where no describe
-    process is named."""
+    process is named. `identities`: where an administrative act a plan carries is carried out
+    (ADR-0296); None where the wiring has none."""
     commands = stored(Command)
     drafts = stored(PlanDraft)
     versions = stored(ProcessVersion)
@@ -185,6 +188,9 @@ def workspace_of(
             ids,
             agents=agents,
             describe=describe,
+            administration=None
+            if identities is None
+            else AdministrationPlans(identities, dialogue, ledger, work),
         ),
         coach=Coach(
             stored(CoachSettings),

@@ -179,6 +179,8 @@ class PlanActs(Protocol):
         *,
         agent: bool = False,
         describes: str | None = None,
+        act: str | None = None,
+        arguments: Mapping[str, Any] | None = None,
     ) -> PlanDraft: ...
 
     async def mine(self, tenant: Tenant, identity: str) -> list[PlanDraft]: ...
