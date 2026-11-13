@@ -1,0 +1,51 @@
+{
+  "contract": "connector/v1",
+  "capabilities": [
+    "helpdesk.tickets"
+  ],
+  "credential": "HELPDESK_TOKEN",
+  "operations": [
+    {
+      "tool": "list_tickets",
+      "name": "helpdesk.tickets.list",
+      "capability": "helpdesk.tickets",
+      "effect": "read",
+      "summary": "The tickets of status (open, pending, solved, closed; unsolved, the default, for open and pending; all), up to limit (default 100, at most 1000): each {id, subject, description, status, requester, tags, created_at, updated_at}, the requester by identifier only; with_comments adds comments as helpdesk.tickets.read gives them. complete says whether every ticket was answered."
+    },
+    {
+      "tool": "read_ticket",
+      "name": "helpdesk.tickets.read",
+      "capability": "helpdesk.tickets",
+      "effect": "read",
+      "summary": "One ticket by its id, in the shape of a listed one, with comments: each {id, text, public, from_requester, created_at}."
+    },
+    {
+      "tool": "note_ticket",
+      "name": "helpdesk.tickets.note",
+      "capability": "helpdesk.tickets",
+      "effect": "write",
+      "idempotency": "native",
+      "key_argument": "request_id",
+      "replayed": "/replayed",
+      "record": {
+        "kind": "helpdesk.note",
+        "id": "/note"
+      },
+      "summary": "Add an internal note, never public, of text to the ticket id: answered {ticket, note, replayed}. The product's tool recognises a repeated request_id itself."
+    },
+    {
+      "tool": "close_ticket",
+      "name": "helpdesk.tickets.close",
+      "capability": "helpdesk.tickets",
+      "effect": "write",
+      "idempotency": "native",
+      "key_argument": "request_id",
+      "replayed": "/replayed",
+      "record": {
+        "kind": "helpdesk.closed",
+        "id": "/ticket"
+      },
+      "summary": "Add the tag tag to the ticket id and set it solved, without a reply: answered {ticket, tag, previous, replayed}, previous the status before. The product's tool recognises a repeated request_id itself."
+    }
+  ]
+}

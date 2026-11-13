@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -35,6 +36,8 @@ from taktus.conformance.contracts import first_error
 
 from .conftest import (
     ENTITLEMENTS_MANIFEST,
+    MANIFESTS,
+    ROOT,
     VENDOR,
     VENDOR_NOTES,
     StartConnector,
@@ -190,6 +193,64 @@ async def test_a_product_s_entitlements_under_a_scoped_manifest_pass_c05_and_c11
     )
     report = await broken.run_suite()
     assert {c.id for c in report.checks if c.status is Status.FAILED} == {"C-11"}, report.render()
+
+
+BACK_OFFICE = {
+    "chat": {"chat.threads.read", "chat.threads.post"},
+    "helpdesk": {
+        "helpdesk.tickets.list",
+        "helpdesk.tickets.read",
+        "helpdesk.tickets.note",
+        "helpdesk.tickets.close",
+    },
+    "crm": {"crm.contacts.find", "crm.contacts.create", "crm.contacts.note"},
+    "feedback": {"feedback.posts.list", "feedback.posts.create", "feedback.posts.vote"},
+}
+"""Each manifest of the blueprint over a product's own back office, and the operations the
+reference connectors of its capability declare (issue #447)."""
+
+
+def _reference_operations(capability: str) -> set[str]:
+    """Every operation of `capability` a reference connector of this repository declares."""
+    names: set[str] = set()
+    for path in sorted((ROOT / "connectors" / "taktus_connectors").glob("*/declaration.py")):
+        text = path.read_text(encoding="utf-8")
+        names |= {
+            n
+            for n in re.findall(r'"name": "([a-z][a-z0-9_.]+)"', text)
+            if n.startswith(f"{capability}.")
+        }
+    return names
+
+
+@pytest.mark.parametrize("stem", sorted(BACK_OFFICE))
+async def test_a_products_own_back_office_under_the_blueprints_manifest_passes(
+    start_vendor_connector: StartConnector, stem: str
+) -> None:
+    """A business whose team chat, support inbox, customer system or feedback portal is part of
+    its own product serves it through the vendor connector under the blueprint's manifest: the
+    same operations, in the same shapes, as the reference connector of the capability, so that
+    every process reads it unchanged. The product's own tools recognise a repeated request, and
+    only the manifest's own tools are declared: the back office's others stay unserved."""
+    manifest = MANIFESTS / f"{stem}.manifest.json"
+    connector = start_vendor_connector(
+        server="back-office", manifest=manifest, scenario=VENDOR / f"{stem}-scenario.json"
+    )
+    report = await connector.run_suite()
+    assert report.failed == [] and report.inconclusive == [], report.render()
+    passes(report.render(), {c.id: c.status for c in report.checks})
+    declaration = await _declaration(connector.endpoint)
+    operations = declaration["operations"]
+    assert isinstance(operations, list)
+    names = {op["name"] for op in operations}
+    assert names == BACK_OFFICE[stem]
+    [capability] = json.loads(manifest.read_text(encoding="utf-8"))["capabilities"]
+    reference = _reference_operations(capability)
+    assert names == reference, f"the reference connectors of {capability} declare {reference}"
+    assert declaration.get("scoped", []) == (["crm.contacts"] if stem == "crm" else [])
+    text = report.to_json() + connector.log.read_text()
+    for value in connector.credential_values.values():
+        assert value not in text
 
 
 def test_without_a_manifest_a_listing_that_needs_a_credential_refuses_the_start(
