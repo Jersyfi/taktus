@@ -188,9 +188,14 @@ class Evaluations:
         clock: Clock,
         ids: Identifiers,
         outward: Outward | None = None,
+        platform: Callable[[Tenant, Evaluation], Awaitable[object]] | None = None,
     ) -> None:
         """`outward` says whether a version sends anything outward; None, where no pools are
-        known: every version does, so that a drift raises its incident rather than not."""
+        known: every version does, so that a drift raises its incident rather than not.
+        `platform`: what a scored evaluation is handed to, to be copied into a connected
+        evaluation platform (UC-5.8, ADR-0305); None where none is connected. Its failure
+        changes nothing in the evaluation."""
+        self._platform = platform
         self._processes = processes
         self._versions = versions
         self._evaluations = evaluations
@@ -865,6 +870,11 @@ class Evaluations:
             )
         if verdict is Verdict.DRIFT and previous is not None:
             await self._drifted(tenant, scored, previous)
+        if self._platform is not None:
+            try:
+                await self._platform(tenant, scored)
+            except Exception as error:  # a copy never changes the evaluation (ADR-0305 §2)
+                log.warning("evaluation.copy_failed", error=type(error).__name__)
         return scored
 
     async def _previous(self, tenant: Tenant, evaluation: Evaluation) -> Evaluation | None:

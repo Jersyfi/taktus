@@ -46,6 +46,8 @@ from taktus_connectors.jira.operations import Config as RestTasksConfig
 from taktus_connectors.jira.server import build_server as rest_tasks_server
 from taktus_connectors.kubernetes.operations import Config as WorkloadsConfig
 from taktus_connectors.kubernetes.server import build_server as workloads_server
+from taktus_connectors.langfuse.operations import Config as EvaluationPlatformConfig
+from taktus_connectors.langfuse.server import build_server as evaluation_platform_server
 from taktus_connectors.linear.operations import Config as GraphTasksConfig
 from taktus_connectors.linear.server import build_server as graph_tasks_server
 from taktus_connectors.loki.operations import Config as LogsConfig
@@ -136,6 +138,9 @@ SERVERS: dict[str, Any] = {
         FiguresConfig("http://127.0.0.1:9", "http://127.0.0.1:9", "example")
     ),
     "crm": lambda: crm_server(CrmConfig("http://127.0.0.1:9")),
+    "evaluation-platform": lambda: evaluation_platform_server(
+        EvaluationPlatformConfig("http://127.0.0.1:9")
+    ),
     "tasks-graph": lambda: graph_tasks_server(GraphTasksConfig("http://127.0.0.1:9")),
     "tasks-rest": lambda: rest_tasks_server(RestTasksConfig("http://127.0.0.1:9", "TSK")),
 }
@@ -177,6 +182,7 @@ SERVES = {
     "warehouse": ["warehouse.queries"],
     "figures": ["bi.figures"],
     "crm": ["crm.contacts"],
+    "evaluation-platform": ["evaluations.records", "observability.costs", "prompts.versions"],
     "tasks-graph": ["tasks.items"],
     "tasks-rest": ["tasks.items"],
 }

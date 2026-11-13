@@ -101,7 +101,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         who = await authenticated(services, authorization)
         if who is None:
             return None
-        reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+        reader = Reader(
+            tenant=who.tenant, identity=who.identity, roles=who.roles, unseen=who.unseen
+        )
         return Asked(who=who, reader=reader, visible=await visible(services, who))
 
     async def every(a: Asked, days: int) -> tuple[list[Any], Any, Any]:

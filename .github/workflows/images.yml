@@ -200,6 +200,9 @@ jobs:
           - name: taktus-connector-kubernetes
             dockerfile: connectors/Dockerfile
             target: kubernetes
+          - name: taktus-connector-langfuse
+            dockerfile: connectors/Dockerfile
+            target: langfuse
           - name: taktus-connector-linear
             dockerfile: connectors/Dockerfile
             target: linear

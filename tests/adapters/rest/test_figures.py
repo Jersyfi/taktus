@@ -250,6 +250,43 @@ async def test_the_overview_s_counts_are_in_the_export_as_the_overview_counts_th
     assert counted == {"run.working": process["working"], "run.waiting": process["waiting"]}
 
 
+async def test_the_run_and_process_levels_figures_are_in_the_export_as_the_levels_show_them(
+    client: Client,
+) -> None:
+    """UC-6.10 §2, UC-5.7: what a run and each of its steps consumed, and the runs of the
+    process level, are in the export with the levels' own values; whom the read API does not
+    show the run, and a role the figure is not entitled to, finds none of them."""
+    http, given, base = client
+    keys = await world(given)
+    async with given.persistence.transaction(TENANT):
+        await MemoryRepository(given.persistence, Run).put(
+            TENANT, a_run("run_used", TENANT).model_copy(update={"process_version": "invoice@1"})
+        )
+    owner = bearer(keys["idn_owner"])
+    level = (await http.get(f"{base}/levels/runs/run_used", headers=owner)).json()
+    process = (await http.get(f"{base}/levels/processes/invoice", headers=owner)).json()
+    export = (await http.get(f"{base}/figures", headers=owner)).json()["figures"]
+    consumed = {(f["unit"], f["value"]) for f in export if f["id"] == "run.consumed"}
+    assert consumed and consumed == {(f["name"], f["value"]) for f in level["run"]["consumed"]}
+    used = {(f["subject"], f["unit"], f["value"]) for f in export if f["id"] == "step.consumed"}
+    assert used and used == {
+        (f"run_used/{s['id']}", f["name"], f["value"])
+        for s in level["steps"]
+        for f in s["consumption"]
+    }
+    (runs,) = [f for f in export if f["id"] == "process.runs"]
+    assert (runs["subject"], runs["value"]) == ("invoice", len(process["runs"]))
+    rows = csv.DictReader(io.StringIO((await http.get(f"{base}/figures.csv", headers=owner)).text))
+    assert {(r["unit"], float(r["value"])) for r in rows if r["id"] == "run.consumed"} == {
+        (u, float(v)) for u, v in consumed
+    }
+    for who in (keys["other"], keys["idn_ada"]):
+        theirs = (await http.get(f"{base}/figures", headers=bearer(who))).json()["figures"]
+        assert not [f for f in theirs if f["id"] in {"run.consumed", "step.consumed"}], who
+    other = await http.get(f"{base}/levels/runs/run_used", headers=bearer(keys["other"]))
+    assert other.status_code == 404
+
+
 async def test_the_balance_is_summed_per_domain_chain_and_assistant_in_the_export(
     client: Client,
 ) -> None:

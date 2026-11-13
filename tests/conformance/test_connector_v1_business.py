@@ -39,6 +39,7 @@ WRITERS = frozenset(
         "hubspot",
         "jira",
         "kubernetes",
+        "langfuse",
         "linear",
         "mailchimp",
         "resend",

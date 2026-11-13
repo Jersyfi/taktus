@@ -60,6 +60,7 @@ from taktus.adapters.driven.postgres import (
     upgrade,
 )
 from taktus.adapters.driven.postgres.url import described
+from taktus.adapters.driven.telemetry.masking import MaskingPolicy
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.adapters.driving.rest import build_app
 from taktus.adapters.driving.rest.relay import ConnectedHost
@@ -204,6 +205,7 @@ from taktus.composition.defects import (
     defects_tick,
 )
 from taktus.composition.escalations import EscalationWatch, escalations_tick
+from taktus.composition.evaluation_platform import EvaluationPlatform, platform_tick
 from taktus.composition.evaluations import Evaluations, evaluations_tick, outward_by
 from taktus.composition.execution import (
     connector_pool,
@@ -254,6 +256,7 @@ from taktus.composition.replies import ConnectorReplies
 from taktus.composition.reports import ReadingWiring, reading_tick, reading_wiring
 from taktus.composition.residency import PoolBindings
 from taktus.composition.run_answers import RunAnswers
+from taktus.composition.sessions import SessionsInChat, SourceKnowledge, SourceSystem
 from taktus.composition.settings import (
     CONNECT_KEY,
     ExecutionKind,
@@ -447,6 +450,8 @@ class Wired:
     connected: ConnectedHost | None = None
     """The host of the outbound binding for the workers configured as connected, which the
     `api` role serves; None when no worker connects (ADR-0156)."""
+    platform: EvaluationPlatform | None = None
+    """A connected evaluation platform, looked at by the scheduler (ADR-0305)."""
     leading: bool = field(default=False, init=False)
     """Whether this process holds the scheduler's lead right now."""
 
@@ -1045,6 +1050,19 @@ async def wire(
                 work=persistence,
             )
             # A change held to its evaluation cases, and drift measured on them (ADR-0134).
+            # A connected evaluation platform, each capability on where it is configured: a
+            # copy of every scored evaluation, prompts mirrored, costs reconciled (ADR-0305).
+            platform = EvaluationPlatform(
+                pools.connectors,
+                ledger,
+                persistence,
+                processes=PostgresRepository(persistence, Process),
+                versions=PostgresRepository(persistence, ProcessVersion),
+                runs=runs,
+                masking=MaskingPolicy(
+                    settings.telemetry.masked_attributes, settings.telemetry.masked_kinds
+                ),
+            )
             evaluations = Evaluations(
                 processes=PostgresRepository(persistence, Process),
                 versions=PostgresRepository(persistence, ProcessVersion),
@@ -1067,6 +1085,9 @@ async def wire(
                 clock=clock,
                 ids=ids,
                 outward=outward_by(pools),
+                # A scored evaluation is copied to a connected evaluation platform, where
+                # `evaluations.records` is configured (UC-5.8, ADR-0305).
+                platform=platform.scored,
             )
             validations.attach(evaluations)
             skill_lifecycle = SkillLifecycle(
@@ -1247,8 +1268,28 @@ async def wire(
                     work=persistence,
                 ),
             )
+            # A session reads the project's source systems with the participant's own
+            # credential, and is continued from any chat (ADR-0304).
+            sources = tuple(SourceSystem(k, o, c) for k, o, c in settings.session_sources)
+            personal = ConfiguredPersonalCredentials(settings.personal_credentials)
+            workspace = workspace_of(
+                stored,
+                persistence,
+                ledger,
+                clock,
+                ids,
+                structure,
+                agents=agent_catalog,
+                describe=None if settings.describe_process is None else proposal_acts,
+                knowledge=lambda held: SourceKnowledge(held, sources, pools.connectors, personal),
+                identities=identities,
+            )
+            owner.answers.sessions_with(
+                SessionsInChat(workspace.sessions, owner.deliveries, owner.secrets)
+            )
             wired = Wired(
                 connected=connected_host(settings.workers, configuration, relay),
+                platform=platform,
                 settings=settings,
                 persistence=persistence,
                 work=persistence,
@@ -1341,17 +1382,7 @@ async def wire(
                 evaluations=evaluations,
                 spend=spend,
                 trials=trials,
-                workspace=workspace_of(
-                    stored,
-                    persistence,
-                    ledger,
-                    clock,
-                    ids,
-                    structure,
-                    agents=agent_catalog,
-                    describe=None if settings.describe_process is None else proposal_acts,
-                    identities=identities,
-                ),
+                workspace=workspace,
                 gallery=Gallery(
                     settings.gallery_directory,
                     proposals,
@@ -1894,6 +1925,15 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
         # And it measures drift on every process's evaluation cases, moves every evaluation on,
         # and proposes a case for every corrected draft (ADR-0134).
         evaluate = evaluations_tick(wired.evaluations, wired.tenants, wired.clock)
+        # And it mirrors prompts to a connected evaluation platform and reconciles its costs,
+        # where each is configured (ADR-0305).
+        on_platform = (
+            None
+            if wired.platform is None
+            else platform_tick(
+                wired.platform, lambda: this_round(wired.tenants, "scheduler"), wired.clock
+            )
+        )
         # And it erases every line of a trace whose tenant's retention ended (ADR-0135).
         erase_traces = traces_tick(wired.traces, wired.tenants, wired.clock)
         # And it anchors every tenant's run chains in the tenant's chain, and makes the
@@ -1949,6 +1989,8 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
             await judge_signals()
             await say_reports()
             await evaluate()
+            if on_platform is not None:
+                await on_platform()
             await erase_traces()
             await anchor_chains()
             await look_at_stages()

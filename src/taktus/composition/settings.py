@@ -1368,6 +1368,10 @@ class Settings:
     """(identity, parameter) → the parameter of that identity's own credential standing for it
     (`TAKTUS_PERSONAL_CREDENTIALS`, ADR-0264): what a step on behalf of the identity reads
     with. An identity it does not name gets nothing from a source read on its behalf."""
+    session_sources: tuple[tuple[str, str, str], ...]
+    """(reference kind, search operation, credential parameter): the source systems a session
+    reads with the participant's own credential (`TAKTUS_SESSION_SOURCES`, ADR-0304). Empty: a
+    session reads only what Taktus holds of a project."""
     administration: Administration
     """The platform this instance runs on and what each credential administers (ADR-0052)."""
     knowledge_directory: Path | None
@@ -1471,6 +1475,10 @@ class Settings:
                 "TAKTUS_PERSONAL_CREDENTIALS",
                 ",".join(f"{i}/{p}={o}" for (i, p), o in self.personal_credentials.items()),
             ),
+            (
+                "TAKTUS_SESSION_SOURCES",
+                ",".join(f"{k}={o}/{c}" for k, o, c in self.session_sources),
+            ),
             ("TAKTUS_KNOWLEDGE_DIRECTORY", str(self.knowledge_directory or "")),
             ("TAKTUS_GALLERY_DIRECTORY", str(self.gallery_directory or "")),
             ("TAKTUS_FINDINGS_CONNECTOR", self.findings_connector or ""),
@@ -1546,6 +1554,7 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         triage=reader.triage(),
         rollout=reader.rollout(),
         personal_credentials=reader.personal_credentials(),
+        session_sources=reader.session_sources(),
         administration=load_administration(configuration),
         knowledge_directory=load_knowledge_directory(configuration),
         gallery_directory=load_gallery_directory(configuration),
@@ -1836,6 +1845,35 @@ class _Reader:
                 raise ConfigurationError(name, f"{identity}/{parameter} is mapped twice")
             mapping[(identity, parameter)] = own
         return mapping
+
+    def session_sources(self) -> tuple[tuple[str, str, str], ...]:
+        """`document=knowledge.documents.search/KNOWLEDGE_TOKEN,…`: a kind of a project's
+        reference, an equals sign, the search operation that reads such a source system, a
+        slash, the credential parameter it names, which a participant's own stands for
+        (ADR-0304). Parameters only, never a value."""
+        name, value = self._raw("session.sources")
+        if value is None:
+            return ()
+        found: list[tuple[str, str, str]] = []
+        for entry in (e.strip() for e in value.split(",") if e.strip()):
+            kind, separator, rest = (part.strip() for part in entry.partition("="))
+            operation, slash, credential = (part.strip() for part in rest.partition("/"))
+            if not separator or not slash or not kind:
+                raise ConfigurationError(
+                    name,
+                    f"{entry!r} is not kind=operation/PARAMETER "
+                    "(for example document=knowledge.documents.search/KNOWLEDGE_TOKEN)",
+                )
+            if re.fullmatch(r"[a-z][a-z0-9_-]*", kind) is None:
+                raise ConfigurationError(name, f"{kind!r} is not a reference kind")
+            if re.fullmatch(r"[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*){2,}", operation) is None:
+                raise ConfigurationError(name, f"{operation!r} is not an operation")
+            if re.fullmatch(r"[A-Z][A-Z0-9_]*", credential) is None:
+                raise ConfigurationError(name, f"{credential!r} is not a credential parameter")
+            if any(k == kind for k, _, _ in found):
+                raise ConfigurationError(name, f"{kind!r} is mapped twice")
+            found.append((kind, operation, credential))
+        return tuple(found)
 
     def connectors(self) -> Mapping[str, str]:
         """`channel.repo=http://connector:9100/mcp,channel.chat=…`: a capability, an equals
