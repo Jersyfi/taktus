@@ -43,7 +43,7 @@ from taktus.ports.connector import CallContext, CallFailed, ConnectorError
 from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 from taktus.ports.worker import CredentialReference
-from taktus.shared.v1 import LedgerRefs, Method
+from taktus.shared.v1 import Consumption, LedgerRefs, Method
 
 log = structlog.get_logger(__name__)
 
@@ -291,7 +291,16 @@ class EvaluationPlatform:
             if reconciled.differs
             else ("unknown" if reconciled.difference is None else "agrees")
         )
-        await self._record(tenant, RECONCILED, refs, outcome, document)
+        # The platform's cost is the fact's consumption, so that the export reads it from the
+        # ledger as Taktus keeps it: no figure exists only in the platform (UC-5.8 §2).
+        await self._record(
+            tenant,
+            RECONCILED,
+            refs,
+            outcome,
+            document,
+            None if platform is None else Consumption(currency={CURRENCY: float(platform)}),
+        )
         if reconciled.differs:
             await self._record(tenant, DIFFERED, refs, "differs", document)
             log.warning(
@@ -398,6 +407,7 @@ class EvaluationPlatform:
         refs: LedgerRefs,
         outcome: str,
         document: Mapping[str, Any] | None,
+        consumption: Consumption | None = None,
     ) -> None:
         digest = (
             None
@@ -409,7 +419,14 @@ class EvaluationPlatform:
         )
         async with self._work.transaction(tenant):
             await self._ledger.record(
-                tenant, Fact(kind=kind, refs=refs, outcome=outcome, content_digest=digest)
+                tenant,
+                Fact(
+                    kind=kind,
+                    refs=refs,
+                    outcome=outcome,
+                    content_digest=digest,
+                    consumption=consumption,
+                ),
             )
 
 

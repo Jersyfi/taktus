@@ -1276,7 +1276,9 @@ async def wire(
             )
             # A session reads the project's source systems with the participant's own
             # credential, and is continued from any chat (ADR-0304).
-            sources = tuple(SourceSystem(k, o, c) for k, o, c in settings.session_sources)
+            sources = tuple(
+                SourceSystem(k, o, c, read=r, ref=b) for k, o, c, r, b in settings.session_sources
+            )
             personal = ConfiguredPersonalCredentials(settings.personal_credentials)
             workspace = workspace_of(
                 stored,

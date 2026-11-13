@@ -43,6 +43,7 @@ from taktus.components.value.domain.model import DiscoveredProcess, Figure, Valu
 from taktus.components.value.domain.service import figures as value
 from taktus.components.value.domain.service.proposals import proposals as proposed
 from taktus.composition.chains import chain_of
+from taktus.composition.evaluation_platform import RECONCILED
 from taktus.ports.clock import Clock
 from taktus.ports.connector import QUERYING
 from taktus.ports.ledger import Fact, Ledger
@@ -72,8 +73,23 @@ LIMIT_DEFINITION = (
     "or longer than the watch allows: its harm report, with the change recommended, its cost "
     "and its benefit in the basis (ADR-0282 §4, ADR-0299 §2)"
 )
+PLATFORM_FIGURES = {
+    "platform.cost": "what a connected evaluation platform computed for the run's traces, in "
+    "US dollars, as the last reconciliation read it",
+    "platform.cost.difference": "the platform's cost of the run less the run's own consumption "
+    "in US dollars, as the last reconciliation compared them",
+}
+"""A cost reconciliation's figures (UC-5.8, ADR-0306): read from the ledger, where Taktus keeps
+what the platform said, so that no figure exists only in the platform."""
 KNOWN = frozenset(
-    {*value.DEFINITIONS, *RUN_FIGURES, *LEVEL_FIGURES, warehouse.FIGURE, LIMIT_FIGURE}
+    {
+        *value.DEFINITIONS,
+        *RUN_FIGURES,
+        *LEVEL_FIGURES,
+        *PLATFORM_FIGURES,
+        warehouse.FIGURE,
+        LIMIT_FIGURE,
+    }
 )
 """Every figure an owner hands in: what a view may name."""
 
@@ -298,6 +314,7 @@ class FigureReads:
             *(shown(f) for f in figures),
             *await self._run_figures(reader, visible),
             *await self._level_figures(reader, visible, since, end),
+            *await self._platform_figures(reader, visible, since, end),
             *await self._limit_figures(tenant, visible),
         ]
         return Gathered(
@@ -417,6 +434,52 @@ class FigureReads:
                             method="counted now, as the overview counts it",
                         )
                     )
+        return out
+
+    async def _platform_figures(
+        self, reader: Reader, visible: frozenset[str], since: datetime, until: datetime
+    ) -> list[Shown]:
+        """The last reconciliation of each run in the period, for the runs the read API shows
+        the reader (ADR-0306): the platform's cost, and its difference from the run's own."""
+        async with self._work.transaction(reader.tenant):
+            entries = await self._ledger.of_kinds(
+                reader.tenant, [RECONCILED], since=since, until=until
+            )
+        last = {e.refs.run_id: e for e in entries if e.refs.run_id is not None}
+        out: list[Shown] = []
+        for run_id, entry in sorted(last.items()):
+            spent = None if entry.consumption is None else entry.consumption.currency
+            platform = None if spent is None else spent.get("usd")
+            if platform is None:
+                continue
+            level = await self.levels.run(reader, run_id)
+            if level is None or level.run.process_version.rpartition("@")[0] not in visible:
+                continue
+            own = next((f.value for f in level.run.consumed if f.name == "currency.usd"), None)
+            basis = {"process_version": level.run.process_version, "outcome": entry.outcome}
+            values = {
+                "platform.cost": platform,
+                "platform.cost.difference": None if own is None else platform - own,
+            }
+            for id, amount in values.items():
+                out.append(
+                    Shown(
+                        id=id,
+                        component="catalog",
+                        definition=PLATFORM_FIGURES[id],
+                        unit="usd",
+                        scope="run",
+                        subject=run_id,
+                        since=since,
+                        until=until,
+                        value=amount,
+                        withheld=None
+                        if amount is not None
+                        else "the run consumed nothing in US dollars",
+                        method="read from the platform and recorded by the reconciliation",
+                        basis=basis,
+                    )
+                )
         return out
 
     async def _level_figures(

@@ -6573,6 +6573,10 @@ class RunEngine:
             "step.id": step_run.step_id,
             "adapter": resolved.adapter,
             "model.purpose": work.purpose,
+            # The prompt the call was made from, as a connected platform mirrors it: its name,
+            # and the version and step it comes from (UC-5.8, ADR-0306).
+            "prompt.name": f"{run.process_version.rpartition('@')[0]}.{step_run.step_id}",
+            "prompt.source": f"{run.process_version}/{step_run.step_id}",
         }
         await self._not_stopped(run, resolved.adapter)
         try:

@@ -4,10 +4,10 @@ title: Connecting observability and evaluation platforms, optionally
 component: catalog
 epic: E5
 serves: [P1, P11, P13]
-state: building
+state: built
 version: 0.6.0
-tests: [tests/adapters/telemetry/test_opentelemetry.py::test_spans_are_nested_run_step_worker_call, tests/adapters/telemetry/test_opentelemetry.py::test_without_an_endpoint_nothing_is_exported_but_the_trace_exists, tests/adapters/telemetry/test_masking.py::test_a_personal_field_leaves_masked_and_stays_whole_inside, tests/adapters/telemetry/test_masking.py::test_the_policy_is_configured_and_an_unknown_kind_is_refused, tests/composition/test_evaluation_platform.py::test_a_scored_evaluation_is_copied_and_stays_whole_in_taktus, tests/composition/test_evaluation_platform.py::test_personal_content_leaves_masked_by_the_policy, tests/composition/test_evaluation_platform.py::test_the_platform_s_scores_stand_beside_the_verdict_and_never_replace_it, tests/composition/test_evaluation_platform.py::test_the_prompt_of_a_model_step_is_mirrored_once_per_version, tests/composition/test_evaluation_platform.py::test_a_cost_that_differs_is_reported_and_taktus_keeps_its_own, tests/composition/test_evaluation_platform.py::test_each_capability_is_switched_on_and_off_on_its_own, tests/composition/test_evaluation_platform.py::test_a_platform_that_is_gone_changes_nothing, tests/conformance/test_connector_v1_business.py::test_a_business_connector_passes, tests/integration/test_open_standard_connectors_removal.py::test_a_connector_no_process_uses_is_untested_and_names_what_it_serves]
-adrs: {ADR-0003: d0268914fed9, ADR-0011: f25413d512b9, ADR-0024: 52ba89e4adec, ADR-0286: bb92b26719a2, ADR-0305: fcc3b815fcc8}
+tests: [tests/adapters/telemetry/test_opentelemetry.py::test_spans_are_nested_run_step_worker_call, tests/adapters/telemetry/test_opentelemetry.py::test_without_an_endpoint_nothing_is_exported_but_the_trace_exists, tests/adapters/telemetry/test_masking.py::test_a_personal_field_leaves_masked_and_stays_whole_inside, tests/adapters/telemetry/test_masking.py::test_the_policy_is_configured_and_an_unknown_kind_is_refused, tests/composition/test_evaluation_platform.py::test_a_scored_evaluation_is_copied_and_stays_whole_in_taktus, tests/composition/test_evaluation_platform.py::test_personal_content_leaves_masked_by_the_policy, tests/composition/test_evaluation_platform.py::test_the_platform_s_scores_stand_beside_the_verdict_and_never_replace_it, tests/composition/test_evaluation_platform.py::test_the_prompt_of_a_model_step_is_mirrored_once_per_version, tests/composition/test_evaluation_platform.py::test_a_cost_that_differs_is_reported_and_taktus_keeps_its_own, tests/composition/test_evaluation_platform.py::test_each_capability_is_switched_on_and_off_on_its_own, tests/composition/test_evaluation_platform.py::test_a_platform_that_is_gone_changes_nothing, tests/conformance/test_connector_v1_business.py::test_a_business_connector_passes, tests/integration/test_open_standard_connectors_removal.py::test_a_connector_no_process_uses_is_untested_and_names_what_it_serves, tests/components/run/test_llm_steps.py::test_a_model_call_names_the_prompt_version_it_was_made_from, tests/adapters/rest/test_figures.py::test_a_cost_reconciliation_is_in_the_export_for_whom_may_see_the_run]
+adrs: {ADR-0003: d0268914fed9, ADR-0011: f25413d512b9, ADR-0024: 52ba89e4adec, ADR-0286: bb92b26719a2, ADR-0305: fcc3b815fcc8, ADR-0306: cfbf924e99f9}
 supersedes: null
 ---
 
@@ -98,7 +98,14 @@ none, nothing is called and nothing is recorded. By the named tests:
 - A platform that is not reachable changes nothing; the connector's removal test runs, and is
   `untested` while no registered process uses it.
 
-Not yet: an execution is not linked to the prompt version that produced it, because a model
-call's span does not carry the platform's prompt name and version. The figures of a cost
-reconciliation are recorded in the ledger by digest and not in the export of UC-5.7. The
-state stays `building`.
+An execution is linked to the prompt version that produced it (ADR-0306): every model call's
+span carries `prompt.name` and `prompt.source`, the name and the source the mirrored version
+carries in the platform. A reconciliation keeps the platform's cost in its ledger entry, and the
+export carries `platform.cost` and `platform.cost.difference` per run, only for whom the read
+API shows the run and whose role is entitled to the figure.
+
+Not proven by a test of its own: that a change with a passed result in the platform and none in
+Taktus is not released. It holds because the platform's scores are read only beside the verdict
+and commissioning asks Taktus's own evaluation, but no test commissions such a
+change. The removal test of the connector is `untested` while no registered process uses it. The
+state is `built`.
