@@ -7,7 +7,7 @@ serves: [P8, P10, P12]
 state: building
 version: 0.5.0
 tests: [tests/exactness/test_exactness_statement.py::test_a_sourced_step_without_a_check_does_not_register_and_the_finding_names_the_step, tests/exactness/test_exactness_statement.py::test_every_exact_or_sourced_step_of_every_bundle_declares_a_check, tests/exactness/test_recheck.py::test_a_source_that_changed_underneath_a_result_marks_it_suspect_once, tests/exactness/test_recheck.py::test_a_rehearsal_or_an_unknown_run_is_not_checked_again, tests/composition/test_defect_watch.py::test_a_result_marked_suspect_by_a_check_applied_again_is_raised, tests/exactness/test_distribution.py::test_a_total_ten_times_the_previous_eleven_marks_one_suspect_with_its_magnitude, tests/exactness/test_distribution.py::test_a_result_within_the_band_or_before_a_baseline_is_not_marked, tests/exactness/test_distribution.py::test_a_result_of_another_sign_is_marked, tests/exactness/test_distribution.py::test_a_distribution_decides_by_a_statistic_and_by_nothing_else, tests/exactness/test_distribution.py::test_every_check_of_every_bundle_decides_by_a_rule_or_a_statistic, tests/exactness/test_distribution.py::test_a_result_no_check_judged_is_recorded_as_unchecked_and_never_as_passed]
-adrs: {ADR-0018: 17c99e0eaa3c, ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0023: 949c6f4e13af, ADR-0024: 52ba89e4adec, ADR-0179: b70d264ab655, ADR-0233: 0bfd560a1535, ADR-0271: b77f5ed6eb3f}
+adrs: {ADR-0018: 17c99e0eaa3c, ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0023: 949c6f4e13af, ADR-0024: 52ba89e4adec, ADR-0152: c193d1fbb4ed, ADR-0179: b70d264ab655, ADR-0233: 0bfd560a1535, ADR-0271: b77f5ed6eb3f}
 supersedes: null
 ---
 
@@ -30,28 +30,35 @@ document import is not what counts as normal for a report.
 
 ## 2. How it is verified
 
-Four families of check are supported, and each is testable in isolation:
+Four families of check are supported. Each family is a row or rows of the catalogue of UC-4.13,
+and each is testable in isolation:
 
-- **Distribution** — the value, or a statistic of the result, lies where this step's earlier
-  results lie: within a band around the moving median, the same order of magnitude, the same
-  sign. A monthly total ten times the previous eleven is found.
-- **Completeness** — the result has every part it should: the number of records, the fields per
-  record, the artifacts the step announces. An export with 412 rows where the source has 418 is
-  found.
-- **Reference points** — the result agrees with an independent source it must agree with: a
-  control total, a second system's count, a sum that must balance.
-- **Schema shape of the source** — the source the step read has the shape the step was written
-  for: columns, types, order, encoding, a version marker. A partner file whose column order
-  changed is found.
+- **Distribution** — by distribution against the moving median: the result lies within a band
+  around the median of the step's earlier results, with the same sign. Where fixed bounds fit,
+  by plausibility bounds, their bounds derived by a statistic from earlier results. A monthly
+  total ten times the previous eleven is found.
+- **Completeness** — by completeness against a count: the result has as many parts as another
+  source holds. An export with 412 rows where the source has 418 is found.
+- **Reference points** — by reconciliation against a total and by agreement with a second
+  system: the result agrees with an independent source it must agree with.
+- **Shape of the source** — by its row: what the step read has the columns it was written for,
+  or matches a pattern. A partner file whose column order changed is found.
 
-A check declares its method — `rule` or `statistics`, never a language model — a tolerance, and
-what follows when it fails: `escalate` or `stop`.
+A check declares its row's parameters. It declares its method too: `statistics` for a
+distribution, `rule` for every other row, never a language model. What follows a failed check
+is not declared on the check. Whether the run escalates or stops is the rule's (ADR-0023,
+UC-7.2).
 
-When a check fails, the result is marked **suspect**, and the mark names the check, its family,
-by how much the result deviated, and the baseline or reference it was compared against, with the
-run, the step and the provenance record of the result. The suspect result opens UC-4.11. A check
-never changes the result and never stops the run by itself; whether to stop is the rule of
-UC-7.2.
+A check runs before the value counts, and a value that fails it does not count (ADR-0152). A
+distribution is the exception: it judges after the result counted (ADR-0271). A check that reads
+a source — reconciliation, agreement, completeness — is applied again after the result counted
+(ADR-0179).
+
+When a check applied after the result counted fails, the result is marked **suspect**. The mark
+names the check, its family, by how much the result deviated, and the baseline or reference it
+was compared against, with the run, the step and the provenance record of the result. The
+suspect result opens UC-4.11. A check applied after the result counted never changes the
+result and never stops the run by itself; whether to stop is the rule of UC-7.2.
 
 A step of class `exact` or `sourced` carries at least one check; a bundle in which one does not
 is refused at registration, with the finding naming the step. A step of class `tolerant` or
@@ -62,10 +69,12 @@ never mistaken for health.
 It never checks a person's work against a person's earlier work: checks are on process steps, and
 a `human` step produces no result (ADR-0018, principle 14).
 
-**Proven by:** for each family, a test process plants a violation, and exactly one suspect mark
-is found, on the step that produced the result, with the right family and the right magnitude; a
-result within tolerance is not marked; an `exact` step without a check does not register; the
-check method is `rule` or `statistics` on every example and blueprint bundle.
+**Proven by:** for each family, a test process plants a violation. Planted before the value
+counts, the value does not count, and the step names the check. Planted after the result
+counted, exactly one suspect mark is found, on the step that produced the result, with the right
+family and the right magnitude. A result within tolerance is not marked. An `exact` or `sourced`
+step without a check does not register. The check method is `rule` or `statistics` on every
+example and blueprint bundle.
 
 ## 3. Where the boundary lies
 
@@ -111,6 +120,4 @@ the family, the magnitude and the median it was compared with, and the run goes 
 declares its method, a statistic for a distribution and a rule for every other row, never a
 language model, and every check of every bundle decides by one of the two. A result of a step
 that declares no check is recorded as `result.unchecked`, never as passed — by the named tests.
-Not built: what follows a failed check declared on the check, `escalate` or `stop`, which is the
-rule's of ADR-0023 (NTC-0268); and a suspect mark, rather than a failed step, for a violation
-of the completeness, reference-point and source-shape families planted before the result counts.
+Section 2 names the families by the catalogue's rows since NTC-0268.
