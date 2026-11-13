@@ -82,7 +82,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p03-implementation
-version: "25"
+version: "26"
 name: P-03 Implementation
 autonomy:
   level: 4
@@ -1518,3 +1518,8 @@ takeover:
             CREDENTIALS.md; or the person's own account on the hosting service with the right
             to comment
       done: the issue carries the comment once
+
+# What counts as an equivalent result of each variable step that no scorer scores
+# yet: its class's ceiling until its cases narrow it (UC-8.4, ADR-0300 §1).
+tolerances:
+  implement: 0.25

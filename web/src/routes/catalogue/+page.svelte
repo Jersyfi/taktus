@@ -24,10 +24,15 @@
 		});
 	});
 
-	async function start(process: string, inputs: Record<string, unknown>) {
+	async function start(process: string, inputs: Record<string, unknown>, accepted = false) {
 		busy = true;
-		const answer = await startEntry(base(), process, inputs);
+		const answer = await startEntry(base(), process, inputs, fetch, accepted);
 		busy = false;
+		if (!answer.ok && answer.problem.demand && !accepted) {
+			// A run that needs much shows its estimated demand first; accepting starts it (ADR-0299).
+			if (confirm(`${answer.problem.detail}\n\nAccept this demand and start the run?`))
+				return start(process, inputs, true);
+		}
 		if (answer.ok) location.hash = runLink(answer.body.run_id);
 		else if (answer.problem.status === 401) signedIn = false;
 		else message = answer.problem.detail || answer.problem.title;

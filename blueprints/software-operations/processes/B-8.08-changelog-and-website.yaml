@@ -33,7 +33,7 @@
 # Switching it off (`taktusctl deactivate --process b-8-08`) changes nothing on the website.
 
 id: b-8-08
-version: "3"
+version: "4"
 name: B-8.08 Changelog and website
 autonomy:
   level: 2
@@ -368,3 +368,8 @@ takeover:
       expertise: none
       credentials: []
       done: the count is written down
+
+# What counts as an equivalent result of each variable step that no scorer scores
+# yet: its class's ceiling until its cases narrow it (UC-8.4, ADR-0300 §1).
+tolerances:
+  write: 1

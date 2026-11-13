@@ -68,6 +68,9 @@ class DraftStep(Value):
     work: Mapping[str, Any] | None = None
     takeover: StepInstructions | None = None
     """How a person does the step by hand: the takeover instructions' entry (ADR-0180)."""
+    tolerance: float | None = Field(default=None, ge=0, le=1)
+    """For a variable step: what counts as an equivalent result, within its class's ceiling
+    (ADR-0300 §1). Registration refuses a variable step without one."""
 
 
 class DraftGateway(Value):

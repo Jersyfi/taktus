@@ -44,6 +44,83 @@ MAD_SCALE = 1.4826
 """The median absolute deviation times this estimates the standard deviation (ADR-0282 §3)."""
 
 
+class LimitPromise(Value):
+    """How one line of a unit limit is held, and why: stated when the limit is set, as a run's
+    budget states it (UC-8.5 §2, ADR-0300 §4)."""
+
+    line: str
+    how: Literal["held", "estimate", "unpriced"]
+    reason: str
+
+
+def promises(
+    lines: Mapping[str, float], pricing: tuple[str, str] | None
+) -> tuple[LimitPromise, ...]:
+    """For every line of a limit: how admission holds it. `pricing` is the currency and the
+    version of the instance's price table, or None where it has none. A rule, never a model."""
+    out: list[LimitPromise] = []
+    for line in sorted(lines):
+        if line.startswith("money."):
+            currency = line.removeprefix("money.")
+            if pricing is None:
+                out.append(
+                    LimitPromise(
+                        line=line,
+                        how="unpriced",
+                        reason="no price table is configured, so no step has a price: money is "
+                        "not held, only the compute seconds and tokens the limit names",
+                    )
+                )
+            elif pricing[0] != currency:
+                out.append(
+                    LimitPromise(
+                        line=line,
+                        how="unpriced",
+                        reason=f"the price table {pricing[1]} prices in {pricing[0]}, not in "
+                        f"{currency}: money in {currency} is not held",
+                    )
+                )
+            else:
+                out.append(
+                    LimitPromise(
+                        line=line,
+                        how="estimate",
+                        reason=f"every step's reservation is priced at the table {pricing[1]} "
+                        "before it is admitted, and a step that does not fit is refused; a "
+                        "model the table does not price, or one billed as a share of a time "
+                        "window, is held only in the seconds and tokens the limit names, and "
+                        "money a worker reports when its assignment ends counts once reported",
+                    )
+                )
+        elif line == "compute_seconds":
+            out.append(
+                LimitPromise(
+                    line=line,
+                    how="held",
+                    reason="reserved before every step and measured after it; the line is "
+                    "crossed by at most the one inner step's overrun, which is recorded",
+                )
+            )
+        else:
+            out.append(
+                LimitPromise(
+                    line=line,
+                    how="estimate",
+                    reason="a model's input is counted and its output limit reserved before "
+                    "the step; a model that counts its input only as an estimate is held as one",
+                )
+            )
+    out.append(LimitPromise(line="concurrent_runners", how="held", reason=CONCURRENCY))
+    return tuple(out)
+
+
+CONCURRENCY = (
+    "two runners never both fit the line: an admission is checked again under the limit's "
+    "claim before it commits (ADR-0298)"
+)
+"""What a unit limit promises for runners admitting against it at once."""
+
+
 class Amounts(Value):
     """What a limit holds per period: one kind or more."""
 
@@ -91,6 +168,8 @@ class UnitLimit(Value):
     children: Children = "within"
     check_every_seconds: int = Field(default=900, ge=1)
     configured_at: datetime
+    promises: tuple[LimitPromise, ...] = ()
+    """What Taktus can promise for each line, stated when the limit was set (ADR-0300 §4)."""
     cleared: bool = False
     """Taken away: it holds nothing, and its row is kept, as nothing is deleted unasked."""
 

@@ -21,7 +21,7 @@
 #         --input message="How many days of holiday do I have?" --input reply_address=C0HELP
 
 id: k-02
-version: "1"
+version: "2"
 name: K-02 Answer in the chat
 autonomy:
   level: 3
@@ -396,3 +396,11 @@ takeover:
             the operator's secret store, under the parameter Chat token described in
             CREDENTIALS.md; a person working by hand answers with their own account
       done: the answer is in the conversation
+
+# What counts as an equivalent result of each variable step that no scorer scores
+# yet: its class's ceiling until its cases narrow it (UC-8.4, ADR-0300 §1).
+tolerances:
+  terms: 0.25
+  answer: 0.05
+  verify: 1
+  promises: 1

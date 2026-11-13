@@ -30,8 +30,20 @@
       "reason": "the second process of the dev-orchestration blueprint, runnable",
       "steps": [
         {
+          "checks": [
+            {
+              "columns": [
+                "body",
+                "number",
+                "title"
+              ],
+              "kind": "source_shape",
+              "subject": "what repository.issues.read answered"
+            }
+          ],
           "exactness": "sourced",
           "fallback": {
+            "role": "owner",
             "to": "human",
             "when": "the connector serving repository.issues is unavailable"
           },
@@ -45,6 +57,9 @@
             }
           ],
           "work": {
+            "checking": {
+              "select": "output"
+            },
             "credentials": [
               {
                 "injected_as": "env",
@@ -61,11 +76,21 @@
           }
         },
         {
+          "checks": [
+            {
+              "columns": [
+                "comments"
+              ],
+              "kind": "source_shape",
+              "subject": "what repository.comments.list answered"
+            }
+          ],
           "depends_on": [
             "read-issue"
           ],
           "exactness": "sourced",
           "fallback": {
+            "role": "owner",
             "to": "human",
             "when": "the connector serving repository.comments is unavailable"
           },
@@ -79,6 +104,9 @@
             }
           ],
           "work": {
+            "checking": {
+              "select": "output"
+            },
             "credentials": [
               {
                 "injected_as": "env",
@@ -158,11 +186,19 @@
           }
         },
         {
+          "checks": [
+            {
+              "kind": "bounds",
+              "pattern": "^### (What must be achieved|How it is verified|Where the boundary lies)[ \\t]*\\n+\\s*\\S",
+              "subject": "the sections written"
+            }
+          ],
           "depends_on": [
             "missing"
           ],
           "exactness": "sourced",
           "fallback": {
+            "role": "owner",
             "to": "human",
             "when": "the answer fails the check, or the model serving the purpose reasoning is unavailable"
           },
@@ -180,6 +216,9 @@
             }
           ],
           "work": {
+            "checking": {
+              "select": "text"
+            },
             "max_output_tokens": 1536,
             "pattern": "^### (What must be achieved|How it is verified|Where the boundary lies)[ \\t]*\\n+\\s*\\S",
             "prompt": "Issue #${number}: ${title}\n\n${body}\n\nComments so far (JSON, may be empty):\n${comments}\n\nThe sections missing (JSON): ${missing}\n",
@@ -219,6 +258,13 @@
           }
         },
         {
+          "checks": [
+            {
+              "kind": "bounds",
+              "pattern": "Once they are in the issue, a person adds the label `ready`; P-03 Implementation reads",
+              "subject": "the composed text"
+            }
+          ],
           "depends_on": [
             "refine"
           ],
@@ -253,11 +299,25 @@
           }
         },
         {
+          "checks": [
+            {
+              "columns": [
+                "author",
+                "body",
+                "created_at",
+                "id",
+                "url"
+              ],
+              "kind": "source_shape",
+              "subject": "what repository.comments.create answered"
+            }
+          ],
           "depends_on": [
             "compose-comment"
           ],
           "exactness": "sourced",
           "fallback": {
+            "role": "owner",
             "to": "human",
             "when": "the connector serving repository.comments is unavailable"
           },
@@ -271,6 +331,9 @@
             }
           ],
           "work": {
+            "checking": {
+              "select": "output"
+            },
             "credentials": [
               {
                 "injected_as": "env",
@@ -299,6 +362,78 @@
           }
         }
       ],
+      "takeover": {
+        "sequence": "It runs whenever an issue is opened in the repository. By hand, the owner, or a person the owner named, starts it when a new issue appears, for that one issue. The seven steps run in order: read the issue, read its comments, stop if the sections were written before, find the sections of the ready standard the issue lacks, write exactly those, put them into one comment, and post it. If nothing is missing, the person stops and writes nothing. The issue itself is never edited and the label ready is never added.\n",
+        "steps": {
+          "admit": {
+            "credentials": [],
+            "do": "look for a comment that contains \"Written by Taktus, process P-02 Refinement\"; if one is there, stop: the sections were written before, and nothing is written twice\n",
+            "done": "no such comment exists, or the process stopped here",
+            "expertise": "none",
+            "system": "the comments just read"
+          },
+          "compose-comment": {
+            "credentials": [],
+            "do": "put the sections into one comment and end it with the fixed footer: a line, then \"Written by Taktus, process P-02 Refinement, from the issue and its comments\", saying that a person adds the label ready once the sections are in the issue. Keep that footer sentence, so that a later run finds the comment and writes nothing again\n",
+            "done": "the comment holds the sections and the footer",
+            "expertise": "none",
+            "system": "a text editor"
+          },
+          "missing": {
+            "credentials": [],
+            "do": "note which of the three sections of the ready standard are missing or empty: \"What must be achieved\", \"How it is verified\", \"Where the boundary lies\". If the issue is closed or a pull request, stop. If none is missing, stop and write nothing\n",
+            "done": "the list of missing sections is noted, or the process stopped here",
+            "expertise": "the ready standard of the backlog, in the repository's process document under Ready\n",
+            "system": "the issue's body"
+          },
+          "read-comments": {
+            "credentials": [
+              {
+                "parameter": "REPOSITORY_TOKEN",
+                "where": "the operator's secret store, under the parameter REPOSITORY_TOKEN described in CREDENTIALS.md; a person may instead use their own account, if it may read issues\n"
+              }
+            ],
+            "do": "read every comment on the same issue, in order",
+            "done": "every comment on the issue is read",
+            "expertise": "none",
+            "system": "the repository hosting service"
+          },
+          "read-issue": {
+            "credentials": [
+              {
+                "parameter": "REPOSITORY_TOKEN",
+                "where": "the operator's secret store, under the parameter REPOSITORY_TOKEN described in CREDENTIALS.md; a person may instead use their own account on the repository hosting service, if it may read issues\n"
+              }
+            ],
+            "do": "open the issue whose number the run was started with and read its title, its body and its state; note whether it is a pull request\n",
+            "done": "the issue's title, body and state are read",
+            "expertise": "finding an issue by its number",
+            "system": "the repository hosting service"
+          },
+          "refine": {
+            "credentials": [],
+            "do": "write exactly the missing sections, in the order of the standard, each headed with three hash signs, a space and its name, and no other section. What must be achieved states the outcome, not the route. How it is verified states testable conditions as a list. Where the boundary lies states what is not part of it. Use the issue's own words and its discussion; invent no requirement\n",
+            "done": "each missing section is written, opens with its heading and has text under it",
+            "expertise": "understanding the issue's subject well enough to say what done means for it, and writing conditions a test can check\n",
+            "system": "a text editor"
+          },
+          "write-sections": {
+            "credentials": [
+              {
+                "parameter": "REPOSITORY_TOKEN",
+                "where": "the operator's secret store, under the parameter REPOSITORY_TOKEN described in CREDENTIALS.md; a person may instead use their own account, if it may comment\n"
+              }
+            ],
+            "do": "post the comment on the issue; do not edit the issue and do not add the label ready\n",
+            "done": "the comment is on the issue, and the issue and its labels are unchanged",
+            "expertise": "commenting on an issue",
+            "system": "the repository hosting service"
+          }
+        }
+      },
+      "tolerances": {
+        "refine": 0.05
+      },
       "triggers": [
         {
           "event": "issue.opened",
@@ -307,8 +442,8 @@
           }
         }
       ],
-      "version": "5"
+      "version": "9"
     },
-    "version": "5"
+    "version": "9"
   }
 }

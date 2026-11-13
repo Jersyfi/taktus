@@ -37,7 +37,7 @@
 # Switching it off (`taktusctl deactivate --process b-3-05`) leaves the mailbox as it is.
 
 id: b-3-05
-version: "2"
+version: "3"
 name: B-3.05 Cancellation and subscription questions
 autonomy:
   level: 2
@@ -384,3 +384,10 @@ takeover:
             the operator's secret store, under the parameter Mail password of the requesting
             identity described in CREDENTIALS.md
       done: the reply stands in the sent folder, in the thread of the customer's message
+
+# What counts as an equivalent result of each variable step that no scorer scores
+# yet: its class's ceiling until its cases narrow it (UC-8.4, ADR-0300 §1).
+tolerances:
+  draft: 1
+  verify: 1
+  promises: 1

@@ -7,7 +7,7 @@ import copy
 from typing import Any
 
 import pytest
-from fakes.takeover import instructed
+from fakes.takeover import instructions
 
 from taktus.components.process.application.service.register_version import read_bundle
 from taktus.components.process.domain.model import InvalidProcess
@@ -48,12 +48,15 @@ BUNDLE: dict[str, Any] = {
 
 
 def bundle(**more: Any) -> dict[str, Any]:
-    return instructed({**copy.deepcopy(BUNDLE), **more})
+    given = {**copy.deepcopy(BUNDLE), **more}
+    return {**given, "takeover": instructions(given)}
 
 
-def test_a_variable_step_without_cases_declares_its_tolerance_beside_the_steps() -> None:
-    undeclared, _ = read_bundle(bundle())
+def test_a_variable_step_without_a_tolerance_is_refused_and_declares_it_beside_the_steps() -> None:
+    undeclared, refused = read_bundle(bundle())
     assert undeclared.undeclared_tolerances() == ("draft",), "only the variable step"
+    (finding,) = refused
+    assert "'draft' varies and declares no tolerance" in finding, "registration refuses it"
     version, refused = read_bundle(bundle(tolerances={"draft": 0.3}))
     assert refused == []
     assert version.undeclared_tolerances() == ()
@@ -66,9 +69,9 @@ def test_a_tolerance_beside_the_steps_is_held_within_its_class_and_to_a_variable
     sourced["steps"][0]["exactness"] = "sourced"
     sourced["steps"][0]["checks"] = [{"kind": "bounds", "pattern": "^."}]
     with pytest.raises(InvalidProcess, match=r"from 0 to 0\.05"):
-        read_bundle(instructed({**sourced, "tolerances": {"draft": 0.3}}))
-    with pytest.raises(InvalidProcess, match="no variable step"):
-        read_bundle(bundle(tolerances={"file": 0.0}))
+        read_bundle(bundle(steps=sourced["steps"], tolerances={"draft": 0.3}))
+    with pytest.raises(InvalidProcess, match="no step of this process that produces"):
+        read_bundle(bundle(tolerances={"draft": 0.3, "nothing": 0.0}))
 
 
 def test_the_declaration_is_held_once_a_scorer_scores_the_step() -> None:

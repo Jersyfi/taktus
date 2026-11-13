@@ -44,6 +44,7 @@ BUNDLE: dict[str, Any] = {
     "version": "1",
     "name": "The answer",
     "autonomy": {"level": 3, "reason": "a rule checks every result", "toward_next": "a year"},
+    "tolerances": {"compute": 0.25},
     "steps": [
         {
             "id": "compute",

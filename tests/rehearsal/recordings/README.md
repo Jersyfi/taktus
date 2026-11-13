@@ -5,8 +5,8 @@ Each recording says where it was taken, in its own `recording.json` (`"taken"`):
 | Process | Taken | From |
 |---|---|---|
 | `p01-roadmap-control` | local | no run of P-01 on the instance yet |
-| `p02-refinement` | instance | `run_30ad9fcaf2fb24e441ba` of `p02-refinement@5`, on #528, 2026-10-18 |
-| `p03-implementation` | local | no run of the current version on the instance yet; taken of version 22 and relabelled 25: 23 adds only a role to every fallback to a person (ADR-0146), 24 only the takeover instructions (ADR-0180), 25 only a check on every `sourced` step (ADR-0233) — the claim notice names the version, so its request's digests were computed again for 25 |
+| `p02-refinement` | local | version 9 declares its tolerance (ADR-0300) and has not run on the instance yet; the recording from the instance was of version 5 |
+| `p03-implementation` | local | no run of the current version, 26, on the instance yet; recorded from the repository's fakes after 26 declared its tolerance (ADR-0300) |
 | `s07-change-in-dialogue` | local | S-07 is not installed on the instance yet |
 
 `tests/rehearsal/test_replay.py` holds this table to the `taken` of each recording.
@@ -17,9 +17,9 @@ recorded as below:
 | Process | The run that is needed |
 |---|---|
 | `p01-roadmap-control` | a finished run of `p01-roadmap-control@7`: its daily schedule starts one once that version is active on the instance |
-| `p02-refinement` | a finished run of `p02-refinement@8`: the recording from the instance is of version 5, three versions behind the bundle |
-| `p03-implementation` | a finished run of `p03-implementation@25`: an issue it implements to the end, its pull request opened |
-| `s07-change-in-dialogue` | S-07 registered on the instance, at version 4, and one change asked in the owner's conversation that ends, applied or declined |
+| `p02-refinement` | a finished run of `p02-refinement@9` |
+| `p03-implementation` | a finished run of `p03-implementation@26`: an issue it implements to the end, its pull request opened |
+| `s07-change-in-dialogue` | S-07 registered on the instance, at version 5, and one change asked in the owner's conversation that ends, applied or declined |
 
 A local recording was taken on a developer's machine against the repository's fakes — the
 repository service, the model endpoint, the coding agent. It proves the replay and the export

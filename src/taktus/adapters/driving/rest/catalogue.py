@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 from taktus.adapters.driving.rest.problems import MEDIA_TYPE, problem
 from taktus.adapters.driving.rest.wiring import RestServices, StartRefused
 from taktus.components.identity.domain.model import Right
+from taktus.components.run.domain.model import DemandToAccept
 from taktus.ports.identity import Resolution
 
 type Authenticated = Callable[[RestServices, str | None], Awaitable[Resolution | None]]
@@ -38,6 +39,11 @@ class StartBody(BaseModel):
     inputs: dict[str, Any] = Field(
         default_factory=dict,
         description="The process's inputs by name, as its catalogue entry lists them.",
+    )
+    accept_demand: bool = Field(
+        default=False,
+        description="You saw the run's estimated demand and accept it: a run that needs much of "
+        "what remains of a unit limit starts only with it (ADR-0299).",
     )
 
 
@@ -97,9 +103,24 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         if all(e.process != process_id for e in listed.entries):
             return problem(404, f"no process {process_id!r} with an active version you may see")
         try:
-            run = await services.agent.start(who, process_id, body.inputs, channel=WEB)
+            run = await services.agent.start(
+                who, process_id, body.inputs, channel=WEB, accept_demand=body.accept_demand
+            )
         except StartRefused as error:
             return problem(409, str(error))
+        except DemandToAccept as error:
+            # The demand is shown before the run starts; accepting it starts the run (ADR-0299).
+            return JSONResponse(
+                {
+                    "type": "about:blank",
+                    "title": "Conflict",
+                    "status": 409,
+                    "detail": str(error),
+                    "demand": error.shown,
+                },
+                status_code=409,
+                media_type=MEDIA_TYPE,
+            )
         return JSONResponse(
             {"run_id": run.id, "process_version": run.process_version, "state": run.state},
             status_code=201,

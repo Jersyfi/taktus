@@ -657,6 +657,12 @@ def read_bundle(bundle: Document) -> tuple[ProcessVersion, list[str]]:
             instructed.findings(version.takeover, version.steps, credentials_named(version))
         )
     refused.extend(evaluation.findings(version.steps, version.work))
+    refused.extend(
+        f"the {version.step(step_id).method} step {step_id!r} varies and declares no tolerance: "
+        "what counts as an equivalent result, under `tolerances` or `evaluation.tolerances`, "
+        "within its class's ceiling (UC-8.4, ADR-0300 §1)"
+        for step_id in version.undeclared_tolerances()
+    )
     refused.extend(frame.findings(version.steps, version.work, version.inputs))
     refused.extend(partners.findings(version))
     refused.extend(queries.findings(version.steps, version.work))

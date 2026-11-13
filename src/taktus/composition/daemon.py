@@ -669,7 +669,15 @@ async def wire(
         def stored[T: Stored](kind: type[T]) -> Repository[T]:
             return PostgresRepository(persistence, kind)
 
-        decisions = decision_wiring(stored, persistence, ledger, clock, identities)
+        table = settings.budget.table()
+        decisions = decision_wiring(
+            stored,
+            persistence,
+            ledger,
+            clock,
+            identities,
+            None if table is None else (table.currency, table.version),
+        )
         org_units = OrgUnitsOfTheRun(
             decisions.org_units, PostgresOrgUnitSpends(persistence), structure
         )

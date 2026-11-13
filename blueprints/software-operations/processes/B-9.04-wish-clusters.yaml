@@ -18,7 +18,7 @@
 # Switching it off (`taktusctl deactivate --process b-9-04`) changes nothing: it only reads.
 
 id: b-9-04
-version: "1"
+version: "2"
 name: B-9.04 Clustering feature wishes
 autonomy:
   level: 1
@@ -160,3 +160,8 @@ takeover:
       expertise: knowing the product well enough to see two wishes as one
       credentials: []
       done: the clusters are written down
+
+# What counts as an equivalent result of each variable step that no scorer scores
+# yet: its class's ceiling until its cases narrow it (UC-8.4, ADR-0300 §1).
+tolerances:
+  clusters: 1

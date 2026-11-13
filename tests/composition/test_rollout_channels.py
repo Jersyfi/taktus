@@ -480,7 +480,7 @@ async def test_the_same_message_is_a_command_in_a_command_channel_and_answered_i
     assert started == [run_id_of(TENANT, "k-02", kept.id)]
     (run,) = await world.drain()
     assert run.state is RunState.FINISHED, why(run)
-    assert (run.process_version, run.identity, run.profile) == ("k-02@1", ADA, "helpdesk:staff@1")
+    assert (run.process_version, run.identity, run.profile) == ("k-02@2", ADA, "helpdesk:staff@1")
     assert run.inputs == {
         "message": QUESTION,
         "reply_address": HELP,
@@ -503,7 +503,7 @@ async def test_the_same_message_is_a_command_in_a_command_channel_and_answered_i
     usage = await world.shared.usage(TENANT, "helpdesk")
     assert [(u["profile"], u["calls"]) for u in usage] == [("helpdesk:staff@1", 1)]
     finished = [e for e in await world.entries("run.finished") if e.refs.run_id == run.id]
-    assert [e.refs.process_version for e in finished] == ["k-02@1"], "in the ledger as any run"
+    assert [e.refs.process_version for e in finished] == ["k-02@2"], "in the ledger as any run"
     assert await world.reactions.tick() == [], "once per message"
 
 
@@ -521,7 +521,7 @@ async def test_a_message_in_a_rollout_channel_starts_no_process_but_the_assistan
     served = await world.says(ADA, HELP, "start process notes")
     assert served.assistant is not None
     started = await world.reactions.tick()
-    assert [r.process_version for r in await world.all_runs()] == ["k-02@1"]
+    assert [r.process_version for r in await world.all_runs()] == ["k-02@2"]
     assert len(started) == 1, "the trigger on every posted message is not matched"
 
     await world.says(ADA, TEAM, "start process notes")

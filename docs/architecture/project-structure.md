@@ -319,7 +319,10 @@ role it would tie the core to a model stack and the removal test would be lost.
   admission of a step against a unit limit is checked again under the limit's claim before it
   commits, so two runners never both fit one line (ADR-0298). `RunEngine.demand` estimates a
   run before it starts; `taktusctl run` and `submit` show it and start a run that needs much
-  only with `--accept-demand` (ADR-0299). The open `limit.harmful` reports are the figure
+  only with `--accept-demand`; `composition/agent_surface.py` (catalogue, agent, conversation)
+  and `composition/planning.py` (the describe run of a commissioned draft) ask the same
+  (ADR-0299). A unit limit keeps what it can promise per line, `UnitLimit.promises`, stated
+  when it is set at the instance's price table (ADR-0300 §4). The open `limit.harmful` reports are the figure
   `limit.held_seconds` that `composition/figures.py` hands to the views (ADR-0299).
   The accounting component's `BottlenecksHandler` reads its three ports through
   `composition/bottlenecks.py`: `RunAccounts` over the run's `BlockedTime`, which hands over the

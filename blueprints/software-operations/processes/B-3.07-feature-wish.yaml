@@ -25,7 +25,7 @@
 # the portal stays there.
 
 id: b-3-07
-version: "2"
+version: "3"
 name: B-3.07 A feature wish
 autonomy:
   level: 2
@@ -346,3 +346,8 @@ takeover:
             the operator's secret store, under the parameter Feedback portal key described in
             CREDENTIALS.md; a person signs in with their own administrator account
       done: the post is on the board, or nothing was done for a stated reason
+
+# What counts as an equivalent result of each variable step that no scorer scores
+# yet: its class's ceiling until its cases narrow it (UC-8.4, ADR-0300 §1).
+tolerances:
+  wish: 1

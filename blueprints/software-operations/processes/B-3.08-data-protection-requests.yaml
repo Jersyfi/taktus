@@ -46,7 +46,7 @@
 # product, for a person.
 
 id: b-3-08
-version: "3"
+version: "4"
 name: B-3.08 Data protection requests
 autonomy:
   level: 2
@@ -402,3 +402,8 @@ takeover:
       expertise: the business's procedure for data protection requests
       credentials: []
       done: the extended request is carried out and confirmed to the customer
+
+# What counts as an equivalent result of each variable step that no scorer scores
+# yet: its class's ceiling until its cases narrow it (UC-8.4, ADR-0300 §1).
+tolerances:
+  recognise: 1

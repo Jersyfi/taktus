@@ -60,6 +60,7 @@ def bundle() -> dict[str, Any]:
     document["steps"] = [s for s in document["steps"] if s["id"] != "overreach"]
     # Its takeover instructions go with the step (ADR-0180).
     document["takeover"]["steps"].pop("overreach")
+    document["tolerances"].pop("overreach")  # and its tolerance (ADR-0300)
     compute = next(s for s in document["steps"] if s["id"] == "compute")
     compute["work"]["max_steps"] = COMMANDS
     prepare = next(s for s in document["steps"] if s["id"] == "prepare-commands")

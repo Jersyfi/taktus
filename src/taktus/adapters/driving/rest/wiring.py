@@ -206,7 +206,7 @@ class PlanActs(Protocol):
     async def commission(self, tenant: Tenant, identity: str, draft_id: str) -> Plan: ...
 
     async def commission_and_start(
-        self, tenant: Tenant, identity: str, draft_id: str
+        self, tenant: Tenant, identity: str, draft_id: str, *, accept_demand: bool = False
     ) -> tuple[Plan, Run | None]: ...
 
     async def templates(self, tenant: Tenant) -> list[dict[str, Any]]: ...
@@ -377,10 +377,16 @@ class AgentActs(Protocol):
         *,
         channel: str = "channel.agent",
         address: str = "ledger",
+        accept_demand: bool = False,
     ) -> Run:
         """The process's active version started with the inputs, acting as `who`, through the
         one path every channel takes, by the one start command on `channel`. `StartRefused`
-        when it cannot be."""
+        when it cannot be; `DemandToAccept` with the estimated demand where the run needs much
+        and `accept_demand` is not given (ADR-0299 §1)."""
+        ...
+
+    async def demand(self, who: Resolution, process_id: str) -> dict[str, Any] | None:
+        """The estimated demand of a run of the process, as `who` would start it (ADR-0299)."""
         ...
 
     async def called(

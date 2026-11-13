@@ -27,7 +27,7 @@ from fakes.takeover import instructed
 from taktus.adapters.driven.memory import MemoryRepository
 from taktus.components.command.application.service import PlanDialogue, PlanningError
 from taktus.components.command.domain.model import PlanDraft
-from taktus.components.run.domain.model import RunState
+from taktus.components.run.domain.model import DemandToAccept, RunState
 from taktus.components.value.application.query import ValueLedger
 from taktus.components.value.domain.service import figures as value
 from taktus.composition.planning import PlanActs
@@ -39,7 +39,7 @@ DESCRIPTION = (
     "an onboarding assistant for new staff: read the newcomer's record, then create their "
     "first-week checklist"
 )
-S08 = "s08-process-from-a-description@1"
+S08 = "s08-process-from-a-description@2"
 
 
 def onboarding() -> dict[str, Any]:
@@ -206,3 +206,30 @@ async def test_a_plan_that_describes_a_process_is_refused_where_no_describe_proc
     with pytest.raises(PlanningError, match="TAKTUS_DESCRIBE_PROCESS"):
         await plans.commission(TENANT, WHO, draft.id)
     assert not (await plans.get(TENANT, WHO, draft.id)).is_commissioned, "nothing is written"
+
+
+async def test_a_describe_run_that_needs_much_shows_its_demand_before_it_is_commissioned() -> None:
+    """UC-8.10 §2, ADR-0299 §1: commissioning in the plan dialogue starts the describe run; where
+    it needs much, the commissioning is refused with its demand, nothing is commissioned, and
+    the person's acceptance commissions it."""
+    world = await World(json.dumps(onboarding())).setup()
+    await world.seeded()
+    plans = planning(world)
+    draft = await worked_out(plans)
+
+    async def much(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        return {
+            "much": True,
+            "estimate": {"tokens": 90000.0},
+            "basis": "the run's budget",
+            "share": 0.5,
+            "limits": [{"limit": "ops_month", "unit": "ops", "reaches": ["tokens"]}],
+        }
+
+    world.acts._engine.demand = much  # type: ignore[method-assign]
+    with pytest.raises(DemandToAccept) as refused:
+        await plans.commission_and_start(TENANT, WHO, draft.id)
+    assert refused.value.shown["limits"][0]["limit"] == "ops_month"
+    assert (await plans.get(TENANT, WHO, draft.id)).commissioned_version is None
+    plan, described = await plans.commission_and_start(TENANT, WHO, draft.id, accept_demand=True)
+    assert described is not None and plan.results_in is PlanResult.PROCESS_VERSION

@@ -32,7 +32,7 @@
 # system: what it wrote stays written.
 
 id: b-5-05
-version: "2"
+version: "3"
 name: B-5.05 Customer system upkeep
 autonomy:
   level: 2
@@ -313,3 +313,8 @@ takeover:
             the operator's secret store, under the parameter Customer system token of the
             requesting identity described in CREDENTIALS.md
       done: the touchpoint is a note on the contact
+
+# What counts as an equivalent result of each variable step that no scorer scores
+# yet: its class's ceiling until its cases narrow it (UC-8.4, ADR-0300 §1).
+tolerances:
+  propose: 1

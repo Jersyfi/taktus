@@ -34,7 +34,7 @@ from taktus.components.command.domain.service.guided import (
     settings,
 )
 from taktus.components.process.domain.model import ProcessVersion
-from taktus.components.run.domain.model import Run
+from taktus.components.run.domain.model import DemandToAccept, Run
 from taktus.composition.administration import AdministrationPlans, part_of, steps_of
 from taktus.composition.agent_drafting import AgentDrafts
 from taktus.ports.clock import Clock, Identifiers
@@ -46,6 +46,10 @@ class Describing(Protocol):
     """What turns words into a proposal for a process (ADR-0251): the proposal acts."""
 
     async def ask(self, tenant: Tenant, process_id: str, request: str, by: str) -> Run: ...
+
+    async def describe_demand(self, tenant: Tenant, by: str) -> dict[str, Any] | None:
+        """The estimated demand of the describe run `by` would commission (ADR-0299 §1)."""
+        ...
 
 
 class PlanActs:
@@ -170,17 +174,24 @@ class PlanActs:
         )
 
     async def commission_and_start(
-        self, tenant: Tenant, identity: str, draft_id: str
+        self, tenant: Tenant, identity: str, draft_id: str, *, accept_demand: bool = False
     ) -> tuple[Plan, Run | None]:
         """The draft commissioned, and for a draft that describes a process, the run of the
         describe process its goal was handed to as the description (ADR-0290). A draft that
-        describes a process is refused, writing nothing, where no describe process is wired."""
+        describes a process is refused, writing nothing, where no describe process is wired.
+        A describe run that needs much is refused with `DemandToAccept`, carrying its
+        estimated demand, until the person accepts it; nothing is commissioned before
+        (ADR-0299 §1)."""
         draft = await self.get(tenant, identity, draft_id)
         if draft.describes is not None and self._describe is None:
             raise PlanningError(
                 "a plan that describes a process is commissioned where a process turns a "
                 "description into a proposal (TAKTUS_DESCRIBE_PROCESS, ADR-0290)"
             )
+        if draft.describes is not None and self._describe is not None and not accept_demand:
+            shown = await self._describe.describe_demand(tenant, identity)
+            if shown is not None and shown["much"]:
+                raise DemandToAccept(shown)
         plan = await self._commissioned(tenant, identity, draft)
         if draft.describes is None or self._describe is None or draft.goal is None:
             return plan, None

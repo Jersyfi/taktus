@@ -363,7 +363,14 @@ class LocalWiring:
                 randomness=SystemRandomness(),
                 structure=structure,
             )
-            decisions = decision_wiring(stores.of, stores.work, ledger, clock, identities)
+            decisions = decision_wiring(
+                stores.of,
+                stores.work,
+                ledger,
+                clock,
+                identities,
+                None if prices is None else (prices.currency, prices.version),
+            )
             org_units = (
                 None
                 if stores.spends is None

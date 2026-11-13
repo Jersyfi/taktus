@@ -53,6 +53,7 @@ def bundle(*, budget_seconds: float = 2, with_overreach: bool = True) -> dict[st
         document["steps"] = [s for s in document["steps"] if s["id"] != "overreach"]
         # Its takeover instructions go with the step (ADR-0180).
         document["takeover"]["steps"].pop("overreach")
+        document["tolerances"].pop("overreach")  # and its tolerance (ADR-0300)
     return document
 
 
