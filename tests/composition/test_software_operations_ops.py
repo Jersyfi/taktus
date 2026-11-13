@@ -378,6 +378,46 @@ async def test_b_1_12_sums_the_pipelines_cost_over_the_week_from_the_billing_exp
     assert summed["groups"][0]["group"] == "Compute", "the largest first"
 
 
+# --- B-2.06: the subscription inventory ----------------------------------------------------------
+
+
+async def test_b_2_06_files_the_quarters_services_with_their_cost_once_a_person_confirmed(
+    outside: Outside, cluster: str, systems: Systems
+) -> None:
+    """NTC-0280: the quarter's billing export summed per service, largest first, filed as one
+    issue at level 2; a second run while it is open files nothing. Real use is not read."""
+    w = await OpsWorld(outside, cluster, systems).ready()
+    today = datetime.now(UTC).date()
+    quarter = {
+        str(today - timedelta(days=n)): {"Mail": "0.50", "Search": "1.25"} for n in range(1, 92)
+    }
+    async with httpx.AsyncClient() as client:
+        answer = await client.post(f"{systems.billing}/_fake/costs", json=quarter, timeout=5)
+    answer.raise_for_status()
+    version = await w.registered("B-2.06-subscription-inventory.yaml")
+    assert version.autonomy.level == 2
+    before = len(outside.issues())
+    run = await w.start(version)
+    assert run.state is RunState.WAITING_HUMAN, "at level 2 nothing is filed before a person"
+    run = await w.confirmed(run)
+    assert run.state is RunState.FINISHED, failed(run)
+    summed = await w.result(run, "quarter")
+    assert summed["days"] == 91
+    amounts = {g["group"]: g["amount"] for g in summed["groups"]}
+    assert amounts["Search"] == "113.75" and amounts["Mail"] == "45.50"  # 1.25, 0.50 x 91
+    values = [g["value"] for g in summed["groups"]]
+    assert values == sorted(values, reverse=True), "largest first"
+    [filed] = outside.issues()[: len(outside.issues()) - before]
+    assert filed["title"] == "Subscription inventory of the quarter"
+    assert "113.75" in filed["body"] and "45.50" in filed["body"]
+    assert "really used is not stated" in filed["body"]
+    assert "\n\nsubscription-inventory\n" in filed["body"]
+    again = await w.confirmed(await w.start(version))
+    assert again.state is RunState.FINISHED, failed(again)
+    assert (await w.result(again, "unfiled"))["count"] == 0, "one inventory open at a time"
+    assert len(outside.issues()) == before + 1
+
+
 # --- B-2.03, B-7.10: the repository's own limits and branches -----------------------------------
 
 

@@ -32,8 +32,14 @@
 #
 # At level 2 every reply is released by a person; releasing it stays with a person (UC-03 §4.3).
 #
-# Not built here: patterns across releases. One store gives a review's app version and the other
-# none, and no rule groups a reading by a field (ADR-0192 §1 names `filter` and `match`). A run
+# Patterns across releases (ADR-0309): every run also lists the app's reviews of one or two stars
+# (`stores.reviews.list`), and the statistic `count` counts them per app version, most first.
+# The counts are `exact` and stand in the run's result beside the reply a person releases, so
+# that a release whose low ratings pile up is seen while answering one of them. One store gives
+# no version for a review; its reviews are counted under null, as one group. What the reviews of
+# one release complain about is not summarised: the count says where to read, a person reads.
+#
+# Not built here: a run
 # per new review: no store announces a new review to Taktus, and a run serves one case; the
 # tenant starts a run for each review the list shows (`stores.reviews.list`), by hand or from a
 # trigger of its own version.
@@ -47,7 +53,7 @@
 # Switching it off (`taktusctl deactivate --process b-3-09`) leaves the store as it is.
 
 id: b-3-09
-version: "2"
+version: "3"
 name: B-3.09 Store reviews
 autonomy:
   level: 2
@@ -221,6 +227,49 @@ steps:
         items: { $from: read-issues, $select: output.issues }
         key: [number]
 
+  - id: read-low
+    method: rule
+    reason: the app's low ratings are read verbatim from the store, each with the version the store gives
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what stores.reviews.list answered", columns: [reviews] }
+    fallback:
+      when: the connector serving stores.reviews is unavailable
+      to: human
+      role: owner
+    depends_on: [read-review]
+    work:
+      checking: { select: output }
+      rule: connector
+      operation: stores.reviews.list
+      input:
+        platform: { $input: platform }
+        app: { $input: app }
+        ratings: [1, 2]
+        limit: 500
+      credentials:
+        - { name: STORES_KEY, injected_as: env }
+
+  - id: by-release
+    method: statistics
+    reason: how many low ratings each release received is a count over the reading; the same reading always gives the same counts
+    rejected:
+      - method: llm
+        why: a count held exact may not come from a language model (CLAUDE.md §4)
+      - method: rule
+        why: the rules select and match a list; counting it per value is a statistic
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the low ratings counted per app version }
+    depends_on: [read-low]
+    work:
+      statistic: count
+      items: { $from: read-low, $select: output.reviews }
+      by: version
+
   - id: draft
     method: llm
     reason: >
@@ -368,7 +417,8 @@ takeover:
   sequence: >
     The process runs once for a review of the app in a store; the person who looks after support
     starts it for a review the store's list of reviews shows. The steps run in order: read the
-    review and the repository's open issues, keep the review only when it has no response and
+    review and the repository's open issues, list the app's reviews of one or two stars and count
+    them per app version, keep the review only when it has no response and
     is of one or two stars, decide which open issue it describes, take that issue's number and
     check that it is open, draft a reply, check the draft against the review, check the draft
     for a promise, and publish it as the review's response once every check holds. A reply that
@@ -430,6 +480,25 @@ takeover:
       expertise: none
       credentials: []
       done: the review is tied to an open issue, or to none
+    read-low:
+      system: the store's console, in the app's ratings and reviews
+      do: list the app's reviews of one or two stars, each with the app version the store names
+      expertise: reading an app's reviews in the store's console
+      credentials:
+        - parameter: STORES_KEY
+          where: >
+            the operator's secret store, under the parameter App stores key of the requesting
+            identity described in CREDENTIALS.md, the key of the store the platform names; a
+            person signs in to the store's console with their own account that may read reviews
+      done: the low ratings are listed
+    by-release:
+      system: the list of low ratings
+      do: >
+        count them per app version, most first, those without a version as one group, and keep
+        the counts beside the reply for the person who releases it
+      expertise: none
+      credentials: []
+      done: each version has its count of low ratings
     draft:
       system: a text editor
       do: >

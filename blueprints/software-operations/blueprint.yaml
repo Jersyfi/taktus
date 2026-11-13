@@ -55,6 +55,7 @@ requires:
     - capability: payments.subscriptions
     - capability: repository.advisories
     - capability: repository.branches
+    - capability: repository.code
     - capability: repository.comments
     - capability: repository.files
     - capability: repository.issues
@@ -102,7 +103,7 @@ value_criteria:
 # bundles of one process are alternatives: an instance keeps one (B-8.04, B-8.05).
 processes:
   - { id: B-1.01, name: B-1.01 Daily cost, bundle: processes/B-1.01-daily-cost.yaml }
-  - { id: B-1.02, name: B-1.02 Run times, bundle: processes/B-1.02-run-times.yaml }
+  - { id: B-1.02, name: B-1.02 Cost drivers, bundle: processes/B-1.02-run-times.yaml }
   - { id: B-1.03, name: B-1.03 Runaway guard, bundle: processes/B-1.03-runaway.yaml }
   - { id: B-1.04, name: B-1.04 Error rate, bundle: processes/B-1.04-error-rate.yaml }
   - { id: B-1.05, name: B-1.05 New errors, bundle: processes/B-1.05-new-errors.yaml }
@@ -118,6 +119,7 @@ processes:
   - { id: B-2.02, name: B-2.02 Cost per case, bundle: processes/B-2.02-cost-per-case.yaml }
   - { id: B-2.03, name: B-2.03 Quotas, bundle: processes/B-2.03-quotas.yaml }
   - { id: B-2.04, name: B-2.04 Retired models, bundle: processes/B-2.04-retired-models.yaml }
+  - { id: B-2.06, name: B-2.06 Subscription inventory, bundle: processes/B-2.06-subscription-inventory.yaml }
   - { id: B-3.01, name: B-3.01 Sorting the inbox, bundle: processes/B-3.01-inbox-sorting.yaml }
   - { id: B-3.02, name: B-3.02 Drafting a reply, bundle: processes/B-3.02-draft-reply.yaml }
   - { id: B-3.04, name: B-3.04 Paid but not unlocked, bundle: processes/B-3.04-paid-not-unlocked.yaml }
