@@ -25,6 +25,9 @@ from governance.test_stages import PERSON, ROLE, TENANT, Instructions, World
 from taktus.adapters.driving.cli.stage_command import blueprint_stages
 from taktus.components.governance.application.service import StagesRefused
 from taktus.components.governance.domain.model import StageState
+from taktus.components.process.application.service.register_version import (
+    RegisterProcessVersion,
+)
 from taktus.ports.ledger import Fact
 from taktus.shared.v1 import LedgerRefs
 
@@ -226,20 +229,39 @@ async def test_a_correction_rate_at_the_shipped_limit_still_holds() -> None:
     assert await t.opens_next("customer-contact")
 
 
-SERVED_INSIDE = {"b-3-03", "b-3-12", "b-4-01", "b-4-02", "b-4-04", "b-4-05", "b-4-06"}
-"""Rows of stage 2 declared inside B-3.02's bundle; a tenant's plan names `b-3-02` for them
-(NTC-0263, NTC-0266)."""
+def shipped_bundles() -> dict[str, dict[str, Any]]:
+    """The blueprint's bundles by their identifier."""
+    found: dict[str, dict[str, Any]] = {}
+    for path in (ROOT / "blueprints/software-operations/processes").glob("*.yaml"):
+        bundle = yaml.safe_load(path.read_text(encoding="utf-8"))
+        found.setdefault(bundle["id"], bundle)
+    return found
 
 
 def test_stages_zero_to_two_name_only_processes_a_shipped_bundle_serves() -> None:
-    """ADR-0191 §1: a stage opens only over processes that run. Stages 0 and 1 name only
-    processes whose bundle the blueprint ships, so a tenant can declare them verbatim
-    (NTC-0280); stage 2's other rows are served inside B-3.02, or are a document of the
-    business (B-4.07)."""
-    bundles = {
-        yaml.safe_load(p.read_text(encoding="utf-8"))["id"]
-        for p in (ROOT / "blueprints/software-operations/processes").glob("*.yaml")
-    }
-    for stage in STAGES[:2]:
+    """ADR-0191 §1: a stage opens only over processes that run. Stages 0 to 2 name only
+    processes whose bundle the blueprint ships, so a tenant declares them as shipped: the rows
+    served inside B-3.02 are named by `b-3-02`, and B-4.07, not built, stands in no stage
+    (NTC-0263, NTC-0280, NTC-0281)."""
+    bundles = set(shipped_bundles())
+    for stage in STAGES[:3]:
         assert set(processes(stage)) <= bundles, set(processes(stage)) - bundles
-    assert set(processes("customer-contact")) - bundles == SERVED_INSIDE | {"b-4-07"}
+
+
+async def test_stage_two_opens_stage_three_over_the_shipped_bundles() -> None:
+    """Stages 0 to 2 declared as shipped, every process they name registered from its shipped
+    bundle; stage 2's shipped condition, met, opens stage 3."""
+    t = Tenant()
+    shipped = shipped_bundles()
+    await t.declare()
+    for stage in STAGES[:3]:
+        for process in processes(stage):
+            if process not in t.registered:
+                await t.w.register.execute(
+                    RegisterProcessVersion(shipped[process], tenant=TENANT, approved_by=PERSON)
+                )
+                t.registered.add(process)
+        await t.open(stage)
+        await t.held(stage)
+    assert (await t.w.view("customer-contact")).holds
+    assert await t.opens_next("customer-contact")

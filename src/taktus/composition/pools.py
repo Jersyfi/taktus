@@ -15,6 +15,7 @@ from taktus.adapters.driven.models.pool import StaticModelPool
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.components.catalog.domain.model import Configuration, Wrapped
 from taktus.components.run.domain.model import ConnectorRule, LlmWork, WaitWork, WorkerWork
+from taktus.ports.connector import ResolvedConnector
 from taktus.shared.v1 import Step
 
 
@@ -101,6 +102,13 @@ class Pools:
             return Configuration(adapter=integration, serves=tuple(purposes), version=version)
         return None
 
+    async def _connector(self, work: ConnectorRule) -> ResolvedConnector | None:
+        """The connector serving a connector step: the member it names, or the first configured
+        for its capability (ADR-0311)."""
+        if work.connector is not None:
+            return await self.connectors.named(work.connector, work.capability)
+        return await self.connectors.resolve(work.capability)
+
     async def serving(self, step: Step, work: Any) -> tuple[str, str | None] | None:
         """What the step needs and which adapter serves it, or None when the step needs no
         adapter: (`served`, adapter identifier or None when nothing serves it)."""
@@ -109,8 +117,13 @@ class Pools:
             worker = await self.workers.resolve(step.required_capabilities)
             return needed, None if worker is None else worker.adapter
         if isinstance(work, ConnectorRule):
-            connector = await self.connectors.resolve(work.capability)
-            return work.capability, None if connector is None else connector.adapter
+            connector = await self._connector(work)
+            served = (
+                work.capability
+                if work.connector is None
+                else f"{work.capability} ({work.connector})"
+            )
+            return served, None if connector is None else connector.adapter
         if isinstance(work, WaitWork) and work.until is not None:
             connector = await self.connectors.resolve(work.until.capability)
             return work.until.capability, None if connector is None else connector.adapter
@@ -123,7 +136,7 @@ class Pools:
         """Whether the step's connector operation is declared outward: its effect would leave
         the system, and a rehearsal answers it from a recording instead."""
         if isinstance(work, ConnectorRule):
-            connector = await self.connectors.resolve(work.capability)
+            connector = await self._connector(work)
             if connector is None:
                 return False
             operation = connector.declaration.operation(work.operation)

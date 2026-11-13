@@ -554,8 +554,9 @@ async def test_uc_03s_six_stages_are_declared_and_shown_with_their_conditions() 
     assert "at most 0 incident(s)" in view[3].stage.condition.described()
     assert max(view[0].stage.processes.values()) <= 2, "stage 0 runs at level 1 to 2"
     every = {p for v in view[1:] for p in v.stage.processes}
-    assert len(every) == 85, "every process of UC-03 §4.1 to §4.10 belongs to a stage"
+    assert len(every) == 77, "every process of UC-03 §4.1 to §4.10 with a bundle of its own"
     assert not {"b-2-05", "b-4-03"} & every, "the trial and the correction rate are the instance's"
+    assert not {"b-3-03", "b-3-12", "b-4-01", "b-4-07"} & every, "named by b-3-02, or not built"
     assert not any(p.startswith("b-11-") for p in every), "the steering is Taktus itself"
     assert "b-9-01" not in {p for v in view for p in v.stage.processes}, (
         "the daily report is the instance's, counted by `reports_missed`"

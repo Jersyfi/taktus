@@ -620,6 +620,10 @@ class ConnectorRule(Value):
     data_class: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_-]*$")
     """The class of the data the call carries, as the process declares it: the tenant's
     residency rule for that class decides whether the connector may be called (ADR-0281 §2)."""
+    connector: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9._-]*$")
+    """The configured connector that serves this step, by the identifier the instance's
+    configuration gives it, where a capability is configured more than once (ADR-0311). None:
+    the first configured connector that serves the capability, as before."""
 
     @property
     def capability(self) -> str:

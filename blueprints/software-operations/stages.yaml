@@ -27,8 +27,10 @@
 # For the same reason two more rows are no process of the tenant and stand in no stage
 # (NTC-0280): B-2.05, comparing models, is the instance's model trial (UC-8.14, NTC-0266), and
 # B-4.03, the correction rate, is the instance's count per process and action (UC-7.5,
-# NTC-0263). A row served inside another process's bundle stays named; the tenant's plan names
-# that bundle for it (NTC-0263).
+# NTC-0263). A row served inside another process's bundle is named by that bundle: B-3.03,
+# B-3.12 and B-4.01 to B-4.06 by `b-3-02` (NTC-0263, NTC-0266). A row declared `not_built` in
+# `blueprint.yaml` stands in no stage until a bundle serves it: B-4.07, a document of the
+# business (NTC-0281). Every stage can thus be declared as shipped.
 
 kind: Stages
 blueprint: software-operations
@@ -88,8 +90,7 @@ stages:
     # escalations.
     processes:
       b-3-01: 4   # B-3.01
-      b-3-02: 3   # B-3.02
-      b-3-03: 3   # B-3.03
+      b-3-02: 3   # B-3.02, and B-3.03, B-3.12, B-4.01, B-4.02, B-4.04 to B-4.06 inside it
       b-3-04: 3   # B-3.04
       b-3-05: 2   # B-3.05
       b-3-06: 4   # B-3.06
@@ -98,13 +99,6 @@ stages:
       b-3-09: 3   # B-3.09
       b-3-10: 2   # B-3.10
       b-3-11: 2   # B-3.11
-      b-3-12: 3   # B-3.12
-      b-4-01: 4   # B-4.01
-      b-4-02: 4   # B-4.02
-      b-4-04: 2   # B-4.04
-      b-4-05: 3   # B-4.05
-      b-4-06: 4   # B-4.06
-      b-4-07: 2   # B-4.07
     # Stage 3 opens when this held, with the correction rate of each approved class below its
     # limit: the shipped limit at which a level falls (NTC-0215), which a tenant may tighten.
     condition: { weeks: 4, correction_rate: 0.25 }

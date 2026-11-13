@@ -12,11 +12,12 @@
 # names the support cases, the praise and the criticism by identifier, beside the search's
 # addresses, for the person who answers.
 #
-# One source per instance. A run resolves a capability to the first connector that declares it,
-# so a step reaches one source: the social network's server or the forum, whichever the
-# instance's `TAKTUS_CONNECTORS` names for `mentions.search`. Both connectors answer in one shape
-# and read their key under one name, so this bundle runs on either unchanged; a business that
-# watches both runs it on an instance per source, until a step can name the source it reaches.
+# Two sources on one configuration (ADR-0311). Both connectors answer `mentions.search` in one
+# shape. The run is given `source` and, where the business watches a second place, `second`: the
+# identifiers under which the instance's configuration names the two connectors, for example the
+# social network's and the forum's. The step `search` reads the first, `search-second` the
+# second, and the model sorts the posts of both. Without `source`, the first connector
+# configured for the capability serves, as before; without `second`, one source is read.
 #
 # The sorting is the model's reading, held only to its form: a line that names a post the search
 # did not answer is not caught by the rule, and is seen by the person who reads the result.
@@ -29,7 +30,7 @@
 # Switching it off (`taktusctl deactivate --process b-3-10`) changes nothing: it only reads.
 
 id: b-3-10
-version: "2"
+version: "3"
 name: B-3.10 Mentions
 autonomy:
   level: 1
@@ -51,6 +52,18 @@ inputs:
   since:
     description: the first day whose posts are read, YYYY-MM-DD; a daily run names the day before
     example: "2026-11-01"
+  source:
+    description: >
+      the configured connector the posts are read from, by the identifier the instance's
+      configuration gives it; without it, the first connector configured for mentions.search
+    example: connector.mentions
+    required: false
+  second:
+    description: >
+      a second configured connector the posts are also read from, by its identifier; without it,
+      one source is read
+    example: connector.forum
+    required: false
 
 limits:
   quota: { units: 30 }
@@ -73,6 +86,34 @@ steps:
       checking: { select: output }
       rule: connector
       operation: mentions.search.query
+      connector: { $input: source, $otherwise: null }
+      input:
+        query: { $input: query }
+        since: { $input: since }
+        limit: 200
+      credentials:
+        - { name: MENTIONS_TOKEN, injected_as: env }
+
+  - id: search-second
+    method: rule
+    reason: the matching public posts of the second source are read verbatim through its search; nothing to judge
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what mentions.search.query answered", columns: [mentions] }
+    fallback:
+      when: the second connector serving mentions.search is unavailable
+      to: human
+      role: owner
+    work:
+      checking: { select: output }
+      when:
+        - { value: { $input: second, $otherwise: "" }, not_matches: "^$" }
+      rule: connector
+      operation: mentions.search.query
+      connector: { $input: second, $otherwise: null }
       input:
         query: { $input: query }
         since: { $input: since }
@@ -96,7 +137,7 @@ steps:
       when: the model serving the purpose triage is unavailable
       to: human
       role: owner
-    depends_on: [search]
+    depends_on: [search, search-second]
     work:
       purpose: triage
       system: >
@@ -107,8 +148,12 @@ steps:
       prompt: |
         The posts, as id, text and address:
         ${mentions}
+
+        The second place's search, where one is watched; skipped where none is:
+        ${more}
       values:
         mentions: { $from: search, $select: output.mentions }
+        more: { $from: search-second }
       max_output_tokens: 1500
 
   - id: support
@@ -157,7 +202,8 @@ takeover:
   sequence: >
     The process runs once a day, or whenever the person who looks after support starts it, with
     the product's name as the query and the day before as since. The steps run in order: search
-    the social network or the forum for public posts that mention the product, sort each into
+    the social network or the forum for public posts that mention the product, and the second
+    place where the business watches one, sort each into
     support case, praise, criticism or other, and write down the posts of each of the first
     three classes. Nothing is posted; whoever answers in public does it themselves, and no
     writer is counted or named.
@@ -174,6 +220,19 @@ takeover:
             the operator's secret store, under the parameter Mentions search key described in
             CREDENTIALS.md; a person searches signed in with their own account
       done: the matching posts are noted with address, text and date
+    search-second:
+      system: the second place's search, in a browser, where the business watches a second one
+      do: >
+        search it for the query in the same way, and note each post's address, text and date;
+        do not note who wrote it
+      expertise: searching posts on the social network or in the forum
+      credentials:
+        - parameter: MENTIONS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Mentions search key described in
+            CREDENTIALS.md, the key of that place; a person searches signed in with their own
+            account
+      done: the matching posts of the second place are noted, or none is watched
     sort:
       system: the noted posts
       do: >

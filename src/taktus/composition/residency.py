@@ -67,15 +67,22 @@ class PoolBindings:
                 return [(f"the model {chain[0].adapter}", chain[0].location)]
             return []
         if isinstance(work, ConnectorRule):
-            return await self._connector(work.capability, permitted)
+            return await self._connector(work.capability, permitted, work.connector)
         if isinstance(work, WaitWork) and work.until is not None:
             return await self._connector(work.until.capability, permitted)
         if isinstance(work, WorkerWork):
             return await self._worker(step, work, permitted)
         return []
 
-    async def _connector(self, capability: str, permitted: Permitted) -> list[tuple[str, str]]:
-        resolved = await self._pools.connectors.resolve(capability)
+    async def _connector(
+        self, capability: str, permitted: Permitted, named: str | None = None
+    ) -> list[tuple[str, str]]:
+        connectors = self._pools.connectors
+        resolved = (
+            await connectors.resolve(capability)
+            if named is None
+            else await connectors.named(named, capability)
+        )
         if resolved is None or admits(permitted, resolved.location):
             return []
         return [(f"the connector {resolved.adapter}", resolved.location)]

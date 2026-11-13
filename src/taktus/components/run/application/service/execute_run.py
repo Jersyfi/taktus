@@ -313,6 +313,7 @@ from taktus.components.run.ports import (
     MessageRules,
     Messages,
     ModelPool,
+    NamedConnectors,
     NotRaised,
     OpenWork,
     OrgUnits,
@@ -2822,14 +2823,14 @@ class RunEngine:
         """Whether the step's call may be made again without a second effect: true for a step
         that calls nothing outward, and for an outward operation that recognises a repeat. An
         operation whose declaration cannot be read is not (ADR-0024)."""
+        named = None
         if isinstance(work, ConnectorRule):
-            capability, name = work.capability, work.operation
+            capability, name, named = work.capability, work.operation, work.connector
         elif isinstance(work, WaitWork) and work.until is not None:
             capability, name = work.until.capability, work.until.operation
         else:
             return True
-        pool = self._connector_pool(run)
-        resolved = None if pool is None else await pool.resolve(capability)
+        resolved = await self._resolve(run, capability, named)
         operation = None if resolved is None else resolved.declaration.operation(name)
         if operation is None:
             return False
@@ -3535,8 +3536,7 @@ class RunEngine:
     ) -> _Gate | None:
         """What the frame of ADR-0142 holds an outward connector step to, read from the results
         before it and the tenant's rules; None for a step it does not hold."""
-        pool = self._connector_pool(run)
-        resolved = None if pool is None else await pool.resolve(work.capability)
+        resolved = await self._resolve(run, work.capability, work.connector)
         operation = None if resolved is None else resolved.declaration.operation(work.operation)
         if operation is None or not operation.outward:
             return None
@@ -3712,10 +3712,9 @@ class RunEngine:
     async def _outward(self, run: Run, work: Work) -> bool | None:
         """Whether a connector call's operation is declared outward; None when it cannot be
         read, and for any other step."""
-        pool = self._connector_pool(run)
-        if not isinstance(work, ConnectorRule) or pool is None:
+        if not isinstance(work, ConnectorRule) or self._connector_pool(run) is None:
             return None
-        resolved = await pool.resolve(work.capability)
+        resolved = await self._resolve(run, work.capability, work.connector)
         operation = None if resolved is None else resolved.declaration.operation(work.operation)
         return None if operation is None else operation.outward
 
@@ -6193,7 +6192,9 @@ class RunEngine:
             calls = int(work.until.timeout_seconds // work.until.poll_seconds) + 1
             return _Demand(_times(operation.demand.document(), calls), adapter=resolved.adapter)
         if isinstance(work, ConnectorRule):
-            resolved = await self._connector(run, step.id, work.capability, work.data_class)
+            resolved = await self._connector(
+                run, step.id, work.capability, work.data_class, work.connector
+            )
             await self._not_stopped(run, resolved.adapter)
             operation = resolved.declaration.operation(work.operation)
             if operation is None:
@@ -6710,21 +6711,36 @@ class RunEngine:
 
     # --- connector steps ------------------------------------------------------------------------
 
+    async def _resolve(
+        self, run: Run, capability: str, named: str | None = None
+    ) -> ResolvedConnector | None:
+        """The connector serving the capability: the member configured under `named` where the
+        step names one, the first configured one otherwise (ADR-0311). A pool that cannot name
+        its members — a rehearsal's recording — answers by the capability."""
+        pool = self._connector_pool(run)
+        if pool is None:
+            return None
+        if named is not None and isinstance(pool, NamedConnectors):
+            return await pool.named(named, capability)
+        return await pool.resolve(capability)
+
     async def _connector(
-        self, run: Run, step_id: StepId, capability: str, data_class: str | None = None
+        self,
+        run: Run,
+        step_id: StepId,
+        capability: str,
+        data_class: str | None = None,
+        named: str | None = None,
     ) -> ResolvedConnector:
         """The connector configured for the capability. None configured is a failed step, not
         an exception: the run escalates at the boundary with the reason, and a resume after
         the configuration changed retries it (the same as a model that is not configured).
         A connector outside the location the tenant's rule permits for the data class in a run
         of the process fails the step the same way, before it is called (ADR-0281 §2)."""
-        resolved = None
-        pool = self._connector_pool(run)
-        if pool is not None:
-            resolved = await pool.resolve(capability)
+        resolved = await self._resolve(run, capability, named)
         if resolved is None:
             raise _StepFailed(
-                reason=str(NoConnector(step_id, capability)),
+                reason=str(NoConnector(step_id, capability if named is None else named)),
                 retryable=True,
                 consumption=None,
                 adapter=None,
@@ -6753,7 +6769,9 @@ class RunEngine:
         """One operation, called once for this attempt of the step. What comes back is the
         result as the contract shapes it — output, effect, consumption — and, for an outward
         effect, the egress entry the commit writes beside `step.finished`."""
-        resolved = await self._connector(run, step_run.step_id, work.capability, work.data_class)
+        resolved = await self._connector(
+            run, step_run.step_id, work.capability, work.data_class, work.connector
+        )
         operation = resolved.declaration.operation(work.operation)
         if operation is None:
             raise _StepFailed(
