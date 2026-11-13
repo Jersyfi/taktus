@@ -18,6 +18,10 @@ builds a milestone whole and lands it in one pull request (DEC-0222). `0.1.0` an
 met their completion criteria. Which issues of a milestone are open is the host's milestone, not
 a list here.
 
+The final round before `1.0.0` (DEC-0236) builds what remains outside `2.0.0`; its release is
+`v1.0.0-beta.1` (DEC-0237). What only operation, a person or time can prove stands in the
+milestone `beta-operation`. `1.0.0` waits for the licence (DEC-0044) and the freeze (DEC-0231).
+
 Each milestone keeps where it stands in a file of its own, so that two pull requests on
 different milestones never edit the same paragraph (#392):
 
