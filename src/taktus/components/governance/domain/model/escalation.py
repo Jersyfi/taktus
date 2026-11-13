@@ -49,6 +49,10 @@ class Escalated(Value):
     by_hand: ByHand | None = None
     instructions: str | None = None
     """The process version's sequence by hand, from its takeover instructions."""
+    breaks: str | None = None
+    """The clause of a data contract with a partner that the failed step broke, in words:
+    the fields the message lacks and who answers for the contract (UC-15.3, ADR-0303). None
+    where the step exchanges under no contract."""
 
 
 class Target(Value):
@@ -57,3 +61,34 @@ class Target(Value):
     role: str = Field(min_length=1)
     react_within: timedelta | None = None
     path: str = "channel"
+
+
+class Lacking(Value):
+    """One item a handover between two links of a chain lacked: the input it fills, the step of
+    the sending process it comes from, and the clause of the chain that requires it."""
+
+    input: str = Field(min_length=1)
+    step: str = Field(min_length=1)
+    clause: str = Field(min_length=1)
+
+
+class HandoverHalted(Value):
+    """A chain that halted at a boundary because the handover lacked a declared item (UC-15.4,
+    ADR-0302), as the governance component reads it. Every field is the record's own."""
+
+    chain: str = Field(min_length=1)
+    chain_run: str = Field(min_length=1)
+    sending: str = Field(min_length=1)
+    """The process version of the link before the boundary."""
+    sending_run: str = Field(min_length=1)
+    receiving: str = Field(min_length=1)
+    """The process version of the link after the boundary, which did not start."""
+    lacking: tuple[Lacking, ...] = Field(min_length=1)
+    handed: tuple[str, ...] = ()
+    """The inputs the sending run did hold."""
+    finished: tuple[str, ...] = ()
+    """The process versions of the links that finished before the boundary, in order."""
+    left: int = Field(default=0, ge=0)
+    """How many outward effects the chain's runs recorded as having left the system."""
+    after: tuple[str, ...] = ()
+    """The process versions of the links after the boundary, which did not start."""

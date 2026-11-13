@@ -17,6 +17,7 @@ Nothing here changes a run: the person resumes it, does the step by hand, or lea
 
 from __future__ import annotations
 
+import re
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -28,6 +29,7 @@ from taktus.components.governance.domain.model.defects import SituationPackage
 from taktus.components.governance.domain.model.escalation import ByHand, Escalated, Target
 from taktus.components.governance.domain.service import escalations as rule
 from taktus.components.process.domain.model import ProcessVersion
+from taktus.components.process.domain.service import partners
 from taktus.components.reporting.application.service import (
     ChannelOf,
     NoChannel,
@@ -37,6 +39,7 @@ from taktus.components.reporting.application.service import (
 )
 from taktus.components.reporting.domain.model import Report, ReportKind, ReportState
 from taktus.components.run.domain.model import Run, RunState, StepState
+from taktus.components.run.domain.service import checking
 from taktus.composition.tenancy import this_round
 from taktus.ports.clock import Clock
 from taktus.ports.identity import ServedTenants
@@ -277,7 +280,20 @@ def escalated_of(
         left=sum(1 for e in own if e.kind.startswith("egress.")),
         by_hand=hand,
         instructions=None if instructions is None else instructions.sequence,
+        breaks=None
+        if version is None or last is None
+        else _breach(version, last.step_id, last.reason),
     )
+
+
+def _breach(version: ProcessVersion, step_id: str, reason: str | None) -> str | None:
+    """The data contract's clause the failed step broke, from the fields its failed shape check
+    found lacking (`checking.LACKS`), by the process component's rule (ADR-0303)."""
+    lacking: list[str] = []
+    if reason is not None and checking.LACKS in reason:
+        named = re.split(r";|\.(?:\s|$)", reason.split(checking.LACKS, 1)[1], maxsplit=1)[0]
+        lacking = [f.strip() for f in named.split(",") if f.strip()]
+    return partners.breach(version, step_id, lacking)
 
 
 INTERVAL_SECONDS = 60
