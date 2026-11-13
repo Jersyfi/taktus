@@ -567,7 +567,20 @@ def test_a_session_reads_only_the_source_systems_the_operator_names() -> None:
     assert settings().session_sources == ()
     loaded = settings(TAKTUS_SESSION_SOURCES="document=knowledge.documents.search/KNOWLEDGE_TOKEN")
     assert loaded.session_sources == (
-        ("document", "knowledge.documents.search", "KNOWLEDGE_TOKEN"),
+        ("document", "knowledge.documents.search", "KNOWLEDGE_TOKEN", None, "main"),
+    )
+    files = settings(
+        TAKTUS_SESSION_SOURCES="repository=repository.code.search"
+        "+repository.files.read_many@trunk/REPOSITORY_TOKEN"
+    )
+    assert files.session_sources == (
+        (
+            "repository",
+            "repository.code.search",
+            "REPOSITORY_TOKEN",
+            "repository.files.read_many",
+            "trunk",
+        ),
     )
     for wrong in (
         "document",
@@ -576,6 +589,7 @@ def test_a_session_reads_only_the_source_systems_the_operator_names() -> None:
         "document=search/KNOWLEDGE_TOKEN",
         "document=knowledge.documents.search/token",
         "document=a.b.c/T,document=a.b.c/T",
+        "repository=repository.code.search+repository.files.read_many/T",
     ):
         with pytest.raises(ConfigurationError, match="TAKTUS_SESSION_SOURCES"):
             settings(TAKTUS_SESSION_SOURCES=wrong)

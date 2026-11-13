@@ -124,3 +124,26 @@ async def test_a_purpose_without_a_model_fails_the_step_and_names_the_setting() 
     reason = run.step_run("draft").reason or ""
     assert "'triage'" in reason and "TAKTUS_MODEL_ENDPOINT" in reason
     assert h.model.prompts == []
+
+
+async def test_a_model_call_names_the_prompt_version_it_was_made_from() -> None:
+    """UC-5.8, ADR-0306: the span of a model call carries the prompt's name and source, as a
+    connected platform's mirror of that version names them."""
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    from taktus.adapters.driven.telemetry import OpenTelemetryTelemetry
+
+    exporter = InMemorySpanExporter()
+    h = ModelHarness(
+        rule("issue", {"rule": "constant", "value": {"number": 11, "title": "Report git"}}),
+        llm("refine", WORK, after=("issue",)),
+    )
+    h.engine._telemetry = OpenTelemetryTelemetry(processor=SimpleSpanProcessor(exporter))
+    run = await h.start()
+    assert run.state is RunState.FINISHED
+    (call,) = [s for s in exporter.get_finished_spans() if s.name == "model.complete"]
+    attributes = dict(call.attributes or {})
+    process = run.process_version.rpartition("@")[0]
+    assert attributes["prompt.name"] == f"{process}.refine"
+    assert attributes["prompt.source"] == f"{run.process_version}/refine"

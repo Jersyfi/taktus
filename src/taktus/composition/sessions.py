@@ -71,11 +71,19 @@ class SourceSystem:
     kind: str
     """The kind of the project's reference it reads: `document`, `repository`, ..."""
     operation: str
-    """A search: input `query` and `count`, output `documents`, each with `title`, `url` and
-    `body` — the shape of `knowledge.documents.search` (ADR-0265)."""
+    """A search of one of two shapes. A search of documents: input `query` and `count`, output
+    `documents`, each with `title`, `url` and `body` — the shape of
+    `knowledge.documents.search` (ADR-0265). A search of files: input `text`, output `files`,
+    each with its `path` — the shape of `repository.code.search` — whose files `read` reads."""
     credential: str
     """The parameter the operation names, `KNOWLEDGE_TOKEN`; the participant's own stands for
     it."""
+    read: str | None = None
+    """For a search of files: the operation that reads them by path at `ref` — input `paths`
+    and `ref`, output `files` with `path` and `content`, the shape of
+    `repository.files.read_many`. It names the same credential."""
+    ref: str = "main"
+    """The branch the files are read at: the one the search searched."""
 
     @property
     def capability(self) -> Capability:
@@ -140,16 +148,63 @@ class SourceKnowledge:
             credentials=(CredentialReference(name=own, injected_as="env"),),
         )
         try:
-            result = await resolved.connector.call(
-                system.operation, context, {"query": asked, "count": COUNT}
-            )
+            if system.read is None:
+                result = await resolved.connector.call(
+                    system.operation, context, {"query": asked, "count": COUNT}
+                )
+                return _passages(result.output, reference)
+            return await self._files(system, context, reference, asked)
         except CallFailed as failed:
             log.info("session.source_refused", kind=system.kind, cause=str(failed.error.cause))
             return []
         except ConnectorError as error:
             log.info("session.source_unreachable", kind=system.kind, error=type(error).__name__)
             return []
-        return _passages(result.output, reference)
+
+    async def _files(
+        self, system: SourceSystem, context: CallContext, reference: Reference, asked: str
+    ) -> list[Passage]:
+        """A search of files, by the longest words asked, and the files it found read at the
+        branch it searched — both as the participant (ADR-0306)."""
+        searcher = await self._connectors.resolve(system.capability)
+        reader = await self._connectors.resolve(str(system.read).rpartition(".")[0])
+        if searcher is None or reader is None or system.read is None:
+            return []
+        paths: list[str] = []
+        for word in _search_words(asked):
+            found = await searcher.connector.call(system.operation, context, {"text": word})
+            for entry in found.output.get("files") or []:
+                path = entry.get("path") if isinstance(entry, Mapping) else None
+                if isinstance(path, str) and path and path not in paths:
+                    paths.append(path)
+        if not paths:
+            return []
+        read = await reader.connector.call(
+            system.read, context, {"paths": paths[:COUNT], "ref": system.ref}
+        )
+        passages: list[Passage] = []
+        for file in read.output.get("files") or []:
+            if not isinstance(file, Mapping) or file.get("encoding") != "utf-8":
+                continue
+            text = str(file.get("content") or "").strip()
+            if text:
+                path = str(file.get("path"))
+                passages.append(
+                    Passage(
+                        text=text[:EXCERPT],
+                        source=Source(
+                            title=f"{reference.title or reference.kind}: {path}"[:300],
+                            link=f"{reference.link}#{path}"[:2000],
+                        ),
+                    )
+                )
+        return passages
+
+
+def _search_words(asked: str) -> list[str]:
+    """The words a search of files is asked for: the two longest of four letters or more."""
+    words = dict.fromkeys(w for w in re.findall(r"[A-Za-z0-9_-]{4,}", asked))
+    return sorted(words, key=len, reverse=True)[:2]
 
 
 def _passages(output: Mapping[str, Any], reference: Reference) -> list[Passage]:
