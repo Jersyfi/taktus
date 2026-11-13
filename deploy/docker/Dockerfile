@@ -37,6 +37,8 @@ COPY examples ./examples
 COPY blueprints/gallery ./blueprints/gallery
 # The probe the load measurement runs (S-04, `taktusctl load measure`, ADR-0223).
 COPY blueprints/self-operation/processes/S-04-load-probe.yaml ./blueprints/self-operation/processes/
+# The method scaffolds the catalogue ships, registered with `taktusctl skill register` (ADR-0307).
+COPY scaffolds ./scaffolds
 RUN uv sync --frozen --no-dev
 
 FROM python:3.13-slim-bookworm AS runtime

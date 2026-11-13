@@ -55,6 +55,7 @@ DRAFT_REASON: dict[OriginKind, str] = {
     OriginKind.BUNDLE: "registered",
     OriginKind.RECURRING: "recurring",
     OriginKind.OWN_USE: "owner",
+    OriginKind.CURATED: "curated",
 }
 
 

@@ -47,6 +47,7 @@ from taktus.components.catalog.domain.model import (
     SkillStage,
     SkillVersion,
 )
+from taktus.components.catalog.domain.model.scaffold import SCAFFOLD_YAML
 from taktus.components.catalog.domain.service import skills as rules
 from taktus.components.catalog.domain.service.skills import exported
 from taktus.components.governance.application.service import Drifts
@@ -186,7 +187,9 @@ class SkillLifecycle:
     async def register_directory(
         self, tenant: Tenant, root: Path, version: str, by: str | None = None
     ) -> tuple[list[SkillVersion], list[tuple[Path, InvalidSkill]]]:
-        """Every skill under a `skills/` directory below `root`, registered as a draft."""
+        """Every skill under a `skills/` directory below `root`, registered as a draft. A skill
+        carrying a `scaffold.yaml` is a method scaffold, registered with the origin `curated`
+        (ADR-0307 §2); its declaration was held to its format when it was read."""
         registered: list[SkillVersion] = []
         refused: list[tuple[Path, InvalidSkill]] = []
         for directory, parsed in skills_below(root):
@@ -198,7 +201,12 @@ class SkillLifecycle:
                     tenant,
                     parsed,
                     version,
-                    SkillOrigin(kind=OriginKind.BUNDLE, source=str(directory)),
+                    SkillOrigin(
+                        kind=OriginKind.CURATED
+                        if SCAFFOLD_YAML in parsed.texts
+                        else OriginKind.BUNDLE,
+                        source=str(directory),
+                    ),
                     by=by,
                 )
             )

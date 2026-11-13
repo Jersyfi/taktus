@@ -78,6 +78,7 @@ taktus/
 ├── deploy/{docker,k8s,backup,docs}/   # docker/compose.yml: Taktus and PostgreSQL, `make up`; compose.reference-worker.yml: the worker layered in for development; compose.dev.yml: the development database; backup/: the image of the database backup job (ADR-0087); docs/: how the documentation site is uploaded to web hosting (DEC-0234)
 ├── blueprints/{dev-orchestration,it-operations,self-operation,finance}/   # README.md: the blueprints and the example domains; self-operation: what Taktus runs for itself — S-01 the removal test, weekly; finance: a description
 ├── examples/processes/              # process bundles that run as they are; each exercised by a test
+├── scaffolds/skills/                # the method scaffolds the catalogue ships: development, process automation, analysis — curated skills with a scaffold.yaml (ADR-0307)
 ├── web/                             # the web app: SvelteKit, TypeScript, a static build with the route after `#`, built into the image and served by the `api` role at {prefix}/app/; every link a channel carries to a report opens its page there (ADR-0120); tests beside the code; `make gate-web` (ADR-0063)
 │
 ├── tests/
@@ -382,7 +383,14 @@ role it would tie the core to a model stack and the removal test would be lost.
   recurred, scores its rounds, approves it by rule at level 4 once n rounds passed, puts it into
   production and falls it back by rule; `CatalogGuidance` answers the run's `Guidance` port,
   and the postgres adapter keeps the tables `skill_version`, `skill_ownership`, `skill_policy`,
-  `agent_core` and `role_profile` (ADR-0163). The models
+  `agent_core` and `role_profile` (ADR-0163). A skill that carries a `scaffold.yaml` is a
+  method scaffold and is registered with the origin `curated` (ADR-0307); `taktusctl bundle
+  check` reads the declaration through `scaffold_of` (`adapters/driving/cli/bundle_command.py`),
+  and never as a bundle. `InstanceScaffolds` (`composition/scaffolds.py`) reads a scaffold at
+  its version in production, or a check at its newest readable one, and resolves the repository
+  and the knowledge system by capability for the catalogue's `ScaffoldProjects`, which checks a
+  project against it and furnishes the missing artifacts. `shipped.json` lists
+  `repository.files.dates`. The models
   configured in `TAKTUS_MODELS` reach the run as one pool in chain order
   (`composition/execution.py`, `composition/settings.py`, ADR-0116), and each is held to the
   model contract's suite with its own endpoint (`composition/conformance.py`); deadlines and

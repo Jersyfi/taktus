@@ -7,6 +7,8 @@ CI. Nothing is stored and nothing is recorded.
 
 Below a directory it also checks every skill under a `skills/` directory: its `SKILL.md` held
 to the open format by the catalogue's rule, its name equal to its directory's (ADR-0162 §9).
+A skill that carries a `scaffold.yaml` is a method scaffold, and the file is held to its format
+as well (ADR-0307 §1); it is part of the skill, never checked as a bundle.
 
 Three refusals of registration need an instance, and this command does not make them: a step
 naming a credential that administers the instance's platform (ADR-0025), a raise of an
@@ -24,7 +26,13 @@ import typer
 import yaml
 
 from taktus.components.catalog.domain.model import InvalidSkill, SkillFile
+from taktus.components.catalog.domain.model.scaffold import (
+    SCAFFOLD_YAML,
+    InvalidScaffold,
+    Scaffold,
+)
 from taktus.components.catalog.domain.service import skills as rules
+from taktus.components.catalog.domain.service.scaffolds import parse_scaffold
 from taktus.components.process.application.service.register_version import parse_bundle
 from taktus.components.process.domain.model import InvalidProcess
 
@@ -56,7 +64,7 @@ def check(
 
     Exit code 1: a bundle would be refused; the findings say why.
 
-    Exit code 2: a file cannot be read, or no bundle was found.
+    Exit code 2: a file cannot be read, or neither a bundle nor a skill was found.
     """
     checked = refused = unreadable = skipped = 0
     for path, named in _bundles(paths):
@@ -97,7 +105,7 @@ def check(
         f"{unreadable} unreadable; {skipped} file(s) skipped as no process"
     )
     typer.echo(NOT_CHECKED)
-    if unreadable or total == 0:
+    if unreadable or (total == 0 and skills_ok + skills_refused == 0):
         raise typer.Exit(code=2)
     if refused or skills_refused:
         raise typer.Exit(code=1)
@@ -108,11 +116,20 @@ def _bundles(paths: Iterable[Path]) -> Iterable[tuple[Path, bool]]:
     whether it was named itself."""
     for path in paths:
         if path.is_dir():
-            found = (p for p in path.rglob("*") if p.suffix in SUFFIXES and p.is_file())
+            found = (
+                p
+                for p in path.rglob("*")
+                if p.suffix in SUFFIXES and p.is_file() and not _of_a_skill(p)
+            )
             for file in sorted(found):
                 yield file, False
         else:
             yield path, True
+
+
+def _of_a_skill(path: Path) -> bool:
+    """A scaffold's declaration beside a `SKILL.md`: part of the skill, never a bundle."""
+    return path.name == SCAFFOLD_YAML and (path.parent / rules.FILE).is_file()
 
 
 def _load(path: Path, *, named: bool) -> dict[str, Any] | None:
@@ -144,7 +161,29 @@ def skill_on_disk(directory: Path) -> SkillFile:
         front = yaml.safe_load(front_text)
     except yaml.YAMLError as error:
         raise InvalidSkill((f"{rules.FILE}: the front matter is not YAML: {error}",)) from error
-    return rules.parse(directory.name, front, body, files)
+    parsed = rules.parse(directory.name, front, body, files)
+    if SCAFFOLD_YAML in files:
+        try:
+            scaffold_of(parsed)
+        except InvalidScaffold as error:
+            raise InvalidSkill(error.findings) from error
+    return parsed
+
+
+def scaffold_of(file: SkillFile) -> Scaffold | None:
+    """The scaffold a skill declares in its `scaffold.yaml`, parsed by the catalogue's rule;
+    None for a skill that is no scaffold. InvalidScaffold where the file does not hold to its
+    format (ADR-0307 §1)."""
+    text = file.texts.get(SCAFFOLD_YAML)
+    if text is None:
+        if SCAFFOLD_YAML in file.files:
+            raise InvalidScaffold((f"{SCAFFOLD_YAML} is not a text file the catalogue keeps",))
+        return None
+    try:
+        declared = yaml.safe_load(text)
+    except yaml.YAMLError as error:
+        raise InvalidScaffold((f"{SCAFFOLD_YAML} is not YAML: {error}",)) from error
+    return parse_scaffold(file.name, declared, file.texts)
 
 
 def skills_below(root: Path) -> list[tuple[Path, SkillFile | InvalidSkill]]:

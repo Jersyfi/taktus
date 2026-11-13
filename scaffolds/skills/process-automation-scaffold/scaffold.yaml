@@ -1,0 +1,41 @@
+scaffold: 1
+work: process-automation
+artifacts:
+  - id: process-description
+    title: Process description
+    why: The goal and the steps, each with its method and the reason for it.
+    system: repository
+    path: process/description.md
+    shape: file
+    template: templates/process-description.md
+    maintained_days: 90
+  - id: takeover-instructions
+    title: Takeover instructions
+    why: How a person runs the process without Taktus, step by step.
+    system: repository
+    path: process/takeover.md
+    shape: file
+    template: templates/takeover.md
+    maintained_days: 60
+  - id: anchors
+    title: Anchors
+    why: The acts that stay with a person at every level of autonomy.
+    system: repository
+    path: process/anchors.md
+    shape: file
+    template: templates/anchors.md
+    maintained_days: 365
+  - id: evaluation-cases
+    title: Evaluation cases
+    why: Inputs with the result the process must reach, so that a change can be held to them.
+    system: repository
+    path: process/cases
+    shape: directory
+    template: templates/case.md
+    maintained_days: 180
+  - id: systems
+    title: Systems
+    why: Every system the process reads or writes, by the capability it needs.
+    system: knowledge
+    page: Systems
+    template: templates/systems.md
