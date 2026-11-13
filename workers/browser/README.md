@@ -61,6 +61,8 @@ check, and estimates each at `TAKTUS_BROWSER_CHECK_SECONDS` compute seconds (8 b
 Its image is `Dockerfile` in this directory (`docker build -f workers/browser/Dockerfile .`):
 the driver at the exact versions `requirements.txt` names — the extra `browser` of
 `pyproject.toml`, which the tests run with — and the headless Chromium of that release.
+Playwright brings its own Node runtime, so the image scan judges the driver's release too: a
+driver is raised when its runtime carries a fixed high or critical vulnerability.
 
 ## Proven
 
