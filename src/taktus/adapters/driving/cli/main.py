@@ -60,7 +60,8 @@ owner the duties of their domains and generates the conformity evidence of their
 (ADR-0259, ADR-0280). `stage` declares a tenant's introduction in stages, shows each with its
 figures and what is missing, and opens one as a person (ADR-0137). `skill` registers, evaluates,
 approves and puts skills into production, and prints the skill part of a process's takeover
-instructions (ADR-0162). `process export` writes a process version as one package of plain
+instructions (ADR-0162). `scaffold` checks a project against a method scaffold and furnishes
+what it is missing (ADR-0308). `process export` writes a process version as one package of plain
 files, read without Taktus (ADR-0285). `takeover` shows a process's takeover instructions and
 records a trial of them by a person (ADR-0180). `agent` proposes a shared agent's core, sets its
 role profiles, calls it and draws it (ADR-0163). `domain` admits a domain blueprint, instantiates
@@ -121,6 +122,7 @@ from taktus.adapters.driving.cli import (
     residency_command,
     resume_command,
     run_command,
+    scaffold_command,
     signal_command,
     skill_command,
     sources_command,
@@ -200,6 +202,7 @@ app.add_typer(takeover_command.takeover, name="takeover")
 app.add_typer(process_command.process, name="process")
 app.add_typer(stage_command.stage, name="stage")
 app.add_typer(skill_command.skill, name="skill")
+app.add_typer(scaffold_command.scaffold, name="scaffold")
 app.add_typer(agent_command.agent, name="agent")
 app.add_typer(owner_channel_command.owner_channel, name="owner-channel")
 app.add_typer(guides_command.guides, name="guides")

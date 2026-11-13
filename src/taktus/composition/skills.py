@@ -232,7 +232,9 @@ class SkillLifecycle:
                 subject=skill_id,
                 active=Guide(skills={version.name: in_force}),
                 proposed=Guide(skills={version.name: version.version}),
-                evaluation_id=f"evl_{round_id}_{using.process_id}",
+                # The evaluation's runs are named after it, and a connector step's idempotency
+                # key after the run: `@` is outside the key's alphabet (ADR-0308).
+                evaluation_id=f"evl_{round_id.replace('@', '.')}_{using.process_id}",
             )
             if evaluation is not None:
                 started.append(evaluation.id)

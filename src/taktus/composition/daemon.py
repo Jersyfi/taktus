@@ -263,6 +263,7 @@ from taktus.composition.replies import ConnectorReplies
 from taktus.composition.reports import ReadingWiring, reading_tick, reading_wiring
 from taktus.composition.residency import PoolBindings
 from taktus.composition.run_answers import RunAnswers
+from taktus.composition.scaffolds import InstanceScaffolds, LoopbackScaffolds
 from taktus.composition.sessions import SessionsInChat, SourceKnowledge, SourceSystem
 from taktus.composition.settings import (
     CONNECT_KEY,
@@ -1035,6 +1036,8 @@ async def wire(
                     persistence,
                     clock,
                 ),
+                # A project checked and furnished against its method scaffold (ADR-0308).
+                scaffolds=LoopbackScaffolds(InstanceScaffolds(skill_catalog, pools.connectors)),
             )
             outbox = PostgresOutbox(persistence)
             complete_intake = CompleteIntakeHandler(

@@ -206,9 +206,8 @@ Furnishing creates the files and pages from templates. A template is a structure
 placeholders, not content. Repository artifacts arrive as a pull request, and nothing checks that
 a person merges it. A page needs the shelf and the book of the project's place to exist; the
 connector creates pages only, and a missing book is `not_found`. Nothing furnishes a project on a
-schedule or by itself. The check and the furnishing are acts a caller asks for, through the
-application service. No process of a blueprint runs them yet, and the loopback connector does not
-serve them.
+schedule or by itself. The check and the furnishing are acts a caller asks for. ADR-0308 gives
+them a surface: the loopback connector and `taktusctl scaffold`.
 
 A scaffold reaches production through rounds on the cases of the processes that use it, as every
 skill does. A scaffold no process uses with evaluation cases stays a draft. It can be checked

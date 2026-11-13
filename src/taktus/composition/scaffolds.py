@@ -13,6 +13,9 @@ and the connectors that serve the repository and the knowledge system, resolved 
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import Any
+
 from taktus.adapters.driving.cli.bundle_command import scaffold_of
 from taktus.components.catalog.application.service import SkillCatalog
 from taktus.components.catalog.application.service.scaffolds import (
@@ -20,11 +23,13 @@ from taktus.components.catalog.application.service.scaffolds import (
     Furnished,
     Project,
     ScaffoldProjects,
+    furnished,
+    summary,
 )
 from taktus.components.catalog.domain.model import SkillError, SkillStage, SkillVersion
 from taktus.components.catalog.domain.model.scaffold import ProjectCheck, Scaffold
 from taktus.components.run.ports import ConnectorPool
-from taktus.ports.connector import ActionConnector
+from taktus.ports.connector import ActionConnector, CallContext
 
 REPOSITORY = "repository.files"
 KNOWLEDGE = "knowledge.pages"
@@ -83,3 +88,51 @@ class InstanceScaffolds:
     async def _resolved(self, capability: str) -> ActionConnector | None:
         resolved = await self._connectors.resolve(capability)
         return None if resolved is None else resolved.connector
+
+
+class LoopbackScaffolds:
+    """The loopback connector's `Scaffolds`: a process checks and furnishes a project through
+    `orchestrator.scaffolds` (ADR-0308). The call's tenant, identity and credentials are the
+    ones the reads and writes act under, and its run, step and attempt name every write's key.
+    A refusal of the catalogue — no such scaffold, none in production — is a `ValueError`, which
+    the connector reports as `invalid`."""
+
+    def __init__(self, scaffolds: InstanceScaffolds) -> None:
+        self._scaffolds = scaffolds
+
+    async def check(self, context: CallContext, input: dict[str, Any]) -> dict[str, Any]:
+        name, project, acting = _read(context, input)
+        try:
+            found = await self._scaffolds.check(context.tenant, name, project, acting)
+        except SkillError as error:
+            raise ValueError(f"{error.reason}: {error}") from error
+        return summary(found)
+
+    async def furnish(self, context: CallContext, input: dict[str, Any]) -> dict[str, Any]:
+        name, project, acting = _read(context, input)
+        try:
+            done = await self._scaffolds.furnish(context.tenant, name, project, acting)
+        except SkillError as error:
+            raise ValueError(f"{error.reason}: {error}") from error
+        return furnished(done)
+
+
+def _read(context: CallContext, input: Mapping[str, Any]) -> tuple[str, Project, Acting]:
+    name, branch, place = input.get("scaffold"), input.get("branch"), input.get("place")
+    if not isinstance(name, str) or not name:
+        raise ValueError("`scaffold` names the scaffold")
+    if not isinstance(branch, str) or not branch:
+        raise ValueError("`branch` names the project's branch")
+    where: tuple[str, str] | None = None
+    if place is not None:
+        names = place if isinstance(place, list) else []
+        if len(names) != 2 or not all(isinstance(n, str) and n for n in names):
+            raise ValueError("`place` is two names, shelf and book")
+        where = (str(names[0]), str(names[1]))
+    acting = Acting(
+        tenant=context.tenant,
+        identity=context.identity,
+        run_id=f"{context.run_id}.{context.step_id}.{context.attempt}",
+        credentials=context.credentials,
+    )
+    return name, Project(branch, where), acting
