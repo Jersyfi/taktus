@@ -123,14 +123,18 @@ async def test_software_operations_is_instantiated_in_dialogue_at_level_two_or_b
     directory = BLUEPRINTS / "software-operations"
     domains, instance = await instantiated(world, directory)
     found = admitted(directory)
-    assert instance.left_out == ("B-8.04-store", "B-8.05-site")
+    assert instance.left_out == ("B-8.04-store", "B-8.04-serverless", "B-8.05-site")
     errors = instance.binding("errors.issues")
     assert errors is not None and errors.adapter == "connector.sentry", (
         "a capability is bound to an adapter that declares it"
     )
 
     instance = await domains.instances.propose(TENANT, found, instance.id, by=WHO)
-    assert len(instance.proposed) == len(found.blueprint.processes) - 2
+    with_bundle = [p for p in found.blueprint.processes if p.bundle is not None]
+    assert len(instance.proposed) == len(with_bundle) - len(instance.left_out), (
+        "every process with a bundle is proposed, but one of each set of alternatives; a process "
+        "the blueprint names without a bundle is served elsewhere and proposes nothing"
+    )
     for made in instance.proposed:
         proposal = await world.proposals.find(TENANT, made.proposal)
         version = parse_bundle(proposal.bundle)
