@@ -19,6 +19,7 @@ from datetime import datetime
 from typing import Any
 
 from taktus.components.command.domain.model.planning import (
+    AdministrationPart,
     AgentPart,
     DomainPart,
     Estimate,
@@ -53,6 +54,7 @@ REVISABLE = frozenset(
         "results_in",
         "agent",
         "domain",
+        "administration",
         "describes",
     }
 )
@@ -104,6 +106,8 @@ class OpenDraft:
     """A domain draft's instance and its open questions (ADR-0289)."""
     describes: str | None = None
     """The process the goal describes (ADR-0290)."""
+    administration: AdministrationPart | None = None
+    """The administrative act the plan carries out once commissioned (ADR-0296)."""
 
 
 @dataclass(frozen=True)
@@ -159,6 +163,7 @@ class PlanDialogue:
             agent=command.agent,
             domain=command.domain,
             describes=command.describes,
+            administration=command.administration,
             changed_by=command.command.identity,
             changed_at=self._clock.now(),
         )

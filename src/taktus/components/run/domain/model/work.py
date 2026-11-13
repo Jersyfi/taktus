@@ -620,6 +620,10 @@ class ConnectorRule(Value):
     data_class: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_-]*$")
     """The class of the data the call carries, as the process declares it: the tenant's
     residency rule for that class decides whether the connector may be called (ADR-0281 §2)."""
+    connector: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9._-]*$")
+    """The configured connector that serves this step, by the identifier the instance's
+    configuration gives it, where a capability is configured more than once (ADR-0311). None:
+    the first configured connector that serves the capability, as before."""
 
     @property
     def capability(self) -> str:
@@ -663,9 +667,81 @@ class DeviationStatistic(Value):
     minimum: int = Field(default=7, ge=1, le=366)
 
 
-type StatisticsWork = DeviationStatistic
-"""What a `statistics` step computes. One statistic in this version; the next joins it as a
-union discriminated by `statistic`."""
+ALPHAS = ("0.10", "0.05", "0.01", "0.001")
+"""The significance levels a test of two rates may be held to: a closed set, each with its fixed
+critical value (`domain.service.statistics`), so that the decision needs no approximation."""
+
+type KeyPath = tuple[str, ...]
+
+
+class SignificanceStatistic(Value):
+    """Whether two rates differ beyond chance: a two-sided test of two proportions, pooled
+    (`domain.service.statistics`, ADR-0313). `rows` is a report's rows, usually a reference to an
+    analytics reading; each row names its variant at the path `variant`, its event at `event`
+    and its count at `count`, every path a list of keys. The rows of the `exposure` event are a
+    variant's trials, the rows of the `conversion` event its successes, summed per variant.
+    `control` and `treatment` are the two variants' values. Whether the difference is
+    significant is decided by comparing the statistic with the fixed critical value of `alpha`,
+    in decimal arithmetic; the same rows always give the same decision."""
+
+    statistic: Literal["significance"]
+    rows: Any
+    variant: KeyPath = Field(min_length=1)
+    event: KeyPath = Field(min_length=1)
+    count: KeyPath = Field(min_length=1)
+    control: str = Field(min_length=1)
+    treatment: str = Field(min_length=1)
+    exposure: str = Field(min_length=1)
+    conversion: str = Field(min_length=1)
+    alpha: Literal["0.10", "0.05", "0.01", "0.001"] = "0.05"
+
+    @model_validator(mode="after")
+    def _two_of_each(self) -> SignificanceStatistic:
+        if self.control == self.treatment:
+            raise ValueError("control and treatment must be two different variants")
+        if self.exposure == self.conversion:
+            raise ValueError("exposure and conversion must be two different events")
+        return self
+
+
+class TotalStatistic(Value):
+    """Every group's amount summed over the days of a series, and the series' total
+    (`domain.service.statistics`, ADR-0310): the week's cost of each service from a costs
+    reading. `days` is the series in the shape `deviation` reads. The result is exact: the
+    same series always gives the same sums, in decimal arithmetic."""
+
+    statistic: Literal["total"]
+    days: Any
+
+
+class CountStatistic(Value):
+    """The items of a list counted per value of a field (`domain.service.statistics`,
+    ADR-0309): the low ratings of a store counted per app version. `items` is a list of
+    objects; `by` a dotted path into each. An item without the field, or with null, counts
+    under null. The result is exact: the same list always gives the same counts."""
+
+    statistic: Literal["count"]
+    items: Any
+    by: str = Field(min_length=1)
+
+
+type StatisticsWork = DeviationStatistic | SignificanceStatistic | TotalStatistic | CountStatistic
+"""What a `statistics` step computes, chosen by `statistic`."""
+
+_STATISTICS: dict[str, type[SignificanceStatistic | TotalStatistic | CountStatistic]] = {
+    "significance": SignificanceStatistic,
+    "total": TotalStatistic,
+    "count": CountStatistic,
+}
+
+
+def _statistic(given: Mapping[str, Any]) -> StatisticsWork:
+    """The statistic `given` names; any name but `significance`, `total` and `count` is read as
+    a `deviation`, so that a wrong name is refused under `statistic` itself."""
+    chosen = _STATISTICS.get(given.get("statistic"))  # type: ignore[arg-type]
+    if chosen is not None:
+        return chosen.model_validate(given)
+    return DeviationStatistic.model_validate(given)
 
 
 class WaitUntil(Value):
@@ -1243,7 +1319,7 @@ def parse_work(
         if step.method is Method.STATISTICS:
             if given is None:
                 raise UnsupportedWork(step.id, "a statistics step names its statistic under `work`")
-            return DeviationStatistic.model_validate(given)
+            return _statistic(given)
         if step.method is Method.WAIT:
             return WaitWork.model_validate(given or {})
         if step.method is Method.WORKER:
@@ -1461,8 +1537,12 @@ def referenced_values(work: Work) -> list[Any]:
         return [work.left.items, work.right.items]
     if isinstance(work, RecurringRule):
         return [work.subscriptions, work.failures, work.as_of]
-    if isinstance(work, DeviationStatistic):
+    if isinstance(work, DeviationStatistic | TotalStatistic):
         return [work.days]
+    if isinstance(work, SignificanceStatistic):
+        return [work.rows]
+    if isinstance(work, CountStatistic):
+        return [work.items]
     if isinstance(work, CommitTitleRule):
         return [work.title, work.number, work.labels, work.files, work.proposal]
     if isinstance(work, WaitWork) and work.until is not None:

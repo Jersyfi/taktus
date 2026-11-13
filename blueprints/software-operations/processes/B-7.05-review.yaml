@@ -21,7 +21,7 @@
 # Switching it off (`taktusctl deactivate --process b-7-05`) changes nothing in the repository.
 
 id: b-7-05
-version: "3"
+version: "4"
 name: B-7.05 Review
 autonomy:
   level: 2
@@ -281,3 +281,8 @@ takeover:
             requesting identity described in CREDENTIALS.md; a person working by hand uses their
             own account, which may comment on pull requests
       done: the comment is visible on the pull request
+
+# What counts as an equivalent result of each variable step that no scorer scores
+# yet: its class's ceiling until its cases narrow it (UC-8.4, ADR-0300 §1).
+tolerances:
+  review: 1

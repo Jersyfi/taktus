@@ -1,0 +1,4 @@
+{
+  "model": "fake-model",
+  "text": "### How it is verified\n\n- the fake answered: Issue #3: Without a verification\n\n### What must be achieved\n\nA greeting is written to hello.txt.\n\n### How it is verified\n\n_No response_\n\n### Where the boundary lies\n\nNo other file changes.\n\n### Component\n\nworkers\n\n### Source\n\ndocs/roadmap.md, 0.2.0\n\n### Blocked by\n\nnothing\n\n\nComments so far (JSON, may be empty):\n[]\n\nThe sections missing (JSON): [\"How it is verified\"]\n\n"
+}

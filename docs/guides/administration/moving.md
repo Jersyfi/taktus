@@ -26,7 +26,8 @@ new instance where it waited.
 
 The holder of the administration key can do the same on the HTTP surface:
 `GET /administration/tenants/<tenant>/export` and `POST /administration/tenants/import` with the
-export as the body.
+export as the body. The web app's page *Tenants* does both: **Export** next to each tenant saves
+the file, and **Import and check** takes a file and says what each check found.
 
 **Keep the file as you keep a backup.** It holds the tenant's data in clear, and the digests of
 its account keys. Taktus does not encrypt it.

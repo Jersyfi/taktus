@@ -4,9 +4,10 @@ a person's own view (ADR-0241 §1, ADR-0244).
 The facts come from components that never import each other: the process component's active
 versions, value streams, takeover trials and proposals; the catalog's removal verdicts; the
 identity component's structure; accounting's spend; the value component's ledger and stated
-basis; and the overview level's counts. The value component computes its figures from them;
-`reporting` selects among them. Only the processes the reader may see are gathered: a process
-outside `visible` contributes nothing.
+basis; the overview level's counts; and the process level's and the run level's figures — the
+runs of a version, and what each run and each of its steps consumed (UC-6.10). The value
+component computes its figures from them; `reporting` selects among them. Only the processes
+the reader may see are gathered: a process outside `visible` contributes nothing.
 """
 
 from __future__ import annotations
@@ -14,11 +15,16 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from taktus.components.accounting.application.service.spend import SpendHandler, SpendOfProcess
 from taktus.components.catalog.domain.model import AdapterMaturity, AgentCore
 from taktus.components.governance.domain.model.domains import Domain
+from taktus.components.governance.domain.model.incident import (
+    Incident,
+    IncidentKind,
+    IncidentState,
+)
 from taktus.components.identity.application.service import IdentityDirectory
 from taktus.components.process.application.service.streams import ValueStreams
 from taktus.components.process.domain.model import Process, ProcessVersion, TakeoverTrial
@@ -29,6 +35,7 @@ from taktus.components.reporting.domain.model.signal import Corridor, Judged
 from taktus.components.reporting.domain.model.views import Shown, ViewConfiguration
 from taktus.components.reporting.domain.service import views as selection
 from taktus.components.reporting.domain.service import warehouse
+from taktus.components.reporting.domain.service.levels import RunLevel
 from taktus.components.run.domain.model import Run
 from taktus.components.value.application.query import ValueLedger
 from taktus.components.value.application.service import ValueBases
@@ -36,6 +43,7 @@ from taktus.components.value.domain.model import DiscoveredProcess, Figure, Valu
 from taktus.components.value.domain.service import figures as value
 from taktus.components.value.domain.service.proposals import proposals as proposed
 from taktus.composition.chains import chain_of
+from taktus.composition.evaluation_platform import RECONCILED
 from taktus.ports.clock import Clock
 from taktus.ports.connector import QUERYING
 from taktus.ports.ledger import Fact, Ledger
@@ -49,7 +57,40 @@ RUN_FIGURES = {
     "run.working": "runs of the process working now, by the run component's definition WORKING",
     "run.waiting": "runs of the process waiting now, by the run component's definition WAITING",
 }
-KNOWN = frozenset({*value.DEFINITIONS, *RUN_FIGURES, warehouse.FIGURE})
+LEVEL_FIGURES = {
+    "process.runs": "runs of the process's active version the reader may see, as the process "
+    "level draws them",
+    "run.consumed": "what the run has consumed so far of the quantity its unit names: the run "
+    "component's own sum (Run.consumed), as the run level shows it",
+    "step.consumed": "what one step of the run used of the quantity its unit names, as the run "
+    "component recorded it and the run level shows it",
+}
+"""The process level's and the run level's figures in the export (UC-6.10 §2, UC-5.7): each
+read from the level itself, so that the export carries the level's own value."""
+LIMIT_FIGURE = "limit.held_seconds"
+LIMIT_DEFINITION = (
+    "the seconds a unit limit held work in the tenant's watch window, where it held more runs "
+    "or longer than the watch allows: its harm report, with the change recommended, its cost "
+    "and its benefit in the basis (ADR-0282 §4, ADR-0299 §2)"
+)
+PLATFORM_FIGURES = {
+    "platform.cost": "what a connected evaluation platform computed for the run's traces, in "
+    "US dollars, as the last reconciliation read it",
+    "platform.cost.difference": "the platform's cost of the run less the run's own consumption "
+    "in US dollars, as the last reconciliation compared them",
+}
+"""A cost reconciliation's figures (UC-5.8, ADR-0306): read from the ledger, where Taktus keeps
+what the platform said, so that no figure exists only in the platform."""
+KNOWN = frozenset(
+    {
+        *value.DEFINITIONS,
+        *RUN_FIGURES,
+        *LEVEL_FIGURES,
+        *PLATFORM_FIGURES,
+        warehouse.FIGURE,
+        LIMIT_FIGURE,
+    }
+)
 """Every figure an owner hands in: what a view may name."""
 
 
@@ -159,6 +200,7 @@ class FigureReads:
         domains: Repository[Domain] | None = None,
         agents: Repository[AgentCore] | None = None,
         runs: Repository[Run] | None = None,
+        incidents: Repository[Incident] | None = None,
     ) -> None:
         """`domains`, `agents` and `runs` give the groups the balance is summed over: the
         governance component's domains, the catalogue's agents by their flow, the chains by
@@ -166,6 +208,9 @@ class FigureReads:
         self._domains = domains
         self._agents = agents
         self._runs = runs
+        self._incidents = incidents
+        """The governance component's incidents: a limit's harm report is a figure of the views
+        too (ADR-0299 §2). None: no limit figure is handed in."""
         self._processes = processes
         self._versions = versions
         self._streams = streams
@@ -265,7 +310,13 @@ class FigureReads:
             *index.figures,
             *units,
         ]
-        out = [shown(f) for f in figures] + await self._run_figures(reader, visible)
+        out = [
+            *(shown(f) for f in figures),
+            *await self._run_figures(reader, visible),
+            *await self._level_figures(reader, visible, since, end),
+            *await self._platform_figures(reader, visible, since, end),
+            *await self._limit_figures(tenant, visible),
+        ]
         return Gathered(
             shown=out,
             index=index,
@@ -307,6 +358,61 @@ class FigureReads:
             found.append(value.Group(scope="chain", subject=chain, processes=tuple(processes)))
         return found
 
+    async def _limit_figures(self, tenant: Tenant, visible: frozenset[str]) -> list[Shown]:
+        """A limit's harm report as a figure: the last one raised for each limit and still
+        open (ADR-0299 §2), once for the limit's unit — the views of the administrator and of
+        the team affected — and once for each visible process it held, which the views grouped
+        by process show. It names the limit, the work held, the change recommended with its
+        cost and benefit, and the role that owns the limit — never a person; a limit held per
+        person counts every person's holds together (ADR-0282 §6)."""
+        if self._incidents is None:
+            return []
+        async with self._work.transaction(tenant):
+            reports = [
+                i
+                for i in await self._incidents.list(tenant)
+                if i.kind is IncidentKind.LIMIT_HARMFUL and i.state is IncidentState.OPEN
+            ]
+        last: dict[str, Incident] = {}
+        for report in sorted(reports, key=lambda i: (i.raised_at, i.id)):
+            last[str(report.facts.get("limit") or report.process_id)] = report
+        out: list[Shown] = []
+        for name, report in sorted(last.items()):
+            window = report.facts.get("window_days")
+            basis = {"limit": name, "incident": report.id, **dict(report.facts)}
+            subjects: list[tuple[Literal["unit", "process"], str, Any]] = [
+                (
+                    "unit",
+                    str((report.facts.get("unit")) or "company"),
+                    report.facts.get("held_seconds"),
+                )
+            ]
+            for key, seconds in sorted(report.facts.items()):
+                process = key.removeprefix("held_seconds.")
+                if key.startswith("held_seconds.") and process in visible:
+                    subjects.append(("process", process, seconds))
+            for scope, subject, held in subjects:
+                out.append(
+                    Shown(
+                        id=LIMIT_FIGURE,
+                        component="governance",
+                        definition=LIMIT_DEFINITION,
+                        unit="seconds",
+                        scope=scope,
+                        subject=subject,
+                        since=None
+                        if not isinstance(window, float)
+                        else report.raised_at - timedelta(days=window),
+                        until=report.raised_at,
+                        value=float(held) if isinstance(held, int | float) else None,
+                        withheld=None if isinstance(held, int | float) else "no seconds read",
+                        method="a rule over the ledger's unit_limit.held and "
+                        "unit_limit.released (ADR-0282 §4)",
+                        basis=basis,
+                    )
+                )
+        return out
+
     async def _run_figures(self, reader: Reader, visible: frozenset[str]) -> list[Shown]:
         """The overview's own counts, read from the overview level itself (UC-6.10)."""
         level = await self.levels.overview(reader)
@@ -328,6 +434,97 @@ class FigureReads:
                             method="counted now, as the overview counts it",
                         )
                     )
+        return out
+
+    async def _platform_figures(
+        self, reader: Reader, visible: frozenset[str], since: datetime, until: datetime
+    ) -> list[Shown]:
+        """The last reconciliation of each run in the period, for the runs the read API shows
+        the reader (ADR-0306): the platform's cost, and its difference from the run's own."""
+        async with self._work.transaction(reader.tenant):
+            entries = await self._ledger.of_kinds(
+                reader.tenant, [RECONCILED], since=since, until=until
+            )
+        last = {e.refs.run_id: e for e in entries if e.refs.run_id is not None}
+        out: list[Shown] = []
+        for run_id, entry in sorted(last.items()):
+            spent = None if entry.consumption is None else entry.consumption.currency
+            platform = None if spent is None else spent.get("usd")
+            if platform is None:
+                continue
+            level = await self.levels.run(reader, run_id)
+            if level is None or level.run.process_version.rpartition("@")[0] not in visible:
+                continue
+            own = next((f.value for f in level.run.consumed if f.name == "currency.usd"), None)
+            basis = {"process_version": level.run.process_version, "outcome": entry.outcome}
+            values = {
+                "platform.cost": platform,
+                "platform.cost.difference": None if own is None else platform - own,
+            }
+            for id, amount in values.items():
+                out.append(
+                    Shown(
+                        id=id,
+                        component="catalog",
+                        definition=PLATFORM_FIGURES[id],
+                        unit="usd",
+                        scope="run",
+                        subject=run_id,
+                        since=since,
+                        until=until,
+                        value=amount,
+                        withheld=None
+                        if amount is not None
+                        else "the run consumed nothing in US dollars",
+                        method="read from the platform and recorded by the reconciliation",
+                        basis=basis,
+                    )
+                )
+        return out
+
+    async def _level_figures(
+        self, reader: Reader, visible: frozenset[str], since: datetime, until: datetime
+    ) -> list[Shown]:
+        """The process level's count of runs and the run level's consumption, read from the
+        levels themselves, through the one predicate the read API asks: a process or a run the
+        reader may not see contributes nothing (UC-6.10 §2). A run is in the period when it was
+        created in it."""
+        overview = await self.levels.overview(reader)
+        out: list[Shown] = []
+        for area in overview.areas:
+            for summary in area.processes:
+                if summary.id not in visible:
+                    continue
+                active = await self.levels.process(reader, summary.id)
+                if active is None:
+                    continue
+                out.append(
+                    Shown(
+                        id="process.runs",
+                        component="run",
+                        definition=LEVEL_FIGURES["process.runs"],
+                        unit="runs",
+                        scope="process",
+                        subject=summary.id,
+                        value=len(active.runs),
+                        method="counted, as the process level draws its runs",
+                        basis={"version": active.process.version},
+                    )
+                )
+                for ref in active.process.versions:
+                    level = (
+                        active
+                        if ref.version == active.process.version
+                        else await self.levels.process(reader, summary.id, ref.version)
+                    )
+                    if level is None:
+                        continue
+                    for at in level.runs:
+                        if not since <= at.created_at <= until:
+                            continue
+                        run = await self.levels.run(reader, at.id)
+                        if run is not None:
+                            out.extend(_consumed(summary.id, run, since, until))
         return out
 
     async def _process_facts(
@@ -485,3 +682,44 @@ def _digest(document: Mapping[str, Any]) -> str:
 
 def known() -> Sequence[str]:
     return sorted(KNOWN)
+
+
+def _consumed(process: str, level: RunLevel, since: datetime, until: datetime) -> list[Shown]:
+    """What the run and each of its steps consumed, one figure for each quantity the run level
+    names, with the level's own name and value."""
+    run = level.run
+    basis = {"process": process, "process_version": run.process_version}
+    out = [
+        Shown(
+            id="run.consumed",
+            component="run",
+            definition=LEVEL_FIGURES["run.consumed"],
+            unit=f.name,
+            scope="run",
+            subject=run.id,
+            since=since,
+            until=until,
+            value=f.value,
+            method="summed by the run component, as the run level shows it",
+            basis=basis,
+        )
+        for f in run.consumed
+    ]
+    for step in level.steps:
+        out.extend(
+            Shown(
+                id="step.consumed",
+                component="run",
+                definition=LEVEL_FIGURES["step.consumed"],
+                unit=f.name,
+                scope="step",
+                subject=f"{run.id}/{step.id}",
+                since=since,
+                until=until,
+                value=f.value,
+                method="recorded by the run component, as the run level shows it",
+                basis={**basis, "attempt": step.attempt},
+            )
+            for f in step.consumption
+        )
+    return out

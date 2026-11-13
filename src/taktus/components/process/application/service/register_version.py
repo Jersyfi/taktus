@@ -637,6 +637,7 @@ def read_bundle(bundle: Document) -> tuple[ProcessVersion, list[str]]:
             open_work=_open_work(bundle.get("open_work")),
             deadlines=_deadlines(bundle.get("deadlines")),
             evaluation=_evaluation(bundle.get("evaluation")),
+            tolerances=_tolerances(bundle.get("tolerances")),
             case=bundle.get("case"),
             takeover=_takeover(bundle.get("takeover")),
             escalation=_escalation(bundle.get("escalation")),
@@ -656,6 +657,12 @@ def read_bundle(bundle: Document) -> tuple[ProcessVersion, list[str]]:
             instructed.findings(version.takeover, version.steps, credentials_named(version))
         )
     refused.extend(evaluation.findings(version.steps, version.work))
+    refused.extend(
+        f"the {version.step(step_id).method} step {step_id!r} varies and declares no tolerance: "
+        "what counts as an equivalent result, under `tolerances` or `evaluation.tolerances`, "
+        "within its class's ceiling (UC-8.4, ADR-0300 §1)"
+        for step_id in version.undeclared_tolerances()
+    )
     refused.extend(frame.findings(version.steps, version.work, version.inputs))
     refused.extend(partners.findings(version))
     refused.extend(queries.findings(version.steps, version.work))
@@ -852,6 +859,18 @@ def _evaluation(raw: Any) -> EvaluationSpec | None:
         return EvaluationSpec.model_validate(raw)
     except ValidationError as error:
         raise InvalidProcess(tuple(_describe("evaluation", error))) from error
+
+
+def _tolerances(raw: Any) -> dict[str, float]:
+    """`tolerances`: per variable step, what counts as an equivalent result, before any case
+    exists (ADR-0300 §1)."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, Mapping) or not all(
+        isinstance(share, int | float) and not isinstance(share, bool) for share in raw.values()
+    ):
+        raise InvalidProcess(("`tolerances` maps a step to a share from 0 to 1",))
+    return {str(step): float(share) for step, share in raw.items()}
 
 
 def _slo(raw: Any) -> Slo | None:

@@ -134,6 +134,7 @@ def every_field() -> dict[str, Any]:
             "at_limit": {"escalate": "operations"},
         },
     }
+    document["tolerances"] = {"overreach": 0.25}  # unscored, declared before cases (ADR-0300)
     document["evaluation"] = {
         "cases": [
             {

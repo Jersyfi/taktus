@@ -31,6 +31,7 @@ from taktus.adapters.driving.cli.wiring import (
     ShippedConnector,
     Wiring,
 )
+from taktus.adapters.driving.inventory import read_recorded
 from taktus.components.catalog.application.service import RunConformance
 from taktus.components.catalog.domain.model import AdapterMaturity
 from taktus.components.catalog.ports import NotConfigured, NotRunnable
@@ -139,12 +140,15 @@ def listing(
         str,
         typer.Option("--tenant", envvar="TAKTUS_TENANT", help="The tenant whose records they are."),
     ] = DEFAULT_TENANT,
+    by: Annotated[
+        str, typer.Option("--identity", envvar="TAKTUS_IDENTITY", help="Who reads, for the ledger.")
+    ] = "operator",
 ) -> None:
     """List every configured adapter with its maturity and what keeps it from *verified*.
 
     A connector that serves a vendor's MCP server says so, and under which manifest; without
     one it is read only and stays experimental (ADR-0117). It reads the declarations and the
-    records; it runs no suite and records nothing.
+    records and runs no suite; the read is an entry of the tenant's ledger (NTC-0273).
     """
     wiring: Wiring = ctx.obj
     where = Path(os.path.expanduser(state_dir))
@@ -153,7 +157,9 @@ def listing(
         async with wiring.services(state_dir=where, worker_endpoint=worker) as services:
             if services.catalogue is None:
                 raise NotOperable("this instance keeps no catalogue of its adapters")
-            return await services.catalogue.entries(tenant), services.catalogue.shipped()
+            entries = await services.catalogue.entries(tenant)
+            await read_recorded(services.ledger, services.work, tenant, "adapter.list", by)
+            return entries, services.catalogue.shipped()
 
     try:
         entries, shipped = asyncio.run(act())

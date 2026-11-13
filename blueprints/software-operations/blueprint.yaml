@@ -19,6 +19,7 @@ metadata:
 requires:
   connectors:
     - capability: accounts.customers
+    - capability: accounting.invoices
     - capability: accounts.requests
     - capability: analytics.reports
     - capability: audit.events
@@ -55,6 +56,7 @@ requires:
     - capability: payments.subscriptions
     - capability: repository.advisories
     - capability: repository.branches
+    - capability: repository.code
     - capability: repository.comments
     - capability: repository.files
     - capability: repository.issues
@@ -102,7 +104,7 @@ value_criteria:
 # bundles of one process are alternatives: an instance keeps one (B-8.04, B-8.05).
 processes:
   - { id: B-1.01, name: B-1.01 Daily cost, bundle: processes/B-1.01-daily-cost.yaml }
-  - { id: B-1.02, name: B-1.02 Run times, bundle: processes/B-1.02-run-times.yaml }
+  - { id: B-1.02, name: B-1.02 Cost drivers, bundle: processes/B-1.02-run-times.yaml }
   - { id: B-1.03, name: B-1.03 Runaway guard, bundle: processes/B-1.03-runaway.yaml }
   - { id: B-1.04, name: B-1.04 Error rate, bundle: processes/B-1.04-error-rate.yaml }
   - { id: B-1.05, name: B-1.05 New errors, bundle: processes/B-1.05-new-errors.yaml }
@@ -118,6 +120,7 @@ processes:
   - { id: B-2.02, name: B-2.02 Cost per case, bundle: processes/B-2.02-cost-per-case.yaml }
   - { id: B-2.03, name: B-2.03 Quotas, bundle: processes/B-2.03-quotas.yaml }
   - { id: B-2.04, name: B-2.04 Retired models, bundle: processes/B-2.04-retired-models.yaml }
+  - { id: B-2.06, name: B-2.06 Subscription inventory, bundle: processes/B-2.06-subscription-inventory.yaml }
   - { id: B-3.01, name: B-3.01 Sorting the inbox, bundle: processes/B-3.01-inbox-sorting.yaml }
   - { id: B-3.02, name: B-3.02 Drafting a reply, bundle: processes/B-3.02-draft-reply.yaml }
   - { id: B-3.04, name: B-3.04 Paid but not unlocked, bundle: processes/B-3.04-paid-not-unlocked.yaml }
@@ -139,6 +142,7 @@ processes:
   - { id: B-6.03, name: B-6.03 Recurring revenue and churn, bundle: processes/B-6.03-recurring-revenue.yaml }
   - { id: B-6.04, name: B-6.04 Failed payments, bundle: processes/B-6.04-failed-payments.yaml }
   - { id: B-6.06, name: B-6.06 Outgoing invoices, bundle: processes/B-6.06-outgoing-invoices.yaml }
+  - { id: B-6.07, name: B-6.07 Price experiments, bundle: processes/B-6.07-price-experiments.yaml }
   - { id: B-7.01, name: B-7.01 Triage, bundle: processes/B-7.01-triage.yaml }
   - { id: B-7.04, name: B-7.04 Keeping pull requests mergeable, bundle: processes/B-7.04-mergeable.yaml }
   - { id: B-7.05, name: B-7.05 Review, bundle: processes/B-7.05-review.yaml }
@@ -154,6 +158,7 @@ processes:
   - { id: B-8.03, name: B-8.03 Store submission, bundle: processes/B-8.03-store-submission.yaml }
   - { id: B-8.04, name: B-8.04 Staged rollout, bundle: processes/B-8.04-staged-rollout.yaml }
   - { id: B-8.04-store, name: "B-8.04 Staged rollout, at an app store", bundle: processes/B-8.04-store-rollout.yaml }
+  - { id: B-8.04-serverless, name: "B-8.04 Staged rollout, on a serverless platform", bundle: processes/B-8.04-traffic-canary.yaml }
   - { id: B-8.05, name: B-8.05 Web deployment, bundle: processes/B-8.05-web-deployment.yaml }
   - { id: B-8.05-site, name: "B-8.05 Web deployment, on a hosted site", bundle: processes/B-8.05-site-deployment.yaml }
   - { id: B-8.06, name: B-8.06 Backend deployment, bundle: processes/B-8.06-backend-deployment.yaml }
@@ -161,7 +166,36 @@ processes:
   - { id: B-8.08, name: B-8.08 Changelog and website, bundle: processes/B-8.08-changelog-and-website.yaml }
   - { id: B-9.02, name: B-9.02 Questions about figures, bundle: processes/B-9.02-figures.yaml }
   - { id: B-9.03, name: B-9.03 Weekly trends, bundle: processes/B-9.03-weekly-trends.yaml }
+  - { id: B-9.04, name: B-9.04 Clustering feature wishes, bundle: processes/B-9.04-wish-clusters.yaml }
   - { id: B-9.06, name: B-9.06 Onboarding drop-offs, bundle: processes/B-9.06-onboarding.yaml }
   - { id: B-9.07, name: B-9.07 Newsletter, bundle: processes/B-9.07-newsletter.yaml }
+  - { id: B-9.09, name: B-9.09 Business leads, bundle: processes/B-9.09-business-leads.yaml }
+  - { id: B-9.10, name: B-9.10 Watching competitors, bundle: processes/B-9.10-competitors.yaml }
   - { id: B-10.01, name: B-10.01 Deadline calendar, bundle: processes/B-10.01-deadlines.yaml }
+  - { id: B-10.02, name: B-10.02 Processing agreements, bundle: processes/B-10.02-outside-services.yaml }
   - { id: B-10.04, name: B-10.04 Licences of dependencies, bundle: processes/B-10.04-dependency-licences.yaml }
+
+  # The processes of UC-03 that have no bundle here (stages.yaml names them; ADR-0191 §4). Each
+  # states where it is served — `served_by`, the bundles that carry it, empty where the instance
+  # itself does it for every process — or that it is not built, and why.
+  # Nothing is proposed for them; `tests/governance/test_stages.py` holds every process a stage
+  # names to a bundle or to one of these.
+  - { id: B-2.05, name: B-2.05 Comparing models, served_by: [], autonomy: { level: 2, reason: "the model trial of UC-8.14, run by the instance for every process that asks for a purpose when a model is introduced, proposed or changed; no bundle of its own (ADR-0149, ADR-0200, NTC-0266)" } }
+  - { id: B-3.03, name: B-3.03 Sending automatically, served_by: [b-3-02], autonomy: { level: 2, reason: "B-3.02's level per class of request, which the frame of UC-7.6 holds; part of B-3.02 (ADR-0215, NTC-0263)" } }
+  - { id: B-3.12, name: B-3.12 Response limit, served_by: [b-3-02], autonomy: { level: 2, reason: "B-3.02's deadline, the response limit a rule of the tool keeps (UC-4.17); part of B-3.02 (NTC-0263)" } }
+  - { id: B-4.01, name: B-4.01 Evaluation on change, served_by: [b-3-02], autonomy: { level: 2, reason: "B-3.02's evaluation cases, run as a gate on a change (UC-4.18); part of B-3.02 (NTC-0263)" } }
+  - { id: B-4.02, name: B-4.02 Drift run, served_by: [b-3-02], autonomy: { level: 2, reason: "B-3.02's evaluation cases, run every week without a change (UC-4.18); part of B-3.02 (NTC-0263)" } }
+  - { id: B-4.03, name: B-4.03 Correction rate, served_by: [], autonomy: { level: 1, reason: "UC-7.5's count of B-3.02's corrections per process and action, which the instance keeps for every process; no bundle (NTC-0263)" } }
+  - { id: B-4.04, name: B-4.04 Growing the evaluation set, served_by: [b-3-02], autonomy: { level: 2, reason: "B-3.02's evaluation cases grown from corrected drafts (UC-4.18); part of B-3.02 (NTC-0263)" } }
+  - { id: B-4.05, name: B-4.05 Scoring in dimensions, served_by: [b-3-02], autonomy: { level: 2, reason: "B-3.02's scoring of every draft in yes-or-no gates decided by rule; part of B-3.02 (ADR-0217)" } }
+  - { id: B-4.06, name: B-4.06 Independent check, served_by: [b-3-02], autonomy: { level: 2, reason: "B-3.02's check step, which may only send or reject (UC-7.6); part of B-3.02 (NTC-0263)" } }
+  - { id: B-4.07, name: B-4.07 Duties under the AI Act, not_built: true, autonomy: { level: 2, reason: "not built: the label is the frame's (UC-7.6), and the policy on AI literacy is a document of the business" } }
+  - { id: B-6.05, name: B-6.05 Dunning business customers, not_built: true, autonomy: { level: 2, reason: "not built: an overdue invoice of a business customer is the business's bookkeeping, which no open interface reaches" } }
+  - { id: B-7.02, name: B-7.02 Refining an issue, served_by: [p02-refinement], autonomy: { level: 2, reason: "the dev-orchestration blueprint's P-02, instantiated with the tenant's repository (UC-01)" } }
+  - { id: B-7.03, name: B-7.03 Implementing an issue, served_by: [p03-implementation], autonomy: { level: 2, reason: "the dev-orchestration blueprint's P-03, instantiated with the tenant's repository (UC-01)" } }
+  - { id: B-9.05, name: B-9.05 Data quality, not_built: true, autonomy: { level: 2, reason: "not built: the master data are in the business's own systems, whose schema only the business knows; a correction script over them is the business's (DEC-0225)" } }
+  - { id: B-9.08, name: B-9.08 Store optimisation, not_built: true, autonomy: { level: 2, reason: "not built: no app store publishes keyword rankings or competitors on a brand term through an interface" } }
+  - { id: B-10.03, name: B-10.03 Incoming invoices, served_by: [b-10-03-incoming-invoice, b-10-03-unreferenced-invoice], autonomy: { level: 2, reason: "the invoice-to-payment blueprint's two processes over incoming invoices (UC-04, ADR-0169, ADR-0188)" } }
+  - { id: B-10.05, name: B-10.05 Privacy policy and terms, not_built: true, autonomy: { level: 2, reason: "not built: the privacy policy, the terms and the record of processing are documents of the business, which it does not hand to the project (DEC-0225)" } }
+  - { id: B-10.06, name: B-10.06 Insurance and contracts, not_built: true, autonomy: { level: 2, reason: "not built: the business's insurance policies and contracts are its own documents (DEC-0225)" } }
+  - { id: B-10.07, name: B-10.07 Keeping the guardrails, not_built: true, autonomy: { level: 2, reason: "not built as a process: a change of a guardrail is proposed through the instance's raise and limits (UC-7.1, ADR-0005), and its versioned text is the business's" } }

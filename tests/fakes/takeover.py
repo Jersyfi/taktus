@@ -29,11 +29,38 @@ def instructions(bundle: Mapping[str, Any]) -> dict[str, Any]:
     return {"sequence": "the steps in the order the bundle gives them", "steps": steps}
 
 
-def instructed(bundle: Mapping[str, Any]) -> dict[str, Any]:
-    """The bundle with its `takeover` section; one that has its own keeps it."""
-    if "takeover" in bundle:
+CEILING = {"exact": 0.0, "sourced": 0.05, "tolerant": 0.25, "free": 1.0}
+"""The widest tolerance each exactness class admits (ADR-0250 §1)."""
+
+
+def tolerated(bundle: Mapping[str, Any]) -> dict[str, Any]:
+    """The bundle with a tolerance for every variable step that declares none: its class's
+    ceiling, under `tolerances` (ADR-0300 §1). Registration refuses a variable step without one;
+    a test about something else declares the widest its class admits."""
+    evaluation = bundle.get("evaluation")
+    declared = {
+        **(bundle.get("tolerances") or {}),
+        **((evaluation.get("tolerances") or {}) if isinstance(evaluation, Mapping) else {}),
+    }
+    missing = {
+        step["id"]: CEILING[str(step["exactness"])]
+        for step in bundle.get("steps") or ()
+        if isinstance(step, Mapping)
+        and step.get("method") in ("llm", "worker")
+        and step.get("exactness") in CEILING
+        and step.get("id") not in declared
+    }
+    if not missing:
         return dict(bundle)
-    return {**bundle, "takeover": instructions(bundle)}
+    return {**bundle, "tolerances": {**(bundle.get("tolerances") or {}), **missing}}
+
+
+def instructed(bundle: Mapping[str, Any]) -> dict[str, Any]:
+    """The bundle with its `takeover` section, and a tolerance for every variable step that
+    declares none (`tolerated`); one that has its own takeover keeps it."""
+    if "takeover" in bundle:
+        return tolerated(bundle)
+    return tolerated({**bundle, "takeover": instructions(bundle)})
 
 
 def _names(node: Any) -> list[str]:

@@ -19,10 +19,24 @@
 #         --yellow 0.5 --red 0.5 --fresh 2d \
 #         --role <role> --case <where overdue tasks are worked>
 #
+# The process has a second flow: the flagged messages of the mailbox the tenant names, listed
+# by age. It runs when the run is given no task — its own daily trigger gives none — and every
+# step of the task flow runs only with a task. The mail capability lists the inbox's messages
+# that carry the flag `\Flagged`, oldest first, each with its identifier, subject, date and age
+# in whole days (`mail.messages.flagged`); IMAP keeps no moment at which a flag was set, so the
+# age is the message's. A fixed rule keeps those a week old or more: their count is the figure
+# `flagged-escalated`, on which the tenant's corridor raises an incident to its role, as for a
+# task. Nothing is written to anyone: the mailbox is the tenant's, and whoever reads it sees its
+# flags. No sender is listed and nothing is counted per person (principle 14, ADR-0015).
+#
+#     uv run taktusctl signal configure mail.flagged --process b-5-01 \
+#         --step flagged-escalated --select count --bounds fixed --direction above \
+#         --yellow 0.5 --red 0.5 --fresh 2d \
+#         --role <role> --case <where the mailbox is worked>
+#
 # The reminder days and the escalation after seven days are this version's; a tenant changes
-# them by a version of its own. Not built: flagged messages listed by age — the capability
-# `mail.messages` reads a message by its identifier and lists no flags. Doing the task stays
-# with a person (UC-03 §6).
+# them by a version of its own. Doing the task, and answering the message, stays with a person
+# (UC-03 §6).
 #
 # By hand, for one task:
 #
@@ -33,7 +47,7 @@
 # the reminders written stay written.
 
 id: b-5-01
-version: "2"
+version: "3"
 name: B-5.01 Overdue tasks
 autonomy:
   level: 2
@@ -55,11 +69,19 @@ triggers:
       arguments: { overdue_by_days: 1, limit: 1000 }
       select: items
       field: id
+  - schedule: daily
+    inputs:
+      flagged_days: 1
 
 inputs:
   task:
-    description: the task's identifier or key in the tracker
+    description: the task's identifier or key in the tracker; without it, the run lists the flagged messages
     example: TSK-2
+    required: false
+  flagged_days:
+    description: the flagged messages at least this many whole days old are listed
+    example: 1
+    required: false
 
 # A read is one request, a reminder two; a wide margin.
 limits:
@@ -81,10 +103,12 @@ steps:
       role: owner
     work:
       checking: { select: output }
+      when:
+        - { value: { $input: task, $otherwise: "" }, not_matches: "^$" }
       rule: connector
       operation: tasks.items.read
       input:
-        id: { $input: task }
+        id: { $input: task, $otherwise: "" }
       credentials:
         - { name: TASKS_TOKEN, injected_as: env }
 
@@ -99,6 +123,8 @@ steps:
       - { kind: recomputation, subject: whether today is a reminder day of the task }
     depends_on: [read-task]
     work:
+      when:
+        - { value: { $input: task, $otherwise: "" }, not_matches: "^$" }
       rule: filter
       items: [{ $from: read-task, $select: output }]
       all:
@@ -118,6 +144,8 @@ steps:
       - { kind: recomputation, subject: whether the task is a week past its date }
     depends_on: [read-task]
     work:
+      when:
+        - { value: { $input: task, $otherwise: "" }, not_matches: "^$" }
       rule: filter
       items: [{ $from: read-task, $select: output }]
       all:
@@ -136,6 +164,7 @@ steps:
     depends_on: [read-task, reminder-day]
     work:
       when:
+        - { value: { $input: task, $otherwise: "" }, not_matches: "^$" }
         - { value: { $from: reminder-day, $select: count }, not_matches: "^0$" }
       rule: template
       text: |
@@ -164,14 +193,83 @@ steps:
     work:
       checking: { select: output }
       when:
+        - { value: { $input: task, $otherwise: "" }, not_matches: "^$" }
         - { value: { $from: reminder-day, $select: count }, not_matches: "^0$" }
       rule: connector
       operation: tasks.items.remind
       input:
-        id: { $input: task }
+        id: { $input: task, $otherwise: "" }
         text: { $from: compose }
       credentials:
         - { name: TASKS_TOKEN, injected_as: env }
+
+  - id: read-flagged
+    method: rule
+    reason: the mailbox's flagged messages are read as the mail server holds them, with each one's age; nothing to judge
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what mail.messages.flagged answered", columns: [complete, count, messages] }
+    fallback:
+      when: the connector serving mail.messages is unavailable
+      to: human
+      role: owner
+    # One run is one flow: the task's or the mailbox's. The edge only joins the two; a run
+    # with a task skips this step, one without skips the task's.
+    depends_on: [read-task]
+    work:
+      checking: { select: output }
+      when:
+        - { value: { $input: task, $otherwise: "" }, matches: "^$" }
+      rule: connector
+      operation: mail.messages.flagged
+      input:
+        older_than_days: { $input: flagged_days, $otherwise: 1 }
+        limit: 1000
+      credentials:
+        - { name: MAIL_PASSWORD, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the flagged messages were not all read" }
+
+  - id: flagged-by-age
+    method: rule
+    reason: the flagged messages are listed oldest first by a fixed order over their age
+    rejected:
+      - method: llm
+        why: ordering by a number is no judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the flagged messages by age }
+    depends_on: [read-flagged]
+    work:
+      when:
+        - { value: { $input: task, $otherwise: "" }, matches: "^$" }
+      rule: filter
+      items: { $from: read-flagged, $select: output.messages }
+      order: days_old
+      descending: true
+
+  - id: flagged-escalated
+    method: rule
+    reason: a flagged message a week old or more is escalated, a fixed rule over its age; the corridor on its count raises the incident to the role
+    rejected:
+      - method: statistics
+        why: the deadline is the business's rule, not a learned threshold
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the flagged messages a week old or more }
+    depends_on: [read-flagged]
+    work:
+      when:
+        - { value: { $input: task, $otherwise: "" }, matches: "^$" }
+      rule: filter
+      items: { $from: read-flagged, $select: output.messages }
+      all:
+        - { field: days_old, at_least: 7 }
+      order: days_old
+      descending: true
 
 takeover:
   sequence: >
@@ -181,7 +279,10 @@ takeover:
     today is a reminder day, decide whether it is escalated, write the reminder, and comment
     it on the task. A task a week or more past its date is reported to the role the tenant
     named. At level 2 the owner confirms each reminder before it is written. Who the task is
-    assigned to is never looked up or counted.
+    assigned to is never looked up or counted. A run started without a task lists the
+    mailbox's flagged messages instead: the person opens the mailbox, lists the messages
+    flagged at least a day ago by their date, oldest first, and reports to the role the tenant
+    named how many are a week old or more, naming no sender.
   steps:
     read-task:
       system: the task tracker
@@ -234,3 +335,31 @@ takeover:
             the operator's secret store, under the parameter Task tracker key of the requesting
             identity described in CREDENTIALS.md; a person signs in with their own account
       done: the reminder is a comment on the task, or nothing was written for a stated reason
+    read-flagged:
+      system: the mailbox the tenant names, through its mail program
+      do: >
+        only for a run without a task, list the inbox's flagged messages whose date is at least
+        a day ago, each with its subject, its date and the whole days since
+      expertise: searching a mailbox for flagged messages
+      credentials:
+        - parameter: MAIL_PASSWORD
+          where: >
+            the operator's secret store, under the parameter Mail password of the requesting
+            identity described in CREDENTIALS.md; a person signs in with their own access to
+            the mailbox
+      done: the flagged messages are listed with their ages, or none is flagged
+    flagged-by-age:
+      system: the list of flagged messages
+      do: >
+        order the list by age, oldest first
+      expertise: none
+      credentials: []
+      done: the list is ordered
+    flagged-escalated:
+      system: the list of flagged messages
+      do: >
+        count the messages seven days old or more and report the count to the role the tenant
+        named, where the mailbox is worked, naming no sender
+      expertise: none
+      credentials: []
+      done: the count is reported, or none is a week old

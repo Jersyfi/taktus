@@ -178,6 +178,7 @@ def process_version(version: str = "1", tenant: str = "t") -> ProcessVersion:
     document["expect"] = {"schedule": "0 7 * * 1-5", "bound": "2h"}
     document["escalation"] = {"role": "support", "react_within": "30m", "path": "ledger"}
     document["heal_limit"] = 5
+    document["tolerances"] = {"overreach": 0.1}
     document["inputs"] = {
         "due": {"description": "when the answer is due", "example": "2026-11-02", "required": False}
     }
@@ -1438,6 +1439,58 @@ def discovered_process(tenant: str = "t") -> Any:
         owner_role="accounting",
         minutes_by_hand=45,
         at=AT,
+    )
+
+
+def _chain() -> Any:
+    from taktus.components.process.domain.model.chain import Chain
+
+    return Chain.model_validate(
+        {
+            "id": "procure-to-pay",
+            "name": "Procure to pay",
+            "links": [
+                {"process_version": "purchase-order@1"},
+                {
+                    "process_version": "book-invoice@1",
+                    "handover": [
+                        {
+                            "input": "order",
+                            "step": "order",
+                            "select": "number",
+                            "clause": "the invoice is booked against its order",
+                        }
+                    ],
+                },
+            ],
+            "slo": {"latency": "PT2H", "completion": 0.9},
+            "escalation": {"role": "accounting", "react_within": "PT4H", "path": "channel"},
+        }
+    )
+
+
+def declared_chain(tenant: str = "t") -> Any:
+    from taktus.components.process.domain.model.chain import DeclaredChain
+
+    return DeclaredChain(id="procure-to-pay", chain=_chain(), declared_at=AT)
+
+
+def chain_run(tenant: str = "t") -> Any:
+    from taktus.components.process.domain.model.chain import ChainRun, ChainState
+
+    return ChainRun(
+        id="chr_procure-to-pay_1",
+        chain=_chain(),
+        state=ChainState.FINISHED,
+        started_at=AT,
+        updated_at=AT,
+        link=1,
+        runs=("run_1", "run_2"),
+        handovers=("sha256:" + "a" * 64,),
+        reason="stopped by a person",
+        missing=("amount",),
+        ended_at=AT,
+        measured="met",
     )
 
 

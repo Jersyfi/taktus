@@ -1,12 +1,16 @@
-# B-1.02 Run times — UC-03 §4.1: the run time of the business's server functions is read from
-# its metrics store once a month, through the capability `metrics.series`, and the slowest
-# function judged against its corridor, so that the costliest one is named before the bill
-# grows (UC-6.13, ADR-0198).
+# B-1.02 Cost drivers — UC-03 §4.1: once a month the business's four cost drivers are read from
+# its metrics store, through the capability `metrics.series` — the run time of its server
+# functions, its queries, its egress and its storage — the largest of each is taken, the slowest
+# function is judged against its corridor, and an optimisation is proposed as an issue whose
+# goal is the implementation process's (UC-01 P-03, UC-6.13, ADR-0198). Its priority stays with
+# a person.
 #
-# The query is the tenant's: a run time per function as its metrics store computes it, for
-# example the 95th percentile over the month. The rule `filter` takes the function with the
-# longest run time from the store's own reading, with its value; a value the store could not
-# give as a number is left out, never read as zero. No model touches the figure (`exact`).
+# The four queries are the tenant's, in its store's own language: a run time per function, for
+# example the 95th percentile over the month; the time or the cost spent per query; the bytes
+# sent out per service or bucket; the bytes stored per bucket or database. Each series one query
+# answers is one item. The rule `filter` takes the largest of each from the store's own reading,
+# with its value; a value the store could not give as a number is left out, never read as zero.
+# No model touches a figure (`exact`).
 #
 # The judgement is the tenant's corridor on the step `slowest` and the value
 # `first.values.0.value`, against the store's own history once there are enough runs:
@@ -16,49 +20,71 @@
 #         --yellow 1.5 --red 3 --fresh 32d \
 #         --role <role> --case <where a cost driver is worked>
 #
-# Not built here: expensive queries, egress and storage, which no store reports in one shape,
-# and the optimisation proposed as an issue or a pull request of the target level; the
-# proposal is the implementation process's (B-7.03) on an issue a person files. Its priority
-# stays with a person (UC-03 §4.1).
+# The proposal: one issue that names the four, with the goal in the words P-03's coding worker
+# is given — find one change that lowers the largest of them, change nothing else, keep the
+# pipeline green — and the label under which the tenant's P-03 takes an issue. Which change is
+# the worker's finding on the issue, and a person merges it. A proposal is filed once while its
+# issue is open: it carries the slowest function's mark. At level 2 a person confirms it first.
+# The drivers are read in the units the store keeps them, seconds and bytes; their price is the
+# bill's, which B-1.01 reads.
 #
 # By hand:
 #
 #     uv run taktusctl run --process blueprints/software-operations/processes/B-1.02-run-times.yaml \
-#         --input 'query=histogram_quantile(0.95, sum by (function, le) (rate(function_duration_seconds_bucket[30d])))'
+#         --input 'query=histogram_quantile(0.95, sum by (function, le) (rate(function_duration_seconds_bucket[30d])))' \
+#         --input 'queries_query=topk(20, sum by (query) (increase(db_query_seconds_total[30d])))' \
+#         --input 'egress_query=sum by (service) (increase(egress_bytes_total[30d]))' \
+#         --input 'storage_query=sum by (bucket) (storage_bytes)' --input label=ready
 #
 # Switching it off (`taktusctl deactivate --process b-1-02`) changes nothing at the store.
 
 id: b-1-02
-version: "2"
-name: B-1.02 Run times
+version: "3"
+name: B-1.02 Cost drivers
 autonomy:
-  level: 1
+  level: 2
   reason: >
-    the process only reads the metrics store and takes its longest run time by a fixed rule;
-    nothing leaves the system, so at level 1 every step runs and none acts; the judgement is
-    the tenant's corridor; it starts at level 1, observing, as UC-03 starts every process at
-    level 1 or 2 when its stage opens
+    the process reads the metrics store and takes the largest of each driver by a fixed rule;
+    filing the proposal leaves the system, so a person confirms it, as every process of UC-03
+    that acts starts at level 2 when its stage opens
   toward_next: >
-    stage 1 of the tenant's plan open, and three months of runs whose findings a person checked
-    against the store and found right; then Taktus proposes the next level, up to the target
-    UC-03 names once proposing an optimisation is part of it (UC-7.1, UC-9.6)
+    stage 1 of the tenant's plan open, and three monthly proposals a person confirmed without
+    changing the issue; then Taktus proposes level 3, its target in UC-03; the priority and the
+    merge stay with a person at every level (UC-7.1, UC-9.6)
 author: the repository
-reason: the costliest server function named every month without a person reading the dashboards (UC-03 B-1.02)
+reason: the costliest server function, query, egress and storage named every month, and one optimisation proposed, without a person reading the dashboards (UC-03 B-1.02)
 
 triggers:
   - schedule: "0 6 1 * *"
     inputs:
       query: histogram_quantile(0.95, sum by (function, le) (rate(function_duration_seconds_bucket[30d])))
+      queries_query: topk(20, sum by (query) (increase(db_query_seconds_total[30d])))
+      egress_query: sum by (service) (increase(egress_bytes_total[30d]))
+      storage_query: sum by (bucket) (storage_bytes)
+      label: ready
 
 inputs:
   query:
     description: >
       the tenant's query for the run time per function, in the store's query language; each
-      series it answers is one function
+      series it answers is one function, labelled `function`
     example: histogram_quantile(0.95, sum by (function, le) (rate(function_duration_seconds_bucket[30d])))
+  queries_query:
+    description: the tenant's query for the time or cost spent per database query; each series one query
+    example: topk(20, sum by (query) (increase(db_query_seconds_total[30d])))
+  egress_query:
+    description: the tenant's query for the bytes sent out per service or bucket; each series one sender
+    example: sum by (service) (increase(egress_bytes_total[30d]))
+  storage_query:
+    description: the tenant's query for the bytes stored per bucket or database; each series one store
+    example: sum by (bucket) (storage_bytes)
+  label:
+    description: the label under which the tenant's implementation process takes an issue
+    example: ready
 
+# Four readings, one list of issues, and a filing of three requests; a wide margin.
 limits:
-  quota: { units: 2 }
+  quota: { units: 30 }
 
 steps:
   - id: read-run-times
@@ -108,25 +134,273 @@ steps:
       descending: true
       limit: 1
 
+  - id: read-queries
+    method: rule
+    reason: the store's figures for the database queries are read verbatim, each value as the store gave it
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what metrics.series.query answered", columns: [complete, series] }
+    fallback:
+      when: the connector serving metrics.series is unavailable
+      to: human
+      role: owner
+    depends_on: [read-run-times]
+    work:
+      checking: { select: output }
+      rule: connector
+      operation: metrics.series.query
+      input:
+        query: { $input: queries_query }
+      credentials:
+        - { name: METRICS_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the store answered more series than were read" }
+
+  - id: costliest-query
+    method: rule
+    reason: the costliest query is a fixed ordering of the store's own figures; a value that is not a number is left out
+    rejected:
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the query the store counts most for }
+    depends_on: [read-queries]
+    work:
+      rule: filter
+      items: { $from: read-queries, $select: output.series }
+      all:
+        - { field: values.0.value, at_least: 0 }
+      order: values.0.value
+      descending: true
+      limit: 1
+
+  - id: read-egress
+    method: rule
+    reason: the store's figures for the bytes sent out are read verbatim, each value as the store gave it
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what metrics.series.query answered", columns: [complete, series] }
+    fallback:
+      when: the connector serving metrics.series is unavailable
+      to: human
+      role: owner
+    depends_on: [read-run-times]
+    work:
+      checking: { select: output }
+      rule: connector
+      operation: metrics.series.query
+      input:
+        query: { $input: egress_query }
+      credentials:
+        - { name: METRICS_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the store answered more series than were read" }
+
+  - id: most-egress
+    method: rule
+    reason: the sender of the most bytes is a fixed ordering of the store's own figures; a value that is not a number is left out
+    rejected:
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the sender of the most bytes }
+    depends_on: [read-egress]
+    work:
+      rule: filter
+      items: { $from: read-egress, $select: output.series }
+      all:
+        - { field: values.0.value, at_least: 0 }
+      order: values.0.value
+      descending: true
+      limit: 1
+
+  - id: read-storage
+    method: rule
+    reason: the store's figures for the bytes stored are read verbatim, each value as the store gave it
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what metrics.series.query answered", columns: [complete, series] }
+    fallback:
+      when: the connector serving metrics.series is unavailable
+      to: human
+      role: owner
+    depends_on: [read-run-times]
+    work:
+      checking: { select: output }
+      rule: connector
+      operation: metrics.series.query
+      input:
+        query: { $input: storage_query }
+      credentials:
+        - { name: METRICS_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the store answered more series than were read" }
+
+  - id: most-storage
+    method: rule
+    reason: the largest store is a fixed ordering of the store's own figures; a value that is not a number is left out
+    rejected:
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the store that holds the most bytes }
+    depends_on: [read-storage]
+    work:
+      rule: filter
+      items: { $from: read-storage, $select: output.series }
+      all:
+        - { field: values.0.value, at_least: 0 }
+      order: values.0.value
+      descending: true
+      limit: 1
+
+  - id: read-filed
+    method: rule
+    reason: the open issues are read verbatim, so that a proposal already filed is not filed twice
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.list answered", columns: [complete, issues] }
+    fallback:
+      when: the connector serving repository.issues is unavailable
+      to: human
+      role: owner
+    depends_on: [slowest]
+    work:
+      checking: { select: output }
+      when:
+        - { value: { $from: slowest, $select: count }, not_matches: "^0$" }
+      rule: connector
+      operation: repository.issues.list
+      input:
+        state: open
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the open issues were not all read" }
+
+  - id: unfiled
+    method: rule
+    reason: whether the proposal is filed already is the slowest function's mark in an open issue, a fixed rule
+    rejected:
+      - method: llm
+        why: finding a fixed text needs no judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: whether the proposal is filed already }
+    depends_on: [read-filed, slowest]
+    work:
+      when:
+        - { value: { $from: slowest, $select: count }, not_matches: "^0$" }
+      rule: filter
+      items:
+        - { function: { $from: slowest, $select: first.labels.function } }
+      all:
+        - { field: function, matches: "." }
+      excluding: { $from: read-filed, $select: output.issues }
+      within: body
+      marker: "cost-drivers:${function}"
+
+  - id: compose
+    method: rule
+    reason: the issue's text is the four drivers as the store gave them between fixed words, the goal stated for the implementation process
+    rejected:
+      - method: llm
+        why: a fixed composition needs no model; which change lowers a driver is the coding worker's finding on the issue
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "Goal: find one change that lowers the largest of these drivers, change nothing else, and" }
+    depends_on: [unfiled, slowest, costliest-query, most-egress, most-storage]
+    work:
+      when:
+        - { value: { $from: unfiled, $select: count }, not_matches: "^0$" }
+      rule: template
+      text: |
+        Lower the cost drivers of the month.
+
+        The metrics store names, each as it gave it:
+        - the slowest function: ${function}, run time ${run_time};
+        - the costliest database query: ${query};
+        - the largest sender of bytes out: ${egress};
+        - the largest store of bytes: ${storage}.
+
+        Goal: find one change that lowers the largest of these drivers, change nothing else, and
+        keep the pipeline green. The pull request states which driver it lowers and by what
+        measure. Its priority and the merge stay with a person.
+
+        Filed by Taktus, process B-1.02 Cost drivers, once a person confirmed it.
+
+        cost-drivers:${function}
+      values:
+        function: { $from: slowest, $select: first.labels.function }
+        run_time: { $from: slowest, $select: first.values.0.value }
+        query: { $from: costliest-query, $select: items }
+        egress: { $from: most-egress, $select: items }
+        storage: { $from: most-storage, $select: items }
+
+  - id: file
+    method: rule
+    reason: opening the issue is an API call; the effect leaves the system, so at level 2 a person confirms it first
+    rejected:
+      - method: worker
+        why: nothing here needs a sandbox or tools
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.create answered", columns: [author, body, created_at, is_pull_request, labels, milestone, number, state, title, updated_at, url] }
+    fallback:
+      when: the connector serving repository.issues is unavailable
+      to: human
+      role: owner
+    depends_on: [compose]
+    work:
+      checking: { select: output }
+      when:
+        - { value: { $from: unfiled, $select: count }, not_matches: "^0$" }
+      rule: connector
+      operation: repository.issues.create
+      input:
+        title: Lower the cost drivers of the month
+        body: { $from: compose }
+        labels: [{ $input: label }]
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
 # How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
 # every step the system to act in, what to do there, the expertise it needs, each credential by
 # its parameter and where an authorised person finds it, and how to tell that it is done.
 takeover:
   sequence: >
     The process runs once a month, on the first day at 06:00 UTC; whoever watches the cost of
-    the business's server functions starts it. The steps run in order: run the tenant's query
-    for the run time per function in the metrics store, then take the function with the longest
-    run time. Whether that run time is a deviation is the tenant's corridor, judged against the
-    store's own history of earlier months. Expensive queries, egress and storage are not part of
-    it. Proposing and prioritising an optimisation stays with a person.
+    the business's systems starts it. The steps run in order: run the tenant's four queries in
+    the metrics store — the run time per function, the time per database query, the bytes sent
+    out and the bytes stored — and take the largest of each; check the open issues for a
+    proposal already filed for the slowest function; write the issue's text; and open the issue
+    with the implementation label once a person confirmed it. Whether the slowest run time is a
+    deviation is the tenant's corridor. Which change lowers a driver is worked out on the issue;
+    its priority and its merge stay with a person.
   steps:
     read-run-times:
       system: the business's metrics store, in its query view
       do: >
-        run the query the run was started with, by default the 95th percentile of each
-        function's call duration over the last 30 days, grouped by function. Export the answer
-        as a table with one row per function and its value exactly as the store gives it. Make
-        sure the store answered every series: a cut-off answer is not a complete reading.
+        run the query for the run times the run was started with, by default the 95th
+        percentile of each function's call duration over the last 30 days, grouped by function.
+        Export the answer as a table with one row per function and its value exactly as the
+        store gives it. Make sure the store answered every series: a cut-off answer is not a
+        complete reading.
       expertise: running a query in the metrics store's query language and reading its series
       credentials:
         - parameter: METRICS_TOKEN
@@ -147,3 +421,98 @@ takeover:
       expertise: sorting a table and comparing a value with the tenant's corridor for run times
       credentials: []
       done: the slowest function and its run time are written down and judged against the corridor
+    read-queries:
+      system: the business's metrics store, in its query view
+      do: >
+        run the query for the database queries the run was started with and export the answer
+        as a table with one row per query and its value exactly as the store gives it, checking
+        that every series was answered
+      expertise: running a query in the metrics store's query language
+      credentials:
+        - parameter: METRICS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Metrics token of the requesting
+            identity described in CREDENTIALS.md
+      done: the table holds every query with its value
+    costliest-query:
+      system: a spreadsheet, on the exported table
+      do: leave out every row that is not a number, sort by value, largest first, and take the first
+      expertise: sorting a table
+      credentials: []
+      done: the costliest query is written down, or none was answered
+    read-egress:
+      system: the business's metrics store, in its query view
+      do: >
+        run the query for the bytes sent out the run was started with and export the answer as a
+        table with one row per sender and its value, checking that every series was answered
+      expertise: running a query in the metrics store's query language
+      credentials:
+        - parameter: METRICS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Metrics token of the requesting
+            identity described in CREDENTIALS.md
+      done: the table holds every sender with its bytes
+    most-egress:
+      system: a spreadsheet, on the exported table
+      do: leave out every row that is not a number, sort by value, largest first, and take the first
+      expertise: sorting a table
+      credentials: []
+      done: the largest sender is written down, or none was answered
+    read-storage:
+      system: the business's metrics store, in its query view
+      do: >
+        run the query for the bytes stored the run was started with and export the answer as a
+        table with one row per store and its value, checking that every series was answered
+      expertise: running a query in the metrics store's query language
+      credentials:
+        - parameter: METRICS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Metrics token of the requesting
+            identity described in CREDENTIALS.md
+      done: the table holds every store with its bytes
+    most-storage:
+      system: a spreadsheet, on the exported table
+      do: leave out every row that is not a number, sort by value, largest first, and take the first
+      expertise: sorting a table
+      credentials: []
+      done: the largest store is written down, or none was answered
+    read-filed:
+      system: the repository hosting service, in the repository's issue list
+      do: >
+        list every open issue and keep their texts at hand, so that a proposal already filed is
+        recognised by its line cost-drivers:<function>.
+      expertise: searching issues in the repository hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md
+      done: every open issue has been read
+    unfiled:
+      system: the open issues
+      do: look for the line cost-drivers:<function> of the slowest function; where an open issue carries it, stop here
+      expertise: none
+      credentials: []
+      done: it is known whether the proposal is filed already
+    compose:
+      system: a text editor
+      do: >
+        write the issue's text: the four drivers as the store gave them, the goal — one change
+        that lowers the largest of them, nothing else, the pipeline green — and the line
+        cost-drivers:<function> at the end.
+      expertise: none
+      credentials: []
+      done: the text is written, or the proposal was filed already
+    file:
+      system: the repository hosting service
+      do: >
+        once the person responsible agreed, open the issue titled Lower the cost drivers of the
+        month, with the text and the label under which the implementation process takes an
+        issue.
+      expertise: opening an issue in the repository hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md
+      done: the issue is open, or nothing was to file

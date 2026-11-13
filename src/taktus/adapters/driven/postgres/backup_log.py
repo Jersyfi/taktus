@@ -14,7 +14,7 @@ from sqlalchemy.engine import Row
 
 from taktus.adapters.driven.postgres import _schema as s
 from taktus.adapters.driven.postgres.persistence import PostgresPersistence
-from taktus.ports.backups import FAILURES_READ, BackupHistory, BackupOutcome
+from taktus.ports.backups import FAILURES_READ, LISTED, BackupHistory, BackupOutcome
 from taktus.ports.persistence import Tenant
 
 
@@ -50,4 +50,10 @@ class PostgresBackupLog:
             select(table).where(failed).order_by(table.c.at.desc()).limit(FAILURES_READ)
         )
         found = tuple(o for r in rows if (o := _outcome(r)) is not None)
-        return BackupHistory(last_ok=last_ok, failed=found, failed_count=int(count or 0))
+        newest = await connection.execute(
+            select(table).where(mine).order_by(table.c.at.desc()).limit(LISTED)
+        )
+        recent = tuple(o for r in newest if (o := _outcome(r)) is not None)
+        return BackupHistory(
+            last_ok=last_ok, failed=found, failed_count=int(count or 0), recent=recent
+        )

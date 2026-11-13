@@ -25,6 +25,7 @@ from typing import Any
 from fastapi import APIRouter, Header
 from fastapi.responses import JSONResponse
 
+from taktus.adapters.driving.inventory import read_recorded
 from taktus.adapters.driving.rest.problems import MEDIA_TYPE, problem
 from taktus.adapters.driving.rest.wiring import RestServices
 from taktus.components.governance.domain.model import Incident, IncidentState
@@ -132,11 +133,7 @@ def backup_standing(watched: BackupWatched) -> str:
     """`failing` where the newest runs failed, `missing` where none succeeded within the
     expected interval, `ok` where the last success is recent enough, `not_recorded` where no
     backup was recorded and none is watched."""
-    if watched.state.failed_count > 0:
-        return "failing"
-    if watched.alert is not None:
-        return "missing"
-    return "ok" if watched.state.last_ok is not None else "not_recorded"
+    return watched.standing
 
 
 def backup_view(watched: BackupWatched) -> dict[str, Any]:
@@ -151,6 +148,10 @@ def backup_view(watched: BackupWatched) -> dict[str, Any]:
         if state.last_ok is None
         else {"name": state.last_ok.name, "at": state.last_ok.at.isoformat()},
         "failed_count": state.failed_count,
+        "listed": [
+            {"name": r.name, "at": r.at.isoformat(), "outcome": r.outcome, "reason": r.reason}
+            for r in state.recent
+        ],
         "newest_failed": None
         if newest is None
         else {"name": newest.name, "at": newest.at.isoformat(), "reason": newest.reason},
@@ -350,7 +351,11 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
             return problem(401, NEEDS_KEY)
         if not await owners(reader):
             return problem(403, NOT_A_READER)
-        return JSONResponse(backup_view(await services.operation.backup(reader.tenant)))
+        watched = await services.operation.backup(reader.tenant)
+        await read_recorded(
+            services.ledger, services.work, reader.tenant, "backup.list", reader.identity
+        )
+        return JSONResponse(backup_view(watched))
 
     @routes.get(
         "/signals",

@@ -70,6 +70,7 @@ PLACEHOLDERS: dict[str, frozenset[str]] = {
     "catalogue_line": frozenset({"name", "start"}),
     "catalogue_needs": frozenset({"name", "inputs"}),
     "start_read": frozenset({"process", "name"}),
+    "start_demand": frozenset({"estimate", "limits"}),
     "started": frozenset({"process", "run"}),
 }
 """The sentences that take values, and the values each must use — no more, no fewer."""
@@ -240,6 +241,9 @@ class Phrasebook(Value):
     catalogue_needs: str | None = Field(default=None, min_length=1)
     """One entry that needs an input a reply cannot give: its name and those inputs."""
     start_read: str | None = Field(default=None, min_length=1)
+    start_demand: str | None = Field(default=None, min_length=1)
+    """Said after the reading where the run needs much: its estimated demand and the limits it
+    reaches; the yes accepts it (ADR-0299 §1). None: an English sentence."""
     started: str | None = Field(default=None, min_length=1)
     start_not_done: str | None = Field(default=None, min_length=1)
     """Said when a start cannot be done, or concerns a process the person may not see."""

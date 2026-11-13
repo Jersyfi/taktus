@@ -27,6 +27,9 @@ REASONS: frozenset[str] = frozenset(
 FAILURES_READ = 30
 """How many failed runs after the last success are read at most: a month of a daily schedule."""
 
+LISTED = 30
+"""How many of the newest runs, succeeded or failed, are listed (ADR-0295)."""
+
 
 class BackupOutcome(Value):
     """One run of the backup, as it recorded itself."""
@@ -46,10 +49,12 @@ class BackupHistory(Value):
     failed: tuple[BackupOutcome, ...] = ()
     """At most `FAILURES_READ` of them; `failed_count` counts all."""
     failed_count: int = Field(default=0, ge=0)
+    recent: tuple[BackupOutcome, ...] = ()
+    """The newest runs, succeeded or failed, newest first: at most `LISTED` (ADR-0295)."""
 
 
 class BackupLog(Protocol):
     async def history(self, tenant: Tenant) -> BackupHistory:
-        """The tenant's last successful backup and every failed one since, inside the open unit
-        of work."""
+        """The tenant's last successful backup, every failed one since, and the newest runs,
+        inside the open unit of work."""
         ...

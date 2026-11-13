@@ -33,6 +33,7 @@ from taktus.adapters.driven.connectors.loopback import LoopbackConnector
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.adapters.driven.memory import (
     MemoryBackupLog,
+    MemoryClaims,
     MemoryLedgerStore,
     MemoryObjectStore,
     MemoryOrgUnitSpends,
@@ -47,6 +48,7 @@ from taktus.adapters.driven.models.pool import StaticModelPool
 from taktus.adapters.driven.platform import HostPlatform
 from taktus.adapters.driven.postgres import (
     PostgresBackupLog,
+    PostgresClaims,
     PostgresLedgerStore,
     PostgresOrgUnitSpends,
     PostgresPersistence,
@@ -105,6 +107,7 @@ from taktus.components.governance.application.service import (
     SubjectRequests,
 )
 from taktus.components.governance.application.service.domains import ConformityEvidence
+from taktus.components.governance.application.service.removal_broke import RemovalBroke
 from taktus.components.governance.application.service.stop_incidents import StopIncidents
 from taktus.components.governance.domain.model import (
     Incident,
@@ -197,6 +200,7 @@ from taktus.composition.owner_channel import known_secrets, owner_channel_wiring
 from taktus.composition.personal import ConfiguredPersonalCredentials
 from taktus.composition.proposals import InstanceChanges
 from taktus.composition.residency import PoolBindings
+from taktus.composition.scaffolds import InstanceScaffolds, LoopbackScaffolds
 from taktus.composition.settings import (
     ExecutionKind,
     load_administration,
@@ -227,11 +231,12 @@ from taktus.composition.stages import stage_wiring
 from taktus.composition.stops import RuleStops, StopIncidentsOfGovernance
 from taktus.composition.subjects import ProcessingEvidence, RunHoldings
 from taktus.composition.tenant_export import TenantExports
-from taktus.composition.workspace import structure_of
+from taktus.composition.workspace import structure_of, workspace_of
 from taktus.ports.backups import BackupLog
 from taktus.ports.configuration import Configuration, ConfigurationError
 from taktus.ports.org_units import OrgUnitSpends
 from taktus.ports.persistence import (
+    Claims,
     LedgerStore,
     ProjectionStore,
     ProvenanceStore,
@@ -283,6 +288,9 @@ class Stores:
     archive: TenantArchive | None = None
     """A tenant's whole state as rows, for its export and import (ADR-0221); None where the
     state is files, which is development state and is not exported."""
+    claims: Claims | None = None
+    """The claims that serialise admissions against one unit limit (ADR-0298); None where
+    nothing claims."""
 
 
 class LocalWiring:
@@ -356,7 +364,14 @@ class LocalWiring:
                 randomness=SystemRandomness(),
                 structure=structure,
             )
-            decisions = decision_wiring(stores.of, stores.work, ledger, clock, identities)
+            decisions = decision_wiring(
+                stores.of,
+                stores.work,
+                ledger,
+                clock,
+                identities,
+                None if prices is None else (prices.currency, prices.version),
+            )
             org_units = (
                 None
                 if stores.spends is None
@@ -481,6 +496,7 @@ class LocalWiring:
                     stops=stops,
                     tenant_budget=decisions.budget_of_the_run,
                     unit_limits=decisions.unit_limits,
+                    claims=stores.claims,
                     messages=decisions.messages,
                     statements=VersionStatements(
                         stores.work, stores.of(ProcessVersion), CorrectionRates(ledger, stores.work)
@@ -586,9 +602,11 @@ class LocalWiring:
                     clock=clock,
                     ids=ids,
                     conformance=conformance,
+                    broke=RemovalBroke(stores.of(Incident), ledger, stores.work, clock),
                 ),
                 guides=InstanceGuides(pools.connectors, owner.channel, owner.raising, clock),
                 maturation=InstanceMaturation(maturation),
+                scaffolds=LoopbackScaffolds(InstanceScaffolds(skill_catalog, pools.connectors)),
                 # A change in dialogue, which S-07 runs (ADR-0091 §2).
                 changes=InstanceChanges(
                     Proposals(
@@ -935,9 +953,19 @@ class LocalWiring:
                 ),
                 stages=staged.stages,
                 skills=skill_lifecycle,
+                scaffolds=InstanceScaffolds(skill_catalog, pools.connectors),
                 agents=shared_agents,
                 shares=shares.shares,
                 catalogue_use=CatalogueUse(runs, ledger, stores.work),
+                planning=workspace_of(
+                    stores.of,
+                    stores.work,
+                    ledger,
+                    clock,
+                    ids,
+                    structure,
+                    identities=identities,
+                ).planning,
                 subjects=subjects,
                 evidence=evidence,
                 exports=None
@@ -1043,6 +1071,7 @@ class LocalWiring:
                     traces=MemoryTraceStore(memory),
                     backups=MemoryBackupLog(memory),
                     spends=MemoryOrgUnitSpends(memory),
+                    claims=MemoryClaims(memory),
                     storage=f"memory with a snapshot under {state_dir} — development only, "
                     "not durable; set TAKTUS_DATABASE_URL for a database",
                 )
@@ -1094,6 +1123,7 @@ class LocalWiring:
                 size=postgres,
                 relay=PostgresRelay(postgres),
                 archive=PostgresTenantArchive(postgres),
+                claims=PostgresClaims(postgres),
             )
         finally:
             await postgres.close()

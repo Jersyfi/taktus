@@ -1,0 +1,30 @@
+{
+  "contract": "connector/v1",
+  "capabilities": [
+    "chat.threads"
+  ],
+  "credential": "CHAT_TOKEN",
+  "operations": [
+    {
+      "tool": "read_thread",
+      "name": "chat.threads.read",
+      "capability": "chat.threads",
+      "effect": "read",
+      "summary": "Read the thread thread of the conversation address: {address, thread, messages, complete}, messages oldest first, each {ts, thread, text, author}, author {account, kind} with kind person or automation; complete says whether every message was answered."
+    },
+    {
+      "tool": "post_message",
+      "name": "chat.threads.post",
+      "capability": "chat.threads",
+      "effect": "delivery",
+      "idempotency": "native",
+      "key_argument": "request_id",
+      "replayed": "/replayed",
+      "record": {
+        "kind": "chat.message",
+        "id": "/ts"
+      },
+      "summary": "Post text into the conversation address, into the thread thread when one is named: answered {address, ts, thread, text, author, replayed}. The product's tool recognises a repeated request_id itself and posts nothing."
+    }
+  ]
+}

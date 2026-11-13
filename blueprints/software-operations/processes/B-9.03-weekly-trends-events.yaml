@@ -21,7 +21,7 @@
 # Switching it off (`taktusctl deactivate --process b-9-03`) changes nothing.
 
 id: b-9-03
-version: "2"
+version: "3"
 name: B-9.03 Weekly trends, from an event analytics service
 autonomy:
   level: 2
@@ -284,3 +284,10 @@ takeover:
             identity described in CREDENTIALS.md; a person working by hand posts with their own
             account
       done: the post is in the conversation
+
+# What counts as an equivalent result of each variable step that no scorer scores
+# yet: its class's ceiling until its cases narrow it (UC-8.4, ADR-0300 §1).
+tolerances:
+  reading: 1
+  verify: 1
+  promises: 1

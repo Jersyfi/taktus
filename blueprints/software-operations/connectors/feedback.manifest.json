@@ -1,0 +1,44 @@
+{
+  "contract": "connector/v1",
+  "capabilities": [
+    "feedback.posts"
+  ],
+  "credential": "FEEDBACK_TOKEN",
+  "operations": [
+    {
+      "tool": "list_posts",
+      "name": "feedback.posts.list",
+      "capability": "feedback.posts",
+      "effect": "read",
+      "summary": "The posts of the board board, those matching search where it is given, up to limit (default 100, at most 1000): {board, posts, count, complete}, each post {id, board, title, details, status, score, url}, never its author; complete says whether every post fit within limit."
+    },
+    {
+      "tool": "create_post",
+      "name": "feedback.posts.create",
+      "capability": "feedback.posts",
+      "effect": "write",
+      "idempotency": "native",
+      "key_argument": "request_id",
+      "replayed": "/replayed",
+      "record": {
+        "kind": "feedback.post",
+        "id": "/id"
+      },
+      "summary": "Create a post on the board board with title and details, authored by the portal's user of the customer email: answered {id, url, board, replayed}. The product's tool recognises a repeated request_id itself."
+    },
+    {
+      "tool": "vote_post",
+      "name": "feedback.posts.vote",
+      "capability": "feedback.posts",
+      "effect": "write",
+      "idempotency": "native",
+      "key_argument": "request_id",
+      "replayed": "/replayed",
+      "record": {
+        "kind": "feedback.vote",
+        "id": "/post"
+      },
+      "summary": "Count the vote of the portal's user of the customer email on the post post: answered {post, counted, replayed}; the portal holds one vote per customer and post. The product's tool recognises a repeated request_id itself."
+    }
+  ]
+}

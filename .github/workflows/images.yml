@@ -164,6 +164,9 @@ jobs:
           - name: taktus-connector-einvoice
             dockerfile: connectors/Dockerfile
             target: einvoice
+          - name: taktus-connector-erpnext
+            dockerfile: connectors/Dockerfile
+            target: erpnext
           - name: taktus-connector-expiry
             dockerfile: connectors/Dockerfile
             target: expiry
@@ -200,6 +203,9 @@ jobs:
           - name: taktus-connector-kubernetes
             dockerfile: connectors/Dockerfile
             target: kubernetes
+          - name: taktus-connector-langfuse
+            dockerfile: connectors/Dockerfile
+            target: langfuse
           - name: taktus-connector-linear
             dockerfile: connectors/Dockerfile
             target: linear
@@ -215,6 +221,9 @@ jobs:
           - name: taktus-connector-mastodon
             dockerfile: connectors/Dockerfile
             target: mastodon
+          - name: taktus-connector-mistral
+            dockerfile: connectors/Dockerfile
+            target: mistral
           - name: taktus-connector-mixpanel
             dockerfile: connectors/Dockerfile
             target: mixpanel

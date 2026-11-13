@@ -33,6 +33,7 @@ from typing import Annotated, Any
 import typer
 
 from taktus.adapters.driving.cli.incident_command import By, StateDir, Tenant
+from taktus.adapters.driving.cli.reads import recorded
 from taktus.adapters.driving.cli.run_command import (
     DEFAULT_STATE_DIR,
     DEFAULT_TENANT,
@@ -92,6 +93,7 @@ def money(given: list[str]) -> dict[str, float]:
 def show(
     ctx: typer.Context,
     tenant: Tenant = DEFAULT_TENANT,
+    by: By = "operator",
     state_dir: StateDir = Path(DEFAULT_STATE_DIR),
 ) -> None:
     """Print every quota the tenant holds, by unit, as JSON."""
@@ -99,7 +101,9 @@ def show(
     async def act(found: TenantOrgUnits) -> list[dict[str, Any]]:
         return [q.document() for q in await found.quotas(tenant)]
 
-    typer.echo(json.dumps(_run(ctx, state_dir, act), indent=2, ensure_ascii=False))
+    shown = _run(ctx, state_dir, act)
+    recorded(ctx, state_dir, tenant, "units.show", by)
+    typer.echo(json.dumps(shown, indent=2, ensure_ascii=False))
 
 
 @units.command("set")
@@ -225,7 +229,11 @@ def set_limit(
     ] = None,
     tokens: Annotated[int | None, typer.Option(help="Tokens per period.")] = None,
     policy: Annotated[
-        str, typer.Option(help="halt (a person resumes) or wait (the next check or period).")
+        str,
+        typer.Option(
+            help="halt (a person resumes), wait (the next check or period), or cheaper (a "
+            "cheaper model of the step's purpose that fits, else halt)."
+        ),
     ] = "halt",
     alert_at: Annotated[
         list[float] | None, typer.Option(help="A share of the amount that warns; repeatable.")
@@ -241,8 +249,8 @@ def set_limit(
     """Set a limit for a unit of the structure, replacing one of its name."""
     if period not in ("day", "week", "month"):
         raise typer.BadParameter("a period is day, week or month")
-    if policy not in ("halt", "wait"):
-        raise typer.BadParameter("a policy is halt or wait")
+    if policy not in ("halt", "wait", "cheaper"):
+        raise typer.BadParameter("a policy is halt, wait or cheaper")
     if children not in ("within", "over"):
         raise typer.BadParameter("children are booked within or over")
     command = SetUnitLimit(

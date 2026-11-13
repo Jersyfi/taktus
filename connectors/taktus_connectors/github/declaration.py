@@ -37,6 +37,7 @@ CAPABILITIES = [
     "repository.refs",
     "repository.labels",
     "repository.files",
+    "repository.code",
     "repository.members",
     "repository.runners",
     "repository.ratelimit",
@@ -361,6 +362,27 @@ OPERATIONS: list[Json] = [
         "effect": "read",
         "summary": "List the entries of one directory of the repository at a ref — a branch "
         "or a commit — each with its name, path and type, with the commit the ref resolved to.",
+    },
+    {
+        "name": "repository.files.dates",
+        "demand": {"quota_units": 102},
+        "capability": "repository.files",
+        "effect": "read",
+        "summary": "When each of up to 100 paths last changed, at one ref resolved to a commit "
+        "once: the commit's own date, and for every path — a file or a directory — the date "
+        "and the commit of the newest commit at or before it that changed anything at or below "
+        "the path, or null for both where none did. One request to resolve the ref, one for "
+        "the commit's date and one per path.",
+    },
+    {
+        "name": "repository.code.search",
+        "demand": {"quota_units": 10},
+        "capability": "repository.code",
+        "effect": "read",
+        "summary": "Find the files of the default branch whose text contains `text`, through "
+        "the service's code search: each file's path and blob, sorted by path, with the "
+        "service's total; at most ten pages of 100, `complete` whether the service searched "
+        "everything and every result was read. Only what the service has indexed is found.",
     },
     {
         "name": "repository.members.list",

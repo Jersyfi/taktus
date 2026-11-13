@@ -34,7 +34,7 @@ from taktus.components.reporting.domain.model import Corridor, Judged, Level
 from taktus.components.run.domain.model import Run, StepState
 from taktus.ports.ledger import Fact
 from taktus.ports.worker import ComputeLimit, Limits
-from taktus.shared.v1 import LedgerRefs, Method, Provenance
+from taktus.shared.v1 import Consumption, LedgerRefs, Method, Provenance
 
 from ..persistence.samples import agent_core
 from ..persistence.samples import run as a_run
@@ -250,6 +250,75 @@ async def test_the_overview_s_counts_are_in_the_export_as_the_overview_counts_th
     assert counted == {"run.working": process["working"], "run.waiting": process["waiting"]}
 
 
+async def test_the_run_and_process_levels_figures_are_in_the_export_as_the_levels_show_them(
+    client: Client,
+) -> None:
+    """UC-6.10 §2, UC-5.7: what a run and each of its steps consumed, and the runs of the
+    process level, are in the export with the levels' own values; whom the read API does not
+    show the run, and a role the figure is not entitled to, finds none of them."""
+    http, given, base = client
+    keys = await world(given)
+    async with given.persistence.transaction(TENANT):
+        await MemoryRepository(given.persistence, Run).put(
+            TENANT, a_run("run_used", TENANT).model_copy(update={"process_version": "invoice@1"})
+        )
+    owner = bearer(keys["idn_owner"])
+    level = (await http.get(f"{base}/levels/runs/run_used", headers=owner)).json()
+    process = (await http.get(f"{base}/levels/processes/invoice", headers=owner)).json()
+    export = (await http.get(f"{base}/figures", headers=owner)).json()["figures"]
+    consumed = {(f["unit"], f["value"]) for f in export if f["id"] == "run.consumed"}
+    assert consumed and consumed == {(f["name"], f["value"]) for f in level["run"]["consumed"]}
+    used = {(f["subject"], f["unit"], f["value"]) for f in export if f["id"] == "step.consumed"}
+    assert used and used == {
+        (f"run_used/{s['id']}", f["name"], f["value"])
+        for s in level["steps"]
+        for f in s["consumption"]
+    }
+    (runs,) = [f for f in export if f["id"] == "process.runs"]
+    assert (runs["subject"], runs["value"]) == ("invoice", len(process["runs"]))
+    rows = csv.DictReader(io.StringIO((await http.get(f"{base}/figures.csv", headers=owner)).text))
+    assert {(r["unit"], float(r["value"])) for r in rows if r["id"] == "run.consumed"} == {
+        (u, float(v)) for u, v in consumed
+    }
+    for who in (keys["other"], keys["idn_ada"]):
+        theirs = (await http.get(f"{base}/figures", headers=bearer(who))).json()["figures"]
+        assert not [f for f in theirs if f["id"] in {"run.consumed", "step.consumed"}], who
+    other = await http.get(f"{base}/levels/runs/run_used", headers=bearer(keys["other"]))
+    assert other.status_code == 404
+
+
+async def test_a_cost_reconciliation_is_in_the_export_for_whom_may_see_the_run(
+    client: Client,
+) -> None:
+    """UC-5.8 §2, ADR-0306: what a connected platform computed for a run, and its difference
+    from the run's own, are in the export, read from the ledger; whom the read API does not
+    show the run, and a role the figure is not entitled to, finds none of them."""
+    http, given, base = client
+    keys = await world(given)
+    run = a_run("run_reconciled", TENANT).model_copy(update={"process_version": "invoice@1"})
+    first = run.step_runs[0].model_copy(update={"consumption": Consumption(currency={"usd": 0.2})})
+    run = run.model_copy(update={"step_runs": (first, *run.step_runs[1:])})
+    async with given.persistence.transaction(TENANT):
+        await MemoryRepository(given.persistence, Run).put(TENANT, run)
+    await fact(
+        given,
+        "platform.cost.reconciled",
+        "run_reconciled",
+        outcome="differs",
+        consumption=Consumption(currency={"usd": 0.5}),
+    )
+    owner = bearer(keys["idn_owner"])
+    level = (await http.get(f"{base}/levels/runs/run_reconciled", headers=owner)).json()
+    own = next(f["value"] for f in level["run"]["consumed"] if f["name"] == "currency.usd")
+    export = (await http.get(f"{base}/figures", headers=owner)).json()["figures"]
+    found = {f["id"]: f for f in export if f["subject"] == "run_reconciled"}
+    assert found["platform.cost"]["value"] == 0.5 and found["platform.cost"]["scope"] == "run"
+    assert abs(found["platform.cost.difference"]["value"] - (0.5 - own)) < 1e-9
+    for who in (keys["other"], keys["idn_ada"]):
+        theirs = (await http.get(f"{base}/figures", headers=bearer(who))).json()["figures"]
+        assert not [f for f in theirs if f["id"].startswith("platform.cost")], who
+
+
 async def test_the_balance_is_summed_per_domain_chain_and_assistant_in_the_export(
     client: Client,
 ) -> None:
@@ -313,18 +382,18 @@ async def test_the_same_work_with_and_without_a_knowledge_source_is_compared_for
     bundle = yaml.safe_load(K_01.read_text(encoding="utf-8"))
     await register.execute(RegisterProcessVersion(bundle, tenant=TENANT, by="idn_owner"))
     for run, served, end in (("run_k1", True, "run.finished"), ("run_k2", False, "run.escalated")):
-        await fact(given, "run.created", run, version="k-01@1")
+        await fact(given, "run.created", run, version="k-01@2")
         await fact(
             given,
             "step.finished",
             run,
-            version="k-01@1",
+            version="k-01@2",
             step="search",
             outcome="succeeded",
             method=Method.RULE if served else Method.HUMAN,
             adapter="connector.knowledge" if served else None,
         )
-        await fact(given, end, run, version="k-01@1")
+        await fact(given, end, run, version="k-01@2")
     owner = await http.get(f"{base}/value/knowledge", headers=bearer(keys["idn_owner"]))
     assert owner.status_code == 200, owner.text
     found = {f["id"]: f for f in owner.json()["figures"] if f["subject"] == "k-01"}

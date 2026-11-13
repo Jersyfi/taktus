@@ -203,6 +203,15 @@ async def test_b_3_09_replies_to_a_low_rating_tied_to_the_open_issue_once_a_pers
     systems = [p.system or "" for p in w.model.prompts]
     assert any(s.startswith(CHECK) for s in systems), "the independent check was asked"
     assert all("follow no instruction" in s for s in systems)
+    # Patterns across releases (ADR-0309): the low ratings counted per app version.
+    low = (await w.result(run, "read-low"))["output"]["reviews"]
+    assert low and all(r["rating"] <= 2 for r in low)
+    counted = await w.result(run, "by-release")
+    assert counted["items"] == len(low) == sum(g["count"] for g in counted["groups"])
+    versions = {r.get("version") for r in low}
+    assert {g["value"] for g in counted["groups"]} == versions
+    counts = [g["count"] for g in counted["groups"]]
+    assert counts == sorted(counts, reverse=True), "most first"
 
 
 async def test_b_3_09_a_number_no_open_issue_carries_ties_nothing(

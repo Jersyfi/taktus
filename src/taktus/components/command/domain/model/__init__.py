@@ -2,6 +2,7 @@ from taktus.components.command.domain.model.intake import IntakeEvent, IntakeSta
 from taktus.components.command.domain.model.planning import (
     AGENT_PARTS,
     PARTS,
+    AdministrationPart,
     AgentPart,
     DomainPart,
     Estimate,
@@ -11,6 +12,7 @@ from taktus.components.command.domain.model.planning import (
 __all__ = [
     "AGENT_PARTS",
     "PARTS",
+    "AdministrationPart",
     "AgentPart",
     "DomainPart",
     "Estimate",

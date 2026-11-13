@@ -46,6 +46,25 @@ class StaticConnectorPool:
                 )
         return None
 
+    async def named(self, adapter: str, capability: Capability) -> ResolvedConnector | None:
+        """The member configured under `adapter`, where its declaration lists the capability
+        (ADR-0311): what a step that names its connector is served by. None otherwise."""
+        for configured, connector in self._connectors:
+            if configured != adapter:
+                continue
+            if adapter not in self._declared:
+                self._declared[adapter] = await connector.capabilities()
+            declaration = self._declared[adapter]
+            if capability not in declaration.capabilities:
+                return None
+            return ResolvedConnector(
+                adapter=adapter,
+                connector=connector,
+                declaration=declaration,
+                location=self.location(adapter),
+            )
+        return None
+
     def identifiers(self) -> list[str]:
         """The identifier of every configured member, in order, without reading a declaration."""
         return [adapter for adapter, _ in self._connectors]

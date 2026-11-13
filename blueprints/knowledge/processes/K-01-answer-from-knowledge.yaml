@@ -21,7 +21,7 @@
 #         --input question="How many days of holiday do I have?"
 
 id: k-01
-version: "1"
+version: "2"
 name: K-01 Answer from knowledge
 autonomy:
   level: 3
@@ -231,3 +231,9 @@ takeover:
       expertise: none
       credentials: []
       done: every sentence carries its sources, and the list of sources says what changed
+
+# What counts as an equivalent result of each variable step that no scorer scores
+# yet: its class's ceiling until its cases narrow it (UC-8.4, ADR-0300 §1).
+tolerances:
+  terms: 0.25
+  answer: 0.05

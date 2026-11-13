@@ -78,6 +78,7 @@ class BackupRun(Value):
     at: datetime
     reason: str | None = Field(default=None, pattern=r"^[a-z]+$")
     """The step a failed run failed at; None for a run that succeeded."""
+    outcome: Literal["ok", "failed"] = "ok"
 
 
 class BackupState(Value):
@@ -92,6 +93,9 @@ class BackupState(Value):
     failed: tuple[BackupRun, ...] = ()
     """The failed runs after the last success, newest first, as far as they were read."""
     failed_count: int = Field(default=0, ge=0)
+    recent: tuple[BackupRun, ...] = ()
+    """The newest runs, succeeded or failed, newest first, as the backup's listing shows them
+    (ADR-0295)."""
 
 
 class LevelLowered(Value):

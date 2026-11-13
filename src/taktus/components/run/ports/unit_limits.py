@@ -32,7 +32,7 @@ class AppliedLimit(Value):
     period: Literal["day", "week", "month"]
     lines: Mapping[str, float]
     """Each amount by its line: `money.<currency>`, `compute_seconds`, `tokens`."""
-    policy: Literal["halt", "wait"]
+    policy: Literal["halt", "wait", "cheaper"]
     check_every_seconds: int = Field(default=900, ge=1)
     role: str = Field(min_length=1)
     key: str = Field(min_length=1)

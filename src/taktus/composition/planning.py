@@ -34,7 +34,8 @@ from taktus.components.command.domain.service.guided import (
     settings,
 )
 from taktus.components.process.domain.model import ProcessVersion
-from taktus.components.run.domain.model import Run
+from taktus.components.run.domain.model import DemandToAccept, Run
+from taktus.composition.administration import AdministrationPlans, part_of, steps_of
 from taktus.composition.agent_drafting import AgentDrafts
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
@@ -45,6 +46,10 @@ class Describing(Protocol):
     """What turns words into a proposal for a process (ADR-0251): the proposal acts."""
 
     async def ask(self, tenant: Tenant, process_id: str, request: str, by: str) -> Run: ...
+
+    async def describe_demand(self, tenant: Tenant, by: str) -> dict[str, Any] | None:
+        """The estimated demand of the describe run `by` would commission (ADR-0299 §1)."""
+        ...
 
 
 class PlanActs:
@@ -59,7 +64,11 @@ class PlanActs:
         ids: Identifiers,
         agents: AgentCatalog | None = None,
         describe: Describing | None = None,
+        administration: AdministrationPlans | None = None,
     ) -> None:
+        self._administration = administration
+        """Where an administrative act a draft carries is carried out when commissioned
+        (ADR-0296); None: such a draft is not commissioned here."""
         self._describe = describe
         """What turns a commissioned plan's goal into a proposal for the process it describes
         (ADR-0290); None: a draft that describes a process is not commissioned here."""
@@ -84,11 +93,16 @@ class PlanActs:
         *,
         agent: bool = False,
         describes: str | None = None,
+        act: str | None = None,
+        arguments: Mapping[str, Any] | None = None,
     ) -> PlanDraft:
         """A new draft for what the person said; its goal is what they said, where they said
         anything. `agent`: the draft works out an agent, whose role the goal is (ADR-0292).
         `describes`: the process the goal describes, and the draft results in its first or
-        next version (ADR-0290)."""
+        next version (ADR-0290). `act`: the administrative act the draft carries out, with the
+        `arguments` known so far; its steps and their estimates come with it (ADR-0296)."""
+        part = None if act is None else part_of(act, arguments)
+        steps, estimates = ((), ()) if part is None else steps_of(part.act)
         now = self._clock.now()
         command = Command(
             id=self._ids.new("cmd"),
@@ -100,16 +114,22 @@ class PlanActs:
             received_at=now,
         )
         goal = said.strip() or None
-        return await self._dialogue.open(
+        draft = await self._dialogue.open(
             OpenDraft(
                 command=command,
                 tenant=tenant,
                 goal=goal,
                 agent=AgentPart() if agent else None,
                 describes=describes,
+                administration=part,
+                steps=steps,
+                estimates=estimates,
                 results_in=PlanResult.RUN if describes is None else PlanResult.PROCESS_VERSION,
             )
         )
+        if part is not None and self._administration is not None:
+            await self._administration.prepared(tenant, identity, draft)
+        return draft
 
     async def mine(self, tenant: Tenant, identity: str) -> list[PlanDraft]:
         """The drafts of the person's own commands, newest change first."""
@@ -157,17 +177,24 @@ class PlanActs:
         )
 
     async def commission_and_start(
-        self, tenant: Tenant, identity: str, draft_id: str
+        self, tenant: Tenant, identity: str, draft_id: str, *, accept_demand: bool = False
     ) -> tuple[Plan, Run | None]:
         """The draft commissioned, and for a draft that describes a process, the run of the
         describe process its goal was handed to as the description (ADR-0290). A draft that
-        describes a process is refused, writing nothing, where no describe process is wired."""
+        describes a process is refused, writing nothing, where no describe process is wired.
+        A describe run that needs much is refused with `DemandToAccept`, carrying its
+        estimated demand, until the person accepts it; nothing is commissioned before
+        (ADR-0299 §1)."""
         draft = await self.get(tenant, identity, draft_id)
         if draft.describes is not None and self._describe is None:
             raise PlanningError(
                 "a plan that describes a process is commissioned where a process turns a "
                 "description into a proposal (TAKTUS_DESCRIBE_PROCESS, ADR-0290)"
             )
+        if draft.describes is not None and self._describe is not None and not accept_demand:
+            shown = await self._describe.describe_demand(tenant, identity)
+            if shown is not None and shown["much"]:
+                raise DemandToAccept(shown)
         plan = await self._commissioned(tenant, identity, draft)
         if draft.describes is None or self._describe is None or draft.goal is None:
             return plan, None
@@ -180,6 +207,13 @@ class PlanActs:
 
     async def _commissioned(self, tenant: Tenant, identity: str, draft: PlanDraft) -> Plan:
         draft_id = draft.id
+        if draft.administration is not None:
+            if self._administration is None:
+                raise PlanningError(
+                    "an administrative act is carried out where the identity component is "
+                    "wired; it never becomes a plan alone (ADR-0296)"
+                )
+            return await self._administration.commission(tenant, identity, draft)
         if draft.agent is not None:
             if self._agents is None:
                 raise PlanningError(
@@ -260,6 +294,8 @@ class PlanActs:
             return {"autonomy_level": level}
         if field == "steps":
             return await self._agent_tools(tenant, draft, await self._steps(tenant, value))
+        if field == "administration" or field.startswith("administration."):
+            return _administration(draft, field, value)
         if field == "agent" or field.startswith("agent."):
             return {"agent": _agent_part(draft, field, value)}
         if field == "estimates":
@@ -306,6 +342,22 @@ class PlanActs:
             estimate = Estimate.model_validate({"step_id": step_id, **one})
             found[estimate.step_id] = estimate
         return tuple(found.values())
+
+
+def _administration(draft: PlanDraft, field: str, value: Any) -> dict[str, Any]:
+    """The act chosen, with its steps and estimates, or one argument of the act given
+    (ADR-0296)."""
+    if field == "administration":
+        if not isinstance(value, Mapping) or not isinstance(value.get("act"), str):
+            raise PlanningError("an administrative act is a mapping with its act and arguments")
+        part = part_of(value["act"], value.get("arguments"))
+        steps, estimates = steps_of(part.act)
+        return {"administration": part, "steps": steps, "estimates": estimates}
+    if draft.administration is None:
+        raise PlanningError("this draft carries no administrative act; choose one first")
+    name = field.removeprefix("administration.")
+    arguments = {**draft.administration.arguments, name: str(value)}
+    return {"administration": part_of(draft.administration.act, arguments)}
 
 
 LISTED = frozenset({"tools", "sources", "connectors", "formats"})

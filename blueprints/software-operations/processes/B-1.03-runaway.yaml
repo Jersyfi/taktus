@@ -17,9 +17,15 @@
 #
 # with the store's own history as the baseline, or `--bounds fixed` with the tenant's limits.
 #
-# Not built here: throttling the function in an emergency, the target level's act. No
-# capability changes a function's limit; changing a limit for good stays with a person
-# (UC-03 §4.1, UC-7.1).
+# The emergency brake: where the busiest function's rate is at least the run's
+# `throttle_above`, a fixed rule names it a runaway, and the step `throttle` sets the most
+# instances its service may run to `throttle_to`, through `deployment.workloads.throttle`
+# (ADR-0310), on a serverless platform that serves it. The tenant's query labels each series
+# `function` with the name of the service that runs it. The answer names the ceiling before, so
+# that a person can put it back. At level 1, where every process of UC-03 starts, the throttle is
+# proposed and a person performs it and reports it; at level 2 a person confirms it and Taktus
+# sets it; at level 3, the target, Taktus sets it on its own in an emergency. Raising the ceiling
+# again, or changing a limit for good, stays with a person at every level (UC-03 §4.1, UC-7.1).
 #
 # By hand:
 #
@@ -29,19 +35,20 @@
 # Switching it off (`taktusctl deactivate --process b-1-03`) changes nothing at the store.
 
 id: b-1-03
-version: "2"
+version: "3"
 name: B-1.03 Runaway guard
 autonomy:
   level: 1
   reason: >
-    the process only reads the metrics store and takes its highest call rate by a fixed rule;
-    nothing leaves the system, so at level 1 every step runs and none acts; a red value
-    reaches a person at once as an incident; it starts at level 1, observing, as UC-03 starts
-    every process at level 1 or 2 when its stage opens
+    the process reads the metrics store and takes its highest call rate by a fixed rule, and
+    names a runaway by the tenant's threshold; at level 1 every read runs, a red value reaches a
+    person at once as an incident, and the throttle is proposed for a person to perform; it
+    starts at level 1, observing, as UC-03 starts every process at level 1 or 2 when its stage
+    opens
   toward_next: >
     stage 1 of the tenant's plan open, and four weeks of runs whose incidents a person checked
-    against the store and found right; then Taktus proposes the next level, up to the target
-    UC-03 names once throttling is a capability (UC-7.1, UC-9.6)
+    against the store and found right, and every throttle it proposed performed unchanged;
+    then Taktus proposes level 2, and level 3 after it, its target in UC-03 (UC-7.1, UC-9.6)
 author: the repository
 reason: a function caught in a loop is found within minutes without a person watching the dashboards (UC-03 B-1.03)
 
@@ -49,6 +56,8 @@ triggers:
   - schedule: "*/5 * * * *"
     inputs:
       query: sum by (function) (rate(function_calls_total[5m]))
+      throttle_above: 100
+      throttle_to: 1
 
 inputs:
   query:
@@ -56,9 +65,18 @@ inputs:
       the tenant's query for the calls per second, or the instances, per function; each series
       it answers is one function
     example: sum by (function) (rate(function_calls_total[5m]))
+  throttle_above:
+    description: >
+      the value of the query at or above which the busiest function is a runaway and is
+      throttled; the tenant's emergency threshold, above its corridor's red bound
+    example: 100
+  throttle_to:
+    description: the most instances a runaway's service may run once throttled
+    example: 1
 
+# A reading is one request; a throttle five.
 limits:
-  quota: { units: 2 }
+  quota: { units: 8 }
 
 steps:
   - id: read-rates
@@ -108,6 +126,55 @@ steps:
       descending: true
       limit: 1
 
+  - id: runaway
+    method: rule
+    reason: whether the busiest function is a runaway is its rate held against the tenant's fixed threshold
+    rejected:
+      - method: statistics
+        why: the emergency threshold is the business's rule; the baseline is the corridor's, which reports and never acts
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: whether the busiest function is at or above the threshold }
+    depends_on: [busiest]
+    work:
+      rule: filter
+      items: { $from: busiest, $select: items }
+      all:
+        - { field: values.0.value, at_least: { $input: throttle_above } }
+
+  - id: throttle
+    method: rule
+    reason: >
+      the brake is one call to the platform that sets the most instances the runaway's service
+      may run; it leaves the system, so the level decides who acts: a person at level 1, a
+      person's confirmation at level 2
+    rejected:
+      - method: worker
+        why: nothing here needs a sandbox or tools
+      - method: human
+        why: a loop multiplies its cost by the minute; the act is fixed and is the target level's (UC-03 §4.1)
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what deployment.workloads.throttle answered", columns: [max_instances, max_instances_before, name, revision] }
+    fallback:
+      when: the connector serving deployment.workloads is unavailable, or the service's traffic is held on an earlier revision
+      to: human
+      role: owner
+    depends_on: [runaway]
+    work:
+      checking: { select: output }
+      when:
+        - { value: { $from: runaway, $select: count }, not_matches: "^0$" }
+      rule: connector
+      operation: deployment.workloads.throttle
+      input:
+        name: { $from: runaway, $select: first.labels.function }
+        max_instances: { $input: throttle_to }
+      credentials:
+        - { name: WORKLOADS_TOKEN, injected_as: env }
+
 # How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
 # every step the system to act in, what to do there, the expertise it needs, each credential by
 # its parameter and where an authorised person finds it, and how to tell that it is done.
@@ -118,7 +185,10 @@ takeover:
     of each function in the metrics store, then take the function called most. A rate far above
     its usual level, such as a trigger reacting to its own writes or a storm of retries, is the
     tenant's corridor to judge; a red value is an incident for the role responsible at once.
-    Throttling the function and changing its limit stay with a person.
+    Where the rate is at or above the tenant's emergency threshold, the function's service is
+    throttled to the given number of instances; at level 1 the person on watch does it, at level
+    2 the person confirms it. Raising the limit again, or changing it for good, stays with a
+    person.
   steps:
     read-rates:
       system: the business's metrics store, in its query view
@@ -149,3 +219,28 @@ takeover:
         corridor for them
       credentials: []
       done: the busiest function and its rate are written down, and a red rate has been reported
+    runaway:
+      system: the written-down busiest function and its rate
+      do: >
+        decide that it is a runaway when its rate is at or above the threshold the run was
+        started with, by default 100
+      expertise: none
+      credentials: []
+      done: it is decided whether the busiest function is a runaway
+    throttle:
+      system: the serverless platform's console, the service that runs the function
+      do: >
+        only for a runaway: note the service's current maximum number of instances, then set it
+        to the number the run was started with, by default 1, and deploy that as a new revision
+        that takes all traffic. Where the traffic is held on an earlier revision, do not change
+        the service: hand it to the owner. Report the old maximum to the role responsible, who
+        decides when to put it back
+      expertise: changing a service's scaling on the serverless platform
+      credentials:
+        - parameter: WORKLOADS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Workload cluster token of the
+            requesting identity described in CREDENTIALS.md; on a serverless platform it is a
+            service account's key. A person working by hand uses their own access to the
+            platform, which may change the service
+      done: the service runs at most the given number of instances, and the old maximum is reported, or nothing was a runaway

@@ -114,3 +114,15 @@ compatibly, and the tag cannot be cut.
 - "DEC-0231: Option A."
 - "DEC-0231: Option B."
 - "DEC-0231: Option C."
+
+## Outcome
+
+**Decided:** 2026-11-13
+**Answer:** Option A, as recommended, chosen by the owner in conversation: "Nach der Beta (Empfohlen)".
+**Reasoning given:** none beyond the recommendation.
+**What it changes:** Nothing is frozen in the final round (DEC-0236). Every `v1` contract goes on
+changing only compatibly (ADR-0171). After `1.0.0-beta` has run at the business and its findings
+are answered, a session reads the seventeen use cases against the contracts, makes any compatible
+change still needed, and writes `contracts/FREEZE.json` naming this decision, every family at
+once, in a pull request of its own before `1.0.0` is tagged.
+**Recorded in:** the pull request of the final round (DEC-0236)

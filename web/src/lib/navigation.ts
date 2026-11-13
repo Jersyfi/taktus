@@ -59,6 +59,7 @@ export const DESTINATIONS: Destination[] = [
 	{ id: 'plans', label: 'Plan', href: '#/plans', band: 'start', icon: 'ask', routes: ['/plans'] },
 	{ id: 'gallery', label: 'Gallery', href: '#/gallery', band: 'start', icon: 'gallery', routes: ['/gallery'] },
 	{ id: 'streams', label: 'Streams', href: '#/streams', band: 'start', icon: 'streams', routes: ['/streams'] },
+	{ id: 'chains', label: 'Chains', href: '#/chains', band: 'start', icon: 'streams', routes: ['/chains'] },
 	{ id: 'discoveries', label: 'Discoveries', href: '#/discoveries', band: 'start', icon: 'discover', routes: ['/discoveries'] },
 	{ id: 'views', label: 'Figures', href: '#/views', band: 'steer', icon: 'figures', routes: ['/views'] },
 	{ id: 'value', label: 'Value', href: '#/value', band: 'steer', icon: 'value', routes: ['/value'] },
@@ -75,6 +76,7 @@ export const DESTINATIONS: Destination[] = [
 	{ id: 'alerts', label: 'Alerts', href: '#/alerts', band: 'running', icon: 'alert', routes: ['/alerts'] },
 	{ id: 'backup', label: 'Backup', href: '#/backup', band: 'running', icon: 'backup', routes: ['/backup'] },
 	{ id: 'signals', label: 'Signals', href: '#/signals', band: 'running', icon: 'signal', routes: ['/signals'] },
+	{ id: 'health', label: 'Health', href: '#/health', band: 'running', icon: 'signal', routes: ['/health'] },
 	{ id: 'administration', label: 'Administration', href: '#/administration', band: 'running', icon: 'tenants', routes: ['/administration'] },
 	{ id: 'tenants', label: 'Tenants', href: '#/tenants', band: 'running', icon: 'tenants', routes: ['/tenants'] }
 ];

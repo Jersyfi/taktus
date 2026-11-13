@@ -50,6 +50,8 @@ from taktus.adapters.driving.cli.wiring import Services
 from taktus.components.catalog.application.service import REMOVAL_TESTED, RecordRemovalResultHandler
 from taktus.components.catalog.domain.model import AdapterMaturity
 from taktus.components.command.application.service import CommissionPlan, CommissionPlanHandler
+from taktus.components.governance.application.service.removal_broke import RemovalBroke
+from taktus.components.governance.domain.model.incident import Incident
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersion,
@@ -137,7 +139,7 @@ async def test_withholding_the_only_worker_changes_the_example_and_is_recorded(
         assert "shell.script" in described["output"]["serves"]
         assert described["output"]["alternatives"]["shell.script"] == []
         assert described["output"]["processes"] == [
-            {"process": "six-times-seven@3", "steps": ["compute", "overreach"]}
+            {"process": "six-times-seven@4", "steps": ["compute", "overreach"]}
         ]
         assert described["effect"] == {"kind": "read"}, "nothing leaves the system"
 
@@ -147,7 +149,7 @@ async def test_withholding_the_only_worker_changes_the_example_and_is_recorded(
         assert result["configuration"]["adapter"] == "worker.endpoint"
         assert "shell.script" in result["configuration"]["serves"]
         (process,) = result["processes"]
-        assert process["process"] == "six-times-seven@3" and process["exercised"] == "run"
+        assert process["process"] == "six-times-seven@4" and process["exercised"] == "run"
         assert process["verdict"] == "changed"
         compute = next(s for s in process["steps"] if s["step"] == "compute")
         assert compute["fallback"] == "human" and compute.get("alternative") is None
@@ -178,7 +180,7 @@ async def test_withholding_the_only_worker_changes_the_example_and_is_recorded(
         assert tested[0].refs.run_id == run.id
         assert tested[0].content_digest == recorded["output"]["content_digest"]
         rehearsals = {
-            e.refs.run_id for e in entries if e.refs.process_version == "six-times-seven@3"
+            e.refs.run_id for e in entries if e.refs.process_version == "six-times-seven@4"
         }
         assert len(rehearsals) == 2, "the example ran twice: with and without the worker"
         assert all(e.rehearsal is True for e in entries if e.refs.run_id in rehearsals), (
@@ -384,6 +386,7 @@ def connector_services(
             recordings=recordings,
             clock=clock,
             ids=ids,
+            broke=RemovalBroke(MemoryRepository(persistence, Incident), ledger, persistence, clock),
         )
     )
     placed = directory((TENANT,), persistence=persistence, clock=clock)

@@ -60,12 +60,16 @@ owner the duties of their domains and generates the conformity evidence of their
 (ADR-0259, ADR-0280). `stage` declares a tenant's introduction in stages, shows each with its
 figures and what is missing, and opens one as a person (ADR-0137). `skill` registers, evaluates,
 approves and puts skills into production, and prints the skill part of a process's takeover
-instructions (ADR-0162). `process export` writes a process version as one package of plain
+instructions (ADR-0162). `scaffold` checks a project against a method scaffold and furnishes
+what it is missing (ADR-0308). `process export` writes a process version as one package of plain
 files, read without Taktus (ADR-0285). `takeover` shows a process's takeover instructions and
 records a trial of them by a person (ADR-0180). `agent` proposes a shared agent's core, sets its
 role profiles, calls it and draws it (ADR-0163). `domain` admits a domain blueprint, instantiates
 it in dialogue as proposals at level 2 or below, offers a later version, and exports it as plain
-files (ADR-0263). The others need
+files (ADR-0263). `health` shows the instance's release, its state and the tenant's backup,
+alerts and incidents; `backup list` lists the newest backups with their age; `update prepare`
+and `update commission` prepare an update of Taktus as a plan and commission it, which applies
+nothing (ADR-0295, ADR-0296). The others need
 services, which the composition root provides as the typer context object (see `wiring`); the
 console script `taktusctl` therefore starts in `taktus.composition.taktusctl`, and this module
 exposes the application for it.
@@ -106,6 +110,7 @@ from taktus.adapters.driving.cli import (
     hardware_command,
     identity_command,
     incident_command,
+    instance_command,
     interfaces_command,
     ledger_command,
     load_command,
@@ -117,6 +122,7 @@ from taktus.adapters.driving.cli import (
     residency_command,
     resume_command,
     run_command,
+    scaffold_command,
     signal_command,
     skill_command,
     sources_command,
@@ -170,6 +176,9 @@ app.command("interfaces")(interfaces_command.interfaces)
 app.command("alerts")(alerts_command.alerts)
 app.add_typer(identity_command.identity, name="identity")
 app.add_typer(tenant_command.tenant, name="tenant")
+app.command("health")(instance_command.health)
+app.add_typer(instance_command.backup, name="backup")
+app.add_typer(instance_command.update, name="update")
 app.add_typer(first_command.first, name="first")
 app.add_typer(anchors_command.anchors, name="anchors")
 app.add_typer(incident_command.incident, name="incident")
@@ -193,6 +202,7 @@ app.add_typer(takeover_command.takeover, name="takeover")
 app.add_typer(process_command.process, name="process")
 app.add_typer(stage_command.stage, name="stage")
 app.add_typer(skill_command.skill, name="skill")
+app.add_typer(scaffold_command.scaffold, name="scaffold")
 app.add_typer(agent_command.agent, name="agent")
 app.add_typer(owner_channel_command.owner_channel, name="owner-channel")
 app.add_typer(guides_command.guides, name="guides")

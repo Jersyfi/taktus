@@ -58,7 +58,9 @@ log = structlog.get_logger("taktusd")
 
 
 def _run(outcome: BackupOutcome) -> BackupRun:
-    return BackupRun(name=outcome.name, at=outcome.at, reason=outcome.reason)
+    return BackupRun(
+        name=outcome.name, at=outcome.at, reason=outcome.reason, outcome=outcome.outcome
+    )
 
 
 def _number(facts: dict[str, str | float | None], name: str) -> float | None:
@@ -186,6 +188,7 @@ class RecordedSignals:
                 last_ok=None if history.last_ok is None else _run(history.last_ok),
                 failed=tuple(_run(o) for o in history.failed),
                 failed_count=history.failed_count,
+                recent=tuple(_run(o) for o in history.recent),
             ),
         )
 

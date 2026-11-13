@@ -19,6 +19,9 @@ What it enforces, because the connector's checks depend on it:
   write or a non-public read, with WordPress's error body (`code`, `message`, `data.status`).
 - **A slug is unique.** A slug already taken gets `-2` appended, as WordPress does.
 
+- **A published post is a public page** at its permalink, `/<slug>/`, as a theme renders it:
+  its title and content in HTML. A draft has none.
+
 It starts with one published post, id 1. Test-only: `GET /_fake/state` names every post with
 its status, title and slug; `POST /_fake/reset` restores the start. Standard library only;
 runnable as `python3 tests/fakes/website_service.py --port 9236`.
@@ -145,6 +148,21 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
             url = urlparse(self.path)
             query = {k: v[-1] for k, v in parse_qs(url.query).items()}
             parts = url.path.strip("/").split("/")
+            if len(parts) == 1 and parts[0] and parts[0] != "wp-json":
+                # The theme's page: public, and blind to an Authorization header, which only
+                # the REST API reads.
+                with state.lock:
+                    page = next(
+                        (
+                            p
+                            for p in state.posts.values()
+                            if p["status"] == "publish" and p["slug"] == parts[0]
+                        ),
+                        None,
+                    )
+                if page is not None:
+                    self.page(page)
+                    return
             editor = self.editor()
             if self.headers.get("Authorization") and not editor:
                 self.error(401, "incorrect_password", "The provided password is incorrect.")
@@ -177,6 +195,18 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
                     self.answer(200, shown(post, self.base()))
                     return
             self.error(404, "rest_no_route", "No route was found matching the URL.")
+
+        def page(self, post: Json) -> None:
+            """A published post's public page, at its permalink, as a theme renders it."""
+            raw = (
+                f"<!doctype html><html><head><title>{post['title']}</title></head>"
+                f"<body><article><h1>{post['title']}</h1>{post['content']}</article></body></html>"
+            ).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=UTF-8")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
 
         def do_POST(self) -> None:
             if self.fake():

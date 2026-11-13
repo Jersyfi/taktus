@@ -51,9 +51,11 @@ export function startEntry(
 	base: URL,
 	process: string,
 	inputs: Record<string, unknown>,
-	fetcher: typeof fetch = fetch
+	fetcher: typeof fetch = fetch,
+	acceptDemand = false
 ): Promise<Answer<Started>> {
-	return send<Started>(base, `catalogue/${encodeURIComponent(process)}/start`, { inputs }, fetcher);
+	const body = acceptDemand ? { inputs, accept_demand: true } : { inputs };
+	return send<Started>(base, `catalogue/${encodeURIComponent(process)}/start`, body, fetcher);
 }
 
 /** The inputs as the form holds them, each a text, given to the start as written; an empty

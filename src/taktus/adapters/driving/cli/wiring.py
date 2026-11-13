@@ -28,6 +28,11 @@ from taktus.components.catalog.application.service import (
     RunConformanceHandler,
     SkillCatalog,
 )
+from taktus.components.catalog.application.service.scaffolds import (
+    Acting,
+    Furnished,
+    Project,
+)
 from taktus.components.catalog.domain.model import (
     Admitted,
     DomainInstance,
@@ -37,6 +42,7 @@ from taktus.components.catalog.domain.model import (
     SkillVersion,
 )
 from taktus.components.catalog.domain.model.blueprint import DomainFigures
+from taktus.components.catalog.domain.model.scaffold import ProjectCheck
 from taktus.components.catalog.domain.service.shares import Use
 from taktus.components.command.application.service import CommissionPlanHandler
 from taktus.components.command.domain.model import PlanDraft
@@ -369,6 +375,9 @@ class Services:
     """The tenant's introduction in stages: declared, shown and opened by a person
     (`taktusctl stage`, ADR-0137)."""
     skills: SkillActs | None = None
+    scaffolds: ScaffoldActs | None = None
+    """A project checked and furnished against its method scaffold through the instance's
+    connectors (`taktusctl scaffold`, ADR-0308)."""
     """The skill lifecycle: registered, evaluated, approved and shown (`taktusctl skill`,
     ADR-0162)."""
     subjects: SubjectRequests | None = None
@@ -395,6 +404,30 @@ class Services:
     catalogue_use: CatalogueUseActs | None = None
     """An entry's use per organisational unit and the viewer's own (`taktusctl catalogue use`,
     ADR-0246 §6)."""
+    planning: AdministrativePlanning | None = None
+    """The plan dialogue, for an update of Taktus prepared and commissioned as a plan
+    (`taktusctl update`, ADR-0296); None where the wiring has none."""
+
+
+class AdministrativePlanning(Protocol):
+    """The plan dialogue as `taktusctl update` uses it (ADR-0237, ADR-0296)."""
+
+    async def open(
+        self,
+        tenant: Tenant,
+        identity: str,
+        org_path: tuple[str, ...],
+        said: str,
+        *,
+        act: str | None = None,
+        arguments: Mapping[str, Any] | None = None,
+    ) -> PlanDraft: ...
+
+    async def set(
+        self, tenant: Tenant, identity: str, draft_id: str, fields: Mapping[str, Any]
+    ) -> PlanDraft: ...
+
+    async def commission(self, tenant: Tenant, identity: str, draft_id: str) -> Plan: ...
 
 
 class CatalogueUseActs(Protocol):
@@ -418,6 +451,18 @@ class Evidence(Protocol):
         """What is processed for the tenant, where, by which adapter and kept how long, as
         one JSON document (ADR-0176 §8)."""
         ...
+
+
+class ScaffoldActs(Protocol):
+    """What `taktusctl scaffold` asks of the scaffolds the composition root wires."""
+
+    async def check(
+        self, tenant: str, name: str, project: Project, acting: Acting
+    ) -> ProjectCheck: ...
+
+    async def furnish(
+        self, tenant: str, name: str, project: Project, acting: Acting
+    ) -> Furnished: ...
 
 
 class SkillActs(Protocol):

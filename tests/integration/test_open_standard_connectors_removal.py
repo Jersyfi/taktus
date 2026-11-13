@@ -46,6 +46,8 @@ from taktus_connectors.jira.operations import Config as RestTasksConfig
 from taktus_connectors.jira.server import build_server as rest_tasks_server
 from taktus_connectors.kubernetes.operations import Config as WorkloadsConfig
 from taktus_connectors.kubernetes.server import build_server as workloads_server
+from taktus_connectors.langfuse.operations import Config as EvaluationPlatformConfig
+from taktus_connectors.langfuse.server import build_server as evaluation_platform_server
 from taktus_connectors.linear.operations import Config as GraphTasksConfig
 from taktus_connectors.linear.server import build_server as graph_tasks_server
 from taktus_connectors.loki.operations import Config as LogsConfig
@@ -56,6 +58,8 @@ from taktus_connectors.mailchimp.operations import Config as NewsletterConfig
 from taktus_connectors.mailchimp.server import build_server as newsletter_server
 from taktus_connectors.mastodon.operations import Config as SocialConfig
 from taktus_connectors.mastodon.server import build_server as social_server
+from taktus_connectors.mistral.operations import Config as ModelListConfig
+from taktus_connectors.mistral.server import build_server as model_list_server
 from taktus_connectors.mixpanel.operations import Config as EventsConfig
 from taktus_connectors.mixpanel.server import build_server as events_server
 from taktus_connectors.netlify.operations import Config as SiteDeploysConfig
@@ -101,6 +105,7 @@ SERVERS: dict[str, Any] = {
     "check": lambda: check_server(CheckConfig("http://127.0.0.1:9")),
     "billing": lambda: billing_server(BillingConfig("http://127.0.0.1:9")),
     "model-costs": lambda: model_costs_server(ModelCostsConfig("http://127.0.0.1:9")),
+    "model-list": lambda: model_list_server(ModelListConfig("http://127.0.0.1:9")),
     "cost-report": lambda: cost_report_server(CostReportConfig("http://127.0.0.1:9")),
     "errors": lambda: errors_server(ErrorsConfig("http://127.0.0.1:9", organization="example")),
     "feedback": lambda: feedback_server(FeedbackConfig("http://127.0.0.1:9")),
@@ -136,6 +141,9 @@ SERVERS: dict[str, Any] = {
         FiguresConfig("http://127.0.0.1:9", "http://127.0.0.1:9", "example")
     ),
     "crm": lambda: crm_server(CrmConfig("http://127.0.0.1:9")),
+    "evaluation-platform": lambda: evaluation_platform_server(
+        EvaluationPlatformConfig("http://127.0.0.1:9")
+    ),
     "tasks-graph": lambda: graph_tasks_server(GraphTasksConfig("http://127.0.0.1:9")),
     "tasks-rest": lambda: rest_tasks_server(RestTasksConfig("http://127.0.0.1:9", "TSK")),
 }
@@ -146,6 +154,7 @@ SERVES = {
     "check": ["check.http"],
     "billing": ["billing.costs", "logs.query", "secrets.metadata"],
     "model-costs": ["models.catalogue", "models.costs"],
+    "model-list": ["models.catalogue"],
     "cost-report": ["models.catalogue", "models.costs"],
     "errors": ["errors.issues"],
     "feedback": ["feedback.posts"],
@@ -177,6 +186,7 @@ SERVES = {
     "warehouse": ["warehouse.queries"],
     "figures": ["bi.figures"],
     "crm": ["crm.contacts"],
+    "evaluation-platform": ["evaluations.records", "observability.costs", "prompts.versions"],
     "tasks-graph": ["tasks.items"],
     "tasks-rest": ["tasks.items"],
 }

@@ -27,7 +27,7 @@
 # Switching it off (`taktusctl deactivate --process b-7-09`) changes nothing else.
 
 id: b-7-09
-version: "1"
+version: "2"
 name: B-7.09 Security check
 autonomy:
   level: 2
@@ -258,3 +258,8 @@ takeover:
             the operator's secret store, under the parameter Repository token of the requesting
             identity described in CREDENTIALS.md
       done: the issue is open, or there was nothing to file
+
+# What counts as an equivalent result of each variable step that no scorer scores
+# yet: its class's ceiling until its cases narrow it (UC-8.4, ADR-0300 §1).
+tolerances:
+  scan: 0.25

@@ -155,3 +155,22 @@ def test_a_bundles_skills_are_checked_beside_its_processes(tmp_path: Path) -> No
     refused = check(bundle, cwd=tmp_path)
     assert refused.returncode == 1
     assert "equals the directory's name" in refused.stdout
+
+
+def test_the_shipped_scaffolds_are_skills_whose_declaration_is_checked(tmp_path: Path) -> None:
+    """A directory of method scaffolds holds skills and no bundle: each `SKILL.md` and its
+    `scaffold.yaml` are held to their formats, and `scaffold.yaml` is never read as a bundle
+    (ADR-0307 §1)."""
+    shipped = check(ROOT / "scaffolds", cwd=tmp_path)
+    assert shipped.returncode == 0, shipped.stdout + shipped.stderr
+    assert "3 skill(s): 0 refused" in shipped.stdout
+    assert "0 bundle(s)" in shipped.stdout
+    broken = tmp_path / "own" / "skills" / "our-scaffold"
+    broken.mkdir(parents=True)
+    (broken / "SKILL.md").write_text(
+        "---\nname: our-scaffold\ndescription: Our own scaffold.\n---\nBody\n", "utf-8"
+    )
+    (broken / "scaffold.yaml").write_text("scaffold: 1\nwork: ours\n", "utf-8")
+    refused = check(tmp_path / "own", cwd=tmp_path)
+    assert refused.returncode == 1, refused.stdout + refused.stderr
+    assert "`artifacts` lists at least one artifact" in refused.stdout

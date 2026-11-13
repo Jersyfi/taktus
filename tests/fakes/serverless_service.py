@@ -7,9 +7,10 @@ The connector under `connectors/taktus_connectors/cloudrun/` asks, under
 
 - `GET <name>`: the service, 404 for one the location does not hold;
 - `PATCH <name>` with a `Service` body: `annotations`, `template` and `traffic` taken from the
-  body. A body whose `etag` is not the current one is 409 `ABORTED`, as Google's APIs refuse a
-  stale write. A template that differs from the current one makes a new revision. The answer is
-  a long-running `Operation`, not done;
+  body; a template's `scaling` (`maxInstanceCount`) is kept with it and its revision. A body
+  whose `etag` is not the current one is 409 `ABORTED`, as Google's APIs refuse a stale write.
+  A template that differs from the current one makes a new revision. The answer is a
+  long-running `Operation`, not done;
 - `GET <name>/revisions?pageSize=&pageToken=`: the revisions, oldest first, each with the
   annotations and containers of its template, `createTime` and a `Ready` condition; at most
   `pageSize` per page with `nextPageToken`.
@@ -17,12 +18,15 @@ The connector under `connectors/taktus_connectors/cloudrun/` asks, under
 And `POST /token`, the OAuth token endpoint (`google_oauth.py`): every other request needs a token
 it issued. A rollout completes at once — the new revision ready, `latestReadyRevision` on it, not
 reconciling — unless `POST /_fake/rollout` with `{"stalled": true}` holds it, as a revision that
-never becomes ready: the old one keeps serving.
+never becomes ready: the old one keeps serving. `POST /_fake/deploy` with `{"service", "image"}`
+makes a revision of that image beside the one serving and leaves the traffic where it is, as the
+business's build deploys a canary with `--no-traffic`.
 
 It holds the services `web` (container `app`, image `registry.example/app:1.0.0`, one revision
 `web-00001-abc`) and `web-canary` (the same, `web-canary-00001-abc`). Test-only:
 `GET /_fake/state` names, per service, the images of the revision serving all traffic, the
-revisions oldest first and the one serving; `POST /_fake/reset` restores the start. Runnable as
+revisions oldest first, the one serving and `traffic`, each revision's share;
+`POST /_fake/reset` restores the start. Runnable as
 `python3 tests/fakes/serverless_service.py --port 9231`.
 """
 
@@ -61,6 +65,7 @@ def _revision(service: str, number: int, template: Json, ready: bool, at: int) -
         "createTime": f"2026-11-01T10:{at:02d}:00Z",
         "annotations": dict(template.get("annotations") or {}),
         "containers": copy.deepcopy(template.get("containers") or []),
+        "scaling": copy.deepcopy(template.get("scaling") or {}),
         "reconciling": not ready,
         "conditions": [
             {"type": "Ready", "state": "CONDITION_SUCCEEDED" if ready else "CONDITION_PENDING"}
@@ -134,6 +139,41 @@ class State:
             "done": False,
         }
 
+    def deploy(self, name: str, image: str) -> None:
+        """A revision of the image beside the one serving, the traffic left on that one."""
+        serving = self.serving(name)
+        template = copy.deepcopy(self.services[name]["template"])
+        for container in template.get("containers") or []:
+            container["image"] = image
+        body = {
+            "annotations": self.services[name]["annotations"],
+            "template": template,
+            "traffic": [
+                {
+                    "type": REVISION,
+                    "revision": f"{PARENT}/{name}/revisions/{serving}",
+                    "percent": 100,
+                }
+            ],
+        }
+        self.patch(name, body)
+
+    def traffic(self, name: str) -> dict[str, int]:
+        service = self.services[name]
+        latest = str(service["latestReadyRevision"]).rsplit("/", 1)[-1]
+        found: dict[str, int] = {}
+        for target in service["traffic"]:
+            percent = int(target.get("percent", 0))
+            if percent <= 0:
+                continue
+            revision = (
+                str(target["revision"]).rsplit("/", 1)[-1]
+                if target.get("type") == REVISION
+                else latest
+            )
+            found[revision] = found.get(revision, 0) + percent
+        return found
+
     def serving(self, name: str) -> str | None:
         service = self.services[name]
         traffic = [t for t in service["traffic"] if int(t.get("percent", 0)) > 0]
@@ -152,6 +192,7 @@ class State:
                 "images": [c["image"] for c in (revision or {}).get("containers", [])],
                 "revisions": [r["name"].rsplit("/", 1)[-1] for r in self.revisions[name]],
                 "serving": serving,
+                "traffic": self.traffic(name),
             }
         return {"services": found, "requests": self.requests, "grants": self.tokens.grants}
 
@@ -160,6 +201,7 @@ def _template(template: Json) -> Json:
     return {
         "annotations": dict(template.get("annotations") or {}),
         "containers": template.get("containers") or [],
+        "scaling": template.get("scaling") or {},
     }
 
 
@@ -237,6 +279,11 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
             with state.lock:
                 if url.path == "/_fake/reset":
                     state.reset()
+                    self.answer(200, {})
+                    return
+                if url.path == "/_fake/deploy":
+                    given = json.loads(raw or b"{}")
+                    state.deploy(str(given["service"]), str(given["image"]))
                     self.answer(200, {})
                     return
                 if url.path == "/_fake/rollout":

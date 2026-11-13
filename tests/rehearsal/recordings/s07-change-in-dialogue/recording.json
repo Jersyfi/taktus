@@ -31,8 +31,8 @@
     }
   ],
   "process": "s07-change-in-dialogue",
-  "process_version": "s07-change-in-dialogue@1",
-  "run_id": "run_a43c8892b4784f08f726",
+  "process_version": "s07-change-in-dialogue@5",
+  "run_id": "run_808abc47c53abe355525",
   "state": "finished",
   "steps": [
     {
@@ -67,32 +67,32 @@
         "consumption": {
           "tokens_by_model": {
             "fake-model": {
-              "input": 1012,
-              "output": 882
+              "input": 1733,
+              "output": 1603
             }
           },
-          "tokens_in": 1012,
-          "tokens_out": 882
+          "tokens_in": 1733,
+          "tokens_out": 1603
         },
         "estimate": {
           "tokens_by_model": {
             "fake-model": {
-              "input": 7719,
+              "input": 12712,
               "output": 8192
             }
           },
-          "tokens_in": 7719,
+          "tokens_in": 12712,
           "tokens_out": 8192
         },
         "kind": "model",
         "outcome": "succeeded",
         "purpose": "reasoning",
         "request": {
-          "digest": "sha256:45008da2543141b09d8a29e096140f62f912c97debdd9f664661ca4057c10853",
+          "digest": "sha256:dbf3116092c5a23e49e55438a7de10bb2fe93c71eb50a89f303e18038d03a3f6",
           "parts": {
             "max_output_tokens": "sha256:864a936a35324151e1c79c44a2e903ff2497f52fa892282d340585f493c637f0",
             "system": "sha256:d398ba8f4a4b4f718c385259776a856356fb1981d3ddc9014d7fc4f82fce84ed",
-            "user": "sha256:650bbcc834c85b9a4c15762a842e2498b35a20ab0e3086c23868607de281f72a"
+            "user": "sha256:13a0a7139db7340694de06af04edd2dc4409176087afbd05325852ddc0a06b05"
           }
         },
         "result": "results/propose.json",
@@ -116,9 +116,9 @@
         "operation": "orchestrator.changes.propose",
         "outcome": "succeeded",
         "request": {
-          "digest": "sha256:1088dbae45ce6daf2cdd65e170fb405e572730bb67f7faef354dbe799109d2da",
+          "digest": "sha256:ed886a49e55fb372385dc79d8bbf604f0b5d416b1067a738f6f683f6a597e904",
           "parts": {
-            "input.bundle": "sha256:a69f8de397b759a99bb11905b782ef8af7a5f38115cc2e3733cf9b24560dae65",
+            "input.bundle": "sha256:e54c54c8c8704f4080e13a94a2c1d030b90406e2f42804d6bfcbf5b241a9fbc6",
             "input.process": "sha256:af66855eaca488a926872192ef25d370ac188d2bf36a275000177ec88dc9b0cc",
             "input.request": "sha256:aa422f4d154149ab835b0e428d8682b580e233dfdb9fa733b7e1b0a7f336eda3",
             "operation": "sha256:5e63be2c9e91f5bdd52280754e71b0ce5ca73b505986223f19885b22d9f70697"

@@ -83,6 +83,8 @@ PRODUCT_NAMES = (
     "resend",
     "sanity",
     "cloudfunctions",
+    "erpnext",
+    "frappe",
 )
 PRODUCT = re.compile(r"\b(" + "|".join(PRODUCT_NAMES) + r")\b", re.IGNORECASE)
 

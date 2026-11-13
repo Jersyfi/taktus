@@ -478,3 +478,17 @@ class UnitOfWork(Protocol):
         state, the one of its first read — what a snapshot read together with its position
         needs (ADR-0055 §4)."""
         ...
+
+
+class Claims(Protocol):
+    """A named claim of a tenant, held inside the open unit of work until it ends (ADR-0298).
+
+    Two transactions that claim the same name run one after the other: the second waits until
+    the first has committed or rolled back, and its reads after the claim see what the first
+    committed. A claim excludes nothing but another claim of the same name. Claim several names
+    in one fixed order, so that two transactions never wait for each other."""
+
+    async def hold(self, tenant: Tenant, name: str) -> None:
+        """Hold the claim `name` of `tenant` until the open transaction ends, waiting while
+        another transaction holds it. Raises `NoTransaction` outside a unit of work."""
+        ...

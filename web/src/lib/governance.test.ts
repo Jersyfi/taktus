@@ -18,6 +18,9 @@ import {
 	readBack,
 	TENANTS,
 	writeTenant,
+	exportTenant,
+	importSentence,
+	importTenant,
 	type AutonomyAnswer,
 	type FindingsAnswer,
 	type OwnerReport,
@@ -172,6 +175,43 @@ describe('the tenants', () => {
 		expect(calls[0]!.init?.method).toBe('POST');
 		expect(calls[0]!.init?.body).toBe('{"name":"Acme Software"}');
 		expect((calls[0]!.init?.headers as Record<string, string>)['Authorization']).toBe('Bearer adm');
+	});
+
+	it('marks the export of each tenant and the import, the acts of the inventory (UC-10.2)', () => {
+		const html = render(TenantsView, { props: { tenants: TENANT_LIST, onCreate: nothing, onRename: nothing } }).body;
+		expect(html.split('data-act="tenant.export"').length - 1).toBe(TENANT_LIST.length);
+		expect(html).toContain('data-act="tenant.import"');
+	});
+
+	it('exports with the administration key, and imports and says what the check found', async () => {
+		const calls: Call[] = [];
+		const id = TENANT_LIST[0]!.id;
+		const done = {
+			tenant: id,
+			rows: 12,
+			objects: 2,
+			entries: 30,
+			ledger_intact: true,
+			heads_match: true,
+			provenance_intact: false,
+			findings: ['run r1: a provenance record does not verify'],
+			verified: false
+		};
+		const fetcher = surface(
+			{
+				[`administration/tenants/${id}/export`]: { status: 200, body: { format: 'taktus.tenant-export/1' } },
+				'administration/tenants/import': { status: 200, body: done }
+			},
+			calls
+		);
+		const exported = await exportTenant(BASE, 'adm', id, fetcher);
+		expect(exported.ok).toBe(true);
+		expect((calls[0]!.init?.headers as Record<string, string>)['Authorization']).toBe('Bearer adm');
+		const imported = await importTenant(BASE, 'adm', new Blob(['{}']), fetcher);
+		expect(calls[1]!.init?.method).toBe('POST');
+		expect(imported.ok && importSentence(imported.body)).toBe(
+			`Tenant ${id} imported: 12 rows, 2 objects, 30 ledger entries; the ledger verifies, the chains are as exported, the provenance does not verify.`
+		);
 	});
 });
 

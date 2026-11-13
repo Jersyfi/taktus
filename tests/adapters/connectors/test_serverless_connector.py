@@ -143,6 +143,47 @@ async def test_a_rollback_moves_the_traffic_to_the_revision_before_once(
     assert state(url)["web"]["serving"] == "web-00001-abc"
 
 
+async def test_a_service_is_throttled_once_per_key_and_names_the_limit_before(
+    api: tuple[str, str],
+) -> None:
+    """B-1.03 (ADR-0310): the ceiling of instances set on a new revision of the same image."""
+    url, _ = api
+    input = {"name": "web", "max_instances": 2}
+    first = await connector(url).call("deployment.workloads.throttle", context("brake"), input)
+    assert first.effect.replayed is False
+    assert first.output["max_instances"] == 2 and first.output["max_instances_before"] is None
+    assert first.output["containers"][0]["image"] == "registry.example/app:1.0.0"
+    assert len(state(url)["web"]["revisions"]) == 2 and first.output["rolled_out"] is True
+    again = await connector(url).call("deployment.workloads.throttle", context("brake"), input)
+    assert again.effect.replayed is True and again.effect.records == first.effect.records
+    assert again.output["max_instances"] == 2 and len(state(url)["web"]["revisions"]) == 2
+    for wrong in ({"name": "web", "max_instances": 0}, {"name": "web", "max_instances": "2"}):
+        with pytest.raises(CallFailed) as refused:
+            await connector(url).call("deployment.workloads.throttle", context("x"), wrong)
+        assert refused.value.error.cause.value == "invalid"
+
+
+async def test_a_service_held_on_an_earlier_revision_is_not_throttled(
+    api: tuple[str, str],
+) -> None:
+    """A throttle after a rollback would roll the service forward: it is a conflict."""
+    url, _ = api
+    await connector(url).call(
+        "deployment.workloads.release",
+        context("release"),
+        {"name": "web", "container": "app", "image": NEW},
+    )
+    await connector(url).call("deployment.workloads.rollback", context("rollback"), {"name": "web"})
+    with pytest.raises(CallFailed) as held:
+        await connector(url).call(
+            "deployment.workloads.throttle", context("brake"), {"name": "web", "max_instances": 1}
+        )
+    assert held.value.error.cause.value == "conflict"
+    assert len(state(url)["web"]["revisions"]) == 2 and state(url)["web"]["images"] == [
+        "registry.example/app:1.0.0"
+    ]
+
+
 async def test_a_rollback_without_an_earlier_revision_and_a_wrong_input_write_nothing(
     api: tuple[str, str],
 ) -> None:
@@ -210,3 +251,88 @@ async def test_a_service_changed_between_the_reading_and_the_write_is_a_conflict
         operations._service = real  # type: ignore[assignment]
     assert stale.value.error.cause.value == "conflict"
     assert len(state(url)["web"]["revisions"]) == 1
+
+
+# --- a canary's share of the traffic (ADR-0312) ---------------------------------------------------
+
+
+def deploy_canary(url: str, image: str = NEW) -> None:
+    """A canary revision deployed beside the stable one without traffic, as the business's build
+    deploys it."""
+    httpx.post(
+        f"{url}/_fake/deploy", json={"service": "web", "image": image}, timeout=5
+    ).raise_for_status()
+
+
+async def test_a_split_shares_the_traffic_between_the_canary_and_the_stable_revision_once(
+    api: tuple[str, str],
+) -> None:
+    url, _ = api
+    deploy_canary(url)
+    canary = state(url)["web"]["revisions"][-1]
+    assert state(url)["web"]["traffic"] == {"web-00001-abc": 100}, "deployed without traffic"
+    first = await connector(url).call(
+        "deployment.workloads.split", context("split-1"), {"name": "web", "percent": 10}
+    )
+    assert first.effect.replayed is False
+    assert first.output["traffic"] == [
+        {"revision": "web-00001-abc", "percent": 90},
+        {"revision": canary, "percent": 10},
+    ]
+    assert state(url)["web"]["traffic"] == {"web-00001-abc": 90, canary: 10}
+    assert len(state(url)["web"]["revisions"]) == 2, "a split makes no revision"
+    again = await connector(url).call(
+        "deployment.workloads.split", context("split-1"), {"name": "web", "percent": 10}
+    )
+    assert again.effect.replayed is True and again.effect.records == first.effect.records
+
+    raised = await connector(url).call(
+        "deployment.workloads.split", context("split-2"), {"name": "web", "percent": 50}
+    )
+    assert {t["percent"] for t in raised.output["traffic"]} == {50}
+    promoted = await connector(url).call(
+        "deployment.workloads.split", context("promote"), {"name": "web", "percent": 100}
+    )
+    assert promoted.output["traffic"] == [{"revision": canary, "percent": 100}]
+    assert promoted.output["rolled_out"] is True
+    assert state(url)["web"]["images"] == [NEW]
+
+
+async def test_a_split_to_nothing_puts_all_traffic_back_on_the_stable_revision(
+    api: tuple[str, str],
+) -> None:
+    url, _ = api
+    deploy_canary(url)
+    await connector(url).call(
+        "deployment.workloads.split", context("split-1"), {"name": "web", "percent": 30}
+    )
+    back = await connector(url).call(
+        "deployment.workloads.split", context("halt"), {"name": "web", "percent": 0}
+    )
+    assert back.output["traffic"] == [{"revision": "web-00001-abc", "percent": 100}]
+    assert state(url)["web"]["images"] == ["registry.example/app:1.0.0"]
+
+
+async def test_a_split_without_a_stable_revision_or_with_a_wrong_share_writes_nothing(
+    api: tuple[str, str],
+) -> None:
+    url, _ = api
+    with pytest.raises(CallFailed) as alone:
+        await connector(url).call(
+            "deployment.workloads.split", context("split"), {"name": "web", "percent": 10}
+        )
+    assert alone.value.error.cause.value == "not_found", "the only revision is no canary"
+    for percent in (-1, 101, "10", True):
+        with pytest.raises(CallFailed) as wrong:
+            await connector(url).call(
+                "deployment.workloads.split", context("split"), {"name": "web", "percent": percent}
+            )
+        assert wrong.value.error.cause.value == "invalid"
+    with pytest.raises(CallFailed) as unknown:
+        await connector(url).call(
+            "deployment.workloads.split",
+            context("split"),
+            {"name": "web", "percent": 10, "revision": "web-00009-zzz"},
+        )
+    assert unknown.value.error.cause.value == "not_found"
+    assert state(url)["web"]["traffic"] == {"web-00001-abc": 100}

@@ -61,8 +61,9 @@ class IncidentKind(StrEnum):
     """A step would have repeated the same outward call, or its model's answer, beyond the
     tenant's limit within one run; the rule stopped it at its boundary (ADR-0132 §5)."""
     DRIFT = "evaluation.drift"
-    """A process that sends outward scored on its evaluation cases, with no change, below its
-    last score by more than the tenant's tolerance (ADR-0134 §5)."""
+    """A process scored on its evaluation cases, with no change, below its last score by more
+    than its tolerance: a finding of deviation detection, whether it sends outward or not; its
+    facts say which (ADR-0134 §5, ADR-0300 §2)."""
     STAGE = "stage.fell"
     """A stage of the tenant's introduction stopped holding, and a process it adds fell to the
     level the stage's absence allows (ADR-0137 §4)."""
@@ -88,6 +89,10 @@ class IncidentKind(StrEnum):
     LIMIT_HARMFUL = "limit.harmful"
     """A unit limit held more runs, or longer, than the tenant's watch allows; its role is told
     with the change recommended, its cost and its benefit, once per period (ADR-0282 §4)."""
+    REMOVAL_BROKE = "removal.broke"
+    """The removal test found that withholding an integration breaks the process: a step lost
+    its only adapter and nobody takes it over. Raised to the process's escalation role, or
+    `owner`, once per integration and removal run (UC-8.9, ADR-0300 §3)."""
 
 
 class IncidentState(StrEnum):

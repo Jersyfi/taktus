@@ -77,6 +77,10 @@ class OriginKind(StrEnum):
     """Drafted by rule from corrections that recurred at one step of a process (UC-4.4)."""
     OWN_USE = "own_use"
     """Drawn from one person's own use; it belongs to that person (UC-14.2)."""
+    CURATED = "curated"
+    """Written on purpose by people, for the catalogue or for their organisation, and never
+    drawn from runs: a method scaffold, a skill directory carrying `scaffold.yaml`
+    (ADR-0307 §2). It passes the same lifecycle as every other skill."""
 
 
 class SkillOrigin(Value):

@@ -183,7 +183,7 @@ async def test_removing_the_knowledge_source_changes_what_is_known_and_breaks_no
     result = (await result_of(services, run, "exercise"))["output"]
     assert "knowledge.documents" in result["configuration"]["serves"]
     (process,) = result["processes"]
-    assert process["process"] == "k-01@1"
+    assert process["process"] == "k-01@2"
     assert process["exercised"] == "run", process.get("note")
     assert process["baseline"]["state"] == "finished", "with the wiki, the answer is cited"
     assert process["withheld"]["state"] == "escalated"

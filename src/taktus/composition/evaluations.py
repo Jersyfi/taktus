@@ -12,7 +12,8 @@
   against its verdict with a person's reason (`ProposalActs.commission`).
 - **Drift.** While it leads, the scheduler starts a drift evaluation at every slot of a process's
   evaluation schedule, advances every evaluation that is not scored, and proposes a case for
-  every correction of a scored step. A drift of a process that sends outward raises an incident.
+  every correction of a scored step. A drift raises an incident, whether the process sends
+  outward or not (ADR-0300).
 
 This is wiring, because each act crosses components — process, command, run and governance —
 and only the composition root may hold them all (`composition/README.md`).
@@ -188,9 +189,14 @@ class Evaluations:
         clock: Clock,
         ids: Identifiers,
         outward: Outward | None = None,
+        platform: Callable[[Tenant, Evaluation], Awaitable[object]] | None = None,
     ) -> None:
         """`outward` says whether a version sends anything outward; None, where no pools are
-        known: every version does, so that a drift raises its incident rather than not."""
+        known: every version does, so that a drift raises its incident rather than not.
+        `platform`: what a scored evaluation is handed to, to be copied into a connected
+        evaluation platform (UC-5.8, ADR-0305); None where none is connected. Its failure
+        changes nothing in the evaluation."""
+        self._platform = platform
         self._processes = processes
         self._versions = versions
         self._evaluations = evaluations
@@ -865,6 +871,11 @@ class Evaluations:
             )
         if verdict is Verdict.DRIFT and previous is not None:
             await self._drifted(tenant, scored, previous)
+        if self._platform is not None:
+            try:
+                await self._platform(tenant, scored)
+            except Exception as error:  # a copy never changes the evaluation (ADR-0305 §2)
+                log.warning("evaluation.copy_failed", error=type(error).__name__)
         return scored
 
     async def _previous(self, tenant: Tenant, evaluation: Evaluation) -> Evaluation | None:
@@ -886,14 +897,10 @@ class Evaluations:
     async def _drifted(self, tenant: Tenant, scored: Evaluation, previous: Evaluation) -> None:
         async with self._work.transaction(tenant):
             version = await self._versions.get(tenant, scored.version)
-        if version is None or not await self._outward(version):
-            log.warning(
-                "a drift on the evaluation cases; the process sends nothing outward",
-                tenant=tenant,
-                evaluation=scored.id,
-                process=scored.version,
-            )
+        if version is None:
             return
+        # A drift is a finding whether the process sends outward or not (ADR-0300 §2).
+        outward = await self._outward(version)
         models: dict[str, str] = {}
         for result in previous.results:
             models.update({f"{step}@before": model for step, model in result.models.items()})
@@ -912,6 +919,8 @@ class Evaluations:
                 previous=before,
                 tolerance=scored.tolerance or 0.0,
                 models=models,
+                outward=outward,
+                role="owner" if version.escalation is None else version.escalation.role,
             ),
         )
 

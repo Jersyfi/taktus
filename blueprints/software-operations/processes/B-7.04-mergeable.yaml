@@ -37,7 +37,7 @@
 # Switching it off (`taktusctl deactivate --process b-7-04`) changes nothing in the repository.
 
 id: b-7-04
-version: "2"
+version: "3"
 name: B-7.04 Keeping pull requests mergeable
 autonomy:
   level: 2
@@ -477,3 +477,8 @@ takeover:
             requesting identity described in CREDENTIALS.md; a person working by hand uses their
             own account, which may write to the branch
       done: the owner's decision is recorded, and the repair is pushed only if the owner agreed
+
+# What counts as an equivalent result of each variable step that no scorer scores
+# yet: its class's ceiling until its cases narrow it (UC-8.4, ADR-0300 §1).
+tolerances:
+  repair: 0.25

@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from components.run.test_case_scope import ACCOUNT, CustomerConnector, Declared, Scoped, step
+from components.run.test_outward_messages import Outward, support
 
 from governance.test_anchors import World, call, correcting, requests_of, rule, states
 from taktus.components.governance.domain.model import AnchorConfiguration
@@ -40,7 +42,13 @@ def with_decider(role: str) -> dict[str, Any]:
 
 def test_the_proposal_is_a_configuration_that_keeps_the_legal_and_the_correction_class() -> None:
     configuration = AnchorConfiguration(id="t", tenant="t", **proposed())
-    assert {a.id for a in configuration.anchors} == {"anc-money", "anc-legal", "anc-correction"}
+    assert {a.id for a in configuration.anchors} == {
+        "anc-money",
+        "anc-legal",
+        "anc-staff",
+        "anc-limits",
+        "anc-correction",
+    }
 
 
 @pytest.mark.parametrize(
@@ -49,6 +57,11 @@ def test_the_proposal_is_a_configuration_that_keeps_the_legal_and_the_correction
         ("payment.release.submit", ["anc-money"]),
         ("payment.refund.create", ["anc-money"]),
         ("legal.filing.submit", ["anc-legal"]),
+        ("staff.contracts.create", ["anc-staff"]),
+        ("partnerships.agreements.end", ["anc-staff"]),
+        ("orchestrator.levels.raise", ["anc-limits"]),
+        ("orchestrator.limits.set", ["anc-limits"]),
+        ("orchestrator.spend.read", []),
         ("payments.subscriptions.read", []),
         ("billing.costs.daily", []),
         ("repository.pullrequests.open", []),
@@ -92,3 +105,71 @@ async def test_a_level_four_run_halts_where_money_would_move_and_raises_a_decisi
     (request_id,) = requests_of(run, "act")
     request = await w.request(request_id)
     assert request.status is DecisionStatus.OPEN and str(request.request.class_) == kind
+
+
+# --- UC-03 §9: every row of §6 halts a level-4 run ---------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("act", "anchor"),
+    [
+        (call("act", "staff.contracts.create"), "anc-staff"),
+        (call("act", "partnerships.agreements.end"), "anc-staff"),
+        (call("act", "orchestrator.levels.raise"), "anc-limits"),
+        (call("act", "orchestrator.limits.set"), "anc-limits"),
+    ],
+    ids=["staff", "partnerships", "own-level", "own-limit"],
+)
+async def test_a_level_four_run_halts_at_staff_partnerships_and_its_own_limits(
+    act: Any, anchor: str
+) -> None:
+    """UC-03 §6, the rows on staff and partnerships and on its own limits and levels: a strategic
+    anchor holds the act at every level. No connector serves these acts today; the anchor holds
+    the first one a connector adds, as `payment.refund.create` stands for moving money."""
+    w = await World(
+        rule("prepare"), act, rule("report"), level=4, configuration=with_decider("owner")
+    ).setup()
+    run = await w.start()
+    assert run.state is RunState.WAITING_HUMAN
+    assert states(run)["act"] is StepState.WAITING_HUMAN
+    assert w.connector.calls == [], "nothing of the anchored step started"
+    (request_id,) = requests_of(run, "act")
+    request = await w.request(request_id)
+    assert request.status is DecisionStatus.OPEN and str(request.request.class_) == "strategic"
+    assert anchor in json.dumps(request.model_dump(mode="json", by_alias=True))
+
+
+@pytest.mark.parametrize("classified", ["date", "feature", "legal_advice"])
+async def test_a_level_four_run_halts_at_a_promise(classified: str) -> None:
+    """UC-03 §6, the row on promises: an outward message that promises a date, a feature or
+    legal advice is held for a person (UC-7.6)."""
+    h = Outward(support(), classified=classified, level=4)
+    run = await h.begin()
+    assert run.state is RunState.WAITING_HUMAN, run.reason
+    assert [d.anchor for d in h.requests.raised] == ["anc-promise"]
+    assert h.sent() == []
+
+
+async def test_a_level_four_run_halts_at_mass_sending() -> None:
+    """UC-03 §6, the row on mass sending: more recipients than the tenant's limit wait for a
+    person (UC-7.6)."""
+    h = Outward(support(recipients=[f"r{n}@example.org" for n in range(11)]), level=4)
+    run = await h.begin()
+    assert run.state is RunState.WAITING_HUMAN
+    assert [d.anchor for d in h.requests.raised] == ["anc-mass-sending"]
+    assert h.sent() == []
+
+
+async def test_a_level_four_run_halts_at_user_data_outside_its_case() -> None:
+    """UC-03 §6, the row on user data: a step that reads personal data outside a specific case
+    halts for a person before anything is read (UC-7.7)."""
+    h = Scoped(
+        step("export", ACCOUNT, {"account": "cust-2"}),
+        connector=CustomerConnector(scoped=True),
+        sources=Declared(),
+        level=4,
+    )
+    run = await h.begin()
+    assert run.state is RunState.WAITING_HUMAN, run.reason
+    assert h.customers.calls == [], "nothing was read before a person decided"
+    assert [d.anchor for d in h.requests.raised] == ["anc-personal-data"]

@@ -20,6 +20,9 @@ and the chain's places are checked by the verification all the same."""
 CLAIM = 4
 """Namespace of a claim of jobs that holds units' limits (ADR-0166); the key is the tenant's
 `lock_key`. Claims without limits take no lock and stay parallel."""
+CLAIMS = 5
+"""Namespace of the claims port (ADR-0298); the key is the hash of the tenant and the claim's
+name. Two names whose keys collide only wait for each other: the claim is a mutual exclusion."""
 
 # A writing transaction's marker (ADR-0164 §3) is one bigint in the one-key form, always
 # negative: the bitwise complement of the tenant's `lock_key` in bits 40 and up and a bound

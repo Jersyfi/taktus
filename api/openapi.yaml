@@ -2538,7 +2538,9 @@ paths:
         your identity. Refused, writing nothing, when a part is missing or a step cannot be estimated
         before it starts (ADR-0237, ADR-0005). An agent draft's agent is registered in the catalogue by
         the same act, and named in the answer (ADR-0292). A draft that describes a process hands its goal
-        to the describe process, and the answer names that run (ADR-0290).
+        to the describe process, and the answer names that run (ADR-0290). A draft that carries an administrative
+        act carries it out by the same act, with your identity as its actor, and is refused with 403 when
+        your roles do not hold the right the act needs by hand (ADR-0296).
       operationId: commission_plans__draft_id__commission_post
       parameters:
       - name: draft_id
@@ -2547,6 +2549,18 @@ paths:
         schema:
           type: string
           title: Draft Id
+      - name: accept_demand
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: 'You saw the estimated demand of the run the commissioning starts and accept it:
+            one that needs much of what remains of a unit limit is refused with its demand until then
+            (ADR-0299).'
+          default: false
+          title: Accept Demand
+        description: 'You saw the estimated demand of the run the commissioning starts and accept it:
+          one that needs much of what remains of a unit limit is refused with its demand until then (ADR-0299).'
       - name: authorization
         in: header
         required: false
@@ -2561,6 +2575,10 @@ paths:
           content:
             application/json:
               schema: {}
+        '403':
+          description: Your roles do not hold the act's right.
+          content:
+            application/problem+json: {}
         '400':
           description: Refused; the detail says why.
           content:
@@ -3985,6 +4003,96 @@ paths:
             application/json:
               schema:
                 title: Response Clear Unit Administration Units  Unit  Delete
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not hold tenant.administer.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /administration/health:
+    get:
+      tags:
+      - administration
+      summary: The instance's health
+      description: The release this process runs, whether it may receive traffic and, if not, why, the
+        roles it serves and whether it leads; for your tenant, how the backup stands, how many alerts
+        are in effect and how many incidents are open (ADR-0295). `taktusctl health` shows the same.
+      operationId: health_administration_health_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The instance's health.
+          content:
+            application/json:
+              schema:
+                title: Response Health Administration Health Get
+        '400':
+          description: Refused; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: Your roles do not hold tenant.administer.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /administration/update:
+    post:
+      tags:
+      - administration
+      summary: Prepare an update of Taktus as a plan
+      description: 'A plan draft for the update to the release named: a backup, the upgrade and the check,
+        each a person''s step from the upgrading guide, with the way back to the release before. You state
+        when it is due and at which level, and commission it in the plan dialogue; commissioning records
+        `instance.update_commissioned` and applies nothing: a person carries the steps out (ADR-0296,
+        ADR-0013 D).'
+      operationId: update_administration_update_post
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBody'
+      responses:
+        '201':
+          description: The draft, in the guided mode.
+          content:
+            application/json:
+              schema:
+                title: Response Update Administration Update Post
         '400':
           description: Refused; the detail says why.
           content:
@@ -5725,6 +5833,278 @@ paths:
             application/problem+json: {}
         '422':
           description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /chains:
+    get:
+      tags:
+      - chains
+      summary: The chains across domains, each with its latest run
+      description: 'Every chain the tenant declared that links only processes the reader may see: its
+        links in order and its latest run with its state.'
+      operationId: listed_chains_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The chains.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /chains/{chain}:
+    get:
+      tags:
+      - chains
+      summary: One chain as a whole
+      description: 'Its links in order, what passes at every boundary with the clause that requires it,
+        its objectives and who its halt reaches, and every run of it, newest first: the link it stands
+        at, the run of every link, every handover by digest, and why it waits, halted or stopped.'
+      operationId: one_chains__chain__get
+      parameters:
+      - name: chain
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Chain
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The chain.
+          content:
+            application/json:
+              schema: {}
+        '404':
+          description: No such chain, or one you may not see.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+    put:
+      tags:
+      - chains
+      summary: Declare a chain across domains
+      description: 'The process versions it links, in order, and at each boundary every item handed over
+        with its clause. It is held to the versions it links: every input the receiving version requires
+        given by exactly one item, every item from a step of the sending version. A new declaration replaces
+        the one before; a run keeps its own.'
+      operationId: declare_chains__chain__put
+      parameters:
+      - name: chain
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Chain
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChainBody'
+      responses:
+        '200':
+          description: The chain as declared.
+          content:
+            application/json:
+              schema: {}
+        '403':
+          description: You do not hold the role `owner`.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such chain, or one you may not see.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /chains/{chain}/runs:
+    post:
+      tags:
+      - chains
+      summary: Start a chain
+      description: The first link starts with the inputs given. The chain runs link by link until a link
+        does not finish, a handover halts, or the last link ended, and is answered as it then stands.
+        A chain that waits goes on by itself once its link finished.
+      operationId: start_chains__chain__runs_post
+      parameters:
+      - name: chain
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Chain
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/taktus__adapters__driving__rest__chains__StartBody'
+      responses:
+        '200':
+          description: The chain run.
+          content:
+            application/json:
+              schema: {}
+        '403':
+          description: You do not hold the role `owner`.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such chain, or one you may not see.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /chain-runs/{chain_run}/decision:
+    post:
+      tags:
+      - chains
+      summary: Decide on a halted chain
+      description: '`given`: a value for exactly the items the halted handover lacked; the chain hands
+        them over, marked as given by a person, and goes on. `stop`: the chain stops, and the links before
+        keep their results. Taktus fills in nothing itself.'
+      operationId: decide_chain_runs__chain_run__decision_post
+      parameters:
+      - name: chain_run
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Chain Run
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecisionBody'
+      responses:
+        '200':
+          description: The chain run as it now stands.
+          content:
+            application/json:
+              schema: {}
+        '409':
+          description: The decision does not fit the chain run's state.
+          content:
+            application/problem+json: {}
+        '403':
+          description: You do not hold the role `owner`.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such chain, or one you may not see.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /contracts/mapping-drafts:
+    post:
+      tags:
+      - partners
+      summary: Propose a mapping of a partner's messages from sample data
+      description: 'Each field of the contract takes the one path every sample carries whose name matches
+        it, letter for letter or once case and separators are set aside. A field two paths match, or none,
+        is asked back, never guessed. The draft is stored nowhere and applied to nothing: the person confirms
+        it by registering a version whose contract carries `mapping`.'
+      operationId: draft_contracts_mapping_drafts_post
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DraftBody'
+      responses:
+        '200':
+          description: The draft and the question it asks back.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: The contract or the samples do not validate.
           content:
             application/problem+json: {}
   /roles:
@@ -7651,6 +8031,44 @@ components:
       required:
       - process
       title: CaseBody
+    ChainBody:
+      properties:
+        name:
+          type: string
+          minLength: 1
+          title: Name
+          description: The chain's name, as people call it.
+        links:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          minItems: 2
+          title: Links
+          description: 'The process versions it links, in order: `{process_version, handover}`, where
+            `handover` lists each item the link is given — `input`, `step`, `select`, `clause` — and is
+            empty for the first link.'
+        slo:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Slo
+          description: 'The chain''s own objectives: `latency` (an ISO 8601 duration) for one run of the
+            whole chain, `completion` the least share of its ended runs that finish.'
+        escalation:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Escalation
+          description: 'Who a halted handover reaches: `role`, `react_within`, `path`. Without it, the
+            role `owner` in the owner-facing channel.'
+      type: object
+      required:
+      - name
+      - links
+      title: ChainBody
     ChooseBody:
       properties:
         choices:
@@ -7704,6 +8122,23 @@ components:
             (ADR-0134 §4).'
       type: object
       title: CommissionBody
+    DecisionBody:
+      properties:
+        given:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Given
+          description: A value for exactly the items the halted handover lacked; the chain goes on with
+            them, each marked as given by a person.
+        stop:
+          type: boolean
+          title: Stop
+          description: Stop the chain instead.
+          default: false
+      type: object
+      title: DecisionBody
     DeclineBody:
       properties:
         purpose:
@@ -7733,6 +8168,27 @@ components:
       - occasion
       - model
       title: DeclineBody
+    DraftBody:
+      properties:
+        contract:
+          additionalProperties: true
+          type: object
+          title: Contract
+          description: The data contract as a bundle states it under `contracts.<name>`.
+        samples:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          maxItems: 50
+          minItems: 1
+          title: Samples
+          description: The partner's sample messages, as objects.
+      type: object
+      required:
+      - contract
+      - samples
+      title: DraftBody
     FieldsBody:
       properties:
         fields:
@@ -7830,6 +8286,20 @@ components:
           title: Describes
           description: 'The process what was said describes: commissioning the draft hands it to the describe
             process, whose run proposes the process''s version (ADR-0290).'
+        act:
+          anyOf:
+          - type: string
+            pattern: ^[a-z][a-z-]*\.[a-z][a-z-]*$
+          - type: 'null'
+          title: Act
+          description: An administrative act the draft carries out once commissioned, named as the inventory
+            of administrative acts names it; its steps come with it (ADR-0296).
+        arguments:
+          additionalProperties:
+            type: string
+          type: object
+          title: Arguments
+          description: The act's arguments known so far, by name.
       type: object
       title: OpenBody
     PlaceBody:
@@ -8262,6 +8732,23 @@ components:
       - name
       - parent
       title: UnitBody
+    UpdateBody:
+      properties:
+        to:
+          type: string
+          pattern: ^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$
+          title: To
+          description: 'The release to update to, as 1.0.1: one release after the running one.'
+        said:
+          type: string
+          maxLength: 2000
+          title: Said
+          description: Why, in your words.
+          default: ''
+      type: object
+      required:
+      - to
+      title: UpdateBody
     taktus__adapters__driving__rest__app__AnswerBody:
       properties:
         option:
@@ -8298,6 +8785,21 @@ components:
           type: object
           title: Inputs
           description: The process's inputs by name, as its catalogue entry lists them.
+        accept_demand:
+          type: boolean
+          title: Accept Demand
+          description: 'You saw the run''s estimated demand and accept it: a run that needs much of what
+            remains of a unit limit starts only with it (ADR-0299).'
+          default: false
+      type: object
+      title: StartBody
+    taktus__adapters__driving__rest__chains__StartBody:
+      properties:
+        inputs:
+          additionalProperties: true
+          type: object
+          title: Inputs
+          description: The inputs of the chain's first link.
       type: object
       title: StartBody
     taktus__adapters__driving__rest__evaluations__ConfirmBody:

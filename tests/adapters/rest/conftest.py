@@ -59,6 +59,7 @@ from taktus.components.process.domain.model import (
     TakeoverTrial,
     ValueStream,
 )
+from taktus.components.process.domain.model.chain import ChainRun, DeclaredChain
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.application.service import (
     Alerted,
@@ -75,6 +76,7 @@ from taktus.components.run.application.query.blocked_time import BlockedTime
 from taktus.components.run.application.service import HandBack, RunEngine, SteerStep, TakeOver
 from taktus.components.run.domain.model import Run, RunError, UnknownTakeover
 from taktus.composition.agent_surface import AgentSurface
+from taktus.composition.chains import ChainRuns
 from taktus.composition.decisions import DecisionWiring, decision_wiring
 from taktus.composition.levels import RepositoryLevelRecords
 from taktus.composition.live import LiveHub, LiveOptions, Records, state_of
@@ -265,6 +267,8 @@ class Services:
     """The request path an accepted process proposal is handed to (ADR-0251 §1); None: this
     instance has none, and accepting is refused."""
     built_agent: AgentSurface | None = None
+    built_chains: ChainRuns | None = None
+    """The chains across domains over this world's stores and a real run engine (ADR-0301)."""
     built_workspace: Workspace | None = None
     built_agents: AgentCatalog | None = None
     """The catalogue an agent drafted in the plan dialogue is registered in (ADR-0292)."""
@@ -313,6 +317,36 @@ class Services:
                 ids=self.ids,
             )
         return self.built_agent
+
+    @property
+    def chains(self) -> ChainRuns:
+        """End-to-end chains over this world's stores and a real run engine (ADR-0301)."""
+        if self.built_chains is None:
+            engine = RunEngine(
+                maturities=VERIFIED,
+                runs=self.runs,
+                work=self.persistence,
+                objects=self.objects,
+                ledger=self.ledger,
+                provenance=MemoryProvenanceStore(self.persistence),
+                workers=StaticWorkerPool([]),
+                clock=self.clock,
+                ids=self.ids,
+                telemetry=NoTelemetry(),
+                connectors=StaticConnectorPool([]),
+            )
+            self.built_chains = ChainRuns(
+                engine=engine,
+                versions=MemoryRepository(self.persistence, ProcessVersion),
+                objects=self.objects,
+                ledger=self.ledger,
+                work=self.persistence,
+                clock=self.clock,
+                runs=self.runs,
+                declared=MemoryRepository(self.persistence, DeclaredChain),
+                chain_runs=MemoryRepository(self.persistence, ChainRun),
+            )
+        return self.built_chains
 
     @property
     def streams(self) -> StreamReads:
@@ -389,6 +423,7 @@ class Services:
                 self.ids,
                 self.identity.structure,
                 agents=self.built_agents,
+                identities=self.identity.directory,
             )
         return self.built_workspace
 

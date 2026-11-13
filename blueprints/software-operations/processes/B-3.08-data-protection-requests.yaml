@@ -24,8 +24,18 @@
 # the request — the start of the run — to that step: the regulation gives one month (GDPR
 # Art. 12(3)); this version counts 28 calendar days, the shortest month, so that no month is
 # missed, reminds the role `owner` after 21 and escalates to it at the limit, kept by Taktus
-# across restarts (UC-4.17, ADR-0133). An extension by two further months is the person's to
-# declare to the customer, and is not modelled. The tenant's own role replaces `owner`.
+# across restarts (UC-4.17, ADR-0133). The tenant's own role replaces `owner`.
+#
+# The two-month extension (GDPR Art. 12(3)): where a request is complex or one of many, the
+# controller may extend the month by two further months, telling the customer within the first
+# month and why. Within the month the person either carries the request out or tells the
+# customer of the extension; either reports the step `carried-out` performed and meets the
+# month. The step `extension` then asks the person whether the request was extended. Declined,
+# the run ends. Accepted, the person's step `carried-out-extended` waits for the request to be
+# carried out, and the deadline `extended` watches it: two further months from the moment the
+# extension was recorded, counted as 59 calendar days, the shortest two months in a row, with a
+# reminder after 45 days. The extension is recorded within the first month, so the count never
+# ends later than the law's three months. Whether a request may be extended is the person's judgement, never Taktus's.
 #
 # By hand:
 #
@@ -36,7 +46,7 @@
 # product, for a person.
 
 id: b-3-08
-version: "2"
+version: "4"
 name: B-3.08 Data protection requests
 autonomy:
   level: 2
@@ -70,6 +80,16 @@ deadlines:
     limit: 28d
     counts: calendar
     lead: 21d
+    at_lead: { remind: owner }
+    at_limit: { escalate: owner }
+  # The two further months (GDPR Art. 12(3)), from the moment the extension was recorded —
+  # within the first month — counted as 59 calendar days, the shortest two months in a row.
+  extended:
+    from: { after: extension }
+    until: { step: carried-out-extended }
+    limit: 59d
+    counts: calendar
+    lead: 45d
     at_lead: { remind: owner }
     at_limit: { escalate: owner }
 
@@ -228,8 +248,59 @@ steps:
     depends_on: [prepare]
     work:
       task: >
-        carry out the prepared request in the product, or ask a sender who is not verified to
-        verify, and confirm it to the customer within the statutory month
+        within the statutory month, carry out the prepared request in the product and confirm it
+        to the customer, or ask a sender who is not verified to verify; where the request is
+        complex or one of many, tell the customer instead that it is extended by two further
+        months, and why
+
+  - id: extension
+    method: rule
+    reason: >
+      whether the request was extended is the person's answer, asked as a decision; the step
+      records it and acts on nothing, and a declined answer ends the run
+    rejected:
+      - method: llm
+        why: whether the month was extended is what the person did, not a reading of text
+      - method: human
+        why: a person's own step hands on no answer the run could follow (ADR-0167 §1)
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the recorded answer, pattern: "extended" }
+    depends_on: [carried-out]
+    work:
+      ask:
+        role: owner
+        on_decline: continue
+        situation: >
+          The data protection request of message ${message} was answered within its month,
+          either carried out or extended by two further months (GDPR Art. 12(3)).
+        question: Was the request of message ${message} extended by two further months?
+        proposal: >
+          Yes: the customer was told of the extension and why within the month; Taktus then
+          watches three months from the request's arrival until it is carried out. Decline when
+          it was carried out within the month.
+        values:
+          message: { $input: message }
+      rule: constant
+      value: { extended: true }
+
+  - id: carried-out-extended
+    method: human
+    reason: >
+      carrying out an extended request and confirming it to the customer is the business's act
+      toward the customer and stays with a person at every level (UC-03 §6); the extended
+      deadline is met when it is reported performed
+    rejected:
+      - method: rule
+        why: an erasure cannot be undone, and the confirmation speaks for the business
+    role: owner
+    depends_on: [extension]
+    work:
+      when:
+        - { value: { $from: extension, $select: declined }, not_matches: "^true$" }
+      task: >
+        carry out the extended request in the product and confirm it to the customer within
+        three months of its arrival
 
 takeover:
   sequence: >
@@ -240,7 +311,10 @@ takeover:
     the sender's address is the account's verified address, prepare the request in the product
     when it is one and the sender is verified, and carry it out and confirm it to the customer.
     The month the regulation gives runs from the message's arrival; after 21 days the owner is
-    reminded, and at 28 the case goes to the owner.
+    reminded, and at 28 the case goes to the owner. Where the request is complex or one of many,
+    the person may instead tell the customer within the month that it is extended by two
+    further months; then it is carried out within 59 days of recording the extension, reminded
+    after 45 days and with the owner at 59.
   steps:
     read-message:
       system: the support mailbox, in a mail client
@@ -313,4 +387,23 @@ takeover:
         thread of their message, within one month of its arrival
       expertise: the business's procedure for data protection requests
       credentials: []
-      done: the request is carried out and confirmed to the customer, or the customer was asked to verify
+      done: the request is carried out and confirmed to the customer, the customer was asked to verify, or told of the extension
+    extension:
+      system: the case
+      do: note whether the request was extended by two further months; if not, the case is done
+      expertise: none
+      credentials: []
+      done: it is noted whether the request was extended
+    carried-out-extended:
+      system: the product's administration, and the support mailbox
+      do: >
+        only for an extended request: carry it out and confirm it to the customer in the thread
+        of their message, within three months of its arrival
+      expertise: the business's procedure for data protection requests
+      credentials: []
+      done: the extended request is carried out and confirmed to the customer
+
+# What counts as an equivalent result of each variable step that no scorer scores
+# yet: its class's ceiling until its cases narrow it (UC-8.4, ADR-0300 §1).
+tolerances:
+  recognise: 1

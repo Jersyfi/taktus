@@ -35,6 +35,7 @@ from taktus.components.command.application.service import (
 )
 from taktus.components.command.application.service.coach import CoachError
 from taktus.components.command.domain.service.guided import Mode
+from taktus.components.run.domain.model import DemandToAccept
 from taktus.ports.identity import Resolution
 
 type Authenticated = Callable[[RestServices, str | None], Awaitable[Resolution | None]]
@@ -54,6 +55,15 @@ class OpenBody(BaseModel):
         pattern=r"^[a-z][a-z0-9-]*$",
         description="The process what was said describes: commissioning the draft hands it to "
         "the describe process, whose run proposes the process's version (ADR-0290).",
+    )
+    act: str | None = Field(
+        default=None,
+        pattern=r"^[a-z][a-z-]*\.[a-z][a-z-]*$",
+        description="An administrative act the draft carries out once commissioned, named as "
+        "the inventory of administrative acts names it; its steps come with it (ADR-0296).",
+    )
+    arguments: dict[str, str] = Field(
+        default_factory=dict, description="The act's arguments known so far, by name."
     )
 
 
@@ -141,14 +151,19 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         who = await authenticated(services, authorization)
         if who is None:
             return problem(401, NEEDS_KEY)
-        draft = await services.planning.open(
-            who.tenant,
-            who.identity,
-            who.org_path,
-            body.said,
-            agent=body.agent,
-            describes=body.describes,
-        )
+        try:
+            draft = await services.planning.open(
+                who.tenant,
+                who.identity,
+                who.org_path,
+                body.said,
+                agent=body.agent,
+                describes=body.describes,
+                act=body.act,
+                arguments=body.arguments,
+            )
+        except PlanningError as error:
+            return problem(400, str(error))
         return JSONResponse(services.planning.view(draft, Mode.GUIDED), status_code=201)
 
     @routes.get(
@@ -219,21 +234,50 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         "cannot be estimated before it starts (ADR-0237, ADR-0005). An agent draft's agent is "
         "registered in the catalogue by the same act, and named in the answer (ADR-0292). A draft "
         "that describes a process hands its goal to the describe process, and the answer names "
-        "that run (ADR-0290).",
-        responses={200: {"description": "The commissioned plan."}, **refused},
+        "that run (ADR-0290). A draft that carries an administrative act carries it out by the "
+        "same act, with your identity as its actor, and is refused with 403 when your roles do "
+        "not hold the right the act needs by hand (ADR-0296).",
+        responses={
+            200: {"description": "The commissioned plan."},
+            403: {"description": "Your roles do not hold the act's right.", **PROBLEM},
+            **refused,
+        },
     )
     async def commission(
-        draft_id: str, authorization: str | None = Header(default=None)
+        draft_id: str,
+        authorization: str | None = Header(default=None),
+        accept_demand: Annotated[
+            bool,
+            Query(
+                description="You saw the estimated demand of the run the commissioning starts "
+                "and accept it: one that needs much of what remains of a unit limit is refused "
+                "with its demand until then (ADR-0299)."
+            ),
+        ] = False,
     ) -> JSONResponse:
         who = await authenticated(services, authorization)
         if who is None:
             return problem(401, NEEDS_KEY)
         try:
             plan, run = await services.planning.commission_and_start(
-                who.tenant, who.identity, draft_id
+                who.tenant, who.identity, draft_id, accept_demand=accept_demand
             )
             draft = await services.planning.get(who.tenant, who.identity, draft_id)
+        except DemandToAccept as error:
+            return JSONResponse(
+                {
+                    "type": "about:blank",
+                    "title": "Conflict",
+                    "status": 409,
+                    "detail": str(error),
+                    "demand": error.shown,
+                },
+                status_code=409,
+                media_type=MEDIA_TYPE,
+            )
         except PlanningError as error:
+            if getattr(error, "reason", None) == "right":
+                return problem(403, str(error))
             return refusal(error)
         if run is not None:
             return JSONResponse({**plan.document(), "run": run.id})

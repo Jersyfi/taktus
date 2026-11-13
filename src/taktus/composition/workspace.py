@@ -10,13 +10,18 @@ structure places in it and refers to, read as the participant may see it (ADR-02
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
 from taktus.components.catalog.application.service import AgentCatalog
 from taktus.components.command.application.service import PlanDialogue
 from taktus.components.command.application.service.coach import Coach
-from taktus.components.command.application.service.sessions import Passage, Sessions
+from taktus.components.command.application.service.sessions import (
+    Passage,
+    ProjectKnowledge,
+    Sessions,
+)
 from taktus.components.command.domain.model import PlanDraft
 from taktus.components.command.domain.model.coach import CoachHint, CoachPolicy, CoachSettings
 from taktus.components.command.domain.model.session import ProjectSession, Source
@@ -28,10 +33,12 @@ from taktus.components.identity.domain.model.structure import (
     OrgStructure,
     PlacedKind,
     Placement,
+    Reference,
     StructureUnit,
 )
 from taktus.components.identity.domain.service.structure import StructureRefused
 from taktus.components.process.domain.model import ProcessVersion
+from taktus.composition.administration import AdministeredIdentities, AdministrationPlans
 from taktus.composition.planning import Describing, PlanActs
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.ledger import Ledger
@@ -104,6 +111,22 @@ class StructureKnowledge:
         self._identities = identities
         self._work = work
 
+    async def references(
+        self, tenant: Tenant, project: str, participant: str
+    ) -> tuple[Reference, ...]:
+        """The references the project keeps, where the participant may read in it; none
+        otherwise (ADR-0304 §2)."""
+        async with self._work.transaction(tenant):
+            known = await self._identities.get(tenant, participant)
+        if known is None:
+            return ()
+        try:
+            await self._structure.context_of(tenant, participant, known.org_path, project)
+        except StructureRefused:
+            return ()
+        found = (await self._structure.units(tenant)).get(project)
+        return () if found is None else tuple(found.references)
+
     async def read(
         self, tenant: Tenant, project: str, participant: str, asked: str
     ) -> list[Passage]:
@@ -165,15 +188,21 @@ def workspace_of(
     *,
     agents: AgentCatalog | None = None,
     describe: Describing | None = None,
+    identities: AdministeredIdentities | None = None,
+    knowledge: Callable[[StructureKnowledge], ProjectKnowledge] | None = None,
 ) -> Workspace:
     """`agents`: the catalogue an agent drafted in the plan dialogue is registered in
     (ADR-0292); None where the wiring has none. `describe`: what turns a commissioned plan's
     goal into a proposal for the process it describes (ADR-0290); None where no describe
-    process is named."""
+    process is named. `identities`: where an administrative act a plan carries is carried out
+    (ADR-0296); None where the wiring has none. `knowledge`: what a session reads beside what
+    Taktus holds of a project — its source systems, with the participant's own credential
+    (`composition/sessions.py`, ADR-0304); None: only what Taktus holds."""
     commands = stored(Command)
     drafts = stored(PlanDraft)
     versions = stored(ProcessVersion)
     dialogue = PlanDialogue(commands, drafts, stored(Plan), ledger, work, clock, ids)
+    held = StructureKnowledge(structure, versions, stored(Identity), work)
     return Workspace(
         planning=PlanActs(
             dialogue,
@@ -185,6 +214,9 @@ def workspace_of(
             ids,
             agents=agents,
             describe=describe,
+            administration=None
+            if identities is None
+            else AdministrationPlans(identities, dialogue, ledger, work),
         ),
         coach=Coach(
             stored(CoachSettings),
@@ -198,7 +230,7 @@ def workspace_of(
         structure=structure,
         sessions=Sessions(
             stored(ProjectSession),
-            StructureKnowledge(structure, versions, stored(Identity), work),
+            held if knowledge is None else knowledge(held),
             StructureAccess(structure, stored(Identity), work),
             dialogue,
             ledger,

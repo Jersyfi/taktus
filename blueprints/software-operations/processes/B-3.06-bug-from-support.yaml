@@ -58,7 +58,7 @@
 # filed.
 
 id: b-3-06
-version: "3"
+version: "4"
 name: B-3.06 A bug from support
 autonomy:
   level: 2
@@ -851,3 +851,9 @@ takeover:
             the operator's secret store, under the parameter Mail password of the requesting
             identity described in CREDENTIALS.md
       done: the notice stands in the sent folder, in the thread of the customer's message
+
+# What counts as an equivalent result of each variable step that no scorer scores
+# yet: its class's ceiling until its cases narrow it (UC-8.4, ADR-0300 §1).
+tolerances:
+  report: 1
+  tie: 1

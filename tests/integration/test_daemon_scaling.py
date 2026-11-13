@@ -129,6 +129,7 @@ def rule_only_bundle(n: int) -> dict[str, Any]:
     # Unattended: the example's level 2 would wait for a person before every step (ADR-0039).
     # Rules need no adapter, so level 3 asks nothing of the maturity record either.
     document["autonomy"] = {"level": 3, "reason": "rules only", "toward_next": "-"}
+    document.pop("tolerances", None)  # its variable steps go, and their tolerances with them
     document["limits"] = {"compute": {"seconds": 5, "resource_class": "cpu.small"}}
     document["steps"] = [
         {

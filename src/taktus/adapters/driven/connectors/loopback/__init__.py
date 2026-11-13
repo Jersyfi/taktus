@@ -44,7 +44,13 @@ runs over a window, grouped by the case each run was about, the costliest first.
 answers through the `Spend` protocol below, which the composition root implements over the
 accounting component (`composition/case_spend.py`). It is a `read`.
 
-Every operation but two declares effect `read`. The effect field says whether an operation's
+A project is checked against its method scaffold, and furnished, by a process too (ADR-0308).
+It asks the instance for the capability `orchestrator.scaffolds`: the check, a read, and the
+furnishing, which writes into the organisation's repository and knowledge system under keys
+derived from the run and so declares effect `write` with idempotency `marked`. The instance
+answers through the `Scaffolds` protocol below (`composition/scaffolds.py`).
+
+Every operation but three declares effect `read`. The effect field says whether an operation's
 effect leaves Taktus (contracts/connector/v1 §3); a rehearsal run inside Taktus and a record in
 the catalog do not leave it, so no egress entry is written for them (ADR-0022). Running a
 conformance suite does leave it: the suite posts assignments to a worker, calls a model, and
@@ -89,6 +95,7 @@ GUIDES = "orchestrator.guides"
 MATURATION = "orchestrator.maturation"
 CHANGES = "orchestrator.changes"
 SPEND = "orchestrator.spend"
+SCAFFOLDS = "orchestrator.scaffolds"
 
 LIST = f"{INTEGRATIONS}.list"
 DESCRIBE = f"{INTEGRATIONS}.describe"
@@ -105,6 +112,8 @@ MATURATION_PROPOSE = f"{MATURATION}.propose"
 CHANGES_READ = f"{CHANGES}.read"
 CHANGES_PROPOSE = f"{CHANGES}.propose"
 SPEND_CASES = f"{SPEND}.cases"
+SCAFFOLD_CHECK = f"{SCAFFOLDS}.check"
+SCAFFOLD_FURNISH = f"{SCAFFOLDS}.furnish"
 
 
 class UnknownIntegration(LookupError):
@@ -239,6 +248,20 @@ class Spend(Protocol):
         ...
 
 
+class Scaffolds(Protocol):
+    """What the connector needs from the instance for method scaffolds (ADR-0308). The
+    instance validates what it is given and raises `ValueError`, naming what is wrong."""
+
+    async def check(self, context: CallContext, input: dict[str, Any]) -> dict[str, Any]:
+        """The project checked against the scaffold: `findings`, and `missing` and
+        `unmaintained`, the titles of those artifacts."""
+        ...
+
+    async def furnish(self, context: CallContext, input: dict[str, Any]) -> dict[str, Any]:
+        """The missing artifacts created: `created`, `kept`, `branch`, `pull_request`."""
+        ...
+
+
 DECLARATION = Capabilities.model_validate(
     {
         "contract": "connector/v1",
@@ -252,6 +275,7 @@ DECLARATION = Capabilities.model_validate(
             MATURATION,
             CHANGES,
             SPEND,
+            SCAFFOLDS,
         ],
         "operations": [
             {
@@ -293,6 +317,25 @@ DECLARATION = Capabilities.model_validate(
                 "summary": "Run the conformance suite of an integration's contract against "
                 "the endpoint the instance resolves for it, and record the outcome in its "
                 "maturity and the ledger. Takes the integration's identifier alone.",
+            },
+            {
+                "name": SCAFFOLD_CHECK,
+                "capability": SCAFFOLDS,
+                "effect": "read",
+                "demand": {"quota_units": 1},
+                "summary": "A project — a branch, and a place in the knowledge system — checked "
+                "against a method scaffold by rule: every artifact present, missing, unmaintained "
+                "or unread.",
+            },
+            {
+                "name": SCAFFOLD_FURNISH,
+                "capability": SCAFFOLDS,
+                "effect": "write",
+                "idempotency": "marked",
+                "demand": {"quota_units": 1},
+                "summary": "The artifacts a project is missing created from the scaffold's "
+                "templates: files as one pull request, pages in the knowledge system; keyed from "
+                "the run, so a repeat creates nothing twice. Only a scaffold in production.",
             },
             {
                 "name": GUIDE_SOURCES,
@@ -396,7 +439,9 @@ class LoopbackConnector:
         maturation: Maturation | None = None,
         changes: Changes | None = None,
         spend: Spend | None = None,
+        scaffolds: Scaffolds | None = None,
     ) -> None:
+        self._scaffolds = scaffolds
         self._orchestrator = orchestrator
         self._guides = guides
         self._maturation = maturation
@@ -410,7 +455,10 @@ class LoopbackConnector:
         maturation: Maturation | None = None,
         changes: Changes | None = None,
         spend: Spend | None = None,
+        scaffolds: Scaffolds | None = None,
     ) -> None:
+        if scaffolds is not None:
+            self._scaffolds = scaffolds
         if spend is not None:
             self._spend = spend
         if changes is not None:
@@ -429,6 +477,8 @@ class LoopbackConnector:
         try:
             if operation.startswith(f"{GUIDES}."):
                 return await self._guide(operation, context, dict(input))
+            if operation.startswith(f"{SCAFFOLDS}."):
+                return await self._scaffold(operation, context, dict(input))
             if operation.startswith(f"{CHANGES}."):
                 output = await self._change(operation, context, dict(input))
                 return Result(
@@ -565,6 +615,23 @@ class LoopbackConnector:
             return await self._spend.cases(context.tenant, _text(input, "process"), _days(input))
         raise CallFailed(operation, _failure(Cause.NOT_FOUND, f"no operation {operation!r}"))
 
+    async def _scaffold(
+        self, operation: str, context: CallContext, input: dict[str, Any]
+    ) -> Result:
+        if self._scaffolds is None:
+            raise CallFailed(
+                operation, _failure(Cause.NOT_FOUND, "this instance applies no method scaffold")
+            )
+        if operation == SCAFFOLD_CHECK:
+            output = await self._scaffolds.check(context, input)
+            effect = EffectReport(kind=Effect.READ)
+        elif operation == SCAFFOLD_FURNISH:
+            output = await self._scaffolds.furnish(context, input)
+            effect = _furnished(output)
+        else:
+            raise CallFailed(operation, _failure(Cause.NOT_FOUND, f"no operation {operation!r}"))
+        return Result(output=output, effect=effect, consumption=Consumption(quota_units=1))
+
     async def _change(
         self, operation: str, context: CallContext, input: dict[str, Any]
     ) -> dict[str, Any]:
@@ -595,6 +662,19 @@ def _days(input: Mapping[str, Any]) -> int:
     if not isinstance(days, int) or isinstance(days, bool) or not 1 <= days <= 366:
         raise ValueError("`days` is a number of days, from 1 to 366")
     return days
+
+
+def _furnished(output: Mapping[str, Any]) -> EffectReport:
+    """The pull request and the pages created are the records that went out. A furnishing that
+    created nothing acted on nothing, as a repeat does: it is reported replayed."""
+    records = [Record(kind="scaffold.artifact", id=str(a)) for a in output.get("created", ())]
+    if output.get("pull_request") is not None:
+        records.insert(0, Record(kind="vcs.pull_request", id=str(output["pull_request"])))
+    return EffectReport(
+        kind=Effect.WRITE,
+        replayed=not output.get("created"),
+        records=tuple(records) or (Record(kind="scaffold.check", id=str(output.get("scaffold"))),),
+    )
 
 
 def _published(output: Mapping[str, Any]) -> EffectReport:

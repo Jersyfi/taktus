@@ -51,6 +51,17 @@ Without a scheduled backup, take a copy of the database by hand:
 kubectl -n taktus exec statefulset/taktus-database -- pg_dump -U taktus --format=custom taktus > taktus-before-upgrade.dump
 ```
 
+**Prepared as a plan.** Taktus prepares the update as a plan of these steps — the backup, the
+upgrade, the check — with section 5 as the way back. `taktusctl update prepare --to <version>
+--due <date> --level 1 --reason "<why>" --identity <you>` opens it, and `taktusctl update
+commission <draft> --identity <you>` commissions it; the web app's page *Health* opens it too,
+and *Plan* commissions it. Commissioning needs a role holding `tenant.administer`. It records who
+commissioned the update and applies nothing: you, or another instance, carry the steps out. An
+instance never updates itself.
+
+`taktusctl health`, and the page *Health*, show the release the instance runs, whether it is
+ready, and how the backup, the alerts and the incidents stand.
+
 ## 2. On one machine
 
 ```bash

@@ -117,6 +117,23 @@ class DomainPart(Value):
     open: tuple[str, ...] = ()
 
 
+class AdministrationPart(Value):
+    """The administrative act a draft carries out once commissioned (ADR-0296, UC-10.2). The act
+    is named as the inventory of administrative acts names it; `needs` are the arguments it
+    takes, which the composition root states when the act is chosen, and each one not given yet
+    is a part the draft lacks."""
+
+    act: str = Field(pattern=r"^[a-z][a-z-]*\.[a-z][a-z-]*$")
+    arguments: dict[str, str] = Field(default_factory=dict)
+    needs: tuple[str, ...] = ()
+
+    def missing(self) -> tuple[str, ...]:
+        """The arguments the act still needs, in the order it takes them."""
+        return tuple(
+            f"the act's {name}" for name in self.needs if not self.arguments.get(name, "").strip()
+        )
+
+
 class PlanDraft(Value):
     id: str = Field(min_length=1)
     tenant: str = Field(min_length=1)
@@ -138,6 +155,8 @@ class PlanDraft(Value):
     """The agent the draft works out, or None for a plan that is no agent (ADR-0292)."""
     domain: DomainPart | None = None
     """The domain the draft instantiates, or None for a plan that is no domain (ADR-0289)."""
+    administration: AdministrationPart | None = None
+    """The administrative act the draft carries out once commissioned, or None (ADR-0296)."""
     describes: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9-]*$")
     """The process the goal describes, which commissioning hands to the describe process; None
     for a plan that describes none (ADR-0290)."""
@@ -175,6 +194,8 @@ class PlanDraft(Value):
                 lacking.append(AGENT_PARTS[5])
         if self.domain is not None:
             lacking.extend(self.domain.open)
+        if self.administration is not None:
+            lacking.extend(self.administration.missing())
         if self.describes is not None and self.results_in is not PlanResult.PROCESS_VERSION:
             lacking.append("a new process version as its result, which a description makes")
         return tuple(lacking)

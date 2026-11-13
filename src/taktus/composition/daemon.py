@@ -41,6 +41,7 @@ from taktus.adapters.driven.models.pool import StaticModelPool
 from taktus.adapters.driven.platform import HostPlatform
 from taktus.adapters.driven.postgres import (
     PostgresBackupLog,
+    PostgresClaims,
     PostgresLeadership,
     PostgresLedgerSignal,
     PostgresLedgerStore,
@@ -60,6 +61,7 @@ from taktus.adapters.driven.postgres import (
     upgrade,
 )
 from taktus.adapters.driven.postgres.url import described
+from taktus.adapters.driven.telemetry.masking import MaskingPolicy
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.adapters.driving.rest import build_app
 from taktus.adapters.driving.rest.relay import ConnectedHost
@@ -109,6 +111,7 @@ from taktus.components.governance.application.service import (
     SubjectRequests,
     TenantOrgUnits,
 )
+from taktus.components.governance.application.service.removal_broke import RemovalBroke
 from taktus.components.governance.application.service.stop_incidents import StopIncidents
 from taktus.components.governance.domain.model import (
     AnchorConfiguration,
@@ -147,6 +150,7 @@ from taktus.components.process.domain.model import (
     TriggerState,
     ValueStream,
 )
+from taktus.components.process.domain.model.chain import ChainRun, DeclaredChain
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.application.service import (
     Alerts,
@@ -187,6 +191,7 @@ from taktus.composition.assistants import Assistants
 from taktus.composition.capacity import capacity_report, capacity_tick, rules_of
 from taktus.composition.case_spend import InstanceSpend
 from taktus.composition.catalogue_in_channel import CatalogueInChannel
+from taktus.composition.chains import ChainRuns, chains_tick
 from taktus.composition.change_in_channel import ChangeInChannel
 from taktus.composition.conformance import InstanceSuites, worker_suites
 from taktus.composition.contents import StepContents
@@ -202,6 +207,7 @@ from taktus.composition.defects import (
     defects_tick,
 )
 from taktus.composition.escalations import EscalationWatch, escalations_tick
+from taktus.composition.evaluation_platform import EvaluationPlatform, platform_tick
 from taktus.composition.evaluations import Evaluations, evaluations_tick, outward_by
 from taktus.composition.execution import (
     connector_pool,
@@ -242,6 +248,11 @@ from taktus.composition.owner_channel import (
     owner_channel_wiring,
 )
 from taktus.composition.participants import ParticipantAnswers
+from taktus.composition.partner_exchange import (
+    ContractControl,
+    ContractWatch,
+    contracts_tick,
+)
 from taktus.composition.personal import ConfiguredPersonalCredentials
 from taktus.composition.planning import PlanActs
 from taktus.composition.process_proposals import ProcessProposals
@@ -252,6 +263,8 @@ from taktus.composition.replies import ConnectorReplies
 from taktus.composition.reports import ReadingWiring, reading_tick, reading_wiring
 from taktus.composition.residency import PoolBindings
 from taktus.composition.run_answers import RunAnswers
+from taktus.composition.scaffolds import InstanceScaffolds, LoopbackScaffolds
+from taktus.composition.sessions import SessionsInChat, SourceKnowledge, SourceSystem
 from taktus.composition.settings import (
     CONNECT_KEY,
     ExecutionKind,
@@ -354,6 +367,9 @@ class Wired:
     """A tenant's introduction in stages, looked at by the scheduler once an hour while it
     leads (ADR-0137)."""
     escalations: EscalationWatch
+    contracts: ContractWatch
+    """A partner's message that arrived more often than its data contract allows, delivered
+    to a person once (ADR-0315)."""
     """Every failure's escalation delivered with its situation package, and watched against
     its process's time to react, by the scheduler once a minute while it leads (ADR-0252)."""
     objectives: ObjectivesWatch
@@ -410,6 +426,9 @@ class Wired:
     agent: AgentSurface
     streams: StreamReads
     """The organisation as value streams, and their declaration (ADR-0159)."""
+    chains: ChainRuns
+    """End-to-end chains across domains: stored, started, decided, and gone on with by the
+    scheduler (ADR-0301, ADR-0302)."""
     profiles: RoleProfiles
     """A role's profile, derived from the processes (ADR-0167)."""
     reading: ReadingWiring
@@ -442,6 +461,8 @@ class Wired:
     connected: ConnectedHost | None = None
     """The host of the outbound binding for the workers configured as connected, which the
     `api` role serves; None when no worker connects (ADR-0156)."""
+    platform: EvaluationPlatform | None = None
+    """A connected evaluation platform, looked at by the scheduler (ADR-0305)."""
     leading: bool = field(default=False, init=False)
     """Whether this process holds the scheduler's lead right now."""
 
@@ -657,7 +678,15 @@ async def wire(
         def stored[T: Stored](kind: type[T]) -> Repository[T]:
             return PostgresRepository(persistence, kind)
 
-        decisions = decision_wiring(stored, persistence, ledger, clock, identities)
+        table = settings.budget.table()
+        decisions = decision_wiring(
+            stored,
+            persistence,
+            ledger,
+            clock,
+            identities,
+            None if table is None else (table.currency, table.version),
+        )
         org_units = OrgUnitsOfTheRun(
             decisions.org_units, PostgresOrgUnitSpends(persistence), structure
         )
@@ -814,6 +843,7 @@ async def wire(
                     stops=stops,
                     tenant_budget=decisions.budget_of_the_run,
                     unit_limits=decisions.unit_limits,
+                    claims=PostgresClaims(persistence),
                     messages=decisions.messages,
                     statements=VersionStatements(
                         persistence,
@@ -827,10 +857,16 @@ async def wire(
                     steering=steering_store,
                     shares=shares,
                     evaluated=validations,
-                    control=TaskControl(
+                    control=ContractControl(
                         versions=PostgresRepository(persistence, ProcessVersion),
-                        connectors=connectors,
+                        ledger=ledger,
                         work=persistence,
+                        clock=clock,
+                        inner=TaskControl(
+                            versions=PostgresRepository(persistence, ProcessVersion),
+                            connectors=connectors,
+                            work=persistence,
+                        ),
                     ),
                     personal=ConfiguredPersonalCredentials(settings.personal_credentials),
                     citations=IndexedCitations(
@@ -968,6 +1004,9 @@ async def wire(
                     recordings=recordings,
                     clock=clock,
                     ids=ids,
+                    broke=RemovalBroke(
+                        PostgresRepository(persistence, Incident), ledger, persistence, clock
+                    ),
                 ),
                 guides=InstanceGuides(pools.connectors, owner.channel, owner.raising, clock),
                 # Method maturation, which S-06 runs on its schedule (ADR-0086).
@@ -1005,6 +1044,8 @@ async def wire(
                     persistence,
                     clock,
                 ),
+                # A project checked and furnished against its method scaffold (ADR-0308).
+                scaffolds=LoopbackScaffolds(InstanceScaffolds(skill_catalog, pools.connectors)),
             )
             outbox = PostgresOutbox(persistence)
             complete_intake = CompleteIntakeHandler(
@@ -1040,6 +1081,19 @@ async def wire(
                 work=persistence,
             )
             # A change held to its evaluation cases, and drift measured on them (ADR-0134).
+            # A connected evaluation platform, each capability on where it is configured: a
+            # copy of every scored evaluation, prompts mirrored, costs reconciled (ADR-0305).
+            platform = EvaluationPlatform(
+                pools.connectors,
+                ledger,
+                persistence,
+                processes=PostgresRepository(persistence, Process),
+                versions=PostgresRepository(persistence, ProcessVersion),
+                runs=runs,
+                masking=MaskingPolicy(
+                    settings.telemetry.masked_attributes, settings.telemetry.masked_kinds
+                ),
+            )
             evaluations = Evaluations(
                 processes=PostgresRepository(persistence, Process),
                 versions=PostgresRepository(persistence, ProcessVersion),
@@ -1062,6 +1116,9 @@ async def wire(
                 clock=clock,
                 ids=ids,
                 outward=outward_by(pools),
+                # A scored evaluation is copied to a connected evaluation platform, where
+                # `evaluations.records` is configured (UC-5.8, ADR-0305).
+                platform=platform.scored,
             )
             validations.attach(evaluations)
             skill_lifecycle = SkillLifecycle(
@@ -1242,8 +1299,30 @@ async def wire(
                     work=persistence,
                 ),
             )
+            # A session reads the project's source systems with the participant's own
+            # credential, and is continued from any chat (ADR-0304).
+            sources = tuple(
+                SourceSystem(k, o, c, read=r, ref=b) for k, o, c, r, b in settings.session_sources
+            )
+            personal = ConfiguredPersonalCredentials(settings.personal_credentials)
+            workspace = workspace_of(
+                stored,
+                persistence,
+                ledger,
+                clock,
+                ids,
+                structure,
+                agents=agent_catalog,
+                describe=None if settings.describe_process is None else proposal_acts,
+                knowledge=lambda held: SourceKnowledge(held, sources, pools.connectors, personal),
+                identities=identities,
+            )
+            owner.answers.sessions_with(
+                SessionsInChat(workspace.sessions, owner.deliveries, owner.secrets)
+            )
             wired = Wired(
                 connected=connected_host(settings.workers, configuration, relay),
+                platform=platform,
                 settings=settings,
                 persistence=persistence,
                 work=persistence,
@@ -1336,16 +1415,7 @@ async def wire(
                 evaluations=evaluations,
                 spend=spend,
                 trials=trials,
-                workspace=workspace_of(
-                    stored,
-                    persistence,
-                    ledger,
-                    clock,
-                    ids,
-                    structure,
-                    agents=agent_catalog,
-                    describe=None if settings.describe_process is None else proposal_acts,
-                ),
+                workspace=workspace,
                 gallery=Gallery(
                     settings.gallery_directory,
                     proposals,
@@ -1378,6 +1448,19 @@ async def wire(
                     trials=PostgresRepository(persistence, TakeoverTrial),
                 ),
                 agent=agent,
+                chains=ChainRuns(
+                    engine=engine,
+                    versions=PostgresRepository(persistence, ProcessVersion),
+                    objects=objects,
+                    ledger=ledger,
+                    work=persistence,
+                    clock=clock,
+                    runs=runs,
+                    declared=PostgresRepository(persistence, DeclaredChain),
+                    chain_runs=PostgresRepository(persistence, ChainRun),
+                    channels=owner.channel,
+                    raising=owner.raising,
+                ),
                 streams=StreamReads(
                     streams=ValueStreams(
                         PostgresRepository(persistence, ValueStream),
@@ -1493,6 +1576,15 @@ async def wire(
                     raising=owner.raising,
                 ),
                 ledger_signal=LedgerSignal(ledger_store, persistence, telemetry),
+                contracts=ContractWatch(
+                    ledger=ledger,
+                    runs=runs,
+                    versions=PostgresRepository(persistence, ProcessVersion),
+                    work=persistence,
+                    clock=clock,
+                    channels=owner.channel,
+                    raising=owner.raising,
+                ),
                 escalations=EscalationWatch(
                     ledger=ledger,
                     runs=runs,
@@ -1864,6 +1956,11 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
         # And it measures every ended run against its process's objectives, and says a
         # failure healed again and again (ADR-0254).
         measure_objectives = objectives_tick(wired.objectives, wired.tenants, wired.clock)
+        # And it goes on with every chain whose link finished since it waited (ADR-0301 §3).
+        advance_chains = chains_tick(wired.chains, wired.tenants, wired.clock)
+        # And it says every partner's message that came more often than its contract allows
+        # (ADR-0315).
+        deliver_deviations = contracts_tick(wired.contracts, wired.tenants, wired.clock)
         signal_ledger = ledger_signal_tick(wired.ledger_signal, wired.tenants, wired.clock)
         # And it judges every signal against its corridor, and raises the daily report
         # (ADR-0109).
@@ -1873,6 +1970,15 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
         # And it measures drift on every process's evaluation cases, moves every evaluation on,
         # and proposes a case for every corrected draft (ADR-0134).
         evaluate = evaluations_tick(wired.evaluations, wired.tenants, wired.clock)
+        # And it mirrors prompts to a connected evaluation platform and reconciles its costs,
+        # where each is configured (ADR-0305).
+        on_platform = (
+            None
+            if wired.platform is None
+            else platform_tick(
+                wired.platform, lambda: this_round(wired.tenants, "scheduler"), wired.clock
+            )
+        )
         # And it erases every line of a trace whose tenant's retention ended (ADR-0135).
         erase_traces = traces_tick(wired.traces, wired.tenants, wired.clock)
         # And it anchors every tenant's run chains in the tenant's chain, and makes the
@@ -1919,6 +2025,8 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
             await watch_expected()
             await watch_escalations()
             await measure_objectives()
+            await advance_chains()
+            await deliver_deviations()
             await signal_ledger()
             await tick()
             await send_findings()
@@ -1927,6 +2035,8 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
             await judge_signals()
             await say_reports()
             await evaluate()
+            if on_platform is not None:
+                await on_platform()
             await erase_traces()
             await anchor_chains()
             await look_at_stages()

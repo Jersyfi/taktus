@@ -13,7 +13,7 @@
 # arrives at 0.3.0 (docs/roadmap.md); until then examples/README.md is the reference.
 
 id: six-times-seven
-version: "3"
+version: "4"
 name: Six times seven, checked
 autonomy:
   level: 2
@@ -189,3 +189,9 @@ takeover:
       expertise: none
       credentials: []
       done: the step is recorded as not carried out
+
+# What counts as an equivalent result of each variable step that no scorer scores
+# yet: its class's ceiling until its cases narrow it (UC-8.4, ADR-0300 §1).
+tolerances:
+  compute: 0.25
+  overreach: 0.25

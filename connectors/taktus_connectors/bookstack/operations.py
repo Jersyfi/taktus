@@ -312,7 +312,14 @@ async def list_pages(api: Api, input: Json, key: str) -> Outcome:
     listed = []
     for at, entry in found:
         page = await api.get(f"pages/{int(entry['id'])}")
-        listed.append({"place": list(at), "digest": digest_of(page), "mark": kept_of(page).mark})
+        listed.append(
+            {
+                "place": list(at),
+                "digest": digest_of(page),
+                "mark": kept_of(page).mark,
+                "changed_at": str(page.get("updated_at") or "") or None,
+            }
+        )
     return Outcome({"pages": listed}, {"kind": "read"})
 
 

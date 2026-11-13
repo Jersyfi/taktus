@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 
 class RunError(Exception):
     pass
@@ -63,6 +65,21 @@ class OutsideResidency(RunError):
 
 class UnknownRun(RunError):
     pass
+
+
+class DemandToAccept(RunError):
+    """A person commissions a run that needs much of what remains of a limit, and has not
+    accepted its estimated demand yet; nothing was written (ADR-0299 §1). `shown` is the demand
+    as `RunEngine.demand` gives it."""
+
+    def __init__(self, shown: dict[str, Any]) -> None:
+        reaching = [f"{lim['limit']} ({lim['unit']})" for lim in shown["limits"] if lim["reaches"]]
+        super().__init__(
+            f"the run is estimated at {shown['estimate']} ({shown['basis']}), which reaches "
+            f"{shown['share']:.0%} of what remains of {', '.join(reaching)}; it starts once the "
+            "person who commissions it accepts its estimated demand"
+        )
+        self.shown = shown
 
 
 class RunExists(RunError):

@@ -16,6 +16,13 @@ kept, is the original, and nothing is written again.
 the newest ready before the one serving. The template is left as it is, so that no revision is
 created. The key is put on the service's own annotations, where a repeat finds it.
 
+**A split shares the traffic.** It sends `percent` of the traffic to a canary revision — the one
+named, or the latest ready — and the rest to the stable revision: the other revision that takes
+the most traffic now. 100 promotes the canary, 0 puts all the traffic back on the stable one.
+Like a rollback it leaves the template as it is, and its key is an annotation of the service
+(ADR-0312). A canary is deployed beside the stable revision without traffic by the business's
+own build, as the platform's `--no-traffic` deploys it; the connector makes no revision for it.
+
 **A stale write is refused by the API.** A change carries the `etag` the service was read with;
 the API refuses a write over a service changed in between, `conflict`.
 
@@ -187,6 +194,23 @@ def _serving(service: Json) -> str | None:
     return latest
 
 
+def shares(service: Json) -> dict[str, int]:
+    """The traffic as the share each revision takes, by the revision's own name; the latest
+    ready revision for a target of the type `LATEST`."""
+    latest = _short(service.get("latestReadyRevision"))
+    found: dict[str, int] = {}
+    for target in service.get("traffic") or []:
+        percent = _int(target.get("percent"))
+        if percent <= 0:
+            continue
+        revision = _short(target.get("revision")) if target.get("type") == REVISION else latest
+        if revision:
+            found[revision] = found.get(revision, 0) + percent
+    if not found and latest:
+        found[latest] = 100
+    return found
+
+
 def service_output(service: Json, config: Config) -> Json:
     """What a reading yields of a service, and whether its rollout is complete."""
     if not isinstance(service, dict) or not isinstance(service.get("template"), dict):
@@ -331,8 +355,115 @@ async def rollback(config: Config, call: Call, input: Json) -> Outcome:
     return _write(output, config, name, call.key, replayed=False)
 
 
+def _traffic(service: Json) -> list[Json]:
+    return [
+        {"revision": revision, "percent": percent}
+        for revision, percent in sorted(shares(service).items(), key=lambda s: (-s[1], s[0]))
+    ]
+
+
+async def split(config: Config, call: Call, input: Json) -> Outcome:
+    name = _name(input)
+    percent = input.get("percent")
+    if isinstance(percent, bool) or not isinstance(percent, int) or not 0 <= percent <= 100:
+        raise invalid("percent must be a whole number from 0 to 100")
+    wanted = input.get("revision")
+    if wanted is not None and (not isinstance(wanted, str) or not wanted):
+        raise invalid("revision must be a revision's name")
+    token = await access_token(call, SCOPE, config.timeout, config.token())
+    found = await _service(config, call, token, name)
+    if _annotations(found).get(KEY_ANNOTATION) == call.key:
+        output = {**service_output(found, config), "traffic": _traffic(found)}
+        return _write(output, config, name, call.key, replayed=True)
+    ready = {
+        _short(r.get("name")) for r in await _revisions(config, call, token, name) if _ready(r)
+    }
+    canary = wanted if wanted is not None else _short(found.get("latestReadyRevision"))
+    if canary is None or canary not in ready:
+        raise TargetError(
+            "not_found", "none", False, f"the service {name!r} keeps no such ready revision"
+        )
+    others = sorted(
+        ((r, p) for r, p in shares(found).items() if r != canary and r in ready),
+        key=lambda s: (-s[1], s[0]),
+    )
+    stable = others[0][0] if others else None
+    if stable is None and percent < 100:
+        raise TargetError(
+            "not_found",
+            "none",
+            False,
+            f"the service {name!r} has no stable revision beside {canary!r} to share with",
+        )
+    traffic = [{"type": REVISION, "revision": canary, "percent": percent}] if percent else []
+    if percent < 100:
+        traffic.append({"type": REVISION, "revision": stable, "percent": 100 - percent})
+    changed = copy.deepcopy(found)
+    changed.setdefault("annotations", {})[KEY_ANNOTATION] = call.key
+    changed["traffic"] = traffic
+    await _request(config, call, token, "PATCH", f"{config.services()}/{name}", body=changed)
+    written = await _service(config, call, token, name)
+    output = {**service_output(written, config), "traffic": _traffic(written)}
+    return _write(output, config, name, call.key, replayed=False)
+
+
+MAX_INSTANCES = 1000
+
+
+def _max_instances(template: Json) -> int | None:
+    scaling = template.get("scaling") or {}
+    value = scaling.get("maxInstanceCount") if isinstance(scaling, dict) else None
+    return _int(value) if value is not None else None
+
+
+async def throttle(config: Config, call: Call, input: Json) -> Outcome:
+    """The most instances a service may run, `template.scaling.maxInstanceCount`, set to
+    `max_instances`: the emergency brake on a function caught in a loop (B-1.03, ADR-0310). The
+    template changes, so the API makes a revision of the same containers, and the traffic stays
+    with the latest. A service whose traffic is held on an earlier revision — after a rollback
+    — is refused: a new revision from its template would roll it forward. The key is the
+    template's annotation, as a release carries it; the limit set before is in the output, so
+    that a person can put it back."""
+    name = _name(input)
+    wanted = input.get("max_instances")
+    if isinstance(wanted, bool) or not isinstance(wanted, int) or not 1 <= wanted <= MAX_INSTANCES:
+        raise invalid(f"max_instances must be a whole number from 1 to {MAX_INSTANCES}")
+    token = await access_token(call, SCOPE, config.timeout, config.token())
+    found = await _service(config, call, token, name)
+    template = found["template"]
+    if _annotations(template).get(KEY_ANNOTATION) == call.key or any(
+        _annotations(r).get(KEY_ANNOTATION) == call.key
+        for r in await _revisions(config, call, token, name)
+    ):
+        output = {**service_output(found, config), "max_instances": _max_instances(template)}
+        return _write(output, config, name, call.key, replayed=True)
+    if _serving(found) != _short(found.get("latestReadyRevision")):
+        raise TargetError(
+            "conflict",
+            "none",
+            False,
+            f"the traffic of {name!r} is held on an earlier revision; a new revision from its "
+            "template would roll it forward",
+        )
+    before = _max_instances(template)
+    changed = copy.deepcopy(found)
+    changed["template"].setdefault("scaling", {})["maxInstanceCount"] = wanted
+    changed["template"].setdefault("annotations", {})[KEY_ANNOTATION] = call.key
+    changed["traffic"] = [{"type": LATEST, "percent": 100}]
+    await _request(config, call, token, "PATCH", f"{config.services()}/{name}", body=changed)
+    written = await _service(config, call, token, name)
+    output = {
+        **service_output(written, config),
+        "max_instances": _max_instances(written["template"]),
+        "max_instances_before": before,
+    }
+    return _write(output, config, name, call.key, replayed=False)
+
+
 OPERATIONS = {
     "deployment.workloads.read": read_service,
     "deployment.workloads.release": release,
     "deployment.workloads.rollback": rollback,
+    "deployment.workloads.split": split,
+    "deployment.workloads.throttle": throttle,
 }

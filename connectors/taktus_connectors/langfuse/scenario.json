@@ -1,0 +1,40 @@
+{
+  "credentials": {
+    "actions": "EVALUATION_PLATFORM_KEYS"
+  },
+  "read": {
+    "operation": "observability.costs.read",
+    "input": {
+      "traces": ["trace-seeded"]
+    }
+  },
+  "writes": [
+    {
+      "operation": "evaluations.records.write",
+      "input": {
+        "dataset": "conformance",
+        "run": "evaluation {{unique}}",
+        "items": [{"id": "case-1", "input": {"text": "a case"}, "expected": "an answer"}],
+        "results": [
+          {"item": "case-1", "trace": "trace-{{unique}}", "scores": [{"name": "result", "value": 1}]}
+        ]
+      }
+    },
+    {
+      "operation": "prompts.versions.mirror",
+      "input": {
+        "name": "conformance-{{unique}}",
+        "text": "Answer the case.",
+        "source": "conformance@1/answer"
+      }
+    }
+  ],
+  "invalid": {
+    "operation": "evaluations.records.read",
+    "input": {
+      "dataset": "unknown",
+      "run": "none"
+    },
+    "expected_cause": "not_found"
+  }
+}

@@ -966,9 +966,9 @@ VENDOR = ROOT / "tests" / "conformance" / "vendor"
 VENDOR_TIME = ROOT / "tests" / "fakes" / "vendor_time_server.py"
 VENDOR_NOTES = ROOT / "tests" / "fakes" / "vendor_notes_server.py"
 ENTITLEMENTS = ROOT / "tests" / "fakes" / "entitlement_server.py"
-ENTITLEMENTS_MANIFEST = (
-    ROOT / "blueprints" / "software-operations" / "connectors" / "entitlements.manifest.json"
-)
+BACK_OFFICE = ROOT / "tests" / "fakes" / "back_office_server.py"
+MANIFESTS = ROOT / "blueprints" / "software-operations" / "connectors"
+ENTITLEMENTS_MANIFEST = MANIFESTS / "entitlements.manifest.json"
 VENDOR_ACTIONS = "VENDOR_TOKEN"
 VENDOR_INTAKE = "VENDOR_INTAKE_SECRET"
 
@@ -994,7 +994,9 @@ def start_vendor_connector(tmp_path: Path) -> Iterator[StartConnector]:
     `server="time"` is the MCP project's reference time server, which admits anyone and only
     reads; `server="notes"` the stand-in with tools that write, which admits only the random
     token the connector reads under `VENDOR_TOKEN`; `server="entitlements"` the stand-in of a
-    product's entitlements, which admits only the one under `ENTITLEMENTS_TOKEN` (ADR-0199).
+    product's entitlements, which admits only the one under `ENTITLEMENTS_TOKEN` (ADR-0199);
+    `server="back-office"` the stand-in of a product's own back office, which admits only the
+    one under the credential its manifest names (issue #447).
     `manifest` is a manifest file, or None for a server served without one (with `capability`)."""
     started: list[subprocess.Popen[bytes]] = []
 
@@ -1014,17 +1016,27 @@ def start_vendor_connector(tmp_path: Path) -> Iterator[StartConnector]:
         token = "vtk-" + secrets.token_hex(12)
         name = f"{server}-{'manifest' if manifest else 'bare'}-{fault or 'honest'}-{admits[:5]}"
         name += "-intake" if intake else ""
-        values = {"ENTITLEMENTS_TOKEN" if server == "entitlements" else VENDOR_ACTIONS: token}
+        credential = VENDOR_ACTIONS
+        if server == "entitlements":
+            credential = "ENTITLEMENTS_TOKEN"
+        elif server == "back-office" and manifest is not None:
+            name += f"-{manifest.stem}"
+            credential = json.loads(manifest.read_text(encoding="utf-8"))["credential"]
+        values = {credential: token}
         if intake:
             values[VENDOR_INTAKE] = "whsec_" + base64.b64encode(secrets.token_bytes(32)).decode()
         port = free_port()
         service_url = f"http://127.0.0.1:{port}"
         log = tmp_path / f"vendor-{name}.log"
         vendor_env = {**_clean_environment()}
-        if server in ("notes", "entitlements") and admits != "anyone":
+        if server in ("notes", "entitlements", "back-office") and admits != "anyone":
             admitted = token if admits == "the token" else "other-" + secrets.token_hex(12)
             vendor_env["FAKE_VENDOR_TOKENS"] = admitted
-        script = {"notes": VENDOR_NOTES, "entitlements": ENTITLEMENTS}.get(server, VENDOR_TIME)
+        script = {
+            "notes": VENDOR_NOTES,
+            "entitlements": ENTITLEMENTS,
+            "back-office": BACK_OFFICE,
+        }.get(server, VENDOR_TIME)
         with log.open("wb") as handle:
             process = subprocess.Popen(  # noqa: S603 — a script of the gate, fixed arguments
                 [sys.executable, str(script), "--host", LAUNCH.fake_host, "--port", str(port)],
@@ -1296,6 +1308,20 @@ BUSINESS: dict[str, BusinessConnector] = {
     "einvoice": BusinessConnector(
         "einvoice", FAKES / "document_inbox_service.py", "DOCUMENTS_TOKEN"
     ),
+    "erpnext": BusinessConnector(
+        "erpnext",
+        FAKES / "books_service.py",
+        "BOOKS_TOKEN",
+        (
+            "--customer",
+            "Online customers",
+            "--income-account",
+            "Sales - EX",
+            "--tax-account",
+            "VAT - EX",
+        ),
+        pair=True,
+    ),
     "expiry": BusinessConnector("expiry", FAKES / "expiry_service.py", "EXPIRY_TOKEN"),
     "firebase": BusinessConnector(
         "firebase", FAKES / "hosting_releases_service.py", "SITES_TOKEN", key="google"
@@ -1328,6 +1354,9 @@ BUSINESS: dict[str, BusinessConnector] = {
         "jira", FAKES / "task_rest_service.py", "TASKS_TOKEN", ("--project", "TSK"), pair=True
     ),
     "kubernetes": BusinessConnector("kubernetes", FAKES / "workload_cluster.py", "WORKLOADS_TOKEN"),
+    "langfuse": BusinessConnector(
+        "langfuse", FAKES / "evaluation_platform_service.py", "EVALUATION_PLATFORM_KEYS", pair=True
+    ),
     "linear": BusinessConnector(
         "linear", FAKES / "task_graph_service.py", "TASKS_TOKEN", ("--team", LINEAR_TEAM)
     ),
@@ -1343,6 +1372,7 @@ BUSINESS: dict[str, BusinessConnector] = {
         ("--project", "1234567"),
         pair=True,
     ),
+    "mistral": BusinessConnector("mistral", FAKES / "model_list_service.py", "MODELS_TOKEN"),
     "netlify": BusinessConnector("netlify", FAKES / "site_deploys_service.py", "SITES_TOKEN"),
     "openai": BusinessConnector("openai", FAKES / "model_costs_service.py", "MODEL_COSTS_TOKEN"),
     "paypal": BusinessConnector(

@@ -197,7 +197,15 @@ async def test_b_8_08_runs_unchanged_on_a_content_lake(
     ).ready()
     merged_change(outside, "fix/sign-in", "Fix sign-in")
     version = await w.registered("B-8.08-changelog-and-website.yaml")
-    run = await w.confirmed(await w.start(version, release="2.0", since_hours=336))
+    run = await w.confirmed(
+        await w.start(
+            version,
+            release="2.0",
+            since_hours=336,
+            search_term="Signing in",
+            page_path="/blog/${slug}",
+        )
+    )
     assert states(run)["publish"] is StepState.WAITING_HUMAN
     documents = new.state("content")["documents"]
     [draft] = [k for k in documents if k.startswith("drafts.")]

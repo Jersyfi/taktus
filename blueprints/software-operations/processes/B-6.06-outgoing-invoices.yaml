@@ -7,11 +7,14 @@
 # uncollectible or refunded, not drafts or voided ones — and the rule `owed` those with an
 # amount still remaining. The run's result is the month's list, which the bookkeeping takes.
 #
-# **The export is not built.** The accounting connector proposes bookings of incoming invoices
-# and the documents connector reads incoming EN 16931 invoices; neither takes an outgoing one,
-# and a business's own bookkeeping has no open interface (UC-03 §8). A person exports the list
-# from the run's result, or the provider's own export, into the books. Incoming invoices are the
-# invoice-to-payment blueprint's (B-10.03). Taktus keeps no books.
+# The issued invoices are then exported into the books through `accounting.invoices`
+# (ADR-0314): each becomes a draft sales invoice of the accounting system, its net amount to an
+# income account and its tax to a tax account, both the tenant's. A draft is never posted by
+# Taktus: a person of the bookkeeping checks and submits it there. Taktus keeps no books. Each
+# draft carries a mark of its invoice's number, so a repeat of the step creates nothing twice and
+# a month run again exports none of its invoices a second time. A month with more than 500 issued
+# invoices is refused by the connector and goes to a person. Incoming invoices are the
+# invoice-to-payment blueprint's (B-10.03).
 #
 # The tenant's corridor on `owed` sends invoices still owed to its role:
 #
@@ -24,25 +27,24 @@
 #     uv run taktusctl run --process blueprints/software-operations/processes/B-6.06-outgoing-invoices.yaml \
 #         --input month=2026-10
 #
-# Switching it off (`taktusctl deactivate --process b-6-06`) changes nothing at the provider: it
-# only reads.
+# Switching it off (`taktusctl deactivate --process b-6-06`) changes nothing at the provider,
+# which it only reads, and nothing in the books: the drafts already exported stay there.
 
 id: b-6-06
-version: "1"
+version: "2"
 name: B-6.06 Outgoing invoices
 autonomy:
-  level: 1
+  level: 2
   reason: >
-    the process only reads the provider's invoices and keeps them by fixed rules; nothing leaves
-    the system, so at level 1 every step runs and none acts; it starts at level 1, observing, as
-    UC-03 starts every process at level 1 or 2 when its stage opens
+    the process exports the month's invoices into the books as drafts, an effect outside the
+    system, so a person confirms the export at level 2, as UC-03 starts every process that acts
+    at level 1 or 2 when its stage opens; posting a draft stays with a person at every level
   toward_next: >
-    stage 3 of the tenant's plan open, three monthly runs whose lists a person found complete
-    against the provider's own export, and an export into the books through an interface the
-    bookkeeping offers; then Taktus proposes the next level, up to level 3 in UC-03 (UC-7.1,
-    UC-9.6)
+    stage 5 of the tenant's plan open, and three monthly exports a person confirmed and found
+    complete against the provider's own export without changing a draft; then Taktus proposes
+    level 3, its target in UC-03, at which the export runs on its own (UC-7.1, UC-9.6)
 author: the repository
-reason: the month's outgoing invoices are collected for the bookkeeping without a person exporting them by hand (UC-03 B-6.06)
+reason: the month's outgoing invoices reach the books as drafts without a person exporting them by hand (UC-03 B-6.06)
 
 triggers:
   - schedule: "0 6 1 * *"
@@ -54,7 +56,7 @@ inputs:
     required: false
 
 limits:
-  quota: { units: 120 }
+  quota: { units: 200 }
 
 steps:
   - id: invoices
@@ -119,13 +121,43 @@ steps:
         - { field: remaining, at_least: 1 }
       order: issued_at
 
+  - id: export
+    method: rule
+    reason: >
+      the issued invoices are handed to the books as drafts by an API call, each mapped by fixed
+      rules; the effect leaves the system, so at level 2 a person confirms it first, and posting
+      a draft stays with a person
+    rejected:
+      - method: llm
+        why: amounts and accounts are carried over as the provider gave them; a model could alter a figure, and an amount may not come from one (CLAUDE.md §4)
+      - method: worker
+        why: nothing here needs a sandbox or tools; the books take the drafts through their API
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what accounting.invoices.export answered", columns: [count, created, exported] }
+    fallback:
+      when: the connector serving accounting.invoices is unavailable, or refuses the month
+      to: human
+      role: owner
+    depends_on: [issued]
+    work:
+      checking: { select: output }
+      when:
+        - { value: { $from: issued, $select: count }, matches: "^[1-9]" }
+      rule: connector
+      operation: accounting.invoices.export
+      input:
+        invoices: { $from: issued, $select: items }
+      credentials:
+        - { name: BOOKS_TOKEN, injected_as: env }
+
 takeover:
   sequence: >
     The process runs on the first of every month at six UTC; whoever looks after the
     bookkeeping takes it over. The steps run in order: export the invoices of the month before
     from the payment provider, keep those issued and not voided, and among them those with an
-    amount still owed. The issued invoices go into the books by hand; those still owed go to
-    the role the tenant named.
+    amount still owed; then enter every issued invoice into the books as a draft. Those still
+    owed go to the role the tenant named. A person checks and posts the drafts.
   steps:
     invoices:
       system: the payment provider's dashboard, under invoices
@@ -156,3 +188,21 @@ takeover:
       expertise: filtering a table in a spreadsheet
       credentials: []
       done: the invoices still owed are reported, or there is none
+    export:
+      system: the accounting system, under sales invoices
+      do: >
+        Only if the month has issued invoices: for each issued invoice that the books do not yet
+        hold, create a sales invoice as a draft for the collective customer the business uses for
+        online sales, dated the day it was issued, due the day it is due, in its currency. Give it
+        one line of the net amount, the total less the tax, booked to the income account the
+        business named, and the tax as an actual charge to its tax account. Write the provider's
+        invoice number into the remarks. Check the drafts against the provider's export and
+        submit them; never enter an invoice twice
+      expertise: entering sales invoices in the accounting system and checking them against an export
+      credentials:
+        - parameter: BOOKS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Books key of the requesting identity
+            described in CREDENTIALS.md; a person working by hand signs in to the accounting
+            system with their own account, which may create sales invoices
+      done: every issued invoice of the month is in the books as a draft, or there was none

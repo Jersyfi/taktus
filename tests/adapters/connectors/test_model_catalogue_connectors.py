@@ -1,11 +1,12 @@
-"""Both model-provider connectors answer which models a key may use, sorted by identifier, in
+"""The model-provider connectors answer which models a key may use, sorted by identifier, in
 the one shape of the capability `models.catalogue`.
 
-Against the fakes under `tests/fakes/model_costs_service.py` and
-`tests/fakes/cost_report_service.py`, in a thread of this process. Each fake admits to the
-models list another key than to the costs, as the providers do; the connector uses the
-credential the call references. Each connector is served in-process over MCP, as an instance
-reaches it.
+Against the fakes under `tests/fakes/model_costs_service.py`,
+`tests/fakes/cost_report_service.py` and `tests/fakes/model_list_service.py`, in a thread of
+this process. The third provider publishes no costs API, and its connector serves none. The
+first two fakes admit to the models list another key than to the costs, as those providers do;
+the connector uses the credential the call references. Each connector is served in-process
+over MCP, as an instance reaches it.
 """
 
 from __future__ import annotations
@@ -19,11 +20,14 @@ from typing import Any
 
 import httpx
 import pytest
-from fakes import cost_report_service, model_costs_service
+from fakes import cost_report_service, model_costs_service, model_list_service
 from fakes.ports import free_port
 from taktus_connectors.anthropic import declaration as anthropic_declaration
 from taktus_connectors.anthropic import operations as anthropic_operations
 from taktus_connectors.anthropic.server import build_server as anthropic_server
+from taktus_connectors.mistral import declaration as mistral_declaration
+from taktus_connectors.mistral import operations as mistral_operations
+from taktus_connectors.mistral.server import build_server as mistral_server
 from taktus_connectors.openai import declaration as openai_declaration
 from taktus_connectors.openai import operations as openai_operations
 from taktus_connectors.openai.server import build_server as openai_server
@@ -333,3 +337,88 @@ def test_both_declare_the_catalogue_and_its_credential(declaration: Any, module:
     names = {op["name"] for op in document["operations"]}
     assert names == {"models.costs.daily", OPERATION} == set(module.OPERATIONS)
     assert {"name": "MODELS_TOKEN", "purpose": "actions"} in document["credentials"]
+
+
+# --- the third provider: a models list without costs ------------------------------------------
+
+
+@pytest.fixture
+def mistral() -> Iterator[str]:
+    yield from run(model_list_service.make_server("127.0.0.1", 0, {MODELS_KEY}))
+
+
+def mistral_connector(url: str) -> McpActionConnector:
+    return McpActionConnector(mistral_server(mistral_operations.Config(url, timeout=5.0)))
+
+
+async def test_the_third_provider_lists_its_models_with_the_deprecation_it_set(
+    mistral: str,
+) -> None:
+    result = await mistral_connector(mistral).call(OPERATION, context(), {})
+    assert result.effect.kind.value == "read"
+    output = result.output
+    assert output["ids"] == ["example-deprecated", "mistral-large-latest", "mistral-small-latest"]
+    assert output["models"][0] == {
+        "id": "example-deprecated",
+        "name": "example-deprecated",
+        "created_at": "2023-10-01T00:00:00Z",
+        "lifecycle": None,
+        "deprecated_at": "2026-11-30T12:00:00Z",
+        "retires_at": None,
+    }
+    assert output["models"][1]["name"] == "mistral-large"
+    assert output["models"][1]["deprecated_at"] is None
+    assert output["retiring"] == ["example-deprecated"]
+    assert output["current"] == ["mistral-large-latest", "mistral-small-latest"]
+    assert output["complete"] is True
+    assert result.consumption.quota_units == 1
+
+
+async def test_a_deprecation_without_a_zone_is_read_as_utc_and_one_not_a_moment_is_unexpected(
+    mistral: str,
+) -> None:
+    await models(
+        mistral,
+        [
+            {"id": "a", "created": 1, "deprecation": "2027-01-01T00:00:00"},
+            {"id": "b", "created": None, "deprecation": "2027-01-01T02:00:00+02:00"},
+        ],
+    )
+    result = await mistral_connector(mistral).call(OPERATION, context(), {})
+    assert [m["deprecated_at"] for m in result.output["models"]] == [
+        "2027-01-01T00:00:00Z",
+        "2027-01-01T00:00:00Z",
+    ]
+    assert result.output["models"][1]["created_at"] is None
+    await models(mistral, [{"id": "a", "created": 1, "deprecation": "soon"}])
+    with pytest.raises(CallFailed) as failed:
+        await mistral_connector(mistral).call(OPERATION, context(), {})
+    assert failed.value.error.cause.value == "unexpected"
+
+
+async def test_the_third_provider_cut_by_limit_is_not_complete(mistral: str) -> None:
+    result = await mistral_connector(mistral).call(OPERATION, context(), {"limit": 1})
+    assert result.output["ids"] == ["example-deprecated"]
+    assert result.output["complete"] is False
+
+
+async def test_the_third_provider_refuses_a_key_it_does_not_know(mistral: str) -> None:
+    with pytest.raises(CallFailed) as failed:
+        await mistral_connector(mistral).call(OPERATION, context("MODEL_COSTS_TOKEN"), {})
+    assert failed.value.error.cause.value == "unauthenticated"
+
+
+async def test_the_third_provider_unreachable_is_unavailable_and_retryable() -> None:
+    with pytest.raises(CallFailed) as failed:
+        await mistral_connector(f"http://127.0.0.1:{free_port()}").call(OPERATION, context(), {})
+    assert failed.value.error.cause.value == "unavailable"
+    assert failed.value.error.retryable is True
+
+
+def test_the_third_provider_declares_the_catalogue_only() -> None:
+    """The provider publishes no API for an organisation's costs: the connector declares none."""
+    document = mistral_declaration.capabilities()
+    assert document["capabilities"] == ["models.catalogue"]
+    assert {op["name"] for op in document["operations"]} == {OPERATION}
+    assert set(mistral_operations.OPERATIONS) == {OPERATION}
+    assert document["credentials"] == [{"name": "MODELS_TOKEN", "purpose": "actions"}]

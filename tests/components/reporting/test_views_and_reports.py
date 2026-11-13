@@ -49,6 +49,7 @@ def test_the_default_gives_the_owner_every_figure_and_nobody_else_any() -> None:
         "management",
         "executive",
         "investor",
+        "administration",
     ]
 
 

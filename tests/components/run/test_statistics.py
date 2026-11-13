@@ -1,6 +1,9 @@
 """The statistic `deviation` (ADR-0151): the newest day of a series against the median of the
 days before it, by group, in decimal arithmetic. The cost watcher of UC-03, B-1.01, measures
-with it; a figure it produces is held `exact`, so the same series always gives the same text."""
+with it; a figure it produces is held `exact`, so the same series always gives the same text.
+
+The statistic `significance` (ADR-0313): whether two variants' rates differ beyond chance, the
+test of B-6.07's price experiments, decided by a fixed critical value."""
 
 from __future__ import annotations
 
@@ -9,7 +12,15 @@ from typing import Any
 
 import pytest
 
-from taktus.components.run.domain.model import DeviationStatistic, RuleFailed, parse_work
+from taktus.components.run.domain.model import (
+    CountStatistic,
+    DeviationStatistic,
+    RuleFailed,
+    SignificanceStatistic,
+    TotalStatistic,
+    UnsupportedWork,
+    parse_work,
+)
 from taktus.components.run.domain.service import statistics
 from taktus.shared.v1 import ExactnessClass, Method, Step
 
@@ -123,3 +134,205 @@ def test_a_statistics_step_parses_its_statistic() -> None:
     work = parse_work(step, {"statistic": "deviation", "days": {"$from": "read"}})
     assert isinstance(work, DeviationStatistic)
     assert (work.window, work.minimum) == (28, 7)
+    total = parse_work(step, {"statistic": "total", "days": {"$from": "read"}})
+    assert isinstance(total, TotalStatistic)
+
+
+# --- significance: two rates (ADR-0313) -----------------------------------------------------------
+
+
+def rows(**counts: int) -> list[dict[str, Any]]:
+    """A report's rows: `A_page_view=1000` is variant A's count of the event `page_view`."""
+    found = []
+    for name, count in counts.items():
+        variant, event = name.split("_", 1)
+        found.append(
+            {
+                "dimensions": {"customEvent:variant": variant, "eventName": event},
+                "metrics": {"eventCount": str(count)},
+            }
+        )
+    return found
+
+
+def significance(given: Any, alpha: str = "0.05") -> dict[str, Any]:
+    work = SignificanceStatistic.model_validate(
+        {
+            "statistic": "significance",
+            "rows": None,
+            "variant": ["dimensions", "customEvent:variant"],
+            "event": ["dimensions", "eventName"],
+            "count": ["metrics", "eventCount"],
+            "control": "A",
+            "treatment": "B",
+            "exposure": "page_view",
+            "conversion": "purchase",
+            "alpha": alpha,
+        }
+    )
+    return statistics.significance(work, given)
+
+
+def test_a_clear_difference_of_two_rates_is_significant_with_its_figures() -> None:
+    result = significance(rows(A_page_view=1000, A_purchase=100, B_page_view=1000, B_purchase=150))
+    assert result["control"]["rate_text"] == "0.100000"
+    assert result["treatment"]["rate_text"] == "0.150000"
+    assert result["difference_text"] == "0.050000"
+    # pooled 0.125: 0.05 / sqrt(0.125 * 0.875 * (1/1000 + 1/1000))
+    assert result["z_text"] == "3.380617"
+    assert result["significant"] is True and result["better"] == "treatment"
+    assert 0 < result["p"] < 0.001
+
+
+def test_a_small_difference_is_not_significant_and_names_no_better_variant() -> None:
+    result = significance(rows(A_page_view=1000, A_purchase=100, B_page_view=1000, B_purchase=110))
+    assert result["significant"] is False and result["better"] is None
+    assert result["p"] > 0.05
+
+
+def test_the_level_decides_by_its_fixed_critical_value() -> None:
+    given = rows(A_page_view=1000, A_purchase=100, B_page_view=1000, B_purchase=130)
+    assert significance(given, "0.05")["significant"] is True
+    assert significance(given, "0.01")["significant"] is False
+    assert significance(given, "0.01")["critical_text"] == "2.5758293035489004"
+
+
+def test_rows_of_one_variant_are_summed_and_other_rows_are_left_out() -> None:
+    given = rows(A_page_view=500, B_page_view=1000, B_purchase=150, C_purchase=9) + rows(
+        A_page_view=500, A_purchase=100, A_sign_up=7
+    )
+    result = significance(given)
+    assert result["control"]["trials"] == "1000" and result["control"]["successes"] == "100"
+
+
+def test_the_same_rows_always_give_the_same_figures() -> None:
+    given = rows(A_page_view=1234, A_purchase=56, B_page_view=1300, B_purchase=80)
+    assert significance(given) == significance(list(reversed(given)))
+
+
+def test_rates_that_cannot_differ_give_no_statistic_and_are_not_significant() -> None:
+    result = significance(rows(A_page_view=10, A_purchase=0, B_page_view=10, B_purchase=0))
+    assert result["z"] is None and result["significant"] is False and result["p"] is None
+
+
+@pytest.mark.parametrize(
+    ("given", "fragment"),
+    [
+        (rows(A_page_view=10, A_purchase=1), "has no 'page_view' event"),
+        (rows(A_page_view=10, A_purchase=11, B_page_view=10), "more 'purchase' than"),
+        ([*rows(A_page_view=10, B_page_view=10), {"dimensions": {}}], "no variant"),
+        (
+            [
+                {
+                    "dimensions": {"customEvent:variant": "A", "eventName": "page_view"},
+                    "metrics": {"eventCount": "1.5"},
+                }
+            ],
+            "not a whole number",
+        ),
+        ("rows", "must be a list"),
+    ],
+)
+def test_rows_that_cannot_be_read_fail_the_step(given: Any, fragment: str) -> None:
+    with pytest.raises(RuleFailed, match=fragment):
+        significance(given)
+
+
+def test_a_statistics_step_parses_the_significance_and_refuses_a_level_outside_the_set() -> None:
+    step = Step(
+        id="test", method=Method.STATISTICS, reason="r", rejected=(), exactness=ExactnessClass.EXACT
+    )
+    given = {
+        "statistic": "significance",
+        "rows": {"$from": "report", "$select": "output.rows"},
+        "variant": ["dimensions", {"$input": "dimension"}],
+        "event": ["dimensions", "eventName"],
+        "count": ["metrics", "eventCount"],
+        "control": "A",
+        "treatment": "B",
+        "exposure": "page_view",
+        "conversion": "purchase",
+    }
+    work = parse_work(step, given, {"dimension": "customEvent:variant"})
+    assert isinstance(work, SignificanceStatistic) and work.alpha == "0.05"
+    assert work.variant == ("dimensions", "customEvent:variant")
+    with pytest.raises(UnsupportedWork):
+        parse_work(step, {**given, "alpha": "0.2"}, {"dimension": "v"})
+    with pytest.raises(UnsupportedWork):
+        parse_work(step, {**given, "treatment": "A"}, {"dimension": "v"})
+
+
+# --- total (ADR-0310) ----------------------------------------------------------------------------
+
+
+def summed(days: Any) -> dict[str, Any]:
+    return statistics.total(TotalStatistic(statistic="total", days=None), days)
+
+
+def test_each_group_is_summed_over_the_week_largest_first_in_decimal() -> None:
+    days = [
+        day("2026-09-07", build="1.10", storage="0.20"),
+        day("2026-09-06", build="0.70"),
+        day("2026-09-05", build="0.30", storage="0.10", network="0.05"),
+    ]
+    result = summed(days)
+    assert (result["from"], result["until"], result["days"]) == ("2026-09-05", "2026-09-07", 3)
+    assert result["total_text"] == "2.45"
+    assert result["groups"] == [
+        {"group": "build", "amount": "2.10", "value": 2.1},
+        {"group": "storage", "amount": "0.30", "value": 0.3},
+        {"group": "network", "amount": "0.05", "value": 0.05},
+    ]
+
+
+@pytest.mark.parametrize(
+    ("days", "fragment"),
+    [
+        ([], "non-empty"),
+        ([day("2026-09-01", a="1"), day("2026-09-01", a="2")], "occurs twice"),
+        ([{"date": "2026-09-01", "total": "3", "groups": [{"group": "a", "amount": "1"}]}], "sum"),
+    ],
+)
+def test_a_series_the_total_cannot_read_fails_the_step(days: Any, fragment: str) -> None:
+    with pytest.raises(RuleFailed, match=fragment):
+        summed(days)
+
+
+# --- count (ADR-0309) ----------------------------------------------------------------------------
+
+
+def counted(items: Any, by: str = "version") -> dict[str, Any]:
+    return statistics.count(CountStatistic(statistic="count", items=items, by=by), items)
+
+
+def test_count_counts_each_value_most_first_and_a_missing_field_under_null() -> None:
+    items = [
+        {"version": "2.1"},
+        {"version": "2.0"},
+        {"version": "2.1"},
+        {"version": None},
+        {"rating": 1},
+        {"version": "2.0"},
+        {"version": "2.1"},
+    ]
+    result = counted(items)
+    assert result["items"] == 7
+    assert result["groups"] == [
+        {"value": "2.1", "count": 3},
+        {"value": "2.0", "count": 2},
+        {"value": None, "count": 2},
+    ]
+    assert result["first"] == {"value": "2.1", "count": 3}
+
+
+def test_count_reads_a_dotted_path_and_an_empty_list_names_nothing() -> None:
+    assert counted([{"app": {"version": 3}}], by="app.version")["groups"] == [
+        {"value": "3", "count": 1}
+    ]
+    assert counted([])["first"] is None
+
+
+@pytest.mark.parametrize("items", [{"version": "1"}, ["x"], [{"version": ["1"]}]])
+def test_count_fails_on_what_is_not_a_list_of_objects_with_a_value(items: Any) -> None:
+    with pytest.raises(RuleFailed):
+        counted(items)

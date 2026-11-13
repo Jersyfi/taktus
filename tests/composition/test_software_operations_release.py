@@ -68,13 +68,16 @@ from taktus.adapters.driven.memory import MemoryQueue
 from taktus.adapters.driven.models import StaticModelPool
 from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
-from taktus.components.run.application.service import EngineOptions, RunEngine
+from taktus.components.process.application.service.register_version import (
+    RegisterProcessVersion,
+)
+from taktus.components.run.application.service import ConfirmSteps, EngineOptions, RunEngine
 from taktus.components.run.domain.model import Run, RunState, StepState
 from taktus.composition.personal import ConfiguredPersonalCredentials
 from taktus.ports.connector import CallContext, idempotency_key
 from taktus.ports.worker import CredentialReference
 
-from .test_software_operations import REPOSITORY, TOKEN, Outside, states
+from .test_software_operations import REPOSITORY, TOKEN, Outside, bundle, states
 from .test_software_operations import outside as outside  # the fixture, requested by name
 from .test_software_operations_repository import (
     RepositoryWorld,
@@ -189,7 +192,9 @@ class ReleaseWorld(RepositoryWorld):
         *,
         serverless: bool = False,
         answers: dict[str, str] | None = None,
+        checked: str | None = None,
     ) -> None:
+        """`checked` is the address `check.http` reaches, the checked service's by default."""
         super().__init__(outside, cluster)
         self.systems = systems
         # The independent check and the classification of a text for the team (ADR-0142).
@@ -216,7 +221,9 @@ class ReleaseWorld(RepositoryWorld):
             ),
             (
                 "connector.check",
-                served(check_server(CheckConfig(f"{outside.metrics}/service", timeout=5.0))),
+                served(
+                    check_server(CheckConfig(checked or f"{outside.metrics}/service", timeout=5.0))
+                ),
             ),
             ("connector.metrics", served(metrics_server(MetricsConfig(outside.metrics, 5.0)))),
             ("connector.workloads", served(workloads)),
@@ -396,6 +403,100 @@ async def test_b_8_06_runs_unchanged_on_a_serverless_platform(
     assert images == ([serverless_service.IMAGE] if rolled_back else [release["image"]])
 
 
+@pytest.mark.parametrize(("rate", "promoted"), [("0.001", True), ("0.2", False)])
+async def test_b_8_04_on_a_serverless_platform_shares_the_traffic_and_promotes_or_puts_it_back(
+    outside: Outside,
+    cluster: str,
+    systems: Systems,
+    rate: str,
+    promoted: bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ADR-0312: the canary revision takes a rising share while its rate holds and all traffic
+    after the third stage; on a rise all traffic goes back to the stable revision by rule."""
+    serverless_key(monkeypatch)
+    w = await ReleaseWorld(outside, cluster, systems, serverless=True).ready()
+    systems.fake(
+        "serverless", "/_fake/deploy", {"service": "web", "image": "registry.example/app:1.1.0"}
+    )
+    stable, canary = systems.state("serverless")["services"]["web"]["revisions"]
+    version = await w.registered("B-8.04-traffic-canary.yaml")
+    run = await w.confirmed(
+        await w.start(
+            version,
+            service="web",
+            first=5,
+            second=25,
+            third=50,
+            error_rate_query=rate,
+            max_error_rate="0.02",
+        )
+    )
+    finished(run)
+    traffic = systems.state("serverless")["services"]["web"]["traffic"]
+    if promoted:
+        assert traffic == {canary: 100}
+        assert (await w.result(run, "share-3"))["output"]["traffic"][0]["percent"] == 50
+        assert (await w.result(run, "halt-3"))["skipped"] is True
+    else:
+        assert traffic == {stable: 100}
+        assert (await w.result(run, "share-1"))["output"]["traffic"] == [
+            {"revision": stable, "percent": 95},
+            {"revision": canary, "percent": 5},
+        ]
+        assert (await w.result(run, "share-2"))["skipped"] is True
+        assert (await w.result(run, "promote"))["skipped"] is True
+
+
+# --- B-1.03's brake on a serverless platform (ADR-0310) -----------------------------------------
+
+BRAKE = {"query": "service_calls_per_second", "throttle_above": 100, "throttle_to": 1}
+
+
+async def test_b_1_03_at_level_1_proposes_the_throttle_and_a_person_performs_it(
+    outside: Outside, cluster: str, systems: Systems, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """As shipped, at level 1: the runaway is named by rule and the throttle waits for a person
+    to perform it; the platform is not touched by Taktus."""
+    serverless_key(monkeypatch)
+    w = await ReleaseWorld(outside, cluster, systems, serverless=True).ready()
+    version = await w.registered("B-1.03-runaway.yaml")
+    run = await w.start(version, **BRAKE)
+    assert run.state is RunState.WAITING_HUMAN
+    assert states(run)["throttle"] is StepState.WAITING_HUMAN
+    runaway = await w.result(run, "runaway")
+    assert runaway["count"] == 1 and runaway["first"]["labels"]["function"] == "web"
+    assert len(systems.state("serverless")["services"]["web"]["revisions"]) == 1
+    run = await w.engine.confirm(
+        ConfirmSteps(run_id=run.id, steps=("throttle",), actor=OWNER, tenant="t", performed=True)
+    )
+    finished(run)
+    assert len(systems.state("serverless")["services"]["web"]["revisions"]) == 1, "a person did"
+
+
+async def test_b_1_03_at_level_2_throttles_the_runaway_once_a_person_confirmed(
+    outside: Outside, cluster: str, systems: Systems, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A tenant's version at level 2: the brake is set once confirmed, and names the limit
+    before; below the threshold nothing is throttled."""
+    serverless_key(monkeypatch)
+    w = await ReleaseWorld(outside, cluster, systems, serverless=True).ready()
+    raised = bundle("B-1.03-runaway.yaml")
+    raised["autonomy"] = {**raised["autonomy"], "level": 2}
+    version = await w.register.execute(RegisterProcessVersion(raised, tenant="t", by=OWNER))
+    calm = await w.confirmed(await w.start(version, **{**BRAKE, "throttle_above": 1000}))
+    finished(calm)
+    assert (await w.result(calm, "throttle"))["skipped"] is True
+    run = await w.start(version, **BRAKE)
+    assert run.state is RunState.WAITING_HUMAN, "at level 2 nothing starts before a person"
+    run = await w.confirmed(run)
+    finished(run)
+    throttled = (await w.result(run, "throttle"))["output"]
+    assert throttled["name"] == "web" and throttled["max_instances"] == 1
+    assert throttled["max_instances_before"] is None
+    assert len(systems.state("serverless")["services"]["web"]["revisions"]) == 2
+
+
 # --- B-8.02, B-8.03, B-8.04 at an app store (ADR-0210) -----------------------------------------
 
 
@@ -515,15 +616,26 @@ def merged_change(outside: Outside, name: str, title: str) -> None:
 POST = "<p>Signing in works again.</p><ul><li>Fixed: sign-in</li></ul>"
 
 
-async def test_b_8_08_drafts_the_post_and_publishes_it_only_once_a_person_decided(
-    outside: Outside, cluster: str, systems: Systems
+@pytest.mark.parametrize(("term", "found"), [("Signing in", True), ("dark mode", False)])
+async def test_b_8_08_drafts_the_post_publishes_it_on_a_persons_word_and_checks_its_page(
+    outside: Outside, cluster: str, systems: Systems, term: str, found: bool
 ) -> None:
+    """The published page answers at its address and carries the search term, or the check's
+    failure is counted for the corridor (UC-03 B-8.08)."""
     w = await ReleaseWorld(
-        outside, cluster, systems, answers={"You write the website post": POST}
+        outside,
+        cluster,
+        systems,
+        answers={"You write the website post": POST},
+        checked=systems.website,
     ).ready()
     merged_change(outside, "fix/sign-in", "Fix sign-in")
     version = await w.registered("B-8.08-changelog-and-website.yaml")
-    run = await w.confirmed(await w.start(version, release="2.0", since_hours=336))
+    run = await w.confirmed(
+        await w.start(
+            version, release="2.0", since_hours=336, search_term=term, page_path="/${slug}/"
+        )
+    )
     assert states(run)["publish"] is StepState.WAITING_HUMAN
     posts = systems.state("website")["posts"]
     [drafted] = [p for p in posts.values() if p["status"] == "draft"]
@@ -532,6 +644,12 @@ async def test_b_8_08_drafts_the_post_and_publishes_it_only_once_a_person_decide
     finished(run)
     statuses = [p["status"] for p in systems.state("website")["posts"].values()]
     assert statuses.count("publish") == 2 and "draft" not in statuses
+    page = (await w.result(run, "page"))["output"]
+    link = (await w.result(run, "publish"))["output"]["link"]
+    assert link.endswith(page["path"]) and page["path"].startswith("/taktus-")
+    assert page["status"] == 200
+    assert (await w.result(run, "unfound"))["count"] == (0 if found else 1)
+    assert page["outcome"] == ("passed" if found else "failed")
 
 
 async def test_b_9_07_drafts_the_newsletter_and_sends_it_only_once_a_person_decided(

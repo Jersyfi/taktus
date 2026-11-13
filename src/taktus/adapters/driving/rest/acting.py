@@ -15,6 +15,7 @@ from typing import Any
 from fastapi import APIRouter, Header
 from fastapi.responses import JSONResponse
 
+from taktus.adapters.driving.inventory import read_recorded
 from taktus.adapters.driving.rest.problems import MEDIA_TYPE, problem
 from taktus.adapters.driving.rest.wiring import RestServices
 from taktus.components.reporting.domain.model import Reader
@@ -56,6 +57,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         if who is None:
             return problem(401, NEEDS_KEY)
         found = await services.acting.register(who.tenant, await visible(services, who))
+        await read_recorded(
+            services.ledger, services.work, who.tenant, "adapter.list", who.identity
+        )
         return JSONResponse(found.document())
 
     @routes.get(

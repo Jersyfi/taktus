@@ -76,6 +76,12 @@ What it enforces, because the connector's checks depend on it:
   `GET …/dependabot/alerts` lists the alerts `POST /_fake/alert` added, filtered by `state` and
   `severity`, newest first, each with a dismisser and assignees the connector must never copy.
 
+- **When a path last changed** (ADR-0307). Every commit carries `committer.date`, the moment it
+  was made, and `POST /_fake/date` with `{"repository", "sha", "date"}` dates one commit
+  otherwise. `GET …/commits?sha=<commit>&path=<path>&per_page=1` walks the first parents from
+  the commit and answers the newest commit that changed anything at or below the path, in the
+  service's shape (`sha`, `commit.committer.date`), or an empty list.
+
 Test-only endpoints under `/_fake/`: `GET /_fake/state` counts what exists, `POST /_fake/reset`
 empties the store, `POST /_fake/outage` with `{"on": true}` makes every other request answer 503
 until switched off, `POST /_fake/hang` with `{"seconds": 2}` makes every other request wait
@@ -220,13 +226,52 @@ class Store:
     def new_object(self, repo: Repository, kind: str, body: Json) -> str:
         sha = f"{repo.next_object:040x}"
         repo.next_object += 1
+        dated: Json = {}
+        if kind == "commit":
+            moment = {"name": "fake", "email": "fake@example.invalid", "date": now()}
+            dated = {"author": dict(moment), "committer": dict(moment)}
         repo.objects[sha] = {
             "sha": sha,
             "kind": kind,
             "html_url": f"{self.base_url}/{repo.full_name}/{kind}/{sha}",
+            **dated,
             **body,
         }
         return sha
+
+    def last_change(self, repo: Repository, start: str, path: str) -> Json | None:
+        """The newest commit on the first-parent line from `start` that changed anything at or
+        below `path`, as `GET …/commits?path=` answers it; None when none did."""
+
+        def below(commit: Json) -> dict[str, str]:
+            tree = repo.objects[commit["tree"]["sha"]]["tree"]
+            prefix = path.rstrip("/") + "/"
+            return {
+                str(e["path"]): str(e["sha"])
+                for e in tree
+                if e["path"] == path or str(e["path"]).startswith(prefix)
+            }
+
+        sha: str | None = start
+        while sha is not None:
+            commit = repo.objects.get(sha)
+            if commit is None or commit["kind"] != "commit":
+                return None
+            parents = commit.get("parents") or []
+            parent = repo.objects.get(parents[0]["sha"]) if parents else None
+            mine = below(commit)
+            before = below(parent) if parent is not None else {}
+            if mine != before:
+                return {
+                    "sha": sha,
+                    "commit": {
+                        "message": commit.get("message", ""),
+                        "committer": commit.get("committer"),
+                        "author": commit.get("author"),
+                    },
+                }
+            sha = parents[0]["sha"] if parents else None
+        return None
 
     def create_run(
         self, repo: Repository, name: str, head_sha: str, *, status: str, conclusion: str | None
@@ -626,6 +671,17 @@ class Handler(BaseHTTPRequestHandler):
                     run["created_at"] = moment.strftime("%Y-%m-%dT%H:%M:%SZ")
             self._send(201, run)
             return
+        if url.path == "/_fake/date":
+            with self.store.lock:
+                repo = self.store.repository(*str(body["repository"]).split("/", 1))
+                commit = repo.objects.get(str(body["sha"]))
+                if commit is None or commit["kind"] != "commit":
+                    self._send(404, {"message": "Not Found"})
+                    return
+                for side in ("author", "committer"):
+                    commit[side] = {**(commit.get(side) or {}), "date": str(body["date"])}
+            self._send(200, {"sha": commit["sha"], "date": str(body["date"])})
+            return
         if url.path == "/_fake/reset":
             with self.store.lock:
                 self.store.repositories.clear()
@@ -821,13 +877,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def _patch_issue(self, repo: Repository, number: int, body: Json) -> None:
         """An issue or a pull request changed as the issue interface changes it: its state
-        (closed with a reason, or open) and its milestone by number. A pull request closed so
-        is closed, never merged."""
+        (closed with a reason, or open), its title and text, and its milestone by number. A pull
+        request closed so is closed, never merged."""
         issue = repo.issues.get(number)
         if issue is None:
             self._send(404, {"message": "Not Found"})
             return
-        changes: Json = {}
+        changes: Json = {k: str(body[k]) for k in ("title", "body") if k in body}
         if "state" in body:
             if body["state"] not in ("open", "closed"):
                 self._send(422, {"message": "Validation Failed: state"})
@@ -845,6 +901,33 @@ class Handler(BaseHTTPRequestHandler):
             repo.pulls[number].update(changes, updated_at=now())
         self._send(200, issue)
 
+    def _search_code(self, query: Json) -> None:
+        """The service's code search, as far as a connector asks it: `"<text>"` and one
+        `repo:<owner>/<name>`, matched as a substring of each file's text on `main`, paged by
+        `per_page` and `page`, in the service's shape — `total_count`, `incomplete_results`,
+        `items` with `name`, `path`, `sha` and the repository."""
+        m = re.fullmatch(r'"([^"]+)" repo:([^/\s]+)/([^/\s]+)', str(query.get("q", "")))
+        if m is None:
+            self._send(422, {"message": "Validation Failed"})
+            return
+        repo = self.store.repository(m.group(2), m.group(3))
+        items = [
+            {"name": p.rsplit("/", 1)[-1], "path": p, "sha": e["sha"],
+             "repository": {"full_name": repo.full_name}}
+            for p, e in sorted(self.store.files_at(repo, repo.refs.get("main")).items())
+            if m.group(1) in self.store.text(repo, e)
+        ]  # fmt: skip
+        per_page = max(1, min(100, int(query.get("per_page", 30))))
+        page = max(1, int(query.get("page", 1)))
+        self._send(
+            200,
+            {
+                "total_count": len(items),
+                "incomplete_results": False,
+                "items": items[(page - 1) * per_page : page * per_page],
+            },
+        )
+
     def _get(self, path: str, query: Json) -> None:
         store = self.store
         store.answered += 1
@@ -857,6 +940,9 @@ class Handler(BaseHTTPRequestHandler):
                 "graphql": {"limit": 5000, "used": 0, "remaining": 5000, "reset": reset},
             }
             self._send(200, {"resources": resources, "rate": resources["core"]})
+            return
+        if path == "/search/code":
+            self._search_code(query)
             return
         if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/actions/runners", path):
             repo = store.repository(m.group(1), m.group(2))
@@ -1070,6 +1156,16 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(404, {"message": "Branch not found"})
                 return
             self._send(200, {"name": m.group(3), "commit": {"sha": sha}})
+            return
+        if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/commits", path):
+            repo = store.repository(m.group(1), m.group(2))
+            start = str(query.get("sha") or "main")
+            start = repo.refs.get(start, start)
+            if start not in repo.objects:
+                self._send(404, {"message": "No commit found for SHA"})
+                return
+            found = store.last_change(repo, start, str(query.get("path") or ""))
+            self._send(200, [] if found is None else [found])
             return
         if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/contents/(.+)", path):
             repo = store.repository(m.group(1), m.group(2))

@@ -38,7 +38,7 @@ from taktus.adapters.driven.models import StaticModelPool
 from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.components.run.application.service import EngineOptions, RunEngine
-from taktus.components.run.domain.model import Run, RunState
+from taktus.components.run.domain.model import Run, RunState, StepState
 
 from .test_software_operations import (
     MAILBOX,
@@ -87,7 +87,9 @@ def community(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Commu
 class CommunityWorld(World):
     """The world, with the mailbox, the portal and one source of mentions."""
 
-    def __init__(self, outside: Outside, community: Community, source: str = "social") -> None:
+    def __init__(
+        self, outside: Outside, community: Community, source: str = "social", both: bool = False
+    ) -> None:
         super().__init__(outside)
         self.community = community
 
@@ -123,6 +125,18 @@ class CommunityWorld(World):
             ),
             ("connector.mentions", served(mentions)),
         ]
+        if both:
+            # Both sources on one configuration, each under an identifier of its own (ADR-0311).
+            connectors[-1] = (
+                "connector.social",
+                served(social_server(SocialConfig(community.social, timeout=5.0))),
+            )
+            connectors.append(
+                (
+                    "connector.forum",
+                    served(forum_server(ForumConfig(community.forum, "support", timeout=5.0))),
+                )
+            )
         self.engine = RunEngine(
             maturities=VERIFIED,
             runs=self.of(Run),
@@ -285,6 +299,63 @@ async def test_b_3_10_reads_from_the_day_it_is_given(
     found = await w.result(run, "search")
     assert all(m["created_at"] >= "2026-11-01" for m in found["output"]["mentions"])
     assert "110000000000000001" not in json.dumps(found), "the post of October is left out"
+
+
+async def test_b_3_10_reads_two_sources_on_one_configuration_each_by_its_name(
+    outside: Outside, community: Community
+) -> None:
+    """ADR-0311: each search step names the configured connector it reads; the model sorts the
+    posts of both."""
+    w = await CommunityWorld(outside, community, both=True).ready()
+    version = await w.registered("B-3.10-mentions.yaml")
+    w.model.answers[SORT] = "110000000000000005: support-case\n504: criticism\n"
+    run = await w.start(
+        version,
+        query="product",
+        since="2026-10-01",
+        source="connector.social",
+        second="connector.forum",
+    )
+    assert run.state is RunState.FINISHED, [(s.step_id, s.reason) for s in run.step_runs]
+    first = json.dumps(await w.result(run, "search"))
+    second = json.dumps(await w.result(run, "search-second"))
+    assert "110000000000000005" in first and '"504"' not in first
+    assert '"504"' in second and "110000000000000005" not in second
+    shown = str(w.model.prompts[-1])
+    assert "110000000000000005" in shown and "504" in shown, "the model saw both sources"
+    assert (await w.result(run, "support"))["extracted"] == ["110000000000000005"]
+    assert (await w.result(run, "criticism"))["extracted"] == ["504"]
+    adapters = {s.step_id: s.adapter for s in run.step_runs}
+    assert (adapters["search"], adapters["search-second"]) == (
+        "connector.social",
+        "connector.forum",
+    )
+
+
+async def test_b_3_10_a_name_no_connector_carries_reads_nothing(
+    outside: Outside, community: Community
+) -> None:
+    """A name the configuration does not carry is never served by another connector: what the
+    step would do cannot be read, so it is held for a person and reads nothing."""
+    w = await CommunityWorld(outside, community, both=True).ready()
+    version = await w.registered("B-3.10-mentions.yaml")
+    run = await w.start(version, query="product", since="2026-10-01", source="connector.nowhere")
+    assert run.state is not RunState.FINISHED
+    [search] = [s for s in run.step_runs if s.step_id == "search"]
+    assert search.state is not StepState.SUCCEEDED and search.adapter is None
+    assert w.model.prompts == []
+
+
+async def test_b_3_10_without_names_the_first_configured_connector_serves(
+    outside: Outside, community: Community
+) -> None:
+    w = await CommunityWorld(outside, community, both=True).ready()
+    version = await w.registered("B-3.10-mentions.yaml")
+    w.model.answers[SORT] = ""
+    run = await w.start(version, query="product", since="2026-10-01")
+    assert run.state is RunState.FINISHED, [(s.step_id, s.reason) for s in run.step_runs]
+    assert (await w.result(run, "search-second"))["skipped"] is True
+    assert {s.step_id: s.adapter for s in run.step_runs}["search"] == "connector.social"
 
 
 def test_the_community_bundles_name_no_product() -> None:

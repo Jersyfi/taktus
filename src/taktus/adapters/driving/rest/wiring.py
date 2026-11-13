@@ -51,6 +51,7 @@ from taktus.components.process.domain.model import (
     TakeoverTrial,
     ValueStream,
 )
+from taktus.components.process.domain.model.chain import Chain, ChainRun, DeclaredChain
 from taktus.components.process.domain.service.proposing import ProcessProposal
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.application.service import (
@@ -179,6 +180,8 @@ class PlanActs(Protocol):
         *,
         agent: bool = False,
         describes: str | None = None,
+        act: str | None = None,
+        arguments: Mapping[str, Any] | None = None,
     ) -> PlanDraft: ...
 
     async def mine(self, tenant: Tenant, identity: str) -> list[PlanDraft]: ...
@@ -203,7 +206,7 @@ class PlanActs(Protocol):
     async def commission(self, tenant: Tenant, identity: str, draft_id: str) -> Plan: ...
 
     async def commission_and_start(
-        self, tenant: Tenant, identity: str, draft_id: str
+        self, tenant: Tenant, identity: str, draft_id: str, *, accept_demand: bool = False
     ) -> tuple[Plan, Run | None]: ...
 
     async def templates(self, tenant: Tenant) -> list[dict[str, Any]]: ...
@@ -374,10 +377,16 @@ class AgentActs(Protocol):
         *,
         channel: str = "channel.agent",
         address: str = "ledger",
+        accept_demand: bool = False,
     ) -> Run:
         """The process's active version started with the inputs, acting as `who`, through the
         one path every channel takes, by the one start command on `channel`. `StartRefused`
-        when it cannot be."""
+        when it cannot be; `DemandToAccept` with the estimated demand where the run needs much
+        and `accept_demand` is not given (ADR-0299 §1)."""
+        ...
+
+    async def demand(self, who: Resolution, process_id: str) -> dict[str, Any] | None:
+        """The estimated demand of a run of the process, as `who` would start it (ADR-0299)."""
         ...
 
     async def called(
@@ -455,6 +464,40 @@ class StreamActs(Protocol):
         self, tenant: Tenant, stream: str, visible: frozenset[str], days: int
     ) -> StreamLanes | None:
         """None where the tenant declared no such stream."""
+        ...
+
+
+class ChainActs(Protocol):
+    """End-to-end chains across domains (ADR-0301, ADR-0302): the composition root's, because a
+    chain's links are runs of the run component and its halt is said in the reporting
+    component's channel."""
+
+    async def declare(self, tenant: Tenant, chain: Chain) -> DeclaredChain:
+        """`InvalidProcess` where the chain does not hold to the versions it links."""
+        ...
+
+    async def chains(self, tenant: Tenant) -> list[DeclaredChain]: ...
+
+    async def chain(self, tenant: Tenant, chain_id: str) -> DeclaredChain | None: ...
+
+    async def runs_of(self, tenant: Tenant, chain_id: str | None = None) -> list[ChainRun]: ...
+
+    async def chain_run(self, tenant: Tenant, chain_run_id: str) -> ChainRun | None: ...
+
+    async def started(
+        self, tenant: Tenant, chain_id: str, inputs: Mapping[str, Any], actor: str
+    ) -> ChainRun: ...
+
+    async def decided(
+        self,
+        tenant: Tenant,
+        chain_run_id: str,
+        actor: str,
+        *,
+        given: Mapping[str, Any] | None = None,
+        stop: bool = False,
+    ) -> ChainRun:
+        """`ChainRefused` where the decision does not fit the chain run's state."""
         ...
 
 
@@ -848,6 +891,11 @@ class RestServices(Protocol):
     @property
     def streams(self) -> StreamActs:
         """The organisation as value streams, and their declaration (ADR-0159)."""
+        ...
+
+    @property
+    def chains(self) -> ChainActs:
+        """End-to-end chains across domains, stored, started and decided (ADR-0301)."""
         ...
 
     @property

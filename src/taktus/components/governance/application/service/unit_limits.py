@@ -37,6 +37,7 @@ from taktus.components.governance.domain.model.unit_limits import (
     forecast,
     harm,
     period_of,
+    promises,
 )
 from taktus.ports.clock import Clock
 from taktus.ports.ledger import Fact, Ledger
@@ -114,7 +115,11 @@ class UnitLimits:
         work: UnitOfWork,
         clock: Clock,
         names_a_person: Callable[[Tenant, str], Awaitable[bool]],
+        pricing: tuple[str, str] | None = None,
     ) -> None:
+        self._pricing = pricing
+        """The currency and version of the instance's price table, for what a limit can
+        promise in money (ADR-0300 §4). None: the instance prices nothing."""
         self._limits = limits
         self._watches = watches
         self._incidents = incidents
@@ -169,6 +174,9 @@ class UnitLimits:
             )
         except ValueError as error:
             raise UnitLimitRefused(str(error)) from error
+        limit = limit.model_copy(
+            update={"promises": promises(limit.amounts.lines(), self._pricing)}
+        )
         async with self._work.transaction(command.tenant):
             others = [
                 lim
@@ -438,6 +446,9 @@ class UnitLimits:
             "limit": limit.id,
             "individually": "yes" if limit.individually else "no",
         }
+        for process, seconds in found.by_process.items():
+            # What a view grouped by process shows of the report (ADR-0299 §2).
+            facts[f"held_seconds.{process}"] = seconds
         for line, amount in lines.items():
             needed = spent.get(line, 0.0) + demand.get(line, 0.0) * max(1, found.runs)
             recommended = max(amount, needed)

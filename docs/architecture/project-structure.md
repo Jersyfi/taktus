@@ -78,6 +78,7 @@ taktus/
 ├── deploy/{docker,k8s,backup,docs}/   # docker/compose.yml: Taktus and PostgreSQL, `make up`; compose.reference-worker.yml: the worker layered in for development; compose.dev.yml: the development database; backup/: the image of the database backup job (ADR-0087); docs/: how the documentation site is uploaded to web hosting (DEC-0234)
 ├── blueprints/{dev-orchestration,it-operations,self-operation,finance}/   # README.md: the blueprints and the example domains; self-operation: what Taktus runs for itself — S-01 the removal test, weekly; finance: a description
 ├── examples/processes/              # process bundles that run as they are; each exercised by a test
+├── scaffolds/skills/                # the method scaffolds the catalogue ships: development, process automation, analysis — curated skills with a scaffold.yaml (ADR-0307)
 ├── web/                             # the web app: SvelteKit, TypeScript, a static build with the route after `#`, built into the image and served by the `api` role at {prefix}/app/; every link a channel carries to a report opens its page there (ADR-0120); tests beside the code; `make gate-web` (ADR-0063)
 │
 ├── tests/
@@ -146,7 +147,9 @@ control plane keeps its side of the port under `adapters/driven/connectors/` —
 the pool, and the loopback and directory connectors, which reach the instance itself and run in
 its process. A connector that reaches a cloud's API signs with its own copy of the key exchange
 (`auth.py` in its directory), because an image holds nothing of another connector; the release's
-list (`composition/shipped.json`, `make generate`) names each one with what it declares.
+list (`composition/shipped.json`, `make generate`) names each one with what it declares, the
+books connector's `accounting.invoices` among them (ADR-0314), and a connector that serves only
+part of a capability's group — a models list without its costs — with only what it serves.
 
 `tests/architecture` fails on:
 
@@ -276,7 +279,8 @@ role it would tie the core to a model stack and the removal test would be lost.
   a document still in an inbox — starts no second run; its read takes the trigger's fixed
   `arguments` (ADR-0188). The release's list of what it ships (`composition/shipped.json`)
   names the operations every connector declares, the logs, secret metadata, signing
-  credentials and model catalogue of ADR-0202 to ADR-0204 among them, generated from the
+  credentials and model catalogue of ADR-0202 to ADR-0204 and the flagged messages, code
+  search and throttle of ADR-0310 among them, generated from the
   connectors' declarations (`make generate`), so that a new connector reaches it without a hand
   edit. The tick also makes the capacity
   report, and once a minute it watches that every expected run happened: one that did not
@@ -309,7 +313,17 @@ role it would tie the core to a model stack and the removal test would be lost.
   `BudgetOfTheRun` in `composition/decisions.py`, and `taktusctl budget` sets it (ADR-0260).
   Its `UnitLimits` answers the run's `UnitLimitsPort` through `UnitLimitsOfTheRun` in
   `composition/unit_limits.py`, which reads where an identity sits from the identity component's
-  `IdentityDirectory`; `taktusctl units limit` sets the limits (ADR-0282).
+  `IdentityDirectory`; `taktusctl units limit` sets the limits (ADR-0282), with the policy
+  `halt`, `wait` or `cheaper` at the line (ADR-0298). The composition hands the engine the
+  `Claims` of its persistence (`ports/persistence.py`; `MemoryClaims`, `PostgresClaims`): the
+  admission of a step against a unit limit is checked again under the limit's claim before it
+  commits, so two runners never both fit one line (ADR-0298). `RunEngine.demand` estimates a
+  run before it starts; `taktusctl run` and `submit` show it and start a run that needs much
+  only with `--accept-demand`; `composition/agent_surface.py` (catalogue, agent, conversation)
+  and `composition/planning.py` (the describe run of a commissioned draft) ask the same
+  (ADR-0299). A unit limit keeps what it can promise per line, `UnitLimit.promises`, stated
+  when it is set at the instance's price table (ADR-0300 §4). The open `limit.harmful` reports are the figure
+  `limit.held_seconds` that `composition/figures.py` hands to the views (ADR-0299).
   The accounting component's `BottlenecksHandler` reads its three ports through
   `composition/bottlenecks.py`: `RunAccounts` over the run's `BlockedTime`, which hands over the
   limits and the work held back and the waits on people only grouped; `MethodsOfTheRun` over the
@@ -382,7 +396,14 @@ role it would tie the core to a model stack and the removal test would be lost.
   recurred, scores its rounds, approves it by rule at level 4 once n rounds passed, puts it into
   production and falls it back by rule; `CatalogGuidance` answers the run's `Guidance` port,
   and the postgres adapter keeps the tables `skill_version`, `skill_ownership`, `skill_policy`,
-  `agent_core` and `role_profile` (ADR-0163). The models
+  `agent_core` and `role_profile` (ADR-0163). A skill that carries a `scaffold.yaml` is a
+  method scaffold and is registered with the origin `curated` (ADR-0307); `taktusctl bundle
+  check` reads the declaration through `scaffold_of` (`adapters/driving/cli/bundle_command.py`),
+  and never as a bundle. `InstanceScaffolds` (`composition/scaffolds.py`) reads a scaffold at
+  its version in production, or a check at its newest readable one, and resolves the repository
+  and the knowledge system by capability for the catalogue's `ScaffoldProjects`, which checks a
+  project against it and furnishes the missing artifacts. The loopback connector serves both as `orchestrator.scaffolds` through `LoopbackScaffolds`, and `taktusctl scaffold` (`adapters/driving/cli/scaffold_command.py`) through `Services.scaffolds` (ADR-0308). `shipped.json` lists
+  `repository.files.dates`. The models
   configured in `TAKTUS_MODELS` reach the run as one pool in chain order
   (`composition/execution.py`, `composition/settings.py`, ADR-0116), and each is held to the
   model contract's suite with its own endpoint (`composition/conformance.py`); deadlines and
@@ -502,18 +523,62 @@ role it would tie the core to a model stack and the removal test would be lost.
   component holds a version's `contracts` (`domain/model/process.py`) and its rule
   (`domain/service/partners.py`), and a chain's shape and rules (`domain/model/chain.py`,
   `domain/service/chains.py`); `composition/chains.py`'s `ChainRuns` runs a chain link by link
-  and records every handover.
+  and records every handover. A failed import or export check names the contract's clause it
+  breaks: `run/domain/service/checking.py` says what is lacking, `partners.breach` the clause,
+  and `composition/escalations.py` hands it to the governance component's `Escalated.breaks`
+  (ADR-0303). `partners.propose_mapping` proposes a contract's `mapping` from sample data, answered
+  by `adapters/driving/rest/partners.py` and confirmed only by registering a version that
+  carries it; `composition/partner_exchange.py`'s `ContractControl`, in front of `TaskControl`
+  on the engine's boundary port, stops a message that came before the contract's frequency
+  allows, and its `ContractWatch` delivers the deviation (ADR-0315). The instance stores a chain and every run of it (`DeclaredChain`, `ChainRun`;
+  tables `declared_chain`, `chain_run`, migration 0111) and shows them through
+  `adapters/driving/rest/chains.py` and the web app's `/chains`; the scheduler's `chains_tick`
+  goes on with a waiting chain once its link finished (ADR-0301). A halted handover's package is
+  the governance component's `handover_package`, raised in the owner-facing channel; a person's
+  decision goes through `ChainRuns.decide`; a chain that ended is measured against its own
+  objectives (ADR-0302).
 - **The load measurement** (S-04, ADR-0223) is `adapters/driving/cli/load_command.py`: it
   submits the probe `blueprints/self-operation/processes/S-04-load-probe.yaml`, which the control
   plane's image carries, through the same services as `taktusctl submit`, and reads each run's
   latency from its record.
+- **The export of the figures** (UC-5.7, ADR-0241) is `adapters/driving/rest/figures.py`,
+  `GET /figures` and `GET /figures.csv`, over `composition/figures.py`'s `FigureReads`. It
+  gathers every owner's figures, among them the levels' own (UC-6.10): the overview's counts,
+  the process level's runs (`process.runs`), and what a run and each of its steps consumed
+  (`run.consumed`, `step.consumed`, of the scopes `run` and `step` of the reporting
+  component's `Shown`), each read from the level through the predicate the read API asks.
+- **A session reached from a chat, reading a project's sources** (ADR-0304) is
+  `composition/sessions.py`: `SourceKnowledge` answers the session's `ProjectKnowledge` with what
+  Taktus holds and what each source system of `TAKTUS_SESSION_SOURCES` shows the participant
+  through their own credential; `SessionsInChat` is a reader of the owner channel's chain
+  (`OwnerAnswers.sessions_with`), read in every chat.
+- **An evaluation platform** (ADR-0305) is `composition/evaluation_platform.py`'s
+  `EvaluationPlatform`, over the connector pool by the capabilities `evaluations.records`,
+  `prompts.versions` and `observability.costs`: `Evaluations` hands it every scored evaluation,
+  and the scheduler's `platform_tick` mirrors prompts and reconciles costs once an hour.
 - **A tenant's export and import** (ADR-0221): the port `TenantArchive` of
   `ports/persistence.py`, implemented over every table with a `tenant` column by
   `adapters/driven/postgres/archive.py`; `composition/tenant_export.py`'s `TenantExports`
   writes and reads the document and checks the chains after an import. `taktusctl tenant
   export` and `import` (`adapters/driving/cli/tenant_command.py`) and the administration routes
   of `adapters/driving/rest/tenants.py` reach it; `composition/local.py` and the daemon's `Wired`
-  give it where the state is a database.
+  give it where the state is a database. The web app's page `#/tenants` exports and imports by
+  the same routes (ADR-0295).
+- **The instance's health, the backup's listing and administrative plans** (ADR-0295,
+  ADR-0296): the port `BackupLog` of `ports/backups.py` answers a tenant's newest backup runs
+  as `BackupHistory.recent`, which both backup log adapters fill and `composition/alerts.py`
+  carries into the reporting component's `BackupState`. `adapters/driving/cli/instance_command.py`
+  is `taktusctl health`, `backup list` and `update`; `adapters/driving/rest/administration.py`
+  answers `/administration/health` and opens an update's plan at `/administration/update`;
+  `rest/planning.py` opens a draft with an act. `composition/administration.py` names the acts a
+  plan carries out (`IN_DIALOGUE`) and why every other act of `adapters/driving/inventory.py`
+  stays by hand (`BY_HAND_ONLY`); its `AdministrationPlans` checks the right and carries the act
+  out through the identity component when the plan is commissioned. `composition/planning.py`,
+  `composition/workspace.py`, the daemon and `composition/local.py` wire it, the command line's
+  `Services.planning` included. Every act of the inventory that reads leaves
+  `administration.read` through `read_recorded` of `adapters/driving/inventory.py`, called by each
+  read route and command, and by `adapters/driving/cli/reads.py` where a command holds no
+  services of its own (NTC-0273).
 - **Data-protection requests and the processing evidence** (ADR-0176) are served on the HTTP
   surface by `adapters/driving/rest/subjects.py` through the ports `SubjectActs` and
   `EvidenceReads` of `adapters/driving/rest/wiring.py`; the daemon's `Wired` builds the

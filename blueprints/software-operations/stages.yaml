@@ -17,10 +17,20 @@
 # The last stage's condition is the same four weeks: the business runs dark while it holds.
 #
 # A stage opens only once every process it adds runs for the tenant, and holds only while they
-# do (ADR-0191 §1). A process is named by the identifier of its bundle: `b-<area>-<number>`,
-# the bundle under `processes/` once there is one. B-9.01, the daily report, is no process of
+# do (ADR-0191 §1). A process is named by the identifier of the bundle that serves it:
+# `b-<area>-<number>`, the bundle under `processes/`, or the bundle of another blueprint that
+# serves it — B-7.02 and B-7.03 are the dev-orchestration blueprint's P-02 and P-03. A process
+# without a bundle is declared in `blueprint.yaml` with where it is served or why it is not built;
+# a tenant's plan names the bundle that serves it, or leaves it out until one does. B-9.01, the daily report, is no process of
 # the tenant: it is the instance's daily report of signals (UC-6.13), which every tenant with a
 # corridor receives. Stage 0 counts the days it did not come (`reports_missed`, ADR-0191 §2).
+# For the same reason two more rows are no process of the tenant and stand in no stage
+# (NTC-0280): B-2.05, comparing models, is the instance's model trial (UC-8.14, NTC-0266), and
+# B-4.03, the correction rate, is the instance's count per process and action (UC-7.5,
+# NTC-0263). A row served inside another process's bundle is named by that bundle: B-3.03,
+# B-3.12 and B-4.01 to B-4.06 by `b-3-02` (NTC-0263, NTC-0266). A row declared `not_built` in
+# `blueprint.yaml` stands in no stage until a bundle serves it: B-4.07, a document of the
+# business (NTC-0281). Every stage can thus be declared as shipped.
 
 kind: Stages
 blueprint: software-operations
@@ -60,7 +70,6 @@ stages:
       b-2-02: 3   # B-2.02
       b-2-03: 3   # B-2.03
       b-2-04: 3   # B-2.04
-      b-2-05: 2   # B-2.05
       b-2-06: 2   # B-2.06
       b-6-01: 3   # B-6.01
       b-5-01: 3   # B-5.01
@@ -81,8 +90,7 @@ stages:
     # escalations.
     processes:
       b-3-01: 4   # B-3.01
-      b-3-02: 3   # B-3.02
-      b-3-03: 3   # B-3.03
+      b-3-02: 3   # B-3.02, and B-3.03, B-3.12, B-4.01, B-4.02, B-4.04 to B-4.06 inside it
       b-3-04: 3   # B-3.04
       b-3-05: 2   # B-3.05
       b-3-06: 4   # B-3.06
@@ -91,14 +99,6 @@ stages:
       b-3-09: 3   # B-3.09
       b-3-10: 2   # B-3.10
       b-3-11: 2   # B-3.11
-      b-3-12: 3   # B-3.12
-      b-4-01: 4   # B-4.01
-      b-4-02: 4   # B-4.02
-      b-4-03: 1   # B-4.03
-      b-4-04: 2   # B-4.04
-      b-4-05: 3   # B-4.05
-      b-4-06: 4   # B-4.06
-      b-4-07: 2   # B-4.07
     # Stage 3 opens when this held, with the correction rate of each approved class below its
     # limit: the shipped limit at which a level falls (NTC-0215), which a tenant may tighten.
     condition: { weeks: 4, correction_rate: 0.25 }
@@ -125,8 +125,8 @@ stages:
     # step under a written policy (UC-03 §4.7). People keep the policy and the roadmap.
     processes:
       b-7-01: 3   # B-7.01
-      b-7-02: 3   # B-7.02
-      b-7-03: 4   # B-7.03
+      p02-refinement: 3       # B-7.02, the dev-orchestration blueprint's P-02
+      p03-implementation: 4   # B-7.03, the dev-orchestration blueprint's P-03
       b-7-04: 4   # B-7.04
       b-7-05: 4   # B-7.05
       b-7-06: 4   # B-7.06

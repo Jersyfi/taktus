@@ -12,6 +12,11 @@ offer, by the same use cases, with the same entries in the ledger.
   role may do, granted and withdrawn; a right is a role's, never a person's (UC-7.3).
 - `GET /administration/units`, `PUT|DELETE /administration/units/{unit}` — the quotas per
   organisational unit (ADR-0166).
+- `GET /administration/health` — the instance's health: its release, whether it may receive
+  traffic and why not, the roles it serves, and the tenant's backup, alerts and incidents
+  (ADR-0295).
+- `POST /administration/update` — an update of Taktus prepared as a plan draft, which a person
+  works out and commissions in the plan dialogue; commissioning applies nothing (ADR-0296).
 
 Each needs an account key, or the web app's session, of an identity whose roles hold the
 right `tenant.administer`. The tenants themselves are `/administration/tenants`, for the
@@ -22,14 +27,19 @@ from __future__ import annotations
 
 import re
 from collections.abc import Awaitable, Callable
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 from fastapi import APIRouter, Header
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from taktus.adapters.driving.inventory import read_recorded
+from taktus.adapters.driving.rest.operation import backup_standing
 from taktus.adapters.driving.rest.problems import MEDIA_TYPE, problem
 from taktus.adapters.driving.rest.wiring import RestServices
+from taktus.components.command.application.service import PlanningError
+from taktus.components.command.domain.service.guided import Mode
 from taktus.components.governance.application.service import SetOrgUnitQuota
 from taktus.components.identity.application.service import IdentityError
 from taktus.components.identity.domain.model import Right
@@ -51,6 +61,22 @@ class AddBody(BaseModel):
 
 class RolesBody(BaseModel):
     roles: list[str] = Field(default_factory=list)
+
+
+class UpdateBody(BaseModel):
+    to: str = Field(
+        pattern=r"^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$",
+        description="The release to update to, as 1.0.1: one release after the running one.",
+    )
+    said: str = Field(default="", max_length=2000, description="Why, in your words.")
+
+
+def release() -> str:
+    """The release of Taktus this process runs, as its package names it."""
+    try:
+        return version("taktus")
+    except PackageNotFoundError:
+        return "unknown"
 
 
 class QuotaBody(BaseModel):
@@ -170,6 +196,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         if isinstance(who, JSONResponse):
             return who
         listed = await services.identities.links(who.tenant)
+        await read_recorded(
+            services.ledger, services.work, who.tenant, "identity.links", who.identity
+        )
         return JSONResponse({"links": [link.document() for link in listed]})
 
     @routes.delete(
@@ -200,6 +229,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         if isinstance(who, JSONResponse):
             return who
         granted = await services.identities.granted(who.tenant)
+        await read_recorded(
+            services.ledger, services.work, who.tenant, "identity.rights", who.identity
+        )
         return JSONResponse(
             {
                 "roles": [{"role": r.id, "rights": [str(x) for x in r.rights]} for r in granted],
@@ -256,6 +288,7 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         if isinstance(who, JSONResponse):
             return who
         quotas = await services.org_units.quotas(who.tenant)
+        await read_recorded(services.ledger, services.work, who.tenant, "units.show", who.identity)
         return JSONResponse({"quotas": [q.document() for q in quotas]})
 
     @routes.put(
@@ -306,5 +339,67 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
             SetOrgUnitQuota(tenant=who.tenant, org_unit=unit), by=who.identity
         )
         return JSONResponse({"unit": unit, "cleared": True})
+
+    @routes.get(
+        "/administration/health",
+        summary="The instance's health",
+        description="The release this process runs, whether it may receive traffic and, if "
+        "not, why, the roles it serves and whether it leads; for your tenant, how the backup "
+        "stands, how many alerts are in effect and how many incidents are open (ADR-0295). "
+        "`taktusctl health` shows the same.",
+        responses={200: {"description": "The instance's health."}, **common},
+    )
+    async def health(authorization: str | None = Header(default=None)) -> Any:
+        who = await admin(authorization)
+        if isinstance(who, JSONResponse):
+            return who
+        reason = await services.ready()
+        backup = await services.operation.backup(who.tenant)
+        alerts = await services.operation.alerts(who.tenant)
+        incidents = await services.operation.incidents(who.tenant)
+        await read_recorded(
+            services.ledger, services.work, who.tenant, "instance.health", who.identity
+        )
+        return JSONResponse(
+            {
+                "release": release(),
+                "ready": reason is None,
+                "reason": reason,
+                "roles": list(services.roles),
+                "leading": services.leading,
+                "backup": backup_standing(backup),
+                "alerts_in_effect": sum(1 for a in alerts if a.alert.in_effect and not a.closed),
+                "incidents_open": sum(1 for i in incidents if i.closed_at is None),
+            }
+        )
+
+    @routes.post(
+        "/administration/update",
+        summary="Prepare an update of Taktus as a plan",
+        description="A plan draft for the update to the release named: a backup, the upgrade "
+        "and the check, each a person's step from the upgrading guide, with the way back to the "
+        "release before. You state when it is due and at which level, and commission it in the "
+        "plan dialogue; commissioning records `instance.update_commissioned` and applies "
+        "nothing: a person carries the steps out (ADR-0296, ADR-0013 D).",
+        status_code=201,
+        responses={201: {"description": "The draft, in the guided mode."}, **common},
+    )
+    async def update(body: UpdateBody, authorization: str | None = Header(default=None)) -> Any:
+        who = await admin(authorization)
+        if isinstance(who, JSONResponse):
+            return who
+        said = body.said.strip() or f"update Taktus to {body.to}"
+        try:
+            draft = await services.planning.open(
+                who.tenant,
+                who.identity,
+                who.org_path,
+                said,
+                act="instance.update",
+                arguments={"to": body.to},
+            )
+        except PlanningError as error:
+            return problem(400, str(error))
+        return JSONResponse(services.planning.view(draft, Mode.GUIDED), status_code=201)
 
     return routes

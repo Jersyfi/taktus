@@ -1,0 +1,268 @@
+# B-2.06 Subscription inventory — UC-03 §4.2: every quarter, every service the business pays
+# for through its cloud's billing export is listed with its cost over the quarter, and the list
+# is filed as one issue, so that a person decides per line whether to keep it, cancel it or
+# build it in-house. Cancelling stays with a person.
+#
+# The costs are read through `billing.costs` — the capability B-1.01 and B-1.12 read — for the
+# 91 days before the run, by service. The statistic `total` sums each service over the quarter
+# in decimal, largest first (ADR-0310); the figures are `exact`. An open issue that carries the
+# mark `subscription-inventory` keeps the next quarter's from being filed beside it: one
+# inventory is open at a time (the rule `filter`, ADR-0192 §1). The issue is filed once a person
+# confirmed it, at level 2.
+#
+# What no interface serves (DEC-0225), and is therefore not built: a subscription's real use —
+# no billing export, metrics store or account directory the business names states how much of
+# a paid service is used, so the issue asks the person for it instead of guessing; a
+# subscription billed outside the cloud, to a card or by invoice, which no capability reads;
+# and the proposal to cancel or build in-house, which without the use would be a guess, so it
+# stays with the person reading the list (NTC-0280).
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-2.06-subscription-inventory.yaml \
+#         --input days=91
+#
+# Switching it off (`taktusctl deactivate --process b-2-06`) changes nothing: what it filed stays
+# filed.
+
+id: b-2-06
+version: "1"
+name: B-2.06 Subscription inventory
+autonomy:
+  level: 2
+  reason: >
+    the costs are the export's own figures summed by a fixed statistic; filing the inventory
+    leaves the system, so a person confirms it, as every process of UC-03 starts at level 1 or 2
+    when its stage opens, and UC-03 sets its target at level 2
+  toward_next: >
+    none above level 2: UC-03 keeps B-2.06 at level 2, and cancelling a subscription stays with a
+    person (UC-7.1, UC-9.6)
+author: the repository
+reason: every quarter the services the business pays for are listed with their cost without a person reading the bill (UC-03 B-2.06)
+
+triggers:
+  - schedule: "0 6 1 1,4,7,10 *"
+    inputs:
+      days: 91
+
+inputs:
+  days:
+    description: how many days before the run the inventory sums, at most 92
+    example: 91
+
+limits:
+  quota: { units: 50 }
+
+steps:
+  - id: read-costs
+    method: rule
+    reason: the cloud's billing export is read verbatim, each amount as the decimal text it gave
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what billing.costs.daily answered", columns: [complete, days] }
+    fallback:
+      when: the connector serving billing.costs is unavailable
+      to: human
+      role: owner
+    work:
+      checking: { select: output }
+      rule: connector
+      operation: billing.costs.daily
+      input:
+        days: { $input: days }
+        group_by: service
+      credentials:
+        - { name: BILLING_KEY, injected_as: env }
+      expect:
+        - { select: complete, matches: "^true$" }
+
+  - id: quarter
+    method: statistics
+    reason: each service's cost over the quarter is a sum of the export's own amounts, in decimal; the same reading always gives the same sums
+    rejected:
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+      - method: rule
+        why: a sum over a series is a statistic of the series, which the rules do not compute
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: each service's cost over the quarter }
+    depends_on: [read-costs]
+    work:
+      statistic: total
+      days: { $from: read-costs, $select: output.days }
+
+  - id: read-filed
+    method: rule
+    reason: the open issues are read verbatim, so that an inventory still open is not filed twice
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.list answered", columns: [complete, issues] }
+    fallback:
+      when: the connector serving repository.issues is unavailable
+      to: human
+      role: owner
+    work:
+      checking: { select: output }
+      rule: connector
+      operation: repository.issues.list
+      input:
+        state: open
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the open issues were not all read" }
+
+  - id: unfiled
+    method: rule
+    reason: whether an inventory is still open is its mark in an open issue, found by a fixed rule
+    rejected:
+      - method: llm
+        why: a mark is found by equality of text
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: whether an inventory is still open }
+    depends_on: [read-filed]
+    work:
+      rule: filter
+      items: [{ inventory: subscriptions }]
+      excluding: { $from: read-filed, $select: output.issues }
+      within: body
+      marker: "subscription-inventory"
+
+  - id: compose
+    method: rule
+    reason: the issue's text is the quarter's sums between fixed words, with the mark that keeps a second inventory from being filed beside it
+    rejected:
+      - method: llm
+        why: a fixed composition needs no model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: bounds, subject: the composed text, pattern: "Filed by Taktus, process B-2\\.06 Subscription inventory, once a person confirmed it" }
+    depends_on: [quarter, unfiled]
+    work:
+      when:
+        - { value: { $from: unfiled, $select: count }, not_matches: "^0$" }
+      rule: template
+      text: |
+        The services the business paid for through its cloud's billing export from ${from} to
+        ${until}, each with its cost over those ${days} days, largest first; ${total} in all:
+
+        ${services}
+
+        For each, decide whether to keep it, cancel it or build it in-house. How much of each is
+        really used is not stated by any source Taktus reads: add it from the service's own
+        console. Subscriptions paid by card or by invoice outside the cloud are not listed.
+        Cancelling stays with a person.
+
+        Filed by Taktus, process B-2.06 Subscription inventory, once a person confirmed it.
+
+        subscription-inventory
+      values:
+        from: { $from: quarter, $select: from }
+        until: { $from: quarter, $select: until }
+        days: { $from: quarter, $select: days }
+        total: { $from: quarter, $select: total_text }
+        services: { $from: quarter, $select: groups }
+
+  - id: file
+    method: rule
+    reason: opening the issue is an API call; the effect leaves the system, so at level 2 a person confirms it first
+    rejected:
+      - method: worker
+        why: nothing here needs a sandbox or tools
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.issues.create answered", columns: [author, body, created_at, is_pull_request, labels, milestone, number, state, title, updated_at, url] }
+    fallback:
+      when: the connector serving repository.issues is unavailable
+      to: human
+      role: owner
+    depends_on: [unfiled, compose]
+    work:
+      checking: { select: output }
+      when:
+        - { value: { $from: unfiled, $select: count }, not_matches: "^0$" }
+      rule: connector
+      operation: repository.issues.create
+      input:
+        title: Subscription inventory of the quarter
+        body: { $from: compose }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+# How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
+# every step the system to act in, what to do there, the expertise it needs, each credential by
+# its parameter and where an authorised person finds it, and how to tell that it is done.
+takeover:
+  sequence: >
+    The process runs on the first day of each quarter; whoever looks after the business's costs
+    starts it. The steps run in order: read the cloud's billing export for the last 91 days by
+    service, sum each service's cost over those days, list the open issues, and stop if one
+    still carries the line subscription-inventory. Otherwise write the inventory and, once a
+    person agreed, open it as an issue. Deciding per service whether to keep it, cancel it or
+    build it in-house, and cancelling, stay with a person.
+  steps:
+    read-costs:
+      system: the cloud's billing console or its cost export
+      do: >
+        read the cost of every service for each of the last 91 days, as the export states it.
+      expertise: reading the cloud's billing export
+      credentials:
+        - parameter: BILLING_KEY
+          where: >
+            the operator's secret store, under the parameter Cloud billing key of the requesting
+            identity described in CREDENTIALS.md; a person reading the console signs in with
+            their own account that may read the billing
+      done: every service's daily cost of the 91 days is noted
+    quarter:
+      system: a spreadsheet
+      do: >
+        add up each service's cost over the days, in the export's currency and to the cent, and
+        sort the services by their sum, largest first; add up the whole.
+      expertise: adding up a column
+      credentials: []
+      done: each service has its sum and the whole is known
+    read-filed:
+      system: the repository hosting service, in the repository's issue list
+      do: list every open issue and look for one whose text ends with the line subscription-inventory.
+      expertise: searching issues in the repository hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md
+      done: every open issue has been read
+    unfiled:
+      system: the list of open issues
+      do: stop here if an open issue carries the line subscription-inventory; one inventory is open at a time.
+      expertise: none
+      credentials: []
+      done: it is known whether an inventory is still open
+    compose:
+      system: a text editor
+      do: >
+        write the inventory: the period, each service with its sum, largest first, the whole,
+        the request to decide per service and to add its real use from the service's console,
+        and the line subscription-inventory at the end.
+      expertise: none
+      credentials: []
+      done: the text is written, or an inventory is still open
+    file:
+      system: the repository hosting service
+      do: >
+        once the person responsible agreed, open the issue titled Subscription inventory of the
+        quarter with that text.
+      expertise: opening an issue in the repository hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md
+      done: the issue is open, or an inventory was still open
