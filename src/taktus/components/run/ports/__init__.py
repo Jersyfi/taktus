@@ -9,7 +9,7 @@ from taktus.components.run.ports.anchors import (
     Verdict,
 )
 from taktus.components.run.ports.citations import Citations
-from taktus.components.run.ports.connectors import ConnectorPool
+from taktus.components.run.ports.connectors import ConnectorPool, NamedConnectors
 from taktus.components.run.ports.control import ExternalControl
 from taktus.components.run.ports.deadlines import DeclaredDeadlines
 from taktus.components.run.ports.departments import Departments
@@ -59,6 +59,7 @@ __all__ = [
     "MessageRules",
     "Messages",
     "ModelPool",
+    "NamedConnectors",
     "NotRaised",
     "OpenWork",
     "OrgUnitBudget",
