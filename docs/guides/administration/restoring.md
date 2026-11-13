@@ -16,6 +16,10 @@ docker compose -f deploy/docker/compose.yml run --rm --entrypoint sh -v "$PWD:/o
   -c 'cp /backups/<name>.dump /backups/<name>.objects.tar.gz /out/'   # decrypt with age -d first if encrypted
 ```
 
+`taktusctl backup list`, and the web app's page *Backup*, list the newest backups the backup
+program recorded, each with how long ago it ran. Neither restores: a restore is this page's, by
+a person.
+
 Then bring the database back as the page *Upgrading* does in its section 5, with `<name>.dump`
 in place of its dump. Bring the stored files back into the directory of objects, which the
 archive holds flat:

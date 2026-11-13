@@ -180,6 +180,8 @@ def test_the_document_is_openapi_3_1_with_the_prefix_as_a_server_variable() -> N
         "/administration/rights/{role}/{right}",
         "/administration/units",
         "/administration/units/{unit}",
+        "/administration/health",
+        "/administration/update",
         "/gallery/{blueprint_id}/{process_id}/proposals",
         "/processes/{process_id}/rollback",
         "/processes/{process_id}/takeover",

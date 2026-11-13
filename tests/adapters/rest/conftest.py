@@ -389,6 +389,7 @@ class Services:
                 self.ids,
                 self.identity.structure,
                 agents=self.built_agents,
+                identities=self.identity.directory,
             )
         return self.built_workspace
 

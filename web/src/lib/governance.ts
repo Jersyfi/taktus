@@ -205,6 +205,72 @@ export async function writeTenant(
 	return { ok: false, problem };
 }
 
+/** What an import wrote and what the check of its chains found (ADR-0221). */
+export interface TenantImport {
+	tenant: string;
+	rows: number;
+	objects: number;
+	entries: number;
+	ledger_intact: boolean;
+	heads_match: boolean;
+	provenance_intact: boolean;
+	findings: string[];
+	verified: boolean;
+}
+
+async function problemOf(response: Response): Promise<{ status: number; title: string; detail: string }> {
+	let problem = { status: response.status, title: response.statusText, detail: '' };
+	try {
+		problem = { ...problem, ...((await response.json()) as Partial<typeof problem>) };
+	} catch {
+		// A body that is no problem document: the status says enough.
+	}
+	return problem;
+}
+
+/** A tenant's export, as the bytes the surface answered, with the administration key
+ * (ADR-0221, ADR-0295). The page hands them to the reader as a file; nothing keeps them. */
+export async function exportTenant(
+	base: URL,
+	administrationKey: string,
+	id: string,
+	fetcher: typeof fetch = fetch
+): Promise<Answer<Blob>> {
+	const response = await fetcher(new URL(`administration/tenants/${encodeURIComponent(id)}/export`, base), {
+		headers: { Authorization: `Bearer ${administrationKey}`, Accept: 'application/json' }
+	});
+	if (response.ok) return { ok: true, body: await response.blob() };
+	return { ok: false, problem: await problemOf(response) };
+}
+
+/** An export imported into this instance, with the administration key, and what the check of its
+ * chains found (ADR-0221, ADR-0295). An import that does not verify is answered, not refused. */
+export async function importTenant(
+	base: URL,
+	administrationKey: string,
+	content: Blob,
+	fetcher: typeof fetch = fetch
+): Promise<Answer<TenantImport>> {
+	const response = await fetcher(new URL('administration/tenants/import', base), {
+		method: 'POST',
+		headers: { Authorization: `Bearer ${administrationKey}`, Accept: 'application/json', 'Content-Type': 'application/json' },
+		body: content
+	});
+	if (response.ok) return { ok: true, body: (await response.json()) as TenantImport };
+	return { ok: false, problem: await problemOf(response) };
+}
+
+/** What an import says back: what it wrote, and each check with its outcome. */
+export function importSentence(done: TenantImport): string {
+	const checks = [
+		`the ledger ${done.ledger_intact ? 'verifies' : 'does not verify'}`,
+		`the chains ${done.heads_match ? 'are as exported' : 'differ from the export'}`,
+		`the provenance ${done.provenance_intact ? 'verifies' : 'does not verify'}`
+	];
+	const head = `Tenant ${done.tenant} imported: ${done.rows} rows, ${done.objects} objects, ${done.entries} ledger entries`;
+	return `${head}; ${checks.join(', ')}.`;
+}
+
 // --- the start page: one line per kind ------------------------------------------------------------
 
 export interface Line {

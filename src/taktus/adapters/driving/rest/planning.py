@@ -55,6 +55,15 @@ class OpenBody(BaseModel):
         description="The process what was said describes: commissioning the draft hands it to "
         "the describe process, whose run proposes the process's version (ADR-0290).",
     )
+    act: str | None = Field(
+        default=None,
+        pattern=r"^[a-z][a-z-]*\.[a-z][a-z-]*$",
+        description="An administrative act the draft carries out once commissioned, named as "
+        "the inventory of administrative acts names it; its steps come with it (ADR-0296).",
+    )
+    arguments: dict[str, str] = Field(
+        default_factory=dict, description="The act's arguments known so far, by name."
+    )
 
 
 class AnswerBody(BaseModel):
@@ -141,14 +150,19 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         who = await authenticated(services, authorization)
         if who is None:
             return problem(401, NEEDS_KEY)
-        draft = await services.planning.open(
-            who.tenant,
-            who.identity,
-            who.org_path,
-            body.said,
-            agent=body.agent,
-            describes=body.describes,
-        )
+        try:
+            draft = await services.planning.open(
+                who.tenant,
+                who.identity,
+                who.org_path,
+                body.said,
+                agent=body.agent,
+                describes=body.describes,
+                act=body.act,
+                arguments=body.arguments,
+            )
+        except PlanningError as error:
+            return problem(400, str(error))
         return JSONResponse(services.planning.view(draft, Mode.GUIDED), status_code=201)
 
     @routes.get(
@@ -219,8 +233,14 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         "cannot be estimated before it starts (ADR-0237, ADR-0005). An agent draft's agent is "
         "registered in the catalogue by the same act, and named in the answer (ADR-0292). A draft "
         "that describes a process hands its goal to the describe process, and the answer names "
-        "that run (ADR-0290).",
-        responses={200: {"description": "The commissioned plan."}, **refused},
+        "that run (ADR-0290). A draft that carries an administrative act carries it out by the "
+        "same act, with your identity as its actor, and is refused with 403 when your roles do "
+        "not hold the right the act needs by hand (ADR-0296).",
+        responses={
+            200: {"description": "The commissioned plan."},
+            403: {"description": "Your roles do not hold the act's right.", **PROBLEM},
+            **refused,
+        },
     )
     async def commission(
         draft_id: str, authorization: str | None = Header(default=None)
@@ -234,6 +254,8 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
             )
             draft = await services.planning.get(who.tenant, who.identity, draft_id)
         except PlanningError as error:
+            if getattr(error, "reason", None) == "right":
+                return problem(403, str(error))
             return refusal(error)
         if run is not None:
             return JSONResponse({**plan.document(), "run": run.id})

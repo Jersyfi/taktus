@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections import defaultdict
 
 from taktus.adapters.driven.memory.persistence import MemoryPersistence
-from taktus.ports.backups import FAILURES_READ, BackupHistory, BackupOutcome
+from taktus.ports.backups import FAILURES_READ, LISTED, BackupHistory, BackupOutcome
 from taktus.ports.persistence import Tenant
 
 
@@ -33,5 +33,8 @@ class MemoryBackupLog:
             if o.outcome == "failed" and (last_ok is None or o.at > last_ok.at)
         ]
         return BackupHistory(
-            last_ok=last_ok, failed=tuple(failed[:FAILURES_READ]), failed_count=len(failed)
+            last_ok=last_ok,
+            failed=tuple(failed[:FAILURES_READ]),
+            failed_count=len(failed),
+            recent=tuple(newest_first[:LISTED]),
         )

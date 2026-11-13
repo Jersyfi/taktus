@@ -75,6 +75,7 @@ export const DESTINATIONS: Destination[] = [
 	{ id: 'alerts', label: 'Alerts', href: '#/alerts', band: 'running', icon: 'alert', routes: ['/alerts'] },
 	{ id: 'backup', label: 'Backup', href: '#/backup', band: 'running', icon: 'backup', routes: ['/backup'] },
 	{ id: 'signals', label: 'Signals', href: '#/signals', band: 'running', icon: 'signal', routes: ['/signals'] },
+	{ id: 'health', label: 'Health', href: '#/health', band: 'running', icon: 'signal', routes: ['/health'] },
 	{ id: 'administration', label: 'Administration', href: '#/administration', band: 'running', icon: 'tenants', routes: ['/administration'] },
 	{ id: 'tenants', label: 'Tenants', href: '#/tenants', band: 'running', icon: 'tenants', routes: ['/tenants'] }
 ];

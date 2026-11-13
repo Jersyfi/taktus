@@ -2603,6 +2603,20 @@
         "at": "2026-10-21T02:00:00+00:00"
       },
       "failed_count": 1,
+      "listed": [
+        {
+          "name": "taktus-20261021T020000Z",
+          "at": "2026-10-22T02:00:00+00:00",
+          "outcome": "failed",
+          "reason": "store"
+        },
+        {
+          "name": "taktus-20261020T020000Z",
+          "at": "2026-10-21T02:00:00+00:00",
+          "outcome": "ok",
+          "reason": null
+        }
+      ],
       "newest_failed": {
         "name": "taktus-20261021T020000Z",
         "at": "2026-10-22T02:00:00+00:00",

@@ -395,6 +395,30 @@ class Services:
     catalogue_use: CatalogueUseActs | None = None
     """An entry's use per organisational unit and the viewer's own (`taktusctl catalogue use`,
     ADR-0246 §6)."""
+    planning: AdministrativePlanning | None = None
+    """The plan dialogue, for an update of Taktus prepared and commissioned as a plan
+    (`taktusctl update`, ADR-0296); None where the wiring has none."""
+
+
+class AdministrativePlanning(Protocol):
+    """The plan dialogue as `taktusctl update` uses it (ADR-0237, ADR-0296)."""
+
+    async def open(
+        self,
+        tenant: Tenant,
+        identity: str,
+        org_path: tuple[str, ...],
+        said: str,
+        *,
+        act: str | None = None,
+        arguments: Mapping[str, Any] | None = None,
+    ) -> PlanDraft: ...
+
+    async def set(
+        self, tenant: Tenant, identity: str, draft_id: str, fields: Mapping[str, Any]
+    ) -> PlanDraft: ...
+
+    async def commission(self, tenant: Tenant, identity: str, draft_id: str) -> Plan: ...
 
 
 class CatalogueUseActs(Protocol):

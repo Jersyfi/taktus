@@ -71,6 +71,12 @@ async def test_the_last_success_and_every_failure_since_of_one_tenant(
     assert history.last_ok is not None and history.last_ok.name == name(AT + timedelta(hours=24))
     assert [o.reason for o in history.failed] == ["store", "database"], "newest first"
     assert history.failed_count == 2
+    assert [(o.outcome, o.reason) for o in history.recent] == [
+        ("failed", "store"),
+        ("failed", "database"),
+        ("ok", None),
+        ("failed", "store"),
+    ], "the listing: every run of the tenant, newest first (ADR-0295)"
     nobody = fresh()
     async with postgres.transaction(nobody):
         assert (await log.history(nobody)).last_ok is None

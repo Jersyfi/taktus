@@ -14,6 +14,7 @@ import yaml
 
 from taktus.adapters.driving.cli.main import app
 from taktus.adapters.driving.inventory import ACTS, Act
+from taktus.composition.administration import BY_HAND_ONLY, IN_DIALOGUE
 
 ROOT = Path(__file__).resolve().parents[2]
 OPENAPI = yaml.safe_load((ROOT / "api" / "openapi.yaml").read_text(encoding="utf-8"))
@@ -51,3 +52,12 @@ def test_every_administrative_act_is_on_the_command_line_and_in_the_web_app(act:
     page = WEB / "routes" / act.page / "+page.svelte"
     assert page.is_file(), f"the web app has no page #/{act.page}"
     assert marked(act), f"no form or list of the web app is marked data-act={act.name!r}"
+
+
+def test_every_act_is_carried_out_as_a_plan_or_says_why_not() -> None:
+    """UC-10.2: an administrative act asked in dialogue is carried out as a plan (ADR-0296). The
+    acts a plan carries out and the acts that stay by hand, each with why, are the inventory."""
+    named = {a.name for a in ACTS}
+    assert set(IN_DIALOGUE) | set(BY_HAND_ONLY) == named
+    assert not set(IN_DIALOGUE) & set(BY_HAND_ONLY)
+    assert all(why.strip() for why in BY_HAND_ONLY.values())

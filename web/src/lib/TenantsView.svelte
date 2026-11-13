@@ -2,7 +2,8 @@
 	The instance's tenants, for the holder of its administration key (ADR-0104, ADR-0122). Each
 	with its identifier, which Taktus generated, its display name and when it was created. A new
 	tenant and a new name are each said back before they are sent: Taktus generates the
-	identifier, and the name is the only thing given.
+	identifier, and the name is the only thing given. A tenant is exported to one file, and an
+	export is imported into this instance and checked by its chains (ADR-0221, ADR-0295).
 -->
 <script lang="ts">
 	import type { Tenant } from './governance';
@@ -12,14 +13,20 @@
 		message = null,
 		busy = false,
 		onCreate,
-		onRename
+		onRename,
+		onExport = () => {},
+		onImport = () => {}
 	}: {
 		tenants: Tenant[];
 		message?: string | null;
 		busy?: boolean;
 		onCreate: (name: string) => void;
 		onRename: (id: string, name: string) => void;
+		onExport?: (id: string) => void;
+		onImport?: (file: File) => void;
 	} = $props();
+
+	let chosen: File | null = $state(null);
 
 	let name = $state('');
 	let renaming: string | null = $state(null);
@@ -70,6 +77,7 @@
 				{:else}
 					<button type="button" class="quiet" disabled={busy} onclick={() => (renaming = t.id)}>Rename</button>
 				{/if}
+				<button type="button" class="quiet" data-act="tenant.export" disabled={busy} onclick={() => onExport(t.id)}>Export</button>
 			</li>
 		{/each}
 	</ul>
@@ -85,6 +93,26 @@
 		<label>A new tenant's name <input type="text" bind:value={name} autocomplete="off" /></label>
 		<button type="submit" disabled={busy || !name.trim()}>Create</button>
 	</form>
+
+	<form
+		class="create"
+		data-act="tenant.import"
+		onsubmit={(e) => {
+			e.preventDefault();
+			if (chosen) onImport(chosen);
+		}}
+	>
+		<label
+			>An export to import, into a tenant this instance holds nothing of
+			<input
+				type="file"
+				accept="application/json,.json"
+				onchange={(e) => (chosen = (e.currentTarget as HTMLInputElement).files?.[0] ?? null)}
+			/>
+		</label>
+		<button type="submit" disabled={busy || !chosen}>Import and check</button>
+	</form>
+	<p class="muted">An export holds the tenant's data and its identities' key digests: keep it as a backup is kept.</p>
 
 	{#if pending}
 		<div class="reading" aria-live="polite">

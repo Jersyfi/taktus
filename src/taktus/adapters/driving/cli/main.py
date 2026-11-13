@@ -65,7 +65,10 @@ files, read without Taktus (ADR-0285). `takeover` shows a process's takeover ins
 records a trial of them by a person (ADR-0180). `agent` proposes a shared agent's core, sets its
 role profiles, calls it and draws it (ADR-0163). `domain` admits a domain blueprint, instantiates
 it in dialogue as proposals at level 2 or below, offers a later version, and exports it as plain
-files (ADR-0263). The others need
+files (ADR-0263). `health` shows the instance's release, its state and the tenant's backup,
+alerts and incidents; `backup list` lists the newest backups with their age; `update prepare`
+and `update commission` prepare an update of Taktus as a plan and commission it, which applies
+nothing (ADR-0295, ADR-0296). The others need
 services, which the composition root provides as the typer context object (see `wiring`); the
 console script `taktusctl` therefore starts in `taktus.composition.taktusctl`, and this module
 exposes the application for it.
@@ -106,6 +109,7 @@ from taktus.adapters.driving.cli import (
     hardware_command,
     identity_command,
     incident_command,
+    instance_command,
     interfaces_command,
     ledger_command,
     load_command,
@@ -170,6 +174,9 @@ app.command("interfaces")(interfaces_command.interfaces)
 app.command("alerts")(alerts_command.alerts)
 app.add_typer(identity_command.identity, name="identity")
 app.add_typer(tenant_command.tenant, name="tenant")
+app.command("health")(instance_command.health)
+app.add_typer(instance_command.backup, name="backup")
+app.add_typer(instance_command.update, name="update")
 app.add_typer(first_command.first, name="first")
 app.add_typer(anchors_command.anchors, name="anchors")
 app.add_typer(incident_command.incident, name="incident")

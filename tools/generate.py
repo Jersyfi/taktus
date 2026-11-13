@@ -900,6 +900,15 @@ def operation_fixtures() -> dict[str, object]:
         last_ok=BackupRun(name="taktus-20261020T020000Z", at=now - 31 * hour),
         failed=(BackupRun(name="taktus-20261021T020000Z", at=now - 7 * hour, reason="store"),),
         failed_count=1,
+        recent=(
+            BackupRun(
+                name="taktus-20261021T020000Z",
+                at=now - 7 * hour,
+                reason="store",
+                outcome="failed",
+            ),
+            BackupRun(name="taktus-20261020T020000Z", at=now - 31 * hour),
+        ),
     )
     backup = rule.backup(state, now)
     if backup is not None:

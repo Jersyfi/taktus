@@ -12,6 +12,7 @@ import IncidentsView from './IncidentsView.svelte';
 import { processLink, runLink } from './links';
 import {
 	alertsLink,
+	backupAge,
 	backupLink,
 	incidentsLink,
 	operationLines,
@@ -36,6 +37,11 @@ const ALERTS = ANSWERS.alerts.alerts as unknown as AlertRecord[];
 const BACKUP = ANSWERS.backup as unknown as BackupRecord;
 const SIGNALS = ANSWERS.signals.signals as unknown as SignalRecord[];
 const DAILY = ANSWERS.daily_report as unknown as DailyReport;
+
+/** The page's text as a reader reads it: no hydration marks, one space between words. */
+function unescapeHtml(html: string): string {
+	return html.replaceAll(/<!--[^>]*-->/g, '').replaceAll(/\s+/g, ' ').replaceAll('&#39;', "'").replaceAll('&amp;', '&');
+}
 
 function attr(text: string): string {
 	return text.replaceAll('&', '&amp;');
@@ -149,6 +155,18 @@ describe('the backup', () => {
 		expect(html).toContain(BACKUP.newest_failed!.name);
 		expect(html).toContain('2026-10-22 04:00 UTC');
 		expect(html).toContain('data-standing="failing"');
+	});
+
+	it('lists the newest backups, each with its age, and offers no restore (UC-10.2)', () => {
+		const now = new Date('2026-10-22T09:00:00Z');
+		const listed = unescapeHtml(render(BackupView, { props: { backup: BACKUP, now } }).body);
+		expect(listed).toContain('data-act="backup.list"');
+		expect(BACKUP.listed).toHaveLength(2);
+		expect(listed).toContain('2026-10-22 02:00 UTC, 7 h ago: failed');
+		expect(listed).toContain('31 h ago: succeeded');
+		expect(listed).toContain('data-outcome="failed"');
+		expect(listed).toContain("Restoring one is a person's act");
+		expect(backupAge('2026-10-22T08:00:00Z', now)).toBe('1 h ago');
 	});
 });
 

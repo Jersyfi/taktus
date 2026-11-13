@@ -92,6 +92,16 @@ def next_question(draft: PlanDraft) -> Question | None:
     agent = _agent_question(draft)
     if agent is not None:
         return agent
+    administration = draft.administration
+    if administration is not None:
+        for name in administration.needs:
+            if not administration.arguments.get(name, "").strip():
+                return Question(
+                    f"administration.{name}",
+                    f"Which {name.replace('_', ' ')} should {administration.act} apply to?",
+                    "An administrative act is carried out once you commission the plan, and it "
+                    "needs the right the same act needs by hand (ADR-0296).",
+                )
     if draft.domain is not None and draft.domain.open:
         return Question(
             "domain",
@@ -181,6 +191,16 @@ def settings(draft: PlanDraft) -> tuple[Setting, ...]:
             else f"{draft.domain.blueprint}, instance {draft.domain.instance}",
             "the domain blueprint the plan instantiates; set by starting its instance, not "
             "asked (ADR-0289)",
+            asked=False,
+        ),
+        Setting(
+            "administration",
+            "no administrative act"
+            if draft.administration is None
+            else draft.administration.act
+            + "".join(f", {k} {v}" for k, v in draft.administration.arguments.items()),
+            "the administrative act the plan carries out once commissioned; set when the plan "
+            "is opened, its arguments asked (ADR-0296)",
             asked=False,
         ),
         Setting(
