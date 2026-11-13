@@ -11,14 +11,15 @@ Each recording says where it was taken, in its own `recording.json` (`"taken"`):
 
 `tests/rehearsal/test_replay.py` holds this table to the `taken` of each recording.
 
-What makes each local recording one from the instance — one run on the instance, ended,
+What makes each recording one from the instance of the bundle's current version — one run on the instance, ended,
 recorded as below:
 
 | Process | The run that is needed |
 |---|---|
-| `p01-roadmap-control` | a finished run of `p01-roadmap-control@4`: its daily schedule starts one once that version is active on the instance |
-| `p03-implementation` | a finished run of `p03-implementation@22`: an issue it implements to the end, its pull request opened |
-| `s07-change-in-dialogue` | S-07 registered on the instance, at version 1, and one change asked in the owner's conversation that ends, applied or declined |
+| `p01-roadmap-control` | a finished run of `p01-roadmap-control@7`: its daily schedule starts one once that version is active on the instance |
+| `p02-refinement` | a finished run of `p02-refinement@8`: the recording from the instance is of version 5, three versions behind the bundle |
+| `p03-implementation` | a finished run of `p03-implementation@25`: an issue it implements to the end, its pull request opened |
+| `s07-change-in-dialogue` | S-07 registered on the instance, at version 4, and one change asked in the owner's conversation that ends, applied or declined |
 
 A local recording was taken on a developer's machine against the repository's fakes — the
 repository service, the model endpoint, the coding agent. It proves the replay and the export
