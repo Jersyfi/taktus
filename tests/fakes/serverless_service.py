@@ -7,9 +7,10 @@ The connector under `connectors/taktus_connectors/cloudrun/` asks, under
 
 - `GET <name>`: the service, 404 for one the location does not hold;
 - `PATCH <name>` with a `Service` body: `annotations`, `template` and `traffic` taken from the
-  body. A body whose `etag` is not the current one is 409 `ABORTED`, as Google's APIs refuse a
-  stale write. A template that differs from the current one makes a new revision. The answer is
-  a long-running `Operation`, not done;
+  body; a template's `scaling` (`maxInstanceCount`) is kept with it and its revision. A body
+  whose `etag` is not the current one is 409 `ABORTED`, as Google's APIs refuse a stale write.
+  A template that differs from the current one makes a new revision. The answer is a
+  long-running `Operation`, not done;
 - `GET <name>/revisions?pageSize=&pageToken=`: the revisions, oldest first, each with the
   annotations and containers of its template, `createTime` and a `Ready` condition; at most
   `pageSize` per page with `nextPageToken`.
@@ -61,6 +62,7 @@ def _revision(service: str, number: int, template: Json, ready: bool, at: int) -
         "createTime": f"2026-11-01T10:{at:02d}:00Z",
         "annotations": dict(template.get("annotations") or {}),
         "containers": copy.deepcopy(template.get("containers") or []),
+        "scaling": copy.deepcopy(template.get("scaling") or {}),
         "reconciling": not ready,
         "conditions": [
             {"type": "Ready", "state": "CONDITION_SUCCEEDED" if ready else "CONDITION_PENDING"}
@@ -160,6 +162,7 @@ def _template(template: Json) -> Json:
     return {
         "annotations": dict(template.get("annotations") or {}),
         "containers": template.get("containers") or [],
+        "scaling": template.get("scaling") or {},
     }
 
 

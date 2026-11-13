@@ -143,6 +143,47 @@ async def test_a_rollback_moves_the_traffic_to_the_revision_before_once(
     assert state(url)["web"]["serving"] == "web-00001-abc"
 
 
+async def test_a_service_is_throttled_once_per_key_and_names_the_limit_before(
+    api: tuple[str, str],
+) -> None:
+    """B-1.03 (ADR-0310): the ceiling of instances set on a new revision of the same image."""
+    url, _ = api
+    input = {"name": "web", "max_instances": 2}
+    first = await connector(url).call("deployment.workloads.throttle", context("brake"), input)
+    assert first.effect.replayed is False
+    assert first.output["max_instances"] == 2 and first.output["max_instances_before"] is None
+    assert first.output["containers"][0]["image"] == "registry.example/app:1.0.0"
+    assert len(state(url)["web"]["revisions"]) == 2 and first.output["rolled_out"] is True
+    again = await connector(url).call("deployment.workloads.throttle", context("brake"), input)
+    assert again.effect.replayed is True and again.effect.records == first.effect.records
+    assert again.output["max_instances"] == 2 and len(state(url)["web"]["revisions"]) == 2
+    for wrong in ({"name": "web", "max_instances": 0}, {"name": "web", "max_instances": "2"}):
+        with pytest.raises(CallFailed) as refused:
+            await connector(url).call("deployment.workloads.throttle", context("x"), wrong)
+        assert refused.value.error.cause.value == "invalid"
+
+
+async def test_a_service_held_on_an_earlier_revision_is_not_throttled(
+    api: tuple[str, str],
+) -> None:
+    """A throttle after a rollback would roll the service forward: it is a conflict."""
+    url, _ = api
+    await connector(url).call(
+        "deployment.workloads.release",
+        context("release"),
+        {"name": "web", "container": "app", "image": NEW},
+    )
+    await connector(url).call("deployment.workloads.rollback", context("rollback"), {"name": "web"})
+    with pytest.raises(CallFailed) as held:
+        await connector(url).call(
+            "deployment.workloads.throttle", context("brake"), {"name": "web", "max_instances": 1}
+        )
+    assert held.value.error.cause.value == "conflict"
+    assert len(state(url)["web"]["revisions"]) == 2 and state(url)["web"]["images"] == [
+        "registry.example/app:1.0.0"
+    ]
+
+
 async def test_a_rollback_without_an_earlier_revision_and_a_wrong_input_write_nothing(
     api: tuple[str, str],
 ) -> None:

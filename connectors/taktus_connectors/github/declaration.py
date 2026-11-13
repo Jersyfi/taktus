@@ -37,6 +37,7 @@ CAPABILITIES = [
     "repository.refs",
     "repository.labels",
     "repository.files",
+    "repository.code",
     "repository.members",
     "repository.runners",
     "repository.ratelimit",
@@ -361,6 +362,16 @@ OPERATIONS: list[Json] = [
         "effect": "read",
         "summary": "List the entries of one directory of the repository at a ref — a branch "
         "or a commit — each with its name, path and type, with the commit the ref resolved to.",
+    },
+    {
+        "name": "repository.code.search",
+        "demand": {"quota_units": 10},
+        "capability": "repository.code",
+        "effect": "read",
+        "summary": "Find the files of the default branch whose text contains `text`, through "
+        "the service's code search: each file's path and blob, sorted by path, with the "
+        "service's total; at most ten pages of 100, `complete` whether the service searched "
+        "everything and every result was read. Only what the service has indexed is found.",
     },
     {
         "name": "repository.members.list",

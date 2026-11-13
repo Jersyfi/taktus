@@ -347,6 +347,51 @@ async def test_a_directory_is_listed_at_a_ref_with_the_commit_it_was_read_at(
 
 
 @pytest.mark.usefixtures("credentials")
+async def test_the_code_is_searched_for_a_text_on_the_default_branch(service: Service) -> None:
+    """`repository.code.search` (B-2.04, ADR-0310): the files of the default branch whose text
+    contains the text, sorted by path, with the service's total. A read, nothing written."""
+    connector = Connector(config(service))
+    error, main = await call(
+        connector, "repository.branches.read", context("r", KEY), {"name": "main"}
+    )
+    assert not error, main
+    error, committed = await call(
+        connector,
+        "repository.branches.commit",
+        context("c", "run_01:search:1-0123456789"),
+        {
+            "name": "main",
+            "expected": main["output"]["sha"],
+            "files": [
+                {"path": "src/model.py", "content": 'MODEL = "model-old-1"\n'},
+                {"path": "app/config.json", "content": '{"model": "model-old-1"}\n'},
+                {"path": "README.md", "content": "Uses model-new-2.\n"},
+            ],
+        },
+    )
+    assert not error, committed
+    error, found = await call(
+        connector, "repository.code.search", context("s", KEY), {"text": "model-old-1"}
+    )
+    assert not error, found
+    assert found["effect"] == {"kind": "read"}
+    assert found["output"]["files"] == [
+        {"path": "app/config.json", "sha": found["output"]["files"][0]["sha"]},
+        {"path": "src/model.py", "sha": found["output"]["files"][1]["sha"]},
+    ]
+    assert found["output"]["total"] == 2 and found["output"]["complete"] is True
+    error, none = await call(
+        connector, "repository.code.search", context("s", KEY), {"text": "model-gone-0"}
+    )
+    assert not error and none["output"]["files"] == [] and none["output"]["complete"] is True
+    for text in ("", 'with "quotes"', "two\nlines", "x" * 129):
+        error, refused = await call(
+            connector, "repository.code.search", context("s", KEY), {"text": text}
+        )
+        assert error and refused["cause"] == "invalid", (text, refused)
+
+
+@pytest.mark.usefixtures("credentials")
 async def test_source_system_permissions_remain_in_force(service: Service) -> None:
     """A read-only identity reads and is refused on a write; an unknown credential name is
     refused before any request; no credential at all is refused as well. The connector has no

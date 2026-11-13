@@ -17,9 +17,9 @@ What it enforces, because the connector's checks depend on it:
   delivered into `INBOX`; every other one is only counted. A recipient at `refused.example` is
   refused with `550`.
 - **IMAP**: `CAPABILITY`, `NOOP`, `LOGIN`, `LOGOUT`, `SELECT`, `EXAMINE`, `APPEND` with a
-  literal, and `UID SEARCH` (`ALL`, `HEADER`, `KEYWORD`, `UNKEYWORD`, combined by AND), `UID
-  FETCH` of `BODY.PEEK[]` and `UID STORE` of `+FLAGS`. A search by header matches its value as
-  a substring, case-insensitively, as RFC 3501 says.
+  literal, and `UID SEARCH` (`ALL`, `HEADER`, `KEYWORD`, `UNKEYWORD`, `FLAGGED`, `UNFLAGGED`,
+  combined by AND), `UID FETCH` of `BODY.PEEK[]` and `UID STORE` of `+FLAGS`. A search by
+  header matches its value as a substring, case-insensitively, as RFC 3501 says.
 
 Test-only endpoints under `/_fake/` on the HTTP port: `GET /_fake/state` counts the messages of
 every mailbox, the messages submitted and the logins; `GET /_fake/messages?mailbox=INBOX` lists
@@ -280,6 +280,10 @@ class ImapHandler(socketserver.StreamRequestHandler):
                 if not any(value in v.lower() for v in header_values(message.raw, name)):
                     return False
                 i += 3
+            elif key in ("FLAGGED", "UNFLAGGED"):
+                if ("\\Flagged" in message.flags) != (key == "FLAGGED"):
+                    return False
+                i += 1
             elif key == "KEYWORD":
                 if criteria[i + 1] not in message.flags:
                     return False
