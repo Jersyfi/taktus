@@ -30,7 +30,7 @@ NAME_PATTERN = r"^[a-z][a-z0-9_]{0,63}$"
 UNIT_PART = r"^[^/\s][^/]{0,199}$"
 
 type Period = Literal["day", "week", "month"]
-type Policy = Literal["halt", "wait"]
+type Policy = Literal["halt", "wait", "cheaper"]
 type Children = Literal["within", "over"]
 
 ALERT_SHARE = 0.8

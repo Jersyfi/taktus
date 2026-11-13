@@ -12,6 +12,7 @@ behind when it fails.
 """
 
 from taktus.adapters.driven.memory.backup_log import MemoryBackupLog
+from taktus.adapters.driven.memory.claims import MemoryClaims
 from taktus.adapters.driven.memory.leadership import MemoryLeadership
 from taktus.adapters.driven.memory.ledger_store import MemoryLedgerStore
 from taktus.adapters.driven.memory.object_store import MemoryObjectStore
@@ -28,6 +29,7 @@ from taktus.adapters.driven.memory.trace_store import MemoryTraceStore
 
 __all__ = [
     "MemoryBackupLog",
+    "MemoryClaims",
     "MemoryLeadership",
     "MemoryLedgerStore",
     "MemoryObjectStore",

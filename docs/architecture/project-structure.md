@@ -309,7 +309,11 @@ role it would tie the core to a model stack and the removal test would be lost.
   `BudgetOfTheRun` in `composition/decisions.py`, and `taktusctl budget` sets it (ADR-0260).
   Its `UnitLimits` answers the run's `UnitLimitsPort` through `UnitLimitsOfTheRun` in
   `composition/unit_limits.py`, which reads where an identity sits from the identity component's
-  `IdentityDirectory`; `taktusctl units limit` sets the limits (ADR-0282).
+  `IdentityDirectory`; `taktusctl units limit` sets the limits (ADR-0282), with the policy
+  `halt`, `wait` or `cheaper` at the line (ADR-0298). The composition hands the engine the
+  `Claims` of its persistence (`ports/persistence.py`; `MemoryClaims`, `PostgresClaims`): the
+  admission of a step against a unit limit is checked again under the limit's claim before it
+  commits, so two runners never both fit one line (ADR-0298).
   The accounting component's `BottlenecksHandler` reads its three ports through
   `composition/bottlenecks.py`: `RunAccounts` over the run's `BlockedTime`, which hands over the
   limits and the work held back and the waits on people only grouped; `MethodsOfTheRun` over the

@@ -7,11 +7,13 @@ table. The run's identity `idn_t` sits in `sales/field`. A run of two steps cost
 
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
+from typing import Any
 
 from fakes import FakeWorker, InnerStep
 
-from taktus.adapters.driven.memory import MemoryRepository
+from taktus.adapters.driven.memory import MemoryClaims, MemoryRepository
 from taktus.components.governance.application.service.unit_limits import (
     HELD,
     RELEASED,
@@ -265,3 +267,40 @@ async def test_what_applies_to_a_run_names_every_limit_with_its_unit() -> None:
     assert [lim["limit"] for lim in process["limits"]] == ["sales_month", "each_field"]
     assert process["limits"][0]["spent"]["money.usd"] == 2.0
     assert process["limits"][1]["spent"] == {}, "idn_other ran nothing"
+
+
+class _Together(UnitLimitsOfTheRun):
+    """Holds the first `n` admissions after they read what the limit's runs cost, until all of
+    them have read it: two runners that admit at the same instant."""
+
+    def __init__(self, inner: UnitLimitsOfTheRun, n: int) -> None:
+        super().__init__(inner.limits, _placed, inner._clock)
+        self._waiting = n
+        self._all_read = asyncio.Event()
+
+    async def observed(self, *args: Any, **kwargs: Any) -> None:
+        await super().observed(*args, **kwargs)
+        if self._waiting > 0:
+            self._waiting -= 1
+            if self._waiting == 0:
+                self._all_read.set()
+            await self._all_read.wait()
+
+
+async def test_two_runners_admitting_against_one_limit_at_once_never_cross_it() -> None:
+    """Both read the limit's cost before either admits. The second admission is checked again
+    under the limit's claim, sees the first's reservation, and is held (ADR-0298 §1)."""
+    h, limits, _ = given()
+    assert isinstance(h.engine._unit_limits, UnitLimitsOfTheRun)
+    h.engine._unit_limits = _Together(h.engine._unit_limits, 2)
+    h.engine._claims = MemoryClaims(h.persistence)
+    await limits.set(limit("field_month", ("sales", "field"), usd=1.5), by="idn_owner")
+
+    first, second = await asyncio.gather(h.start(), h.start())
+    ran = [r for r in (first, second) if r.step_run("one").state is StepState.SUCCEEDED]
+    held = [r for r in (first, second) if r.step_run("one").state is StepState.REJECTED]
+    assert len(ran) == 1 and len(held) == 1, "one step of 1.00 usd fits a limit of 1.50"
+    held_at(held[0], "one", "field_month")
+    spent = await h.engine.unit_costs(TENANT, None)
+    assert spent["field_month"][0]["money.usd"] <= 1.5, "the limit is not crossed"
+    assert await kinds(h, HELD) == [f"{HELD}:field_month"] * 2, "the race is booked as a hold"

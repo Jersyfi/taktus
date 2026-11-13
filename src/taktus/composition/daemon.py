@@ -41,6 +41,7 @@ from taktus.adapters.driven.models.pool import StaticModelPool
 from taktus.adapters.driven.platform import HostPlatform
 from taktus.adapters.driven.postgres import (
     PostgresBackupLog,
+    PostgresClaims,
     PostgresLeadership,
     PostgresLedgerSignal,
     PostgresLedgerStore,
@@ -814,6 +815,7 @@ async def wire(
                     stops=stops,
                     tenant_budget=decisions.budget_of_the_run,
                     unit_limits=decisions.unit_limits,
+                    claims=PostgresClaims(persistence),
                     messages=decisions.messages,
                     statements=VersionStatements(
                         persistence,
