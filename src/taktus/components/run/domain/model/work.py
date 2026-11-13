@@ -663,9 +663,22 @@ class DeviationStatistic(Value):
     minimum: int = Field(default=7, ge=1, le=366)
 
 
-type StatisticsWork = DeviationStatistic
-"""What a `statistics` step computes. One statistic in this version; the next joins it as a
-union discriminated by `statistic`."""
+class TotalStatistic(Value):
+    """Every group's amount summed over the days of a series, and the series' total
+    (`domain.service.statistics`, ADR-0310): the week's cost of each service from a costs
+    reading. `days` is the series in the shape `deviation` reads. The result is exact: the
+    same series always gives the same sums, in decimal arithmetic."""
+
+    statistic: Literal["total"]
+    days: Any
+
+
+type StatisticsWork = DeviationStatistic | TotalStatistic
+"""What a `statistics` step computes, discriminated by `statistic`."""
+
+_STATISTIC: TypeAdapter[DeviationStatistic | TotalStatistic] = TypeAdapter(
+    Annotated[DeviationStatistic | TotalStatistic, Field(discriminator="statistic")]
+)
 
 
 class WaitUntil(Value):
@@ -1243,7 +1256,7 @@ def parse_work(
         if step.method is Method.STATISTICS:
             if given is None:
                 raise UnsupportedWork(step.id, "a statistics step names its statistic under `work`")
-            return DeviationStatistic.model_validate(given)
+            return _STATISTIC.validate_python(given)
         if step.method is Method.WAIT:
             return WaitWork.model_validate(given or {})
         if step.method is Method.WORKER:
@@ -1461,7 +1474,7 @@ def referenced_values(work: Work) -> list[Any]:
         return [work.left.items, work.right.items]
     if isinstance(work, RecurringRule):
         return [work.subscriptions, work.failures, work.as_of]
-    if isinstance(work, DeviationStatistic):
+    if isinstance(work, DeviationStatistic | TotalStatistic):
         return [work.days]
     if isinstance(work, CommitTitleRule):
         return [work.title, work.number, work.labels, work.files, work.proposal]

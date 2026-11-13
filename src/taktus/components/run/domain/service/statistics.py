@@ -5,7 +5,8 @@ out, in decimal arithmetic.
 gives it. It judges the newest day against the days before it. The result names the newest
 day's total, the median of the totals before it, the change between them (ADR-0231), and for
 each group its amount, its own median and the change between them. The group whose amount
-rose most above its own median is the `driver`: the part behind a jump.
+rose most above its own median is the `driver`: the part behind a jump. `total` sums each
+group over every day of the series, largest first, with the series' total (ADR-0310).
 
 Every figure is computed from the decimal text the series gave and reported twice: as that text,
 and as a number for a corridor to read (ADR-0109). A day whose total is not the sum of its parts
@@ -20,7 +21,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from taktus.components.run.domain.model.errors import RuleFailed
-from taktus.components.run.domain.model.work import DeviationStatistic
+from taktus.components.run.domain.model.work import DeviationStatistic, TotalStatistic
 
 DATE = re.compile(r"^\d{4}-\d\d-\d\d$")
 DRIVER = ("group", "amount", "median", "change")
@@ -82,6 +83,35 @@ def _figure(number: Decimal | None) -> dict[str, Any]:
     if number is None:
         return {"value": None, "text": None}
     return {"value": float(number), "text": _text(number)}
+
+
+def total(statistic: TotalStatistic, days: Any) -> dict[str, Any]:
+    """Every group's amount summed over the days of the series, largest first, and the series'
+    total, each as decimal text and as a number (ADR-0310): a week's cost of each service. A
+    day whose total is not the sum of its groups fails the step, as in `deviation`."""
+    if not isinstance(days, list) or not days:
+        raise RuleFailed("days must be a non-empty list of days")
+    read = [_day(item, index) for index, item in enumerate(days)]
+    dates = sorted(date for date, _, _ in read)
+    if len(set(dates)) != len(dates):
+        raise RuleFailed("a date occurs twice in the days")
+    sums: dict[str, Decimal] = {}
+    for _, _, groups in read:
+        for name, amount in groups.items():
+            sums[name] = sums.get(name, Decimal(0)) + amount
+    whole = sum((t for _, t, _ in read), Decimal(0))
+    ordered = sorted(sums.items(), key=lambda item: (-item[1], item[0]))
+    return {
+        "from": dates[0],
+        "until": dates[-1],
+        "days": len(dates),
+        "total": float(whole),
+        "total_text": _text(whole),
+        "groups": [
+            {"group": name, "amount": _text(amount), "value": float(amount)}
+            for name, amount in ordered
+        ],
+    }
 
 
 def deviation(statistic: DeviationStatistic, days: Any) -> dict[str, Any]:

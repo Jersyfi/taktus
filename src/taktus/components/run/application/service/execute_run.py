@@ -240,6 +240,7 @@ from taktus.components.run.domain.model import (
     Takeover,
     TakeoverRefused,
     TemplateRule,
+    TotalStatistic,
     UnknownRun,
     UnknownTakeover,
     UnsupportedWork,
@@ -5758,6 +5759,9 @@ class RunEngine:
         if isinstance(work, DeviationStatistic):
             (days,), read = await self._resolved(run, [work.days])
             return statistics.deviation(work, days), Trace(inputs=read), None, None
+        if isinstance(work, TotalStatistic):
+            (days,), read = await self._resolved(run, [work.days])
+            return statistics.total(work, days), Trace(inputs=read), None, None
         if isinstance(work, ConnectorRule):
             return await self._connector_call(run, step_run, work, span)
         if isinstance(work, LlmWork):

@@ -9,7 +9,12 @@ from typing import Any
 
 import pytest
 
-from taktus.components.run.domain.model import DeviationStatistic, RuleFailed, parse_work
+from taktus.components.run.domain.model import (
+    DeviationStatistic,
+    RuleFailed,
+    TotalStatistic,
+    parse_work,
+)
 from taktus.components.run.domain.service import statistics
 from taktus.shared.v1 import ExactnessClass, Method, Step
 
@@ -123,3 +128,41 @@ def test_a_statistics_step_parses_its_statistic() -> None:
     work = parse_work(step, {"statistic": "deviation", "days": {"$from": "read"}})
     assert isinstance(work, DeviationStatistic)
     assert (work.window, work.minimum) == (28, 7)
+    total = parse_work(step, {"statistic": "total", "days": {"$from": "read"}})
+    assert isinstance(total, TotalStatistic)
+
+
+# --- total (ADR-0310) ----------------------------------------------------------------------------
+
+
+def summed(days: Any) -> dict[str, Any]:
+    return statistics.total(TotalStatistic(statistic="total", days=None), days)
+
+
+def test_each_group_is_summed_over_the_week_largest_first_in_decimal() -> None:
+    days = [
+        day("2026-09-07", build="1.10", storage="0.20"),
+        day("2026-09-06", build="0.70"),
+        day("2026-09-05", build="0.30", storage="0.10", network="0.05"),
+    ]
+    result = summed(days)
+    assert (result["from"], result["until"], result["days"]) == ("2026-09-05", "2026-09-07", 3)
+    assert result["total_text"] == "2.45"
+    assert result["groups"] == [
+        {"group": "build", "amount": "2.10", "value": 2.1},
+        {"group": "storage", "amount": "0.30", "value": 0.3},
+        {"group": "network", "amount": "0.05", "value": 0.05},
+    ]
+
+
+@pytest.mark.parametrize(
+    ("days", "fragment"),
+    [
+        ([], "non-empty"),
+        ([day("2026-09-01", a="1"), day("2026-09-01", a="2")], "occurs twice"),
+        ([{"date": "2026-09-01", "total": "3", "groups": [{"group": "a", "amount": "1"}]}], "sum"),
+    ],
+)
+def test_a_series_the_total_cannot_read_fails_the_step(days: Any, fragment: str) -> None:
+    with pytest.raises(RuleFailed, match=fragment):
+        summed(days)
