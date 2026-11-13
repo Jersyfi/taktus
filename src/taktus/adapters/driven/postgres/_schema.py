@@ -107,6 +107,7 @@ process_version = Table(
     Column("change_record", JSONB),  # what led Taktus to a version within the frame (ADR-0255)
     Column("control", JSONB),  # where the control sits; null is Taktus's (ADR-0272)
     Column("contracts", JSONB),  # the data contract of every partner exchange (ADR-0273)
+    Column("tolerances", JSONB),  # the tolerance of a variable step before cases (ADR-0300)
     Column("inputs", JSONB, nullable=False),
     Column("author", Text),
     Column("reason", Text),

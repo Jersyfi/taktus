@@ -1,7 +1,7 @@
 """A chain of processes stored by the instance, and every run of it (ADR-0301, UC-15.4).
 
 Revision: 0111
-Revises: 0108
+Revises: 0109
 
 What this adds, each one row per record as a document beside the tenant, its identifier and
 the moment it was set:
@@ -23,7 +23,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision = "0111"
-down_revision = "0108"
+down_revision = "0109"
 branch_labels = None
 depends_on = None
 
