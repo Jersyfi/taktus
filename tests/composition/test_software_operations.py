@@ -676,10 +676,8 @@ async def test_b_1_04_takes_the_function_with_the_highest_rate_as_the_store_gave
 @pytest.mark.parametrize(
     ("name", "inputs", "step", "label", "value", "corridor", "level"),
     [
-        # The fake's run times: export 4.2, login 0.3, resize NaN, which is left out.
-        ("B-1.02-run-times.yaml", {"query": "function_duration_seconds"}, "slowest",
-         ("function", "export"), 4.2, ("cost.function_run_time", 2, 4), Level.RED),
-        ("B-1.03-runaway.yaml", {"query": "function_calls_per_second"}, "busiest",
+        ("B-1.03-runaway.yaml", {"query": "function_calls_per_second", "throttle_above": 1000,
+                                  "throttle_to": 1}, "busiest",
          ("function", "sync"), 180, ("load.function_calls", 50, 100), Level.RED),
         ("B-2.03-quotas.yaml", {"query": "quota_used_ratio"}, "fullest",
          ("service", "payments"), 0.91, ("cost.quota_used", 0.8, 0.95), Level.YELLOW),
@@ -716,6 +714,59 @@ async def test_a_figure_watcher_takes_the_highest_value_as_the_store_gave_it_and
     assert selected["first"]["values"][0]["value"] == value
     (judged,) = (await w.signals.watch.look(TENANT)).judged
     assert judged.level is level
+
+
+DRIVERS = {
+    "query": "function_duration_seconds",
+    "queries_query": "db_query_seconds",
+    "egress_query": "egress_bytes",
+    "storage_query": "storage_bytes",
+    "label": "ready",
+}
+
+
+async def test_b_1_02_names_the_four_cost_drivers_and_files_one_proposal_once(
+    outside: Outside,
+) -> None:
+    """Run time, queries, egress and storage, the largest of each by rule; the slowest judged by
+    its corridor; one issue as P-03's goal once a person confirmed it, never twice."""
+    w = await World(outside).ready()
+    version = await w.registered("B-1.02-run-times.yaml")
+    await w.corridor(
+        "cost.function_run_time",
+        version.process_id,
+        step="slowest",
+        select="first.values.0.value",
+        bounds="fixed",
+        direction="above",
+        yellow=2,
+        red=4,
+    )
+    before = len(outside.issues())
+    run = await w.start(version, **DRIVERS)
+    assert run.state is RunState.WAITING_HUMAN, "at level 2 nothing starts before a person"
+    run = await w.confirmed(run)
+    assert run.state is RunState.FINISHED, [(s.step_id, s.reason) for s in run.step_runs]
+    # The fake's run times: export 4.2, login 0.3, resize NaN, which is left out.
+    slowest = await w.result(run, "slowest")
+    assert slowest["first"]["labels"]["function"] == "export"
+    assert slowest["first"]["values"][0]["value"] == 4.2
+    assert (await w.result(run, "costliest-query"))["first"]["labels"]["query"] == (
+        "orders_by_customer"
+    )
+    assert (await w.result(run, "most-egress"))["first"]["labels"]["service"] == "media"
+    assert (await w.result(run, "most-storage"))["first"]["labels"]["bucket"] == "uploads"
+    [filed] = outside.issues()[: len(outside.issues()) - before]
+    assert filed["title"] == "Lower the cost drivers of the month"
+    body = filed["body"]
+    assert "export" in body and "orders_by_customer" in body and "media" in body
+    assert "uploads" in body and "cost-drivers:export" in body
+    assert [label["name"] for label in filed["labels"]] == ["ready"]
+    (judged,) = (await w.signals.watch.look(TENANT)).judged
+    assert judged.level is Level.RED
+    again = await w.confirmed(await w.start(version, **DRIVERS))
+    assert (await w.result(again, "unfiled"))["count"] == 0, "filed once while open"
+    assert len(outside.issues()) == before + 1
 
 
 async def test_b_1_08_judges_the_oldest_backup_and_the_oldest_restore_drill_each_by_its_corridor(

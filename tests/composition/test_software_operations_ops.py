@@ -17,11 +17,19 @@ from typing import Any
 
 import httpx
 import pytest
-from fakes import app_store_service, cost_report_service, log_store_service, secret_store_service
+from fakes import (
+    app_store_service,
+    cloud_billing_service,
+    cost_report_service,
+    log_store_service,
+    secret_store_service,
+)
 from taktus_connectors.anthropic.operations import Config as CatalogueConfig
 from taktus_connectors.anthropic.server import build_server as catalogue_server
 from taktus_connectors.appstores.operations import Config as StoreConfig
 from taktus_connectors.appstores.server import build_server as store_server
+from taktus_connectors.aws.operations import Config as BillingConfig
+from taktus_connectors.aws.server import build_server as billing_server
 from taktus_connectors.expiry.operations import Config as ExpiryConfig
 from taktus_connectors.expiry.server import build_server as expiry_server
 from taktus_connectors.loki.operations import Config as LogsConfig
@@ -39,6 +47,7 @@ from .test_software_operations_repository import RepositoryWorld
 from .test_software_operations_repository import cluster as cluster
 
 ERRORS = '{app="shop", level="error"}'
+BILLING_ID, BILLING_SECRET = "key-" + TOKEN[-8:], "sig-" + TOKEN[:12]
 
 
 def _serving(server: Any) -> str:
@@ -53,8 +62,11 @@ class Systems:
             secret_store_service.make_server("127.0.0.1", 0, {TOKEN}),
             app_store_service.make_server("127.0.0.1", 0, {store_key}),
             cost_report_service.make_server("127.0.0.1", 0, {TOKEN}),
+            cloud_billing_service.make_server("127.0.0.1", 0, {BILLING_ID: BILLING_SECRET}),
         ]
-        self.logs, self.secrets, self.store, self.models = [_serving(s) for s in self.servers]
+        self.logs, self.secrets, self.store, self.models, self.billing = [
+            _serving(s) for s in self.servers
+        ]
 
     def value_reads(self) -> int:
         """How often the secret store was asked for a value."""
@@ -74,6 +86,7 @@ def systems(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Systems
         ("SECRETS_TOKEN", TOKEN),
         ("MODELS_TOKEN", TOKEN),
         ("STORES_KEY", store_key),
+        ("BILLING_KEY", f"{BILLING_ID}:{BILLING_SECRET}"),
     ):
         path = tmp_path / name
         path.write_text(value, encoding="utf-8")
@@ -123,6 +136,10 @@ class OpsWorld(RepositoryWorld):
                     "connector.catalogue",
                     served(catalogue_server(CatalogueConfig(systems.models, timeout=5.0))),
                 ),
+                (
+                    "connector.billing",
+                    served(billing_server(BillingConfig(systems.billing, timeout=5.0))),
+                ),
             ]
         )
 
@@ -143,6 +160,31 @@ def fake(outside: Outside, path: str, body: dict[str, Any]) -> Any:
     )
     answer.raise_for_status()
     return answer.json()
+
+
+def in_code(outside: Outside, head: str, files: dict[str, str]) -> None:
+    """Files committed onto `main`, as a push would, through the service's object interface."""
+    blobs = [
+        {
+            "path": path,
+            "mode": "100644",
+            "type": "blob",
+            "sha": outside.send(
+                "POST", f"/repos/{REPOSITORY}/git/blobs", {"content": text, "encoding": "utf-8"}
+            )["sha"],
+        }
+        for path, text in files.items()
+    ]
+    base = outside.send("GET", f"/repos/{REPOSITORY}/git/commits/{head}")["tree"]["sha"]
+    tree = outside.send(
+        "POST", f"/repos/{REPOSITORY}/git/trees", {"base_tree": base, "tree": blobs}
+    )["sha"]
+    commit = outside.send(
+        "POST",
+        f"/repos/{REPOSITORY}/git/commits",
+        {"message": "code", "tree": tree, "parents": [head]},
+    )["sha"]
+    outside.send("PATCH", f"/repos/{REPOSITORY}/git/refs/heads/main", {"sha": commit})
 
 
 def failed(run: Any) -> list[tuple[str, Any]]:
@@ -308,6 +350,34 @@ async def test_b_1_12_cancels_and_reruns_a_lost_run_once_a_person_confirmed(
     assert (await w.result(run, "runners-offline"))["count"] == 1
 
 
+async def test_b_1_12_sums_the_pipelines_cost_over_the_week_from_the_billing_export(
+    outside: Outside, cluster: str, systems: Systems
+) -> None:
+    """ADR-0310: the weekly run reads seven days of the billing export, sums each service in
+    decimal and keeps the one the pipeline is billed under; an hourly run reads no costs."""
+    w = await OpsWorld(outside, cluster, systems).ready()
+    today = datetime.now(UTC).date()
+    week = {
+        str(today - timedelta(days=n)): {"Build": "2.15" if n % 2 else "1.10"} for n in range(1, 8)
+    }
+    async with httpx.AsyncClient() as client:
+        answer = await client.post(f"{systems.billing}/_fake/costs", json=week, timeout=5)
+    answer.raise_for_status()
+    version = await w.registered("B-1.12-pipeline-runs.yaml")
+    hourly = await w.confirmed(await w.start(version))
+    assert hourly.state is RunState.FINISHED, failed(hourly)
+    assert (await w.result(hourly, "read-costs"))["skipped"] is True
+    run = await w.confirmed(
+        await w.start(version, pipeline_group="^Build$", cost_group_by="service")
+    )
+    assert run.state is RunState.FINISHED, failed(run)
+    summed = await w.result(run, "week")
+    assert summed["days"] == 7
+    [build] = (await w.result(run, "pipeline-cost"))["items"]
+    assert build["group"] == "Build" and build["amount"] == "11.90"  # 2.15 x 4 + 1.10 x 3
+    assert summed["groups"][0]["group"] == "Compute", "the largest first"
+
+
 # --- B-2.03, B-7.10: the repository's own limits and branches -----------------------------------
 
 
@@ -347,6 +417,8 @@ async def test_b_2_04_files_the_models_in_use_the_provider_retires_once(
         "claude-example-retired",
         "gone-model",
     ]
+    head = outside.send("GET", f"/repos/{REPOSITORY}/git/ref/heads/main")["object"]["sha"]
+    in_code(outside, head, {"src/ask.py": 'MODEL = "claude-example-deprecated"\n'})
     before = len(outside.issues())
     run = await w.confirmed(await w.start(version, models=models, label="ready"))
     assert run.state is RunState.FINISHED, failed(run)
@@ -355,8 +427,11 @@ async def test_b_2_04_files_the_models_in_use_the_provider_retires_once(
         "claude-example-retired",
         "gone-model",
     ]
+    found = (await w.result(run, "find-in-code"))["output"]
+    assert [f["path"] for f in found["files"]] == ["src/ask.py"]
     [filed] = outside.issues()[: len(outside.issues()) - before]
     assert filed["title"] == "Switch the models the provider retires"
+    assert "names claude-example-deprecated" in filed["body"] and "src/ask.py" in filed["body"]
     assert "claude-opus-5-5" not in filed["body"].split("current:")[0]
     again = await w.confirmed(await w.start(version, models=models, label="ready"))
     assert (await w.result(again, "unfiled"))["count"] == 0, "filed once, never twice"

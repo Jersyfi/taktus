@@ -15,9 +15,19 @@
 # runners are read through `repository.runners`, and those offline counted for the tenant's
 # corridor (`pipeline.runners_offline`).
 #
-# Not built: removing a runner — the pool's size stays with a person — and the pipeline's
-# weekly cost, which the service bills to the account and no capability reads. The thresholds
-# are this version's.
+# The pipeline's weekly cost (ADR-0310): once a week the run is also given `pipeline_group`,
+# and reads the last seven days of the cloud's billing export through `billing.costs` — the
+# capability B-1.01 reads — by the grouping the run names (`service` unless `cost_group_by`
+# says `account` or `region`). The statistic `total` sums each group over the week in decimal,
+# and a fixed rule keeps the group the tenant's pattern names: the service its build machines
+# or runners are billed under. Its amount is the figure `pipeline-cost`, on which the tenant's
+# corridor (`pipeline.weekly_cost`) reports a rise. The hourly checks run in that run too; an
+# hourly run reads no costs.
+#
+# Not built: removing a runner — the pool's size stays with a person — and the cost of the
+# minutes the repository service's own runners use, which the service bills to its account
+# outside any cloud's billing export, and which no capability reads. The thresholds are this
+# version's.
 #
 # By hand:
 #
@@ -26,7 +36,7 @@
 # Switching it off (`taktusctl deactivate --process b-1-12`) changes nothing at the service.
 
 id: b-1-12
-version: "3"
+version: "4"
 name: B-1.12 Pipeline infrastructure
 autonomy:
   level: 2
@@ -43,9 +53,26 @@ reason: a pipeline run that hangs is named without a person watching the pipelin
 
 triggers:
   - schedule: hourly
+  - schedule: "0 7 * * 1"
+    inputs:
+      pipeline_group: "^Cloud Build$"
+      cost_group_by: service
 
+inputs:
+  pipeline_group:
+    description: >
+      a pattern for the billing export's group the pipeline is billed under, for example the
+      build service or the project of the runners; given, the run reads the week's costs
+    example: "^Cloud Build$"
+    required: false
+  cost_group_by:
+    description: how the billing export groups the costs the pattern is matched in, service, account or region
+    example: service
+    required: false
+
+# The pipeline's runs, the runners, a cancel and a rerun, and once a week the costs.
 limits:
-  quota: { units: 20 }
+  quota: { units: 25 }
 
 steps:
   - id: read-queued
@@ -229,6 +256,72 @@ steps:
         - { field: status, not_matches: "^\"?online" }
       order: name
 
+  - id: read-costs
+    method: rule
+    reason: the cloud's billing export is read verbatim, each amount as the decimal text it gave
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what billing.costs.daily answered", columns: [complete, days] }
+    fallback:
+      when: the connector serving billing.costs is unavailable
+      to: human
+      role: owner
+    depends_on: [read-queued]
+    work:
+      checking: { select: output }
+      when:
+        - { value: { $input: pipeline_group, $otherwise: "" }, not_matches: "^$" }
+      rule: connector
+      operation: billing.costs.daily
+      input:
+        days: 7
+        group_by: { $input: cost_group_by, $otherwise: service }
+      credentials:
+        - { name: BILLING_KEY, injected_as: env }
+      expect:
+        - { select: complete, matches: "^true$" }
+
+  - id: week
+    method: statistics
+    reason: each group's cost over the week is a sum of the export's own amounts, in decimal; the same reading always gives the same sums
+    rejected:
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+      - method: rule
+        why: a sum over a series is a statistic of the series, which the rules do not compute
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: each group's cost over the week }
+    depends_on: [read-costs]
+    work:
+      when:
+        - { value: { $input: pipeline_group, $otherwise: "" }, not_matches: "^$" }
+      statistic: total
+      days: { $from: read-costs, $select: output.days }
+
+  - id: pipeline-cost
+    method: rule
+    reason: the pipeline's cost is the group the tenant's pattern names, kept by a fixed rule from the week's sums
+    rejected:
+      - method: llm
+        why: a selection by a name needs no judgement
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the pipeline's cost over the week }
+    depends_on: [week]
+    work:
+      when:
+        - { value: { $input: pipeline_group, $otherwise: "" }, not_matches: "^$" }
+      rule: filter
+      items: { $from: week, $select: groups }
+      all:
+        - { field: group, matches: { $input: pipeline_group, $otherwise: "^$" } }
+      order: value
+      descending: true
+
 # How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
 # every step the system to act in, what to do there, the expertise it needs, each credential by
 # its parameter and where an authorised person finds it, and how to tell that it is done.
@@ -240,7 +333,9 @@ takeover:
     progress for 120 minutes or more. The counts are judged by the tenant's corridor and named
     in the daily report, each run with its link. Once a person agreed, cancel the run in
     progress longest, wait a minute, and rerun its failed jobs. List the self-hosted runners and
-    count those offline. The pool sizes and the runner types stay with a person.
+    count those offline. Once a week, also read the last seven days of the cloud's billing
+    export and sum the cost of the service the pipeline is billed under. The pool sizes and the
+    runner types stay with a person.
   steps:
     read-queued:
       system: the repository hosting service, in the repository's pipeline runs
@@ -331,3 +426,31 @@ takeover:
       expertise: none
       credentials: []
       done: the runners offline are listed and counted
+    read-costs:
+      system: the cloud provider's billing console or its cost report
+      do: >
+        only in the weekly run: read the cost of every service for each of the last seven days,
+        grouped as the run names, and export them as a table with one row per day and group,
+        each amount exactly as the provider gives it
+      expertise: finding the daily cost by service in the cloud provider's billing
+      credentials:
+        - parameter: BILLING_KEY
+          where: >
+            the operator's secret store, under the parameter Cloud billing key of the requesting
+            identity described in CREDENTIALS.md; a person reading the console signs in with
+            their own account that may read the billing
+      done: the table holds every day of the week with every group's cost
+    week:
+      system: a spreadsheet, on the exported table
+      do: sum each group's cost over the seven days, in decimal, rounding nothing
+      expertise: summing in a spreadsheet
+      credentials: []
+      done: each group's cost over the week is written down
+    pipeline-cost:
+      system: the week's sums
+      do: >
+        keep the group whose name the run's pattern names, the one the pipeline is billed
+        under, and compare its cost with the tenant's corridor for the pipeline's weekly cost
+      expertise: none
+      credentials: []
+      done: the pipeline's cost over the week is written down and judged

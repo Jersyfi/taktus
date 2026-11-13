@@ -12,8 +12,13 @@
 # keep the pipeline green. Evaluating the old model against the new one is UC-4.18's trial, run
 # on the pull request.
 #
-# Not built here: finding the identifiers in the code. No capability searches a repository's
-# code for model identifiers; the tenant's version names them.
+# Where the code names a retiring model is found through the repository service's code search
+# (`repository.code.search`, ADR-0310): the files of the default branch that contain the first
+# identifier the rule kept, sorted by path, listed in the issue so that the switch starts there.
+# One identifier is searched per run: a run cannot repeat a step for each item of a list, and
+# the coding worker that makes the switch searches the rest itself. The models the code calls
+# are still the run's input, named by the tenant's version: the search finds where a known
+# identifier occurs, not which of the many ways of writing a model's name the code uses.
 #
 # By hand:
 #
@@ -23,7 +28,7 @@
 # Switching it off (`taktusctl deactivate --process b-2-04`) changes nothing in the repository.
 
 id: b-2-04
-version: "2"
+version: "3"
 name: B-2.04 Retired models
 autonomy:
   level: 2
@@ -98,6 +103,35 @@ steps:
       pattern: "^\\s*(?P<id>[A-Za-z0-9][A-Za-z0-9._:@/-]*)\\s*$"
       text: "${id}"
 
+  - id: find-in-code
+    method: rule
+    reason: where the code names the first retiring model is the repository service's own code search, read verbatim
+    rejected:
+      - method: llm
+        why: finding a fixed text in files needs no language model
+      - method: worker
+        why: a clone and a search in a sandbox would read the whole repository for one text the service already indexes
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what repository.code.search answered", columns: [complete, files, text, total] }
+    fallback:
+      when: the connector serving repository.code is unavailable, or the search did not cover every file
+      to: human
+      role: owner
+    depends_on: [retiring]
+    work:
+      checking: { select: output }
+      when:
+        - { value: { $from: retiring, $select: extracted }, not_matches: "^\\[\\]$" }
+      rule: connector
+      operation: repository.code.search
+      input:
+        text: { $from: retiring, $select: extracted.0 }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the code search did not cover every file" }
+
   - id: read-filed
     method: rule
     reason: the open issues are read verbatim, so that a switch already filed is not filed twice
@@ -151,7 +185,7 @@ steps:
     exactness: sourced
     checks:   # a sourced result declares its check (ADR-0233)
       - { kind: bounds, subject: the composed text, pattern: "Goal: switch each of them to a current model of the same line, change nothing else, and" }
-    depends_on: [unfiled, read-catalogue]
+    depends_on: [unfiled, read-catalogue, find-in-code]
     work:
       when:
         - { value: { $from: unfiled, $select: count }, not_matches: "^0$" }
@@ -164,6 +198,8 @@ steps:
         states of every model it lists, with the lifecycle and retirement where it states
         them, is in the run of B-2.04 that filed this issue.
 
+        Where the default branch names ${first}, by the repository's code search: ${files}
+
         Goal: switch each of them to a current model of the same line, change nothing else, and
         keep the pipeline green. The old model is evaluated against the new one on the pull
         request (UC-4.18). Releasing the switch stays with a person.
@@ -174,6 +210,8 @@ steps:
       values:
         models: { $from: retiring, $select: extracted }
         current: { $from: read-catalogue, $select: output.current }
+        first: { $from: retiring, $select: extracted.0 }
+        files: { $from: find-in-code, $select: output.files }
 
   - id: file
     method: rule
@@ -209,7 +247,8 @@ takeover:
   sequence: >
     The process runs every Monday morning; whoever looks after the business's use of models
     starts it. The steps run in order: list the provider's models with their lifecycle, take the
-    models the code calls that the provider does not list as current, check the open issues for
+    models the code calls that the provider does not list as current, search the code for the
+    first of them, check the open issues for
     a switch already filed, write the issue's text, and open the issue with the implementation
     label once a person confirmed it. The switch is made on that issue; releasing it stays with
     a person.
@@ -234,6 +273,19 @@ takeover:
       expertise: none
       credentials: []
       done: the models in use that retire are listed, or none
+    find-in-code:
+      system: the repository hosting service, its code search over the default branch
+      do: >
+        only when a model retires, search the repository's code for the first of them, written
+        exactly as listed, and note every file that contains it
+      expertise: searching code in the repository hosting service
+      credentials:
+        - parameter: REPOSITORY_TOKEN
+          where: >
+            the operator's secret store, under the parameter Repository access token of the
+            requesting identity described in CREDENTIALS.md; a person signs in with their own
+            account that may read the repository
+      done: the files that name the model are noted, or none does
     read-filed:
       system: the repository hosting service, in the repository's issue list
       do: >
@@ -255,7 +307,8 @@ takeover:
     compose:
       system: a text editor
       do: >
-        write the issue's text: the models that retire, the provider's current models, the goal
+        write the issue's text: the models that retire, the provider's current models, the
+        files that name the first of them, the goal
         — switch each to a current model of its line, nothing else, the pipeline green — and the
         line models-retiring:<models> at the end.
       expertise: none
