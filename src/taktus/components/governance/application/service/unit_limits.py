@@ -438,6 +438,9 @@ class UnitLimits:
             "limit": limit.id,
             "individually": "yes" if limit.individually else "no",
         }
+        for process, seconds in found.by_process.items():
+            # What a view grouped by process shows of the report (ADR-0299 §2).
+            facts[f"held_seconds.{process}"] = seconds
         for line, amount in lines.items():
             needed = spent.get(line, 0.0) + demand.get(line, 0.0) * max(1, found.runs)
             recommended = max(amount, needed)

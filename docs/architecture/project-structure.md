@@ -313,7 +313,10 @@ role it would tie the core to a model stack and the removal test would be lost.
   `halt`, `wait` or `cheaper` at the line (ADR-0298). The composition hands the engine the
   `Claims` of its persistence (`ports/persistence.py`; `MemoryClaims`, `PostgresClaims`): the
   admission of a step against a unit limit is checked again under the limit's claim before it
-  commits, so two runners never both fit one line (ADR-0298).
+  commits, so two runners never both fit one line (ADR-0298). `RunEngine.demand` estimates a
+  run before it starts; `taktusctl run` and `submit` show it and start a run that needs much
+  only with `--accept-demand` (ADR-0299). The open `limit.harmful` reports are the figure
+  `limit.held_seconds` that `composition/figures.py` hands to the views (ADR-0299).
   The accounting component's `BottlenecksHandler` reads its three ports through
   `composition/bottlenecks.py`: `RunAccounts` over the run's `BlockedTime`, which hands over the
   limits and the work held back and the waits on people only grouped; `MethodsOfTheRun` over the

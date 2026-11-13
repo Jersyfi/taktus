@@ -50,6 +50,7 @@ DEFAULT_VIEWS: tuple[dict[str, Any], ...] = (
             "value.cycle_seconds",
             "value.escalation_rate",
             "run.waiting",
+            "limit.held_seconds",
         ),
         "group_by": "process",
     },
@@ -63,6 +64,7 @@ DEFAULT_VIEWS: tuple[dict[str, Any], ...] = (
             "value.revert_hours_month",
             "value.simulated_unasked",
             "value.simulated_wrong",
+            "limit.held_seconds",
         ),
         "group_by": "process",
     },
@@ -88,11 +90,17 @@ DEFAULT_VIEWS: tuple[dict[str, Any], ...] = (
         ),
         "group_by": "tenant",
     },
+    {
+        "id": "administration",
+        "title": "What holds work back: the limits that do harm, and what waits",
+        "figures": ("limit.held_seconds", "run.waiting"),
+        "group_by": "unit",
+    },
 )
 
 
 def default(tenant: str, known: Iterable[str], at: datetime) -> ViewConfiguration:
-    """The shipped default: five example views held by `owner`, every figure entitled to it."""
+    """The shipped default: six example views held by `owner`, every figure entitled to it."""
     return ViewConfiguration(
         id=tenant,
         tenant=tenant,

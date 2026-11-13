@@ -205,6 +205,7 @@ async def test_a_limit_that_holds_too_many_runs_is_reported_with_a_recommendatio
     facts = report.facts
     assert facts["limit"] == "field_month" and facts["role"] == "finance-lead"
     assert facts["held_runs"] == 2.0 and facts["processes"] == "p"
+    assert facts["held_seconds.p"] == facts["held_seconds"], "per process, for its views"
     assert facts["amount_money.usd"] == 1.5
     assert facts["recommended_money.usd"] > 1.5  # type: ignore[operator]
     assert facts["cost_money.usd"] == facts["recommended_money.usd"] - 1.5  # type: ignore[operator]

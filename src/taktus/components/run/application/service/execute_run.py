@@ -204,6 +204,7 @@ from taktus.components.run.domain.model import (
     ConnectorRule,
     ConstantRule,
     Control,
+    DemandToAccept,
     DeviationStatistic,
     Ended,
     ExtractRule,
@@ -521,6 +522,11 @@ class StartRun:
     quotas hold it. None runs for the tenant itself."""
     remedy: Remedy | None = None
     """For a remediation run: the wrong result it produces again (ADR-0179 §3)."""
+    demand_accepted: bool | None = None
+    """Whether the person who commissions the run here saw its estimated demand and accepted
+    it (ADR-0299 §1). None: no person commissions it here — a trigger, a deadline, a reaction,
+    a trial — and nothing is shown. False: a run that needs much is refused with
+    `DemandToAccept`, which carries its demand, and nothing is written. True: accepted."""
     carried: tuple[StepRun, ...] = ()
     """For a remediation run: the step runs it starts with, done — every step the wrong result
     is not built on, as the wrong run left it, and the corrected step with the value a person
@@ -780,6 +786,10 @@ class EngineOptions:
     seeds: tuple[budgeting.Seed, ...] = budgeting.SEED
     """What calibration starts from for an adapter nothing has measured yet."""
     uncalibrated_margin: float = budgeting.UNCALIBRATED_MARGIN
+    demand_share: float = 0.5
+    """A run needs much where its estimated demand reaches this share of what remains of a
+    unit limit on its path: its demand is then shown to the person who commissions it before
+    it starts (ADR-0299 §1)."""
     """What a worker with no calibration history reserves beyond its estimate (DEC-0034)."""
     capacity: CapacityRules = field(default_factory=CapacityRules)
     """What admission against the platform holds a job to (docs/architecture/platform.md)."""
@@ -1122,6 +1132,17 @@ class RunEngine:
             raise RunError(
                 f"plan {command.plan.id!r} is {command.plan.status}: only a commissioned plan runs"
             )
+        if command.demand_accepted is False and not command.rehearsal:
+            # A run that needs much starts only once its demand was shown (ADR-0299 §1).
+            shown = await self.demand(
+                command.tenant,
+                process_version=command.process_version,
+                identity=command.identity,
+                org_unit=command.org_unit,
+                budget=command.budget,
+            )
+            if shown["much"]:
+                raise DemandToAccept(shown)
         org_unit = command.org_unit
         if self._org_units is not None:
             # A run is in its process's unit, where the structure places one (ADR-0275 §2).
@@ -4486,6 +4507,108 @@ class RunEngine:
             else {}
         )
         return self._lines(priced, compute)
+
+    async def demand(
+        self,
+        tenant: Tenant,
+        *,
+        process_version: str,
+        identity: str,
+        org_unit: str | None,
+        budget: Limits,
+    ) -> dict[str, Any]:
+        """A run's estimated demand before it starts, as the person who commissions it sees it
+        (ADR-0299 §1, UC-8.10): what the process's runs of the last 28 days cost, on average and
+        at most; what the run's budget allows at most; and every unit limit on its path with
+        what remains of it. It needs much where the estimate reaches the engine's demand share
+        of what remains of a limit, in any line. The estimate is the runs' mean, or the budget
+        where the process has no run in the window. A rule over the stored runs; a limit held
+        per person counts only the commissioning person's own runs (ADR-0282 §6)."""
+        process = process_of(process_version)
+        path = await self._placed(tenant, identity, org_unit)
+        limits = (
+            []
+            if self._unit_limits is None
+            else list(await self._unit_limits.applying(tenant, path, process))
+        )
+        now = self._clock.now()
+        since = now - timedelta(days=UNIT_HISTORY_DAYS)
+        async with self._work.transaction(tenant):
+            stored = list(await self._runs.list(tenant))
+        past = [
+            self._lines(self._cost(r), r.compute_by_class())
+            for r in stored
+            if not r.rehearsal
+            and r.state is RunState.FINISHED
+            and process_of(r.process_version) == process
+            and r.created_at >= since
+        ]
+        names = sorted({line for lines in past for line in lines})
+        mean = {n: round(sum(p.get(n, 0.0) for p in past) / len(past), 6) for n in names}
+        most = {n: round(max(p.get(n, 0.0) for p in past), 6) for n in names}
+        allowed = self._budget_lines(budget)
+        estimate, basis = (
+            (mean, f"the mean of the process's {len(past)} finished run(s) since {since:%Y-%m-%d}")
+            if past
+            else (allowed, "the run's budget: the process has no finished run in 28 days")
+        )
+        costs = await self._unit_costs(tenant, None, limits, identity, stored) if limits else {}
+        share = self._options.demand_share
+        shown_limits: list[dict[str, Any]] = []
+        much = False
+        for limit in limits:
+            spent, _ = costs[limit.name]
+            left = {
+                line: round(max(amount - spent.get(line, 0.0), 0.0), 6)
+                for line, amount in limit.lines.items()
+            }
+            reaches = sorted(
+                line
+                for line, remains in left.items()
+                if line in estimate and estimate[line] >= share * remains - 1e-9
+            )
+            much = much or bool(reaches)
+            shown_limits.append(
+                {
+                    "limit": limit.name,
+                    "unit": limit.where(),
+                    "period": limit.key,
+                    "remaining": left,
+                    "reaches": reaches,
+                }
+            )
+        return {
+            "process": process,
+            "unit": "/".join(path) if path else "company",
+            "estimate": estimate,
+            "basis": basis,
+            "mean": mean,
+            "most": most,
+            "runs": len(past),
+            "at_most": allowed,
+            "limits": shown_limits,
+            "share": share,
+            "much": much,
+        }
+
+    def _budget_lines(self, budget: Limits) -> dict[str, float]:
+        """What a run's budget allows at most, as a unit limit's lines: money per currency,
+        compute seconds with their money at the instance's table where it has a price, and
+        tokens."""
+        lines = {f"money.{c}": float(v) for c, v in (budget.currency or {}).items()}
+        table = self._options.prices
+        if budget.compute is not None:
+            lines["compute_seconds"] = float(budget.compute.seconds)
+            price_of = (
+                None if table is None else (table.compute or {}).get(budget.compute.resource_class)
+            )
+            if not budget.currency and table is not None and price_of is not None:
+                key = f"money.{table.currency}"
+                lines[key] = round(lines.get(key, 0.0) + budget.compute.seconds * price_of, 6)
+        if budget.tokens is not None:
+            given = budget.tokens
+            lines["tokens"] = float((given.tokens_in or 0) + (given.tokens_out or 0))
+        return lines
 
     async def unit_costs(
         self, tenant: Tenant, viewer: str | None

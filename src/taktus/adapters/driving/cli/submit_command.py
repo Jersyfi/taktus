@@ -31,10 +31,12 @@ from taktus.adapters.driving.cli.run_command import (
     _command,
     _load,
     answers,
+    demand_shown,
     parse_inputs,
     refused,
     require_inputs,
     resolve_identity,
+    shown_first,
 )
 from taktus.adapters.driving.cli.wiring import NotOperable, Wiring
 from taktus.components.command.application.service import CommissionPlan
@@ -43,7 +45,7 @@ from taktus.components.process.application.service.register_version import (
 )
 from taktus.components.process.domain.model import InvalidProcess, RaiseRefused
 from taktus.components.run.application.service import ConfirmSteps, StartRun
-from taktus.components.run.domain.model import RunError
+from taktus.components.run.domain.model import DemandToAccept, RunError
 
 
 def submit(
@@ -99,11 +101,21 @@ def submit(
             help="Approve, as the invoking person, a raise of the bundle's autonomy level.",
         ),
     ] = False,
+    accept_demand: Annotated[
+        bool,
+        typer.Option(
+            "--accept-demand",
+            help="Queue a run that needs much of what remains of a unit limit, after its "
+            "estimated demand was shown (ADR-0299).",
+        ),
+    ] = False,
 ) -> None:
     """Queue a process bundle for the daemon and print the run's identifier.
 
     Exit code 0: queued. Exit code 2: the bundle or the invocation is wrong, there is no
-    database to queue in, or a raise of the bundle's autonomy level is refused.
+    database to queue in, or a raise of the bundle's autonomy level is refused. Exit code 4:
+    the run needs much of what remains of a unit limit; its estimated demand is shown, nothing
+    was queued, and `--accept-demand` queues it.
     """
     wiring: Wiring = ctx.obj
     try:
@@ -128,8 +140,12 @@ def submit(
                 resume=resume,
                 answer=answer,
                 approve_raise=approve_raise,
+                accept_demand=accept_demand,
             )
         )
+    except DemandToAccept as error:
+        typer.echo(demand_shown(error.shown), err=True)
+        raise typer.Exit(code=4) from error
     except RaiseRefused as error:
         refused(error)
         raise typer.Exit(code=2) from error
@@ -156,6 +172,7 @@ async def _submit(
     resume: str | None = None,
     answer: tuple[tuple[str, ...], bool] | None = None,
     approve_raise: bool = False,
+    accept_demand: bool = False,
 ) -> str:
     async with wiring.services(state_dir=state_dir, worker_endpoint=worker_endpoint) as services:
         if not services.queued:
@@ -189,6 +206,7 @@ async def _submit(
         budget = _budget(version)
         require_inputs(version, inputs)
         command = _command(services, version, placed, inputs)
+        await shown_first(services, version, budget, placed, tenant, command, accept_demand)
         plan = await services.commission.execute(
             CommissionPlan(
                 command=command,
@@ -209,6 +227,7 @@ async def _submit(
                 tenant=tenant,
                 inputs=inputs,
                 actions=version.autonomy.action_levels,
+                demand_accepted=accept_demand,
             )
         )
         return run.id
