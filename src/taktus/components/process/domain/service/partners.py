@@ -6,10 +6,14 @@ contract. An `import` step carries a check of the shape of what it read whose co
 field the contract requires; an `export` step depends on a step that carries one. A contract
 follows an open standard or says why a proprietary format, and one that names a frequency
 belongs to a version that expects its runs.
+
+`breach` says which clause of its contract a failed exchange step broke, for the escalation
+that brings a person in (ADR-0303).
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from taktus.shared.v1 import CheckKind, Step
@@ -89,4 +93,43 @@ def _covers(step: Step, required: set[str]) -> bool:
     return any(
         check.kind is CheckKind.SOURCE_SHAPE and required <= set(check.columns or ())
         for check in step.checks or ()
+    )
+
+
+def breach(version: ProcessVersion, step_id: str, lacking: Sequence[str]) -> str | None:
+    """The clause of a data contract that a failed exchange step breaks, in words (UC-15.3,
+    ADR-0303): the contract, its partner and standard, each required field the message lacks
+    with the clause that requires it, and who answers for the contract on each side. None where
+    no contract names the step, nor an export whose document the step checks. `lacking` is
+    what the step's failed check found missing; a field the contract does not require is not
+    its breach."""
+    named = next(
+        ((name, c) for name, c in version.contracts.items() if step_id in c.steps), None
+    ) or next(
+        (
+            (name, c)
+            for name, c in version.contracts.items()
+            if c.direction == "export"
+            and any(step_id in version.step(s).dependencies for s in c.steps)
+        ),
+        None,
+    )
+    if named is None:
+        return None
+    name, contract = named
+    after = contract.standard or f"a proprietary format ({contract.proprietary})"
+    fields = [f for f in lacking if f in contract.required]
+    if fields:
+        broken = "; ".join(
+            f"the field {f!r} is missing, which the clause `fields.{f}: required` requires"
+            for f in fields
+        )
+    else:
+        required = ", ".join(contract.required)
+        broken = f"the message does not have the shape the clause `fields` requires: {required}"
+    return (
+        f"The {contract.direction} breaks the data contract {name!r} with {contract.partner}, "
+        f"after {after}: {broken}. Responsible: {contract.responsible.ours} on our side, "
+        f"{contract.responsible.theirs} on theirs. Nothing of the message was mapped, "
+        "completed or guessed."
     )

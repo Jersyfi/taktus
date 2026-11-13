@@ -58,6 +58,7 @@ from taktus.adapters.driving.rest import (
     agent_surface,
     autonomy,
     catalogue,
+    chains,
     connections,
     deprecation,
     evaluations,
@@ -206,6 +207,7 @@ def build_app(
         app.include_router(acting.router(services, _authenticated), prefix=base)
         app.include_router(catalogue.router(services, _authenticated), prefix=base)
         app.include_router(streams.router(services, _authenticated), prefix=base)
+        app.include_router(chains.router(services, _authenticated), prefix=base)
         app.include_router(profiles.router(services, _authenticated), prefix=base)
         app.include_router(figures.router(services, _authenticated), prefix=base)
         app.include_router(spend.router(services, _authenticated), prefix=base)

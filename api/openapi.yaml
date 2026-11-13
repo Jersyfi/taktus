@@ -5823,6 +5823,239 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /chains:
+    get:
+      tags:
+      - chains
+      summary: The chains across domains, each with its latest run
+      description: 'Every chain the tenant declared that links only processes the reader may see: its
+        links in order and its latest run with its state.'
+      operationId: listed_chains_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The chains.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /chains/{chain}:
+    get:
+      tags:
+      - chains
+      summary: One chain as a whole
+      description: 'Its links in order, what passes at every boundary with the clause that requires it,
+        its objectives and who its halt reaches, and every run of it, newest first: the link it stands
+        at, the run of every link, every handover by digest, and why it waits, halted or stopped.'
+      operationId: one_chains__chain__get
+      parameters:
+      - name: chain
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Chain
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The chain.
+          content:
+            application/json:
+              schema: {}
+        '404':
+          description: No such chain, or one you may not see.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+    put:
+      tags:
+      - chains
+      summary: Declare a chain across domains
+      description: 'The process versions it links, in order, and at each boundary every item handed over
+        with its clause. It is held to the versions it links: every input the receiving version requires
+        given by exactly one item, every item from a step of the sending version. A new declaration replaces
+        the one before; a run keeps its own.'
+      operationId: declare_chains__chain__put
+      parameters:
+      - name: chain
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Chain
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChainBody'
+      responses:
+        '200':
+          description: The chain as declared.
+          content:
+            application/json:
+              schema: {}
+        '403':
+          description: You do not hold the role `owner`.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such chain, or one you may not see.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /chains/{chain}/runs:
+    post:
+      tags:
+      - chains
+      summary: Start a chain
+      description: The first link starts with the inputs given. The chain runs link by link until a link
+        does not finish, a handover halts, or the last link ended, and is answered as it then stands.
+        A chain that waits goes on by itself once its link finished.
+      operationId: start_chains__chain__runs_post
+      parameters:
+      - name: chain
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Chain
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/taktus__adapters__driving__rest__chains__StartBody'
+      responses:
+        '200':
+          description: The chain run.
+          content:
+            application/json:
+              schema: {}
+        '403':
+          description: You do not hold the role `owner`.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such chain, or one you may not see.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /chain-runs/{chain_run}/decision:
+    post:
+      tags:
+      - chains
+      summary: Decide on a halted chain
+      description: '`given`: a value for exactly the items the halted handover lacked; the chain hands
+        them over, marked as given by a person, and goes on. `stop`: the chain stops, and the links before
+        keep their results. Taktus fills in nothing itself.'
+      operationId: decide_chain_runs__chain_run__decision_post
+      parameters:
+      - name: chain_run
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Chain Run
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecisionBody'
+      responses:
+        '200':
+          description: The chain run as it now stands.
+          content:
+            application/json:
+              schema: {}
+        '409':
+          description: The decision does not fit the chain run's state.
+          content:
+            application/problem+json: {}
+        '403':
+          description: You do not hold the role `owner`.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such chain, or one you may not see.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
   /roles:
     get:
       tags:
@@ -7747,6 +7980,44 @@ components:
       required:
       - process
       title: CaseBody
+    ChainBody:
+      properties:
+        name:
+          type: string
+          minLength: 1
+          title: Name
+          description: The chain's name, as people call it.
+        links:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          minItems: 2
+          title: Links
+          description: 'The process versions it links, in order: `{process_version, handover}`, where
+            `handover` lists each item the link is given — `input`, `step`, `select`, `clause` — and is
+            empty for the first link.'
+        slo:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Slo
+          description: 'The chain''s own objectives: `latency` (an ISO 8601 duration) for one run of the
+            whole chain, `completion` the least share of its ended runs that finish.'
+        escalation:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Escalation
+          description: 'Who a halted handover reaches: `role`, `react_within`, `path`. Without it, the
+            role `owner` in the owner-facing channel.'
+      type: object
+      required:
+      - name
+      - links
+      title: ChainBody
     ChooseBody:
       properties:
         choices:
@@ -7800,6 +8071,23 @@ components:
             (ADR-0134 §4).'
       type: object
       title: CommissionBody
+    DecisionBody:
+      properties:
+        given:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Given
+          description: A value for exactly the items the halted handover lacked; the chain goes on with
+            them, each marked as given by a person.
+        stop:
+          type: boolean
+          title: Stop
+          description: Stop the chain instead.
+          default: false
+      type: object
+      title: DecisionBody
     DeclineBody:
       properties:
         purpose:
@@ -8425,6 +8713,15 @@ components:
           type: object
           title: Inputs
           description: The process's inputs by name, as its catalogue entry lists them.
+      type: object
+      title: StartBody
+    taktus__adapters__driving__rest__chains__StartBody:
+      properties:
+        inputs:
+          additionalProperties: true
+          type: object
+          title: Inputs
+          description: The inputs of the chain's first link.
       type: object
       title: StartBody
     taktus__adapters__driving__rest__evaluations__ConfirmBody:

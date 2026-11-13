@@ -51,6 +51,7 @@ from taktus.components.process.domain.model import (
     TakeoverTrial,
     ValueStream,
 )
+from taktus.components.process.domain.model.chain import Chain, ChainRun, DeclaredChain
 from taktus.components.process.domain.service.proposing import ProcessProposal
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.application.service import (
@@ -460,6 +461,40 @@ class StreamActs(Protocol):
         ...
 
 
+class ChainActs(Protocol):
+    """End-to-end chains across domains (ADR-0301, ADR-0302): the composition root's, because a
+    chain's links are runs of the run component and its halt is said in the reporting
+    component's channel."""
+
+    async def declare(self, tenant: Tenant, chain: Chain) -> DeclaredChain:
+        """`InvalidProcess` where the chain does not hold to the versions it links."""
+        ...
+
+    async def chains(self, tenant: Tenant) -> list[DeclaredChain]: ...
+
+    async def chain(self, tenant: Tenant, chain_id: str) -> DeclaredChain | None: ...
+
+    async def runs_of(self, tenant: Tenant, chain_id: str | None = None) -> list[ChainRun]: ...
+
+    async def chain_run(self, tenant: Tenant, chain_run_id: str) -> ChainRun | None: ...
+
+    async def started(
+        self, tenant: Tenant, chain_id: str, inputs: Mapping[str, Any], actor: str
+    ) -> ChainRun: ...
+
+    async def decided(
+        self,
+        tenant: Tenant,
+        chain_run_id: str,
+        actor: str,
+        *,
+        given: Mapping[str, Any] | None = None,
+        stop: bool = False,
+    ) -> ChainRun:
+        """`ChainRefused` where the decision does not fit the chain run's state."""
+        ...
+
+
 class ProfileReads(Protocol):
     """A role's profile (ADR-0167 §3): the composition root's, because it gathers the process,
     governance, decision, run and identity components' records."""
@@ -850,6 +885,11 @@ class RestServices(Protocol):
     @property
     def streams(self) -> StreamActs:
         """The organisation as value streams, and their declaration (ADR-0159)."""
+        ...
+
+    @property
+    def chains(self) -> ChainActs:
+        """End-to-end chains across domains, stored, started and decided (ADR-0301)."""
         ...
 
     @property

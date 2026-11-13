@@ -59,6 +59,7 @@ export const DESTINATIONS: Destination[] = [
 	{ id: 'plans', label: 'Plan', href: '#/plans', band: 'start', icon: 'ask', routes: ['/plans'] },
 	{ id: 'gallery', label: 'Gallery', href: '#/gallery', band: 'start', icon: 'gallery', routes: ['/gallery'] },
 	{ id: 'streams', label: 'Streams', href: '#/streams', band: 'start', icon: 'streams', routes: ['/streams'] },
+	{ id: 'chains', label: 'Chains', href: '#/chains', band: 'start', icon: 'streams', routes: ['/chains'] },
 	{ id: 'discoveries', label: 'Discoveries', href: '#/discoveries', band: 'start', icon: 'discover', routes: ['/discoveries'] },
 	{ id: 'views', label: 'Figures', href: '#/views', band: 'steer', icon: 'figures', routes: ['/views'] },
 	{ id: 'value', label: 'Value', href: '#/value', band: 'steer', icon: 'value', routes: ['/value'] },

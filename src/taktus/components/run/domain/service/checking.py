@@ -58,6 +58,11 @@ JUDGED = frozenset(
         CheckKind.SOURCE_SHAPE,
     }
 )
+
+LACKS = "it lacks "
+"""What a failed source-shape check says before the declared columns that what the step read
+does not carry, comma-separated: where a partner's message breaks its data contract, the
+escalation names these fields (UC-15.3, ADR-0303)."""
 """The kinds a rule decides on the spot; the other two bring a person in."""
 
 
@@ -243,12 +248,14 @@ def source_shape(position: int, check: Check, value: Any) -> Finding:
         for number, columns in enumerate(found, start=1):
             if (columns != expected) if ordered else not set(expected) <= set(columns):
                 where = "" if len(found) == 1 else f" in record {number}"
+                lacking = [c for c in expected if c not in columns]
                 return Finding(
                     position,
                     check,
                     False,
                     f"the columns{where} are {', '.join(columns)}; the step was written for "
-                    f"{', '.join(expected)}",
+                    f"{', '.join(expected)}"
+                    + (f"; {LACKS}{', '.join(lacking)}" if lacking else ""),
                 )
         said.append(f"the columns are {', '.join(expected)}" + (", in order" if ordered else ""))
     if check.pattern is not None:
