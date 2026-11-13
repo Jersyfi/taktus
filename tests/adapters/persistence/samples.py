@@ -178,6 +178,7 @@ def process_version(version: str = "1", tenant: str = "t") -> ProcessVersion:
     document["expect"] = {"schedule": "0 7 * * 1-5", "bound": "2h"}
     document["escalation"] = {"role": "support", "react_within": "30m", "path": "ledger"}
     document["heal_limit"] = 5
+    document["tolerances"] = {"overreach": 0.1}
     document["inputs"] = {
         "due": {"description": "when the answer is due", "example": "2026-11-02", "required": False}
     }
