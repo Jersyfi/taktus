@@ -1328,6 +1328,9 @@ BUSINESS: dict[str, BusinessConnector] = {
         "jira", FAKES / "task_rest_service.py", "TASKS_TOKEN", ("--project", "TSK"), pair=True
     ),
     "kubernetes": BusinessConnector("kubernetes", FAKES / "workload_cluster.py", "WORKLOADS_TOKEN"),
+    "langfuse": BusinessConnector(
+        "langfuse", FAKES / "evaluation_platform_service.py", "EVALUATION_PLATFORM_KEYS", pair=True
+    ),
     "linear": BusinessConnector(
         "linear", FAKES / "task_graph_service.py", "TASKS_TOKEN", ("--team", LINEAR_TEAM)
     ),

@@ -165,6 +165,10 @@ COPY --chown=connector:connector connectors/taktus_connectors/kubernetes /app/ta
 ENTRYPOINT ["python", "-m", "taktus_connectors.kubernetes"]
 CMD ["--host", "0.0.0.0", "--port", "9100"]
 
+FROM base AS langfuse
+COPY --chown=connector:connector connectors/taktus_connectors/langfuse /app/taktus_connectors/langfuse
+ENTRYPOINT ["python", "-m", "taktus_connectors.langfuse"]
+
 FROM base AS linear
 COPY --chown=connector:connector connectors/taktus_connectors/linear /app/taktus_connectors/linear
 ENTRYPOINT ["python", "-m", "taktus_connectors.linear"]

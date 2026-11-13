@@ -513,6 +513,15 @@ role it would tie the core to a model stack and the removal test would be lost.
   the process level's runs (`process.runs`), and what a run and each of its steps consumed
   (`run.consumed`, `step.consumed`, of the scopes `run` and `step` of the reporting
   component's `Shown`), each read from the level through the predicate the read API asks.
+- **A session reached from a chat, reading a project's sources** (ADR-0304) is
+  `composition/sessions.py`: `SourceKnowledge` answers the session's `ProjectKnowledge` with what
+  Taktus holds and what each source system of `TAKTUS_SESSION_SOURCES` shows the participant
+  through their own credential; `SessionsInChat` is a reader of the owner channel's chain
+  (`OwnerAnswers.sessions_with`), read in every chat.
+- **An evaluation platform** (ADR-0305) is `composition/evaluation_platform.py`'s
+  `EvaluationPlatform`, over the connector pool by the capabilities `evaluations.records`,
+  `prompts.versions` and `observability.costs`: `Evaluations` hands it every scored evaluation,
+  and the scheduler's `platform_tick` mirrors prompts and reconciles costs once an hour.
 - **A tenant's export and import** (ADR-0221): the port `TenantArchive` of
   `ports/persistence.py`, implemented over every table with a `tenant` column by
   `adapters/driven/postgres/archive.py`; `composition/tenant_export.py`'s `TenantExports`

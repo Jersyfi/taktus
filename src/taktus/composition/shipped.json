@@ -365,6 +365,21 @@
     },
     {
       "capabilities": [
+        "evaluations.records",
+        "observability.costs",
+        "prompts.versions"
+      ],
+      "image": "taktus-connector-langfuse",
+      "name": "langfuse",
+      "operations": [
+        "evaluations.records.read",
+        "evaluations.records.write",
+        "observability.costs.read",
+        "prompts.versions.mirror"
+      ]
+    },
+    {
+      "capabilities": [
         "tasks.items"
       ],
       "image": "taktus-connector-linear",
