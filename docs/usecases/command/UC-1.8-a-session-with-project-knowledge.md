@@ -4,10 +4,10 @@ title: A session with project knowledge
 component: command
 epic: E1
 serves: [P2, P6]
-state: building
+state: built
 version: 0.5.0
-tests: [tests/components/command/test_sessions.py::test_closing_reopening_and_changing_channel_continue_the_same_session, tests/components/command/test_sessions.py::test_every_statement_names_its_source_or_says_it_has_none, tests/components/command/test_sessions.py::test_a_session_reads_only_what_its_participant_may_see, tests/components/command/test_sessions.py::test_a_session_acts_on_nothing_and_settles_in_a_plan_draft_or_a_record]
-adrs: {ADR-0277: b52a68602dad}
+tests: [tests/components/command/test_sessions.py::test_closing_reopening_and_changing_channel_continue_the_same_session, tests/components/command/test_sessions.py::test_every_statement_names_its_source_or_says_it_has_none, tests/components/command/test_sessions.py::test_a_session_reads_only_what_its_participant_may_see, tests/components/command/test_sessions.py::test_a_session_acts_on_nothing_and_settles_in_a_plan_draft_or_a_record, tests/composition/test_session_sources.py::test_each_participant_reads_the_source_as_the_source_shows_them, tests/composition/test_session_sources.py::test_a_participant_without_an_own_credential_gets_nothing_from_the_source, tests/composition/test_session_sources.py::test_a_source_that_refuses_the_credential_gives_nothing, tests/composition/test_session_sources.py::test_the_chat_continues_the_participants_one_session, tests/composition/test_session_sources.py::test_the_chat_answers_nobody_unplaced_and_no_one_outside_the_project, tests/adapters/rest/test_structure_and_administration.py::test_a_project_is_created_referred_to_and_holds_one_session]
+adrs: {ADR-0277: b52a68602dad, ADR-0304: e3ea8eccf25f}
 supersedes: null
 ---
 
@@ -54,7 +54,20 @@ on every channel; every statement names its source or says it has none; it reads
 participant's own sight and acts on nothing, settling in a plan draft or a named record, each
 recorded `session.settled`. The web app presents it (`#/structure`, `/sessions`).
 
-Not met: a chat channel does not yet reach the session; and what the project's source systems
-hold — its repository, its documents — is read only with the participant's own credential for
-each, which no instance holds yet, so the session reads what Taktus keeps of the project. The
-state stays `building`.
+Built by ADR-0304: a chat reaches the session. A person the identity component placed says
+`session <project>`, `session <project>: <text>` or `session <project> close` in any chat
+Taktus reads, and is answered there; the session is the one the web app shows, and its history
+holds the turns of both channels. A participant outside the project, or an answer that would
+carry a secret value, is told the one sentence instead; a sender nobody placed is not answered.
+
+The project's source systems are read with the participant's own credential for each
+(`TAKTUS_SESSION_SOURCES`, with `TAKTUS_PERSONAL_CREDENTIALS`). Against the wiki connector and
+the fake of the wiki, two participants whose tokens the wiki shows different books each read
+what it shows them; one without a credential of their own gets nothing, and the source is not
+called; a source that refuses the credential gives nothing.
+
+Not yet: a repository is read only through a search in the shape of
+`knowledge.documents.search`, and the shipped repository connector offers none, so a
+repository reference is read as a reference. The chat is proven at the channel's reader, with a
+recording of its deliveries; on an instance, with the chat connector and its service, it waits
+for a person. The state is `built`.

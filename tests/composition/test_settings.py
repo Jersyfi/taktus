@@ -193,7 +193,7 @@ def test_the_effective_configuration_masks_every_secret() -> None:
     assert effective["TAKTUS_ROLES"] == "scheduler"
     assert "hunter2" not in json.dumps(effective)
     assert set(effective) == {name for name, _ in loaded.effective()}
-    assert len(effective) == 96, "every setting is in the startup log"
+    assert len(effective) == 97, "every setting is in the startup log"
 
 
 def test_the_administration_key_is_read_from_a_file_and_masked(tmp_path: Path) -> None:
@@ -559,6 +559,26 @@ def test_a_channel_is_a_rollout_channel_only_where_the_operator_names_its_agent(
     ):
         with pytest.raises(ConfigurationError, match="TAKTUS_ROLLOUT"):
             settings(TAKTUS_ROLLOUT=wrong)
+
+
+def test_a_session_reads_only_the_source_systems_the_operator_names() -> None:
+    """UC-1.8, ADR-0304: `TAKTUS_SESSION_SOURCES` names, per kind of a project's reference, the
+    search that reads it and the credential parameter it names; parameters only."""
+    assert settings().session_sources == ()
+    loaded = settings(TAKTUS_SESSION_SOURCES="document=knowledge.documents.search/KNOWLEDGE_TOKEN")
+    assert loaded.session_sources == (
+        ("document", "knowledge.documents.search", "KNOWLEDGE_TOKEN"),
+    )
+    for wrong in (
+        "document",
+        "document=knowledge.documents.search",
+        "Document=knowledge.documents.search/KNOWLEDGE_TOKEN",
+        "document=search/KNOWLEDGE_TOKEN",
+        "document=knowledge.documents.search/token",
+        "document=a.b.c/T,document=a.b.c/T",
+    ):
+        with pytest.raises(ConfigurationError, match="TAKTUS_SESSION_SOURCES"):
+            settings(TAKTUS_SESSION_SOURCES=wrong)
 
 
 async def test_a_connector_and_a_host_are_where_the_configuration_declares_them() -> None:

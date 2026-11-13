@@ -252,6 +252,7 @@ from taktus.composition.replies import ConnectorReplies
 from taktus.composition.reports import ReadingWiring, reading_tick, reading_wiring
 from taktus.composition.residency import PoolBindings
 from taktus.composition.run_answers import RunAnswers
+from taktus.composition.sessions import SessionsInChat, SourceKnowledge, SourceSystem
 from taktus.composition.settings import (
     CONNECT_KEY,
     ExecutionKind,
@@ -1242,6 +1243,24 @@ async def wire(
                     work=persistence,
                 ),
             )
+            # A session reads the project's source systems with the participant's own
+            # credential, and is continued from any chat (ADR-0304).
+            sources = tuple(SourceSystem(k, o, c) for k, o, c in settings.session_sources)
+            personal = ConfiguredPersonalCredentials(settings.personal_credentials)
+            workspace = workspace_of(
+                stored,
+                persistence,
+                ledger,
+                clock,
+                ids,
+                structure,
+                agents=agent_catalog,
+                describe=None if settings.describe_process is None else proposal_acts,
+                knowledge=lambda held: SourceKnowledge(held, sources, pools.connectors, personal),
+            )
+            owner.answers.sessions_with(
+                SessionsInChat(workspace.sessions, owner.deliveries, owner.secrets)
+            )
             wired = Wired(
                 connected=connected_host(settings.workers, configuration, relay),
                 settings=settings,
@@ -1336,16 +1355,7 @@ async def wire(
                 evaluations=evaluations,
                 spend=spend,
                 trials=trials,
-                workspace=workspace_of(
-                    stored,
-                    persistence,
-                    ledger,
-                    clock,
-                    ids,
-                    structure,
-                    agents=agent_catalog,
-                    describe=None if settings.describe_process is None else proposal_acts,
-                ),
+                workspace=workspace,
                 gallery=Gallery(
                     settings.gallery_directory,
                     proposals,

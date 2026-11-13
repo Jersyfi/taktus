@@ -344,6 +344,12 @@ class OwnerAnswers(ChannelAnswers):
         self._taking: Taker | None = None
         self._spending: Taker | None = None
         self._cataloguing: Taker | None = None
+        self._sessions: Taker | None = None
+
+    def sessions_with(self, sessions: Taker) -> None:
+        """A session with project knowledge is continued from any chat Taktus reads (ADR-0304
+        §1), once the composition root has the workspace."""
+        self._sessions = sessions
 
     def catalogue_with(self, cataloguing: Taker) -> None:
         """What a person may ask for, and a start of it, are read too (ADR-0159 §3), once the
@@ -385,6 +391,19 @@ class OwnerAnswers(ChannelAnswers):
         )
         if answer is not None:
             return Taken(outcome=answer.outcome, replied=answer.replied)
+        if self._sessions is not None:
+            continued = await self._sessions.take(
+                tenant,
+                intake.reply_to.channel,
+                intake.reply_to.address,
+                intake.reply_to.thread,
+                identity,
+                roles,
+                intake.intent.raw,
+                intake.event_id,
+            )
+            if continued is not None:
+                return Taken(outcome=continued.outcome, replied=continued.replied)
         if self._showing is not None:
             shown = await self._showing.execute(
                 ShowInChannel(
