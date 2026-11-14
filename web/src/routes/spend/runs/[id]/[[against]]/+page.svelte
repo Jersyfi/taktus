@@ -4,6 +4,7 @@
 	step's figures do not change.
 -->
 <script lang="ts">
+	import Skeleton from '../../../../../lib/Skeleton.svelte';
 	import { page } from '$app/state';
 	import { read, surface } from '../../../../../lib/api';
 	import ComparisonView from '../../../../../lib/ComparisonView.svelte';
@@ -44,12 +45,12 @@
 {:else if problem}
 	<p class="status">{problem}</p>
 {:else}
-	<p class="status">Reading where the run spent…</p>
+	<Skeleton label="Reading where the run spent…" />
 {/if}
 
 <style>
 	.status {
 		color: var(--text-secondary);
-		font-size: 0.9rem;
+		font-size: var(--fs-100);
 	}
 </style>

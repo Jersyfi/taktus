@@ -3,6 +3,7 @@
 	`GET /processes/{id}/spend?days=N`, read again when the reader chooses another window.
 -->
 <script lang="ts">
+	import Skeleton from '../../../../lib/Skeleton.svelte';
 	import { page } from '$app/state';
 	import { read, surface } from '../../../../lib/api';
 	import ProcessSpendView from '../../../../lib/ProcessSpendView.svelte';
@@ -35,12 +36,12 @@
 {:else if problem}
 	<p class="status">{problem}</p>
 {:else}
-	<p class="status">Reading where the process spent…</p>
+	<Skeleton label="Reading where the process spent…" />
 {/if}
 
 <style>
 	.status {
 		color: var(--text-secondary);
-		font-size: 0.9rem;
+		font-size: var(--fs-100);
 	}
 </style>

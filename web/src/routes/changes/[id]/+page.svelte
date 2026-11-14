@@ -5,6 +5,7 @@
 	alone, as its first version (ADR-0136 §4).
 -->
 <script lang="ts">
+	import Skeleton from '../../../lib/Skeleton.svelte';
 	import { page } from '$app/state';
 	import { read, send, surface } from '../../../lib/api';
 	import ChangeView from '../../../lib/ChangeView.svelte';
@@ -125,12 +126,6 @@
 			act('/rollback', { version }, (a) => `Version ${version} is current again, as version ${a['version']}.`)}
 	/>
 {:else}
-	<p class="status">Reading {processId}…</p>
+	<Skeleton label="Reading {processId}…" />
 {/if}
 
-<style>
-	.status {
-		color: var(--text-secondary);
-		font-size: 0.9rem;
-	}
-</style>

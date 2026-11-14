@@ -7,6 +7,9 @@
 	Written out below as its text equivalent.
 -->
 <script lang="ts">
+	import DisplaySwitch from './DisplaySwitch.svelte';
+	import TextEquivalent from './TextEquivalent.svelte';
+	import { display } from './display.svelte';
 	import type { AutonomyAnswer, RateWindow } from './governance';
 	import { processLink, runLink } from './links';
 
@@ -88,9 +91,8 @@
 		{answer.limits.shipped_default ? 'These are the shipped limits.' : 'The tenant set these limits.'}
 	</p>
 
-	<section class="text" aria-label="Levels and corrections as text">
-		<h2>As text</h2>
-		<ol>
+	<div class="as-text"><DisplaySwitch page="autonomy" /></div>
+	<TextEquivalent label="Levels and corrections as text" mode={display.of('autonomy')}>
 			<li>{answer.summary}</li>
 			{#each answer.processes as p (p.id)}
 				<li data-text="process:{p.id}">{p.name}: {p.text}</li>
@@ -98,36 +100,40 @@
 					<li data-text="unit:{p.id}:{u.action ?? 'process'}">{u.text}</li>
 				{/each}
 			{/each}
-		</ol>
-	</section>
+	</TextEquivalent>
 </section>
 
 <style>
+	.as-text {
+		display: flex;
+		justify-content: flex-end;
+		margin-top: var(--sp-400);
+	}
 	h1 {
 		max-width: 28ch;
 	}
 	.private {
 		display: inline-block;
-		font-size: 0.85rem;
+		font-size: var(--fs-100);
 		padding: 0.3rem 0.8rem;
-		border-radius: 999px;
+		border-radius: var(--r-full);
 		border: 1px solid var(--border-subtle);
 		color: var(--text-secondary);
 	}
 	.muted {
 		color: var(--text-secondary);
-		font-size: 0.88rem;
+		font-size: var(--fs-100);
 	}
 	.organs {
 		list-style: none;
 		padding: 0;
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(22rem, 1fr));
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr));
 		gap: 0.9rem;
 		margin-top: 1.5rem;
 	}
 	.organ {
-		border-radius: 28px;
+		border-radius: var(--r-2xl);
 		padding: 1.1rem 1.25rem 1rem;
 		background:
 			radial-gradient(80% 90% at 30% 20%, color-mix(in oklch, var(--family-reproducible) 4%, transparent), transparent 70%),
@@ -149,22 +155,22 @@
 	}
 	.level {
 		font-family: var(--font-mono);
-		font-size: 0.72rem;
+		font-size: var(--fs-075);
 		font-weight: 400;
 		border: 1px solid var(--border-subtle);
-		border-radius: 6px;
+		border-radius: var(--r-sm);
 		padding: 0 0.35rem;
 	}
 	.fell,
 	.raise {
-		font-size: 0.88rem;
+		font-size: var(--fs-100);
 		border-left: 3px solid var(--text-primary);
 		padding-left: 0.6rem;
 	}
 	table {
 		width: 100%;
 		border-collapse: collapse;
-		font-size: 0.82rem;
+		font-size: var(--fs-090);
 		margin-top: 0.5rem;
 	}
 	th,
@@ -183,7 +189,7 @@
 		position: relative;
 		display: block;
 		height: 6px;
-		border-radius: 3px;
+		border-radius: var(--r-xs);
 		background: var(--bg-canvas);
 		margin: 0.2rem 0;
 		overflow: visible;
@@ -191,7 +197,7 @@
 	.fill {
 		position: absolute;
 		inset: 0 auto 0 0;
-		border-radius: 3px;
+		border-radius: var(--r-xs);
 		background: var(--text-secondary);
 	}
 	.fill.over {

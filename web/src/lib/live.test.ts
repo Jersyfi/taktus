@@ -1,8 +1,13 @@
+// A level read at once and again when the frame's one stream says something concerns it
+// (ADR-0063, ADR-0323): the stream itself, how a level watches it, and what a failure shows.
+
 import { describe, expect, it } from 'vitest';
 import fixtures from './generated/fixtures.json';
-import { surface } from './api';
-import { followLevel, Rereader } from './live';
-import type { RunLevel } from './types';
+import { read, surface } from './api';
+import { ofProcess, ofRun, Rereader, watchLevel, type Hub } from './live';
+import { TenantStream } from './pulse';
+import type { StreamEvent } from './stream';
+import type { Change, Problem, RunLevel } from './types';
 
 const LEVEL = fixtures.run_level as unknown as RunLevel;
 
@@ -17,10 +22,43 @@ function stream(text: string): Response {
 	return new Response(new TextEncoder().encode(text), { status: 200 });
 }
 
+/** A stream the test drives by hand. */
+class FakeHub implements Hub {
+	private listeners = new Set<(event: StreamEvent) => void>();
+	subscribe(listener: (event: StreamEvent) => void): () => void {
+		this.listeners.add(listener);
+		return () => this.listeners.delete(listener);
+	}
+	emit(event: StreamEvent): void {
+		for (const l of this.listeners) l(event);
+	}
+	get listening(): number {
+		return this.listeners.size;
+	}
+}
+
+function change(run: string, extra: Partial<Change> = {}): StreamEvent {
+	return { kind: 'change', change: { position: `p-${run}-${Math.random()}`, run, kind: 'step.finished', recorded_at: 't', state: { step: 'succeeded' }, ...extra } };
+}
+
+const tick = () => new Promise((r) => setTimeout(r, 5));
+
 describe('the surface', () => {
 	it('is the directory above the app, whatever the prefix', () => {
 		expect(String(surface('https://h.test/a/b/app/#/runs/r1'))).toBe('https://h.test/a/b/');
 		expect(String(surface('https://h.test/app/'))).toBe('https://h.test/');
+	});
+
+	it('answers a request that never reached it as a failure, never by throwing (ADR-0322 §5)', async () => {
+		const gone = (async () => {
+			throw new TypeError('Failed to fetch');
+		}) as unknown as typeof fetch;
+		const answer = await read(new URL('https://h.test/'), 'levels/overview', gone);
+		expect(answer.ok).toBe(false);
+		if (!answer.ok) expect(answer.problem.status).toBe(0);
+		const garbled = (async () => new Response('<html>', { status: 200 })) as unknown as typeof fetch;
+		const second = await read(new URL('https://h.test/'), 'levels/overview', garbled);
+		expect(second.ok).toBe(false);
 	});
 });
 
@@ -41,97 +79,134 @@ describe('reading again', () => {
 	});
 });
 
-describe('a level followed live', () => {
-	it('is read on the snapshot and read again on a change, without a reload', async () => {
-		const later: RunLevel = { ...LEVEL, run: { ...LEVEL.run, state: 'finished' } };
-		const levels = [LEVEL, later];
+describe('a level watched on the frame’s stream', () => {
+	it('is read at once, without waiting for the stream (ADR-0323 §2)', async () => {
 		const seen: RunLevel[] = [];
-		const requested: string[] = [];
-		const fetcher = (async (url: URL) => {
-			requested.push(`${url.pathname}${url.search}`);
-			if (url.pathname.endsWith('/changes')) {
-				if (requested.filter((r) => r.startsWith('/x/changes')).length > 1) {
-					return new Response(null, { status: 401 });
-				}
-				return stream(
-					'event: snapshot\nid: h1\ndata: {"position":"h1","scope":{"kind":"run","id":"run_example"},"runs":[]}\n\n' +
-						'event: change\nid: h2\ndata: {"position":"h2","run":"run_example","kind":"run.finished","recorded_at":"t","state":{"run":"finished"}}\n\n'
-				);
-			}
-			return json(levels.shift() ?? later);
-		}) as unknown as typeof fetch;
-		let refused = false;
-		await followLevel<RunLevel>({
+		const hub = new FakeHub();
+		watchLevel<RunLevel>({
 			base: new URL('https://h.test/x/'),
 			path: 'levels/runs/run_example',
-			scope: { run: 'run_example' },
+			concerns: ofRun('run_example'),
+			hub,
 			signal: new AbortController().signal,
 			onLevel: (l) => seen.push(l),
 			onAbsent: () => {},
-			onRefused: () => (refused = true),
-			fetcher,
-			// The stream stays away a moment before it reconnects, and is then refused.
-			sleep: () => new Promise((r) => setTimeout(r, 20))
+			onRefused: () => {},
+			onFailed: () => {},
+			fetcher: (async () => json(LEVEL)) as unknown as typeof fetch
 		});
-		expect(requested[0]).toBe('/x/changes?run=run_example');
-		expect(seen.map((l) => l.run.state)).toContain('finished');
-		expect(seen.at(-1)!.run.state).toBe('finished');
-		expect(refused).toBe(true);
+		await tick();
+		expect(seen.length).toBe(1);
 	});
 
-	it('tells each change the stream delivered, and not its snapshot (ADR-0178 §3)', async () => {
-		let opened = 0;
-		const fetcher = (async (url: URL) => {
-			if (url.pathname.endsWith('/changes')) {
-				opened += 1;
-				if (opened > 1) return new Response(null, { status: 401 });
-				return stream(
-					'event: snapshot\nid: h1\ndata: {"position":"h1","scope":{"kind":"run","id":"run_example"},"runs":[]}\n\n' +
-						'event: change\nid: h2\ndata: {"position":"h2","run":"run_example","kind":"step.admitted","recorded_at":"t","state":{"run":"running"}}\n\n' +
-						'event: change\nid: h3\ndata: {"position":"h3","run":"run_example","kind":"run.finished","recorded_at":"t","state":{"run":"finished"}}\n\n'
-				);
-			}
-			return json(LEVEL);
-		}) as unknown as typeof fetch;
-		let changes = 0;
-		await followLevel<RunLevel>({
+	it('is read again on a change that concerns it and on a reconnect, and not on another run’s change', async () => {
+		let reads = 0;
+		const hub = new FakeHub();
+		const controller = new AbortController();
+		watchLevel<RunLevel>({
 			base: new URL('https://h.test/x/'),
 			path: 'levels/runs/run_example',
-			scope: { run: 'run_example' },
-			signal: new AbortController().signal,
+			concerns: ofRun('run_example'),
+			hub,
+			signal: controller.signal,
 			onLevel: () => {},
 			onAbsent: () => {},
 			onRefused: () => {},
-			onChange: () => (changes += 1),
-			fetcher,
-			sleep: () => new Promise((r) => setTimeout(r, 5))
+			onFailed: () => {},
+			fetcher: (async () => {
+				reads += 1;
+				return json(LEVEL);
+			}) as unknown as typeof fetch
 		});
-		expect(changes).toBe(2);
+		await tick();
+		hub.emit(change('another_run'));
+		await tick();
+		expect(reads).toBe(1);
+		hub.emit(change('run_example'));
+		await tick();
+		expect(reads).toBe(2);
+		hub.emit({ kind: 'snapshot', snapshot: { position: 'p9', scope: { kind: 'tenant' } } });
+		await tick();
+		expect(reads).toBe(3);
+		controller.abort();
+		expect(hub.listening).toBe(0);
 	});
 
-	it('tells a level the reader may not see as absent', async () => {
-		let absent = false;
-		const fetcher = (async (url: URL) =>
-			url.pathname.endsWith('/changes')
-				? stream('event: snapshot\nid: h1\ndata: {"position":"h1","scope":{"kind":"run","id":"r"}}\n\n')
-				: json({ status: 404, title: 'Not found', detail: "no run 'r' you may see" }, 404)) as unknown as typeof fetch;
-		const controller = new AbortController();
-		await followLevel<RunLevel>({
+	it('says a 5xx as a failure, never as a read that goes on (ADR-0322 §5)', async () => {
+		let problem: Problem | null = null;
+		let level: RunLevel | null = null;
+		watchLevel<RunLevel>({
 			base: new URL('https://h.test/'),
 			path: 'levels/runs/r',
-			scope: { run: 'r' },
-			signal: controller.signal,
-			onLevel: () => {},
-			onAbsent: () => {
-				absent = true;
-				controller.abort();
-			},
+			concerns: ofRun('r'),
+			hub: new FakeHub(),
+			signal: new AbortController().signal,
+			onLevel: (l) => (level = l),
+			onAbsent: () => {},
 			onRefused: () => {},
-			fetcher,
-			sleep: async () => {
-				await new Promise((r) => setTimeout(r, 1));
-			}
+			onFailed: (p) => (problem = p),
+			fetcher: (async () => json({ status: 503, title: 'Service Unavailable', detail: 'the database is away' }, 503)) as unknown as typeof fetch
 		});
+		await tick();
+		expect(level).toBeNull();
+		expect((problem as Problem | null)?.status).toBe(503);
+	});
+
+	it('tells a level the reader may not see as absent, and a reader without a sign-in as refused', async () => {
+		let absent = false;
+		let refused = false;
+		const base = new URL('https://h.test/');
+		const watch = (status: number) =>
+			watchLevel<RunLevel>({
+				base,
+				path: 'levels/runs/r',
+				concerns: ofRun('r'),
+				hub: new FakeHub(),
+				signal: new AbortController().signal,
+				onLevel: () => {},
+				onAbsent: () => (absent = true),
+				onRefused: () => (refused = true),
+				onFailed: () => {},
+				fetcher: (async () => json({ status, title: '', detail: '' }, status)) as unknown as typeof fetch
+			});
+		watch(404);
+		watch(401);
+		await tick();
 		expect(absent).toBe(true);
+		expect(refused).toBe(true);
+	});
+
+	it('takes a change without a process as one that may concern any process', () => {
+		const concerns = ofProcess('invoices');
+		const base: Change = { position: 'p', run: 'r', kind: 'run.started', recorded_at: 't', state: { run: 'running' } };
+		expect(concerns(base)).toBe(true);
+		expect(concerns({ ...base, process: 'invoices@2' })).toBe(true);
+		expect(concerns({ ...base, process: 'payroll@1' })).toBe(false);
+	});
+});
+
+describe('the frame’s stream of the tenant', () => {
+	it('asks for the snapshot’s position only, and counts and keeps each change, not its snapshot', async () => {
+		const requested: string[] = [];
+		let opened = 0;
+		const fetcher = (async (url: URL) => {
+			requested.push(`${url.pathname}${url.search}`);
+			opened += 1;
+			if (opened > 1) return new Response(null, { status: 401 });
+			return stream(
+				'event: snapshot\nid: h1\ndata: {"position":"h1","scope":{"kind":"tenant"}}\n\n' +
+					'event: change\nid: h2\ndata: {"position":"h2","run":"r1","kind":"step.admitted","recorded_at":"t","state":{"run":"running"}}\n\n' +
+					'event: change\nid: h3\ndata: {"position":"h3","run":"r1","kind":"run.finished","recorded_at":"t","state":{"run":"finished"}}\n\n'
+			);
+		}) as unknown as typeof fetch;
+		const pulse = new TenantStream();
+		const events: string[] = [];
+		pulse.subscribe((e) => events.push(e.kind));
+		await pulse.open(new URL('https://h.test/x/'), { fetcher, sleep: () => new Promise((r) => setTimeout(r, 5)) });
+		expect(requested[0]).toBe('/x/changes?snapshot=position');
+		expect(events).toEqual(['snapshot', 'change', 'change']);
+		expect(pulse.count).toBe(2);
+		expect(pulse.recent.map((c) => c.position)).toEqual(['h2', 'h3']);
+		expect(pulse.standing).toBe('refused');
 	});
 });

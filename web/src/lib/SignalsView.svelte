@@ -116,6 +116,6 @@
 	}
 	.daily ul {
 		padding-left: 1.1rem;
-		font-size: 0.9rem;
+		font-size: var(--fs-100);
 	}
 </style>

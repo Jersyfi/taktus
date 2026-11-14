@@ -76,7 +76,7 @@
 <style>
 	table {
 		border-collapse: collapse;
-		font-size: 0.85rem;
+		font-size: var(--fs-100);
 		width: 100%;
 		max-width: 52rem;
 		margin-bottom: 1rem;
@@ -94,7 +94,7 @@
 	td code {
 		display: block;
 		font-family: var(--font-mono);
-		font-size: 0.75rem;
+		font-size: var(--fs-075);
 		color: var(--text-secondary);
 	}
 	tbody th {

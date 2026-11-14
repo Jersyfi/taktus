@@ -3,6 +3,7 @@
 	reader, which opens the run (UC-1.13, ADR-0159).
 -->
 <script lang="ts">
+	import Skeleton from '../../lib/Skeleton.svelte';
 	import { read, surface } from '../../lib/api';
 	import CatalogueView from '../../lib/CatalogueView.svelte';
 	import { runLink } from '../../lib/links';
@@ -44,12 +45,12 @@
 {:else if catalogue}
 	<CatalogueView {catalogue} {busy} {message} onStart={(p, i) => void start(p, i)} />
 {:else}
-	<p class="status">{message ?? 'Reading what you may ask for…'}</p>
+	{#if message}<p class="status">{message}</p>{:else}<Skeleton label="Reading what you may ask for…" />{/if}
 {/if}
 
 <style>
 	.status {
 		color: var(--text-secondary);
-		font-size: 0.9rem;
+		font-size: var(--fs-100);
 	}
 </style>

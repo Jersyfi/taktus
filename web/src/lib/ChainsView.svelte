@@ -85,7 +85,7 @@
 <style>
 	.chain {
 		border: 1px solid var(--border-subtle);
-		border-radius: 0.5rem;
+		border-radius: var(--r-md);
 		padding: 1rem;
 		margin-block: 1rem;
 	}
@@ -102,7 +102,7 @@
 		margin: 0;
 	}
 	.handover {
-		font-size: 0.85rem;
+		font-size: var(--fs-100);
 		color: var(--text-secondary);
 		padding-left: 1rem;
 	}
@@ -112,7 +112,7 @@
 	}
 	.muted {
 		color: var(--text-secondary);
-		font-size: 0.9rem;
+		font-size: var(--fs-100);
 	}
 	form {
 		display: flex;

@@ -7,6 +7,7 @@
 	reads the records again.
 -->
 <script lang="ts">
+	import Skeleton from '../../lib/Skeleton.svelte';
 	import { read, send, surface, type Answer } from '../../lib/api';
 	import DiscoveriesView from '../../lib/DiscoveriesView.svelte';
 	import type { Discoveries, Interview, Interviewed, Mode, Origin, Stage } from '../../lib/discoveries';
@@ -93,12 +94,6 @@
 {:else if problem}
 	<Unavailable eyebrow="Discoveries" {problem} />
 {:else}
-	<p class="status">Reading the discovered processes…</p>
+	<Skeleton label="Reading the discovered processes…" />
 {/if}
 
-<style>
-	.status {
-		color: var(--text-secondary);
-		font-size: 0.9rem;
-	}
-</style>

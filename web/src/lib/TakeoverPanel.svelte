@@ -213,16 +213,16 @@
 	.mono,
 	pre {
 		font-family: var(--font-mono);
-		font-size: 0.82rem;
+		font-size: var(--fs-090);
 	}
 	.said {
 		background: var(--bg-surface);
-		border-radius: 12px;
+		border-radius: var(--r-lg);
 		padding: 0.6rem 0.9rem;
 	}
 	.card {
 		border: 1px solid var(--border-subtle);
-		border-radius: 14px;
+		border-radius: var(--r-lg);
 		padding: 0.9rem 1.1rem;
 		margin: 0.6rem 0;
 	}
@@ -243,7 +243,7 @@
 	}
 	.bar {
 		height: 4px;
-		border-radius: 2px;
+		border-radius: var(--r-xs);
 		background: var(--bg-surface);
 		overflow: hidden;
 	}
@@ -272,14 +272,14 @@
 	pre {
 		margin: 0;
 		background: var(--bg-surface);
-		border-radius: 10px;
+		border-radius: var(--r-md);
 		padding: 0.6rem 0.8rem;
 		overflow-x: auto;
 	}
 	table {
 		border-collapse: collapse;
 		width: 100%;
-		font-size: 0.88rem;
+		font-size: var(--fs-100);
 	}
 	th,
 	td {
@@ -305,10 +305,10 @@
 	textarea {
 		font: inherit;
 		font-family: var(--font-mono);
-		font-size: 0.85rem;
+		font-size: var(--fs-100);
 		padding: 0.5rem 0.7rem;
 		border: 1px solid var(--border-subtle);
-		border-radius: 10px;
+		border-radius: var(--r-md);
 		background: var(--bg-canvas);
 		color: var(--text-primary);
 		resize: vertical;
@@ -316,7 +316,7 @@
 	.reading,
 	.confirm {
 		background: var(--bg-surface);
-		border-radius: 12px;
+		border-radius: var(--r-lg);
 		padding: 0.75rem 0.9rem;
 		margin-top: 0.6rem;
 	}
@@ -328,7 +328,7 @@
 	}
 	.offers li {
 		border: 1px solid var(--border-subtle);
-		border-radius: 14px;
+		border-radius: var(--r-lg);
 		padding: 0.7rem 1rem;
 		display: flex;
 		flex-wrap: wrap;

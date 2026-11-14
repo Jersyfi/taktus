@@ -59,17 +59,11 @@ export function standing(report: ReportView): string {
 	return 'open, waiting for an answer';
 }
 
-/** The reports not yet answered, newest first: the start page's list. */
+/** The reports not yet answered, newest first: Today takes them among its waits. */
 export function openReports(reports: ReportView[]): ReportView[] {
 	return reports
 		.filter((r) => r.state !== 'filed')
 		.sort((a, b) => (a.raised_at < b.raised_at ? 1 : a.raised_at > b.raised_at ? -1 : a.id.localeCompare(b.id)));
-}
-
-/** The sentence over the start page's list. */
-export function openLine(count: number): string {
-	if (count === 0) return 'No report waits for an answer.';
-	return count === 1 ? '1 report waits for an answer.' : `${count} reports wait for an answer.`;
 }
 
 /** The label of the answer a reading or a filing names. */

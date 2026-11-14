@@ -4,6 +4,7 @@
 	The page shows what the surface sends back and decides nothing itself.
 -->
 <script lang="ts">
+	import Skeleton from '../../lib/Skeleton.svelte';
 	import Unavailable from '../../lib/Unavailable.svelte';
 	import { read, surface } from '../../lib/api';
 	import FindingsView from '../../lib/FindingsView.svelte';
@@ -70,12 +71,6 @@
 {:else if problem}
 	<Unavailable eyebrow="Findings" {problem} />
 {:else}
-	<p class="status">Reading the findings…</p>
+	<Skeleton label="Reading the findings…" />
 {/if}
 
-<style>
-	.status {
-		color: var(--text-secondary);
-		font-size: 0.9rem;
-	}
-</style>

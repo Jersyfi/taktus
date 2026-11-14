@@ -40,9 +40,9 @@
 <style>
 	.window {
 		font: inherit;
-		font-size: 0.85rem;
+		font-size: var(--fs-100);
 		padding: 0.1rem 0.6rem;
-		border-radius: 999px;
+		border-radius: var(--r-full);
 		border: 1px solid var(--border-subtle);
 		background: transparent;
 		color: var(--text-primary);

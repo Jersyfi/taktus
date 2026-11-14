@@ -124,7 +124,8 @@ reading confirmed before it takes effect, as the channel does (ADR-0063 §4, #28
 Every link a message carries to its report opens the report's page in the web app, for every kind
 of report (ADR-0120, #561). The page asks for the key when the tab holds none, and then shows the
 report as the message did. The report is answered there by the channel's rules, and filed only
-once the same person confirmed the reading. The start page lists the open reports newest first. A
+once the same person confirmed the reading. Today lists the open reports among what waits for the reader, the first five, and
+all of them on `#/waits`. A
 browser that opens an old link to the surface without a key is sent to the page.
 
 Not built: the owner's questions in the chat or the web app (UC-6.4, UC-1.5), and raising a need or a date from a step of a process. Against the real chat service nothing has run; that

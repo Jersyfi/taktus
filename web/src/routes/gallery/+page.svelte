@@ -4,6 +4,7 @@
 	where it is rehearsed and commissioned (UC-1.10). Sends as the signed-in reader (ADR-0119).
 -->
 <script lang="ts">
+	import Skeleton from '../../lib/Skeleton.svelte';
 	import { read, send, surface } from '../../lib/api';
 	import GalleryView from '../../lib/GalleryView.svelte';
 	import { changeLink } from '../../lib/links';
@@ -41,12 +42,12 @@
 {:else if blueprints}
 	<GalleryView {blueprints} {busy} {message} onChoose={(b, p, c) => void choose(b, p, c)} />
 {:else}
-	<p class="status">{message ?? 'Reading the gallery…'}</p>
+	{#if message}<p class="status">{message}</p>{:else}<Skeleton label="Reading the gallery…" />{/if}
 {/if}
 
 <style>
 	.status {
 		color: var(--text-secondary);
-		font-size: 0.9rem;
+		font-size: var(--fs-100);
 	}
 </style>

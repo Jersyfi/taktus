@@ -142,7 +142,7 @@
 		display: grid;
 		gap: 0.5rem;
 		border: 1px solid var(--border-subtle);
-		border-radius: 8px;
+		border-radius: var(--r-md);
 		padding: 0.5rem 0.75rem;
 		flex-basis: 100%;
 	}
@@ -157,7 +157,7 @@
 		font-family: var(--font-mono);
 		padding: 0.35rem 0.6rem;
 		border: 1px solid var(--border-subtle);
-		border-radius: 8px;
+		border-radius: var(--r-md);
 		background: var(--bg-canvas);
 		color: var(--text-primary);
 		min-width: min(20rem, 100%);
@@ -165,7 +165,7 @@
 	label {
 		display: grid;
 		gap: 0.25rem;
-		font-size: 0.85rem;
+		font-size: var(--fs-100);
 		color: var(--text-secondary);
 	}
 	input {
@@ -173,7 +173,7 @@
 		font-family: var(--font-mono);
 		padding: 0.35rem 0.6rem;
 		border: 1px solid var(--border-subtle);
-		border-radius: 8px;
+		border-radius: var(--r-md);
 		background: var(--bg-canvas);
 		color: var(--text-primary);
 	}

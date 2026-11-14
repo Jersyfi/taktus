@@ -4,6 +4,7 @@
 	tenant.administer; anyone else is told so.
 -->
 <script lang="ts">
+	import Skeleton from '../../lib/Skeleton.svelte';
 	import { read, send, surface } from '../../lib/api';
 	import HealthView from '../../lib/HealthView.svelte';
 	import type { Health } from '../../lib/operation';
@@ -48,12 +49,6 @@
 {:else if problem}
 	<Unavailable eyebrow="Health" {problem} />
 {:else}
-	<p class="status">Reading the instance's health…</p>
+	<Skeleton label="Reading the instance's health…" />
 {/if}
 
-<style>
-	.status {
-		color: var(--text-secondary);
-		font-size: 0.9rem;
-	}
-</style>

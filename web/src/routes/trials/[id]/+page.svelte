@@ -3,6 +3,7 @@
 	seconds while its runs have not settled, and once after.
 -->
 <script lang="ts">
+	import Skeleton from '../../../lib/Skeleton.svelte';
 	import { page } from '$app/state';
 	import { read, surface } from '../../../lib/api';
 	import SignInForm from '../../../lib/SignInForm.svelte';
@@ -45,12 +46,12 @@
 {:else if problem}
 	<p class="status">{problem}</p>
 {:else}
-	<p class="status">Reading the trial…</p>
+	<Skeleton label="Reading the trial…" />
 {/if}
 
 <style>
 	.status {
 		color: var(--text-secondary);
-		font-size: 0.9rem;
+		font-size: var(--fs-100);
 	}
 </style>

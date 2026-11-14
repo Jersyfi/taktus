@@ -1,27 +1,33 @@
 <!--
 	One read of the surface, drawn when it answers: the sign-in where the reader has none, the
-	surface's problem where it refuses, and a line while it reads. The pages of ADR-0147 are each
-	one such read; `path` changing reads again.
+	surface's refusal in its own words, a failure as a failure with a way to read again, and a
+	skeleton while it reads (ADR-0322 §5). The pages of ADR-0147 are each one such read; `path`
+	changing reads again.
 -->
 <script lang="ts" generics="T">
 	import type { Snippet } from 'svelte';
-	import { read, surface } from './api';
+	import { failed, read, surface } from './api';
+	import ErrorState from './ErrorState.svelte';
 	import SignInForm from './SignInForm.svelte';
+	import Skeleton from './Skeleton.svelte';
+	import type { Problem } from './types';
 
 	let { path, reading, children }: { path: string; reading: string; children: Snippet<[T]> } = $props();
 
 	let signedIn = $state(true);
 	let answer: T | null = $state(null);
-	let problem: string | null = $state(null);
+	let problem = $state<Problem | null>(null);
+	let attempt = $state(0);
 
 	$effect(() => {
 		if (!signedIn) return;
+		void attempt;
 		answer = null;
 		problem = null;
 		void read<T>(surface(location.href), path).then((found) => {
 			if (found.ok) answer = found.body;
 			else if (found.problem.status === 401) signedIn = false;
-			else problem = found.problem.detail || found.problem.title;
+			else problem = found.problem;
 		});
 	});
 </script>
@@ -30,15 +36,10 @@
 	<SignInForm onSignedIn={() => (signedIn = true)} />
 {:else if answer}
 	{@render children(answer)}
+{:else if problem && failed(problem)}
+	<ErrorState what="This page" {problem} onRetry={() => (attempt += 1)} />
 {:else if problem}
-	<p role="alert">{problem}</p>
+	<p role="alert">{problem.detail || problem.title}</p>
 {:else}
-	<p class="status">{reading}</p>
+	<Skeleton label={reading} />
 {/if}
-
-<style>
-	.status {
-		color: var(--text-secondary);
-		font-size: 0.9rem;
-	}
-</style>

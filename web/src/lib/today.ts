@@ -1,26 +1,39 @@
-// The words of Today (ADR-0178 §3). The number is the stream's own count of changes delivered
-// since the page opened; nothing else is counted here.
+// The words of Today (ADR-0322 §4). Every number is one the surface counted; a count it did not
+// make is left out, never said as zero.
 
-/** How many changes arrived since the page opened. */
-export function changesLine(changes: number): string {
-	if (changes === 0) return 'No change has arrived since you opened this page.';
-	return `${changes} ${changes === 1 ? 'change has' : 'changes have'} arrived since you opened this page.`;
+import type { Counts } from './todayData';
+
+/** What the first tile of the pulse card says under its figure. */
+export function waitsLine(count: number | null): string {
+	if (count === null) return 'waits could not be read';
+	if (count === 0) return 'nothing waits for you';
+	return count === 1 ? 'waits for you' : 'wait for you';
 }
 
-const NOUN: Record<string, string> = {
-	requests: 'decision request',
-	needs: 'need',
-	autonomy: 'raise of a level',
-	findings: 'finding in review'
-};
+export interface Tile {
+	key: keyof Counts;
+	value: number;
+	label: string;
+	href: string;
+	/** Something is wrong: drawn with a border of the alert family, said in its label. */
+	alert: boolean;
+}
 
-/** What the lines say when none of them waits: only the kinds the surface let the reader read,
- * so that the sentence claims nothing about a kind it did not answer. */
-export function nothingWaits(kinds: string[]): string | null {
-	const named = kinds.map((k) => NOUN[k]).filter((n): n is string => Boolean(n));
-	if (named.length === 0) return null;
-	const list = named.length === 1 ? named[0] : `${named.slice(0, -1).join(', ')} or ${named.at(-1)}`;
-	return `No ${list} waits for you.`;
+const TILES: { key: keyof Counts; one: string; many: string; href: string; alerting: boolean }[] = [
+	{ key: 'running', one: 'run working now', many: 'runs working now', href: '#/runs?state=running', alerting: false },
+	{ key: 'waiting_on_person', one: 'run waiting on a person', many: 'runs waiting on a person', href: '#/runs?state=waiting_human', alerting: false },
+	{ key: 'failed_24h', one: 'failure in 24 hours', many: 'failures in 24 hours', href: '#/runs?state=escalated', alerting: true },
+	{ key: 'incidents', one: 'incident open', many: 'incidents open', href: '#/incidents', alerting: true },
+	{ key: 'alerts', one: 'alert in effect', many: 'alerts in effect', href: '#/alerts', alerting: true }
+];
+
+/** The glance strip: one tile per count the surface made, in a fixed order. */
+export function glance(counts: Counts): Tile[] {
+	return TILES.flatMap((t) => {
+		const value = counts[t.key];
+		if (value === null) return [];
+		return [{ key: t.key, value, label: value === 1 ? t.one : t.many, href: t.href, alert: t.alerting && value > 0 }];
+	});
 }
 
 /** How an area of the overview is headed: by the name the surface hands, and only as a detail by

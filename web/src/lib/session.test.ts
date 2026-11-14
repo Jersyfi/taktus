@@ -96,9 +96,14 @@ describe('signing in', () => {
 		const lasting = Object.entries(SOURCES)
 			.filter(([, text]) => /localStorage|indexedDB|document\.cookie/.test(text))
 			.map(([path]) => path);
-		// The one lasting entry is the device's choice of theme, `light` or `dark`, under its own
-		// name: no key, no identity (ADR-0177 §3).
-		expect(lasting).toEqual(['./theme.svelte.ts']);
+		// The lasting entries are the device's choice of theme, `light` or `dark` (ADR-0177 §3),
+		// and of how pages show, `picture` or `text` (ADR-0322 §2), each under its own name: no
+		// key, no identity.
+		expect(lasting).toEqual(['./display.svelte.ts', './theme.svelte.ts']);
+		const shown = SOURCES['./display.svelte.ts']!;
+		expect(shown).toMatch(/const KEY = 'taktus\.display';/);
+		expect(shown.match(/\.setItem\([^)]*\)/g)).toEqual(['.setItem(KEY, display)']);
+		expect(shown).toMatch(/setDefault\(display: Display\)/);
 		const theme = SOURCES['./theme.svelte.ts']!;
 		expect(theme).toMatch(/const KEY = 'taktus\.theme';/);
 		expect(theme.match(/localStorage\.setItem\([^)]*\)/g)).toEqual(['localStorage.setItem(KEY, choice)']);
@@ -106,7 +111,7 @@ describe('signing in', () => {
 		// The one write to the tab's storage is the instance's administration key, which is no
 		// account key and is kept for the tab only (ADR-0104, ADR-0122).
 		const writers = Object.entries(SOURCES)
-			.filter(([path, text]) => path !== './theme.svelte.ts' && /\.setItem\(/.test(text))
+			.filter(([path, text]) => path !== './theme.svelte.ts' && path !== './display.svelte.ts' && /\.setItem\(/.test(text))
 			.map(([path]) => path);
 		expect(writers).toEqual(['./governance.ts']);
 		expect(SOURCES['./governance.ts']).toMatch(/setItem\(ADMINISTRATION,/);

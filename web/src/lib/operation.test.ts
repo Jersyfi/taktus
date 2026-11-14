@@ -26,7 +26,6 @@ import {
 	type OperationSummary,
 	type SignalRecord
 } from './operation';
-import OperationLines from './OperationLines.svelte';
 import SignalsView from './SignalsView.svelte';
 
 const ANSWERS = fixtures.operation;
@@ -70,8 +69,6 @@ describe('the start page', () => {
 			['backup', backupLink],
 			['signals', signalsLink]
 		]);
-		const html = render(OperationLines, { props: { summary: SUMMARY } }).body;
-		for (const l of lines) expect(hrefs(html)).toContain(l.href);
 	});
 
 	it('says how many are open or red, as the surface counted them', () => {
@@ -82,13 +79,9 @@ describe('the start page', () => {
 		expect(text.signals).toBe('1 red, 1 yellow, 1 not measured, of 3. Newest daily report: signals-2026-10-22.');
 	});
 
-	it('opens with its own sentence: what needs a look', () => {
-		const html = render(OperationLines, { props: { summary: SUMMARY } }).body;
-		const sentence = operationSentence(SUMMARY);
-		expect(sentence).toBe('Incidents, Alerts, Backup, Signals need a look.');
-		const first = /<p class="sentence[^"]*" data-text="operation">([^<]*)<\/p>/.exec(html)?.[1];
-		expect(first).toBe(sentence);
-		expect(html.indexOf(sentence)).toBeLessThan(html.indexOf('<ul'));
+	it('says in one sentence what needs a look, for the pulse of Today (ADR-0322 §4)', () => {
+		expect(operationSentence(SUMMARY)).toBe('Incidents, Alerts, Backup, Signals need a look.');
+		expect(operationSentence(WITHHELD)).not.toContain('Alerts');
 	});
 
 	it('gives no figure of what the reader may not read', () => {
@@ -206,7 +199,6 @@ describe('the signals', () => {
 describe('every page', () => {
 	it('names no person', () => {
 		const pages = [
-			render(OperationLines, { props: { summary: SUMMARY } }).body,
 			render(IncidentsView, { props: { incidents: INCIDENTS } }).body,
 			render(AlertsView, { props: { alerts: ALERTS } }).body,
 			render(BackupView, { props: { backup: BACKUP } }).body,

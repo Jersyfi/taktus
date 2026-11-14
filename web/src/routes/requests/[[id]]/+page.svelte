@@ -141,7 +141,7 @@
 		display: grid;
 		gap: 0.1rem;
 		padding: 0.6rem 0.75rem;
-		border-radius: 12px;
+		border-radius: var(--r-lg);
 		text-decoration: none;
 	}
 	nav a:hover,
@@ -150,12 +150,12 @@
 	}
 	.id {
 		font-family: var(--font-mono);
-		font-size: 0.75rem;
+		font-size: var(--fs-075);
 		color: var(--text-subtle);
 	}
 	.muted {
 		color: var(--text-secondary);
-		font-size: 0.85rem;
+		font-size: var(--fs-100);
 	}
 	@media (max-width: 760px) {
 		.requests {

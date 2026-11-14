@@ -73,7 +73,7 @@
 		max-width: 52rem;
 	}
 	figcaption {
-		font-size: 0.8rem;
+		font-size: var(--fs-090);
 		font-weight: 500;
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
@@ -87,7 +87,7 @@
 		gap: 0.4rem 1.1rem;
 		padding: 0;
 		margin: 0 0 0.8rem;
-		font-size: 0.85rem;
+		font-size: var(--fs-100);
 		color: var(--text-secondary);
 	}
 	.legend li {
@@ -98,7 +98,7 @@
 	.swatch {
 		width: 0.75rem;
 		height: 0.75rem;
-		border-radius: 3px;
+		border-radius: var(--r-xs);
 	}
 	.rows {
 		display: grid;
@@ -112,7 +112,7 @@
 	}
 	.step {
 		font-family: var(--font-mono);
-		font-size: 0.8rem;
+		font-size: var(--fs-090);
 		overflow-wrap: anywhere;
 	}
 	.bars {
@@ -131,7 +131,7 @@
 		display: flex;
 		gap: 2px;
 		height: 0.9rem;
-		border-radius: 0 4px 4px 0;
+		border-radius: 0 var(--r-xs) var(--r-xs) 0;
 		overflow: hidden;
 		flex: none;
 	}
@@ -167,7 +167,7 @@
 		background: var(--chart-kind-output);
 	}
 	.value {
-		font-size: 0.8rem;
+		font-size: var(--fs-090);
 		color: var(--text-secondary);
 		white-space: nowrap;
 	}

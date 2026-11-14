@@ -3,6 +3,7 @@
 	the owner named read them; anyone else is told so.
 -->
 <script lang="ts">
+	import Skeleton from '../../lib/Skeleton.svelte';
 	import Unavailable from '../../lib/Unavailable.svelte';
 	import { read, surface } from '../../lib/api';
 	import AlertsView from '../../lib/AlertsView.svelte';
@@ -31,12 +32,6 @@
 {:else if problem}
 	<Unavailable eyebrow="Alerts" {problem} />
 {:else}
-	<p class="status">Reading the alerts…</p>
+	<Skeleton label="Reading the alerts…" />
 {/if}
 
-<style>
-	.status {
-		color: var(--text-secondary);
-		font-size: 0.9rem;
-	}
-</style>

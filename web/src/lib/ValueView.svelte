@@ -7,6 +7,9 @@
 	computes a figure, and no figure names a person.
 -->
 <script lang="ts">
+	import DisplaySwitch from './DisplaySwitch.svelte';
+	import TextEquivalent from './TextEquivalent.svelte';
+	import { display } from './display.svelte';
 	import FigureList from './FigureList.svelte';
 	import {
 		backlogLine,
@@ -119,20 +122,23 @@
 		{/if}
 	</section>
 
-	<section class="text" aria-label="This page as text">
-		<h2>As text</h2>
-		<ol>
+	<div class="as-text"><DisplaySwitch page="value" /></div>
+	<TextEquivalent label="This page as text" mode={display.of('value')}>
 			<li>{sentence}</li>
 			{#each proposals?.proposals ?? [] as p, i (i)}<li>{proposalKind(p.kind)}: {p.text}</li>{/each}
 			{#each index?.figures ?? [] as f (`${f.id}:${f.scope}:${f.subject}`)}<li>{figureLine(f)}</li>{/each}
 			{#each index?.graph ?? [] as e (`${e.kind}:${e.process}:${e.on}`)}<li>{edgeLine(e)}</li>{/each}
 			{#each transformation?.figures ?? [] as f (`${f.id}:${f.scope}:${f.subject}`)}<li>{figureLine(f)}</li>{/each}
 			{#each transformation?.backlog ?? [] as b (`${b.kind}:${b.id}`)}<li>Expectation: {backlogLine(b)}</li>{/each}
-		</ol>
-	</section>
+	</TextEquivalent>
 </section>
 
 <style>
+	.as-text {
+		display: flex;
+		justify-content: flex-end;
+		margin-top: var(--sp-400);
+	}
 	ul {
 		list-style: none;
 		padding: 0;

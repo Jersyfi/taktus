@@ -3,6 +3,7 @@
 	answers a hint with `POST /coach/hints/{hint}/dismiss` or `/accept` (ADR-0279).
 -->
 <script lang="ts">
+	import Skeleton from '../../lib/Skeleton.svelte';
 	import { read, send, surface, write, type Answer } from '../../lib/api';
 	import CoachView from '../../lib/CoachView.svelte';
 	import SignInForm from '../../lib/SignInForm.svelte';
@@ -43,12 +44,12 @@
 		onAccept={(id, version) => void took(send<CoachState>(base(), `${hint(id)}/accept`, { process_version: version }))}
 	/>
 {:else}
-	<p class="status">{message ?? 'Reading your coach…'}</p>
+	{#if message}<p class="status">{message}</p>{:else}<Skeleton label="Reading your coach…" />{/if}
 {/if}
 
 <style>
 	.status {
 		color: var(--text-secondary);
-		font-size: 0.9rem;
+		font-size: var(--fs-100);
 	}
 </style>

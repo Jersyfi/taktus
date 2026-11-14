@@ -7,6 +7,8 @@
 	streaks, ranks or comparisons (principle 14). Nothing here computes a figure.
 -->
 <script lang="ts">
+	import TextEquivalent from './TextEquivalent.svelte';
+	import { display } from './display.svelte';
 	import { surfaceHref } from './figures';
 	import { goalLine, LINES, regained, reliefLine, settingsOf, type Line, type OwnRelief, type ReliefSettings } from './relief';
 
@@ -104,14 +106,11 @@
 		<button type="submit" disabled={busy}>Save</button>
 	</form>
 
-	<section class="text" aria-label="What Taktus took off you, as text">
-		<h3>As text</h3>
-		<ol>
+		<TextEquivalent label="What Taktus took off you, as text" mode={display.of('yours')}>
 			<li>{relief.sentence}</li>
 			{#each relief.processes as p (p.process)}<li>{reliefLine(p)}</li>{/each}
 			{#each relief.goals as g (g.title)}<li>{goalLine(g)}</li>{/each}
-		</ol>
-	</section>
+	</TextEquivalent>
 </section>
 
 <style>
@@ -119,7 +118,7 @@
 		display: inline-block;
 		font-size: var(--fs-075);
 		padding: var(--sp-050) var(--sp-150);
-		border-radius: 999px;
+		border-radius: var(--r-full);
 		border: var(--bw-hairline) solid var(--border-subtle);
 		color: var(--text-secondary);
 	}

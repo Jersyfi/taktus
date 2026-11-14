@@ -147,7 +147,7 @@
 		gap: 0.6rem;
 		align-items: baseline;
 		border: 1px solid var(--border-subtle);
-		border-radius: 14px;
+		border-radius: var(--r-lg);
 		padding: 0.8rem 1rem;
 	}
 	.offered li.recommended {
@@ -160,9 +160,9 @@
 	}
 	.tag {
 		font-family: var(--font-mono);
-		font-size: 0.7rem;
+		font-size: var(--fs-050);
 		border: 1px solid var(--text-primary);
-		border-radius: 5px;
+		border-radius: var(--r-xs);
 		padding: 0 0.35rem;
 		white-space: nowrap;
 	}
@@ -184,13 +184,13 @@
 		font: inherit;
 		padding: 0.45rem 0.7rem;
 		border: 1px solid var(--border-subtle);
-		border-radius: 10px;
+		border-radius: var(--r-md);
 		background: var(--bg-canvas);
 		color: var(--text-primary);
 	}
 	.reading {
 		background: var(--bg-surface);
-		border-radius: 14px;
+		border-radius: var(--r-lg);
 		border-top: none;
 		padding: 1rem 1.1rem;
 	}

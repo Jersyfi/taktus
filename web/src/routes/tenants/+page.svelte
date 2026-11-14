@@ -4,6 +4,7 @@
 	the tab's session only, and sent in `Authorization: Bearer` and nowhere else.
 -->
 <script lang="ts">
+	import Skeleton from '../../lib/Skeleton.svelte';
 	import { readAs, surface } from '../../lib/api';
 	import {
 		currentAdministrationKey,
@@ -107,14 +108,13 @@
 {:else if refused}
 	<p role="alert">{refused}</p>
 {:else}
-	<p class="status">Reading the tenants…</p>
+	<Skeleton label="Reading the tenants…" />
 {/if}
 
 <style>
-	.status,
 	.hint {
 		color: var(--text-secondary);
-		font-size: 0.9rem;
+		font-size: var(--fs-100);
 	}
 	.key {
 		display: flex;

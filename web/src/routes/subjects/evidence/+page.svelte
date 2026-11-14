@@ -63,7 +63,7 @@
 	.status,
 	.muted {
 		color: var(--text-secondary);
-		font-size: 0.9rem;
+		font-size: var(--fs-100);
 	}
 	.notice {
 		max-width: 46rem;
@@ -72,7 +72,7 @@
 	}
 	table {
 		border-collapse: collapse;
-		font-size: 0.88rem;
+		font-size: var(--fs-100);
 		display: block;
 		overflow-x: auto;
 	}
