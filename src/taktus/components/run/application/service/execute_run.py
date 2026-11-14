@@ -6002,8 +6002,16 @@ class RunEngine:
             (items, excluding), read = await self._resolved(run, [work.items, work.excluding])
             return rules.filter_items(work, items, excluding), Trace(inputs=read), None, None
         if isinstance(work, MatchRule):
-            (left, right), read = await self._resolved(run, [work.left.items, work.right.items])
-            return rules.match(work, left, right), Trace(inputs=read), None, None
+            lefts = [part.reading for part in work.left.more]
+            rights = [part.reading for part in work.right.more]
+            resolved, read = await self._resolved(
+                run, [work.left.items, work.right.items, *lefts, *rights]
+            )
+            left, right = resolved[0], resolved[1]
+            left_more = resolved[2 : 2 + len(lefts)]
+            right_more = resolved[2 + len(lefts) :]
+            matched = rules.match(work, left, right, left_more, right_more)
+            return matched, Trace(inputs=read), None, None
         if isinstance(work, CommitTitleRule):
             (title, number, labels, files, proposal), read = await self._resolved(
                 run, [work.title, work.number, work.labels, work.files, work.proposal]
