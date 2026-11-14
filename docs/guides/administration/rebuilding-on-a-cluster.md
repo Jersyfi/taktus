@@ -26,14 +26,25 @@ No backup holds these, so they are made again:
   a step that waited at a checkpoint there starts its work again;
 - the images in your registry, where they were deleted too.
 
-**Not described.** The restore of `deploy/k8s/README.md` §11 asks, in its step 4, for an empty
-database. A first install migrates the database it creates right after creating it, so the
-database is not empty afterwards. The repository does not say how to restore into a database the
-install has already migrated.
+**Restoring into the new install.** The restore of `deploy/k8s/README.md` §11 asks, in its
+step 4, for an empty database. A first install migrates the database it creates right after
+creating it, so it holds the schema and no data. Stop everything that writes (§11 step 1, the
+database itself stays up), then empty the schema as the database's superuser, and go on with
+§11 from step 4:
+
+```bash
+psql --dbname "$URL" -v ON_ERROR_STOP=1 -c "DROP SCHEMA public CASCADE" -c "CREATE SCHEMA public"
+```
+
+`tests/deploy/test_backup_restore.py` runs exactly this against a migrated database, restores a
+backup with the commands of §11 and finds every tenant's chain at the head it had.
 
 ### What the cluster and your workstation need
 
-- **Kubernetes.** The repository states no minimum version, and the chart declares none.
+- **Kubernetes 1.27 or newer.** The chart declares it (`kubeVersion` in `Chart.yaml`), and
+  helm refuses an older cluster: a CronJob's `timeZone`, which the backup and the drill set, is
+  stable from 1.27. The other APIs it uses — `batch/v1` CronJob, `policy/v1`
+  PodDisruptionBudget, the Pod Security labels — are older.
 - **Storage.** A default storage class, or one named per volume: `database.storageClass`,
   `state.storageClass`, `execution.stateStorageClass`. Choose `database.size` once: on a
   storage class that does not allow expansion, the database's volume cannot be enlarged later
@@ -47,9 +58,10 @@ install has already migrated.
 - **A registry** the cluster pulls from, holding the images below.
 - **Two identities.** One may create namespaces; it is used once, for the namespaces. The
   other, the **deployment identity**, installs the chart. Its rights are exactly those of
-  `deploy/k8s/README.md` §1, in the two namespaces and nowhere else. The repository describes
-  those rights and ships no manifest that creates the identity. Its kubeconfig is the
-  parameter *Deployment kubeconfig* of `CREDENTIALS.md`.
+  `deploy/k8s/README.md` §1, in the two namespaces and nowhere else. The identity that may
+  create namespaces creates it from `deploy/k8s/deployment-identity.yaml`, after the namespaces
+  (see *The namespaces*). Its kubeconfig is the parameter *Deployment kubeconfig* of
+  `CREDENTIALS.md`.
 - **On your workstation:** `kubectl`, `git`, `make`, `docker`, and `helm` at the version the
   repository pins (`make helm` places it under `.tools/bin/`; `make start-cluster` takes `helm`
   from the path).
@@ -94,6 +106,20 @@ for ns in <namespace> <execution-namespace>; do
 done
 ```
 
+Then the deployment identity, in both namespaces at once — a ServiceAccount, a Role and a
+RoleBinding in each, and the account's token, nothing of the cluster as a whole:
+
+```bash
+export CONTROL_NAMESPACE=<namespace> EXECUTION_NAMESPACE=<execution-namespace>
+envsubst < deploy/k8s/deployment-identity.yaml | kubectl apply -f -
+kubectl -n <namespace> get secret taktus-deployer-token -o jsonpath='{.data.token}' | base64 -d
+```
+
+The last line prints the token for the kubeconfig you hand the installing person; put it straight
+into their kubeconfig file, never into a file of a repository. `tests/governance/test_deployment_identity.py`
+holds the manifest to every kind the chart renders, and to the rights Taktus's own Role needs,
+which the cluster lets only an account that holds them grant.
+
 The labels are set outside the chart because the deployment identity may not change a
 namespace (DEC-0060). Where the identity that installs may create namespaces,
 `namespaces.create: true` renders both, with these labels. The network policies select a
@@ -121,9 +147,11 @@ never enters the values file.
 | Object store credential | `objectStore.secret`, `.accessKeyIdKey`, `.secretKeyKey` | `objectStore.kind: s3` |
 | Telemetry endpoint headers | `telemetry.otlp.headersSecret`, `.headersKey` | a collector asks for them |
 
-Two Secrets the chart names are not parameters of `CREDENTIALS.md`: the registry's pull Secret,
-`image.pullSecret`, and the certificate, `ingress.tls.secretName`. The chart mounts no
-administration key, so tenants are administered with `taktusctl` alone on a cluster.
+| Image pull credential | `image.pullSecret`, a Secret of type `kubernetes.io/dockerconfigjson` | the registry is private |
+| Ingress certificate | `ingress.tls.secretName`, a Secret of type `kubernetes.io/tls` | a certificate of your own, in place of `ingress.tls.issuer` |
+
+The chart mounts no administration key, so tenants are administered with `taktusctl` alone on a
+cluster.
 
 ### The values
 

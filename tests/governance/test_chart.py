@@ -1485,3 +1485,12 @@ def test_without_the_wiki_connector_the_guides_go_to_the_directory() -> None:
     [config] = of_kind(documents, "ConfigMap")
     assert "knowledge.pages" not in config["data"].get("TAKTUS_CONNECTORS", "")
     assert config["data"]["TAKTUS_KNOWLEDGE_DIRECTORY"] == "/var/lib/taktus/guides"
+
+
+def test_the_chart_states_the_oldest_kubernetes_it_runs_on() -> None:
+    """A CronJob's `timeZone` is stable from Kubernetes 1.27: the chart says so, and helm
+    refuses an older cluster before anything is installed."""
+    base = ["template", "taktus", str(CHART), "--namespace", RELEASE_NAMESPACE, "-f", str(EXAMPLE)]
+    assert run_helm(*base, "--kube-version", "1.27.0").returncode == 0
+    refused = run_helm(*base, "--kube-version", "1.26.9")
+    assert refused.returncode != 0 and "kubeVersion" in refused.stderr

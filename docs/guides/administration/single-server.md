@@ -129,12 +129,24 @@ named `taktus`. Without `TAKTUS_EXECUTION_NETWORK` the gateway publishes its por
   socket usually belongs to root and one group of the server;
 - every credential file a `_FILE` setting names, mounted where it names it.
 
-**Not built.** The repository ships no compose file that adds these three. `make up` lays only
-the connectors' file over `compose.yml`, so a further file of your own is laid over it by
-`docker compose -f deploy/docker/compose.yml -f <your file> up --detach --wait`. A later
-`make up` starts Taktus without your file, and so without the socket. No test of the repository
-runs Taktus inside a container with the socket mounted: `tests/integration/test_launched_container.py`
-runs Taktus on the machine itself and starts its jobs through the socket.
+`deploy/docker/compose.container-execution.yml` adds the first two and sets
+`TAKTUS_EXECUTION=container`, the socket's path and the network. Set `TAKTUS_ENGINE_SOCKET_GID`
+to the group that owns the socket (`stat -c %g /var/run/docker.sock`) in the shell or in
+`deploy/docker/.env`, the image in `taktus.env`, and start with:
+
+```bash
+make up EXECUTION=container
+```
+
+Credential files stay yours to mount, in a file of your own laid over these two.
+`tests/deploy/test_compose_container_execution.py` holds the file to the settings Taktus reads
+and has Compose accept it over `compose.yml`. `make start` does not lay it over; run `make up
+EXECUTION=container` after it.
+
+**Not proven.** No test of the repository runs Taktus inside a container with the socket
+mounted and a job through it: `tests/integration/test_launched_container.py` runs Taktus on the
+machine itself and starts its jobs through the socket. No test runs the browser worker as a job
+behind the egress gateway.
 
 **What one job gets** (`docs/architecture/contracts.md` §2.4, ADR-0115):
 

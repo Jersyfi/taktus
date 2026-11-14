@@ -45,7 +45,8 @@ administers the cluster nor reaches into it (ADR-0025 §1, DEC-0023).
   read pods, their logs and events. For the profile `ha` it manages disruption budgets
   (`policy/poddisruptionbudgets`) in the control plane's namespace too (ADR-0165); the other
   profiles render none. It may not create a namespace or any object of the cluster
-  as a whole (NEED-0007). It belongs to the person running `helm`. It is **never** given to
+  as a whole (NEED-0007). `deploy/k8s/deployment-identity.yaml` creates it, applied once by
+  whoever may create the namespaces. It belongs to the person running `helm`. It is **never** given to
   Taktus. The chart renders no kind outside that list, and a test holds it to that.
 - **Taktus's own service account** runs the control plane. In the execution namespace it may:
 
@@ -75,7 +76,8 @@ runs on. A service account that could change its own deployment would be adminis
 
 ## 2. The chart
 
-One chart, `deploy/k8s/chart/`. Its interface is `chart/values.yaml`: every key with its default
+One chart, `deploy/k8s/chart/`, for Kubernetes 1.27 or newer: it declares `kubeVersion`, because
+a CronJob's `timeZone` is stable from 1.27. Its interface is `chart/values.yaml`: every key with its default
 and a comment that says what it is for. The keys are the repository's; their *values* are the
 operator's. The parts that carry a decision:
 
