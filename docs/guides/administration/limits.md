@@ -8,11 +8,19 @@ The **budget** is what all runs of the tenant may cost in one month. Once the mo
 it, every run waits before its next step. The role you name is told once.
 
 ```bash
-taktusctl budget set --amount EUR=100 --role finance-lead --tenant <tenant>
+taktusctl budget set --amount EUR=<amount> --role finance-lead --tenant <tenant>
 taktusctl budget show --tenant <tenant>
 ```
 
-A raised budget, or the next month, lets the waiting runs go on.
+A raised budget, or the next month, lets the waiting runs go on. What is left of the month is
+also the ceiling of a worker step that is handed over: a worker that reports its money as it
+goes halts there during the step and keeps its work (ADR-0335).
+
+Money a worker or a provider reports in another currency than the budget's counts against it
+only at an **exchange-rate table** the operator loads: a JSON file named by
+`TAKTUS_EXCHANGE_RATES`, with a `version`, the moment `valid_from`, the `source` of the rates and
+`rates` from each currency into others, such as `{"usd": {"eur": 0.9}}`. Without it, such money
+counts against nothing.
 
 ## Limits per unit
 
@@ -51,6 +59,46 @@ is chosen.
 ```bash
 taktusctl residency set --location eu --class personal=own --process payroll=own --tenant <tenant>
 taktusctl residency show --tenant <tenant>
+```
+
+The rule may also demand the provider's terms of a model the data is sent to: a
+data-processing agreement in place, and no training on the data. The operator declares what each
+model's provider agreed, with `TAKTUS_MODEL_TERMS` or `TAKTUS_MODELS_<MEMBER>_TERMS`; a model that
+does not declare what the rule demands is never sent that data (ADR-0334).
+
+```bash
+taktusctl residency set --terms processing-agreement,no-training --tenant <tenant>
+taktusctl residency set --class-terms customer=processing-agreement+no-training --tenant <tenant>
+```
+
+## Outward messages
+
+The **message rules** hold every message a process sends: the label added to what a model wrote,
+the delay after approval, the quiet hours, the **recipient limit** — the most recipients one
+outward step addresses without a person, ten unless the tenant sets another — and the **daily
+limit**: the most messages a process sends within 24 hours without a person, none unless set.
+Beyond either, the step waits for a person's decision.
+
+```bash
+taktusctl messages set --recipient-limit 3 --tenant <tenant>
+taktusctl messages set --daily-limit 20 --tenant <tenant>                    # every process
+taktusctl messages set --daily-limit 5 --process <process> --tenant <tenant> # one process
+taktusctl messages show --tenant <tenant>
+```
+
+A step that acts on behalf of a person reads with that person's credential and never sends or
+writes: nothing leaves in a person's name (ADR-0332).
+
+## Falling back by count
+
+A process falls one level when its correction rate rises above the tenant's limit. A count may
+lower it too: so many corrections within so many days, for the tenant or for one process. It
+counts decisions, never who made them (ADR-0333).
+
+```bash
+taktusctl corrections configure --lower-count 3 --lower-count-days 14 --tenant <tenant>
+taktusctl corrections configure --lower-count 3 --process <process> --tenant <tenant>
+taktusctl corrections list --tenant <tenant>   # each window's rate and count of corrections
 ```
 
 ## Stopping work

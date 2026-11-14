@@ -9,9 +9,9 @@ window rises above the tenant's limit (ADR-0110). A *correction* is a proposal a
 or rejected. The rate is the share of a unit's decisions that were corrections. A rate needs a
 minimum of decisions before it lowers anything, four by default.
 
-A process that is decided rarely never reaches that minimum. Two corrections in a week then
-lower nothing, however telling they are. A business can state its rule for falling back as a
-count: "two corrections in a week". ADR-0215 §4 already lowers a *class of request* by such a
+A process that is decided rarely never reaches that minimum. A few corrections in a few days
+then lower nothing, however telling they are. An organisation may state its rule for falling
+back as a count of corrections within a span of days. ADR-0215 §4 already lowers a *class of request* by such a
 count, from the numbers its process states. A tenant could not set a count for a process or
 for itself.
 

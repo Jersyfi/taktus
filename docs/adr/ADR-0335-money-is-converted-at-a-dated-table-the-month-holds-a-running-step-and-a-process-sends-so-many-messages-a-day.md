@@ -4,7 +4,7 @@
 
 ## Context
 
-Three gaps in how a budget holds were found against a business's conditions for going live.
+Three gaps in how a budget holds were found in a review of what a budget promises.
 
 1. **Currencies are matched by key, never converted.** A run's budget, a unit's quota and a
    tenant's monthly budget name amounts by currency. Money a step reports in another currency

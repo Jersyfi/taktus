@@ -21,8 +21,7 @@ That contradicts two things the project already holds:
 - **A recipient has a right to know.** UC-7.6 §1 labels a message a model wrote, so that the
   recipient knows. A message sent under a person's identity hides who acted, label or not.
 
-A tenant may also forbid it outright: a business named "never write to people in a person's
-name" among what always stays with a person. The product needs no such configuration if it
+An organisation may also forbid it outright. The product needs no such configuration if it
 never does it.
 
 ## Decision
@@ -65,8 +64,7 @@ not register, and the finding names the step and this ADR.
 ## Consequences
 
 - No shipped bundle is affected: every step marked `on_behalf` in `blueprints/` reads.
-- The never-list item "never write to people in a person's name" is enforced by the product,
-  not by a tenant's anchor.
+- Writing to people in a person's name is refused by the product, not by a tenant's anchor.
 
 ## Where this promise ends
 

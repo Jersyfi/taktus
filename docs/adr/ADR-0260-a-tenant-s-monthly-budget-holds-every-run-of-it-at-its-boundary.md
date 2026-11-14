@@ -20,7 +20,7 @@ a month, and neither holds a run that is already running.
 
 A tenant sets an amount per currency per calendar month in UTC, and the role told once it is
 reached. Nothing is shipped: a tenant that set none is held by none. `taktusctl budget set
---amount EUR=100 --role finance-lead` sets it, and `budget.configured` records who did.
+--amount EUR=250 --role finance-lead` sets it, and `budget.configured` records who did.
 
 ### 2. A rule at every boundary
 
