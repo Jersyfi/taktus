@@ -5,6 +5,9 @@
 	by a person.
 -->
 <script lang="ts">
+	import DisplaySwitch from './DisplaySwitch.svelte';
+	import TextEquivalent from './TextEquivalent.svelte';
+	import { display } from './display.svelte';
 	import FigureList from './FigureList.svelte';
 	import { EXPORT_CSV, EXPORT_JSON, figureLine, viewsSentence, type Views } from './figures';
 
@@ -27,20 +30,23 @@
 		</section>
 	{/each}
 
-	<section class="text" aria-label="This page as text">
-		<h2>As text</h2>
-		<ol>
+	<div class="as-text"><DisplaySwitch page="views" /></div>
+	<TextEquivalent label="This page as text" mode={display.of('views')}>
 			<li>{viewsSentence(views)}</li>
 			{#each views.views as view (view.id)}
 				{#each view.figures as f (`${view.id}:${f.id}:${f.scope}:${f.subject}`)}
 					<li>{view.title}: {figureLine(f)}</li>
 				{/each}
 			{/each}
-		</ol>
-	</section>
+	</TextEquivalent>
 </section>
 
 <style>
+	.as-text {
+		display: flex;
+		justify-content: flex-end;
+		margin-top: var(--sp-400);
+	}
 	.export {
 		color: var(--text-secondary);
 	}

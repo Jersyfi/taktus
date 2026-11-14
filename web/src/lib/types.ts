@@ -142,6 +142,9 @@ export interface Snapshot {
 export interface Change {
 	position: string;
 	run: string;
+	/** The process version of the run, `process@version`, where the surface sends it
+	 * (ADR-0323 §2). Absent from a surface that does not. */
+	process?: string;
 	step?: string;
 	decision_request?: string;
 	kind: string;

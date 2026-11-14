@@ -210,7 +210,7 @@
 <style>
 	.trace {
 		border: 1px solid var(--border-subtle);
-		border-radius: 18px;
+		border-radius: var(--r-xl);
 		padding: 1rem 1.1rem 1.1rem;
 		margin: 1.25rem 0;
 		background: var(--bg-canvas);
@@ -226,7 +226,7 @@
 		margin: 0;
 		font-family: var(--font-display);
 		font-weight: 500;
-		font-size: 1.25rem;
+		font-size: var(--fs-400);
 	}
 	.tabs {
 		display: flex;
@@ -241,19 +241,19 @@
 	.quiet,
 	.hint {
 		color: var(--text-secondary);
-		font-size: 0.9rem;
+		font-size: var(--fs-100);
 	}
 	.state {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
 		color: var(--text-secondary);
-		font-size: 0.92rem;
+		font-size: var(--fs-100);
 	}
 	.dot {
 		width: 0.6rem;
 		height: 0.6rem;
-		border-radius: 50%;
+		border-radius: var(--r-full);
 		border: 2px solid var(--family-waiting);
 	}
 	.dot.live {
@@ -300,19 +300,19 @@
 	}
 	/* Each kind of event has a form of its own (UC-6.10: never colour alone). */
 	[data-mark='start'] .mark {
-		border-radius: 50%;
+		border-radius: var(--r-full);
 	}
 	[data-mark='say'] .mark {
-		border-radius: 50%;
+		border-radius: var(--r-full);
 		width: 0.45rem;
 		height: 0.45rem;
 		background: var(--family-variable);
 	}
 	[data-mark='call'] .mark {
-		border-radius: 2px;
+		border-radius: var(--r-xs);
 	}
 	[data-mark='refused'] .mark {
-		border-radius: 2px;
+		border-radius: var(--r-xs);
 		border-color: var(--family-alert);
 		background: linear-gradient(45deg, transparent 42%, var(--family-alert) 42% 58%, transparent 58%);
 	}
@@ -320,22 +320,22 @@
 		transform: rotate(45deg) scale(0.85);
 	}
 	[data-mark='use'] .mark {
-		border-radius: 50%;
+		border-radius: var(--r-full);
 		border-style: dotted;
 	}
 	[data-mark='boundary'] .mark {
 		height: 0.25rem;
 		width: 0.85rem;
-		border-radius: 1px;
+		border-radius: var(--r-xs);
 		background: var(--text-secondary);
 		border-color: var(--text-secondary);
 	}
 	[data-mark='made'] .mark {
-		border-radius: 1px 5px 1px 1px;
+		border-radius: var(--r-xs) var(--r-xs) var(--r-xs) var(--r-xs);
 		background: var(--bg-surface);
 	}
 	[data-mark='end'] .mark {
-		border-radius: 50%;
+		border-radius: var(--r-full);
 		background: var(--text-primary);
 		border-color: var(--text-primary);
 	}
@@ -347,7 +347,7 @@
 	}
 	time {
 		font-family: var(--font-mono);
-		font-size: 0.78rem;
+		font-size: var(--fs-075);
 		color: var(--text-subtle);
 		font-variant-numeric: tabular-nums;
 	}
@@ -357,7 +357,7 @@
 	}
 	.kind {
 		font-family: var(--font-mono);
-		font-size: 0.72rem;
+		font-size: var(--fs-075);
 		color: var(--text-subtle);
 	}
 	.share {
@@ -372,7 +372,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.25rem;
-		font-size: 0.88rem;
+		font-size: var(--fs-100);
 	}
 	.share .hint {
 		flex-basis: 100%;
@@ -383,7 +383,7 @@
 		font-family: var(--font-mono);
 		padding: 0.4rem 0.7rem;
 		border: 1px solid var(--border-subtle);
-		border-radius: 10px;
+		border-radius: var(--r-md);
 		background: var(--bg-canvas);
 		color: var(--text-primary);
 	}
@@ -403,14 +403,14 @@
 		align-items: center;
 		gap: 0.4rem;
 		border: 1px solid var(--border-subtle);
-		border-radius: 999px;
+		border-radius: var(--r-full);
 		padding: 0.15rem 0.2rem 0.15rem 0.75rem;
 		font-family: var(--font-mono);
-		font-size: 0.85rem;
+		font-size: var(--fs-100);
 	}
 	.roles button {
 		padding: 0.15rem 0.6rem;
-		font-size: 0.8rem;
+		font-size: var(--fs-090);
 	}
 	.link {
 		display: flex;
@@ -420,13 +420,13 @@
 	}
 	.link code {
 		background: var(--bg-surface);
-		border-radius: 8px;
+		border-radius: var(--r-md);
 		padding: 0.3rem 0.55rem;
 		overflow-wrap: anywhere;
-		font-size: 0.82rem;
+		font-size: var(--fs-090);
 	}
 	.said {
-		font-size: 0.9rem;
+		font-size: var(--fs-100);
 		color: var(--text-secondary);
 	}
 	@keyframes breathe {

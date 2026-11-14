@@ -81,12 +81,12 @@
 	.figure {
 		display: block;
 		font-family: var(--font-display);
-		font-size: 2rem;
+		font-size: var(--fs-600);
 		color: var(--text-primary);
 	}
 	.unpriced {
 		color: var(--text-secondary);
-		font-size: 0.85rem;
+		font-size: var(--fs-100);
 	}
 	.against {
 		display: flex;
@@ -97,7 +97,7 @@
 	}
 	.against label {
 		flex-basis: 100%;
-		font-size: 0.85rem;
+		font-size: var(--fs-100);
 		color: var(--text-secondary);
 	}
 	input {
@@ -105,7 +105,7 @@
 		font-family: var(--font-mono);
 		padding: 0.35rem 0.6rem;
 		border: 1px solid var(--border-subtle);
-		border-radius: 8px;
+		border-radius: var(--r-md);
 		background: var(--bg-canvas);
 		color: var(--text-primary);
 	}

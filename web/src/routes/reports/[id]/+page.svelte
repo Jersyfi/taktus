@@ -80,11 +80,11 @@
 <style>
 	.lead {
 		font-family: var(--font-display);
-		font-size: 1.4rem;
+		font-size: var(--fs-400);
 		margin: 0 0 1rem;
 	}
 	.muted {
 		color: var(--text-secondary);
-		font-size: 0.85rem;
+		font-size: var(--fs-100);
 	}
 </style>

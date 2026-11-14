@@ -80,7 +80,7 @@
 <style>
 	.hint {
 		color: var(--text-secondary);
-		font-size: 0.88rem;
+		font-size: var(--fs-100);
 	}
 	.listed {
 		padding-left: 1.2rem;
@@ -90,6 +90,6 @@
 	}
 	code {
 		font-family: var(--font-mono);
-		font-size: 0.8rem;
+		font-size: var(--fs-090);
 	}
 </style>

@@ -4,6 +4,7 @@
 	a person's sign-in; the list is read again after every act.
 -->
 <script lang="ts">
+	import Skeleton from '../../lib/Skeleton.svelte';
 	import { read, send, surface } from '../../lib/api';
 	import ProposedView from '../../lib/ProposedView.svelte';
 	import SignInForm from '../../lib/SignInForm.svelte';
@@ -50,12 +51,12 @@
 		onDecline={(id) => void decide(id, 'decline')}
 	/>
 {:else}
-	<p class="status">{message ?? 'Reading what Taktus proposes…'}</p>
+	{#if message}<p class="status">{message}</p>{:else}<Skeleton label="Reading what Taktus proposes…" />{/if}
 {/if}
 
 <style>
 	.status {
 		color: var(--text-secondary);
-		font-size: 0.9rem;
+		font-size: var(--fs-100);
 	}
 </style>

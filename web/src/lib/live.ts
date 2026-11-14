@@ -1,12 +1,14 @@
-// When the web app reads a level again (ADR-0063).
+// When the web app reads a level again (ADR-0063, ADR-0323 §2).
 //
 // A level is read from the surface, never assembled from the stream: the stream says that
 // something changed, and the level is read again from the component that owns it (ADR-0055
-// §4). Reads are coalesced: while one is under way, every further change asks for exactly one
+// §4). The level is read at once; the frame's one stream of the tenant says when to read it
+// again. Reads are coalesced: while one is under way, every further change asks for exactly one
 // more, so that a burst of changes costs two reads, not one per change.
 
 import { read } from './api';
-import { follow } from './stream';
+import type { StreamEvent } from './stream';
+import type { Change, Problem } from './types';
 
 /** Runs `read` once now, and once more after it whenever it was asked again meanwhile. */
 export class Rereader {
@@ -31,60 +33,60 @@ export class Rereader {
 	}
 }
 
-export interface FollowLevel<T> {
+/** Whatever delivers the stream's events: the frame's stream of the tenant (ADR-0323 §2). */
+export interface Hub {
+	subscribe(listener: (event: StreamEvent) => void): () => void;
+}
+
+export interface WatchLevel<T> {
 	base: URL;
 	/** The level's path under the surface, as `levels/runs/<id>`. */
 	path: string;
-	/** The stream's scope, as its query: `{ run: <id> }`. */
-	scope: Record<string, string>;
+	/** Whether a change concerns this level, so that it is read again. */
+	concerns: (change: Change) => boolean;
+	hub: Hub;
 	signal: AbortSignal;
 	onLevel: (level: T) => void;
 	onAbsent: () => void;
 	onRefused: () => void;
-	onConnected?: (connected: boolean) => void;
-	/** Each change the stream delivered, before the level is read again (ADR-0178 §3). */
-	onChange?: () => void;
+	/** The surface failed or refused otherwise: a 5xx, a lost network, a 403. Never shown as
+	 * empty, never as a read that goes on forever (ADR-0322 §5). */
+	onFailed: (problem: Problem) => void;
 	fetcher?: typeof fetch;
-	sleep?: (ms: number) => Promise<void>;
 }
 
 /**
- * Follows a level live: the scope's stream, and the level read again on its snapshot and on
- * every change. A refused reader ends both; a level the reader may not see is absent.
+ * Watches a level: read at once, without waiting for the stream (ADR-0323 §2), and read again,
+ * coalesced, on a snapshot — the stream reconnected — and on every change that concerns it.
+ * Returns the way to read again by hand, after a failure.
  */
-export async function followLevel<T>(options: FollowLevel<T>): Promise<void> {
+export function watchLevel<T>(options: WatchLevel<T>): { again: () => Promise<void> } {
 	const fetcher = options.fetcher ?? fetch;
-	const controller = new AbortController();
-	const stopBoth = () => controller.abort();
-	options.signal.addEventListener('abort', stopBoth);
-	let refused = false;
-	const refuse = () => {
-		if (!refused) {
-			refused = true;
-			options.onRefused();
-		}
-		controller.abort();
-	};
 	const rereader = new Rereader(async () => {
 		const answer = await read<T>(options.base, options.path, fetcher);
-		if (controller.signal.aborted) return;
+		if (options.signal.aborted) return;
 		if (answer.ok) options.onLevel(answer.body);
-		else if (answer.problem.status === 401) refuse();
+		else if (answer.problem.status === 401) options.onRefused();
 		else if (answer.problem.status === 404) options.onAbsent();
+		else options.onFailed(answer.problem);
 	});
-	const url = new URL('changes', options.base);
-	for (const [name, value] of Object.entries(options.scope)) url.searchParams.set(name, value);
-	const ended = await follow({
-		url,
-		signal: controller.signal,
-		fetcher,
-		...(options.sleep ? { sleep: options.sleep } : {}),
-		...(options.onConnected ? { onConnected: options.onConnected } : {}),
-		onEvent: (event) => {
-			if (event.kind === 'change') options.onChange?.();
-			void rereader.request();
-		}
+	void rereader.request();
+	const stop = options.hub.subscribe((event) => {
+		if (options.signal.aborted) return;
+		if (event.kind === 'snapshot' || options.concerns(event.change)) void rereader.request();
 	});
-	if (ended.reason === 'refused' && ended.status === 401) refuse();
-	options.signal.removeEventListener('abort', stopBoth);
+	options.signal.addEventListener('abort', stop);
+	return { again: () => rereader.request() };
+}
+
+/** A change concerns a run's level when it is of that run. */
+export function ofRun(runId: string): (change: Change) => boolean {
+	return (change) => change.run === runId;
+}
+
+/** A change concerns a process's level when it names that process. A change that names no
+ * process — a surface that does not send the field yet — may concern any process. */
+export function ofProcess(processId: string): (change: Change) => boolean {
+	return (change) =>
+		change.process === undefined || change.process === processId || change.process.startsWith(`${processId}@`);
 }

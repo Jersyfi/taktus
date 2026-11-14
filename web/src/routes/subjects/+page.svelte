@@ -4,6 +4,7 @@
 	again after every act.
 -->
 <script lang="ts">
+	import Skeleton from '../../lib/Skeleton.svelte';
 	import Unavailable from '../../lib/Unavailable.svelte';
 	import { read, send, surface } from '../../lib/api';
 	import SignInForm from '../../lib/SignInForm.svelte';
@@ -62,12 +63,6 @@
 {:else if problem}
 	<Unavailable eyebrow="Data protection" {problem} />
 {:else}
-	<p class="status">Reading the data-protection requests…</p>
+	<Skeleton label="Reading the data-protection requests…" />
 {/if}
 
-<style>
-	.status {
-		color: var(--text-secondary);
-		font-size: 0.9rem;
-	}
-</style>

@@ -89,7 +89,7 @@
 	}
 	.muted {
 		color: var(--text-secondary);
-		font-size: 0.86rem;
+		font-size: var(--fs-100);
 		margin: 0.2rem 0;
 	}
 	.edges,
@@ -103,7 +103,7 @@
 	.places li {
 		padding: 0.55rem 0.8rem;
 		margin: 0.4rem 0;
-		border-radius: 14px;
+		border-radius: var(--r-lg);
 		background: var(--bg-surface);
 	}
 	/* What breaks carries a solid edge, what degrades a dashed one: not colour alone. */
@@ -136,8 +136,8 @@
 	}
 	.egress {
 		margin-left: 0.4rem;
-		font-size: 0.72rem;
-		border-radius: 999px;
+		font-size: var(--fs-075);
+		border-radius: var(--r-full);
 		padding: 0 0.5rem;
 		border: 1.5px solid var(--family-alert);
 		color: var(--family-alert);
@@ -149,11 +149,11 @@
 	}
 	.counts dt {
 		color: var(--text-subtle);
-		font-size: 0.75rem;
+		font-size: var(--fs-075);
 	}
 	.counts dd {
 		margin: 0;
-		font-size: 1.4rem;
+		font-size: var(--fs-400);
 		font-family: var(--font-display);
 	}
 	.places li {

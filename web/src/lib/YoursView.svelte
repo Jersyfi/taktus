@@ -6,6 +6,9 @@
 	here is computed by the page; it is shown as handed over, rounded for reading.
 -->
 <script lang="ts">
+	import DisplaySwitch from './DisplaySwitch.svelte';
+	import TextEquivalent from './TextEquivalent.svelte';
+	import { display } from './display.svelte';
 	import { duration } from './duration';
 	import { runLink } from './links';
 	import type { ResponseAggregate, ResponseTimes } from './types';
@@ -64,9 +67,8 @@
 		</section>
 	{/if}
 
-	<section class="text" aria-label="This page as text">
-		<h2>As text</h2>
-		<ol>
+	<div class="as-text"><DisplaySwitch page="yours" /></div>
+	<TextEquivalent label="This page as text" mode={display.of('yours')}>
 			<li>
 				{times.own_total_seconds != null
 					? `Runs waited ${duration(times.own_total_seconds)} on your decisions.`
@@ -78,16 +80,20 @@
 			{#each groups as g (`${g.kind}:${g.group}`)}
 				<li>{g.kind} {g.group}: {figure(g)}.</li>
 			{/each}
-		</ol>
-	</section>
+	</TextEquivalent>
 </section>
 
 <style>
+	.as-text {
+		display: flex;
+		justify-content: flex-end;
+		margin-top: var(--sp-400);
+	}
 	.private {
 		display: inline-block;
-		font-size: 0.85rem;
+		font-size: var(--fs-100);
 		padding: 0.3rem 0.8rem;
-		border-radius: 999px;
+		border-radius: var(--r-full);
 		border: 1px solid var(--border-subtle);
 		color: var(--text-secondary);
 	}
@@ -112,7 +118,7 @@
 	}
 	.id {
 		font-family: var(--font-mono);
-		font-size: 0.8rem;
+		font-size: var(--fs-090);
 		color: var(--text-subtle);
 	}
 </style>

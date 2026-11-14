@@ -3,6 +3,7 @@
 	opening, for the owner and whom the owner named.
 -->
 <script lang="ts">
+	import Skeleton from '../../lib/Skeleton.svelte';
 	import Unavailable from '../../lib/Unavailable.svelte';
 	import { read, surface } from '../../lib/api';
 	import { needsOf, type OwnerReport } from '../../lib/governance';
@@ -31,12 +32,6 @@
 {:else if problem}
 	<Unavailable eyebrow="Needs" {problem} />
 {:else}
-	<p class="status">Reading the needs…</p>
+	<Skeleton label="Reading the needs…" />
 {/if}
 
-<style>
-	.status {
-		color: var(--text-secondary);
-		font-size: 0.9rem;
-	}
-</style>

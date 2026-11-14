@@ -7,6 +7,9 @@
 	The page sends what the reader chose and shows what the surface sent back; it decides nothing.
 -->
 <script lang="ts">
+	import DisplaySwitch from './DisplaySwitch.svelte';
+	import TextEquivalent from './TextEquivalent.svelte';
+	import { display } from './display.svelte';
 	import { duration } from './duration';
 	import type { FindingsAnswer, ReviewChoice, ReviewReading } from './governance';
 	import { runLink } from './links';
@@ -94,29 +97,32 @@
 		{/each}
 	</ul>
 
-	<section class="text" aria-label="The findings as text">
-		<h2>As text</h2>
-		<ol>
+	<div class="as-text"><DisplaySwitch page="findings" /></div>
+	<TextEquivalent label="The findings as text" mode={display.of('findings')}>
 			<li>{answer.summary}</li>
 			{#each answer.findings as f (f.lack.key)}
 				<li data-text="lack:{f.lack.key}">{f.said}{f.in_review ? ' It waits for a review.' : ''}</li>
 			{/each}
-		</ol>
-	</section>
+	</TextEquivalent>
 </section>
 
 <style>
+	.as-text {
+		display: flex;
+		justify-content: flex-end;
+		margin-top: var(--sp-400);
+	}
 	h1 {
 		max-width: 28ch;
 	}
 	.level,
 	.muted {
 		color: var(--text-secondary);
-		font-size: 0.88rem;
+		font-size: var(--fs-100);
 	}
 	.message {
 		background: var(--bg-surface);
-		border-radius: 12px;
+		border-radius: var(--r-lg);
 		padding: 0.6rem 0.9rem;
 		max-width: 46rem;
 	}
@@ -128,7 +134,7 @@
 		max-width: 52rem;
 	}
 	.lack {
-		border-radius: 24px;
+		border-radius: var(--r-2xl);
 		padding: 1rem 1.2rem;
 		background: var(--bg-surface);
 	}
@@ -147,27 +153,27 @@
 	}
 	.tag {
 		font-family: var(--font-mono);
-		font-size: 0.7rem;
+		font-size: var(--fs-050);
 		border: 1px solid var(--text-secondary);
-		border-radius: 5px;
+		border-radius: var(--r-xs);
 		padding: 0 0.35rem;
 		white-space: nowrap;
 	}
 	.withheld {
-		font-size: 0.85rem;
+		font-size: var(--fs-100);
 		color: var(--family-alert);
 	}
 	details pre {
 		white-space: pre-wrap;
 		font-family: var(--font-mono);
-		font-size: 0.78rem;
+		font-size: var(--fs-075);
 		background: var(--bg-canvas);
-		border-radius: 10px;
+		border-radius: var(--r-md);
 		padding: 0.75rem;
 	}
 	summary {
 		cursor: pointer;
-		font-size: 0.88rem;
+		font-size: var(--fs-100);
 	}
 	.row {
 		display: flex;
@@ -177,7 +183,7 @@
 	}
 	.reading {
 		background: var(--bg-canvas);
-		border-radius: 14px;
+		border-radius: var(--r-lg);
 		padding: 0.8rem 1rem;
 		margin-top: 0.5rem;
 	}

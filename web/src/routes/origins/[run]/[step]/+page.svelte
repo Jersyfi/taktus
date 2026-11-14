@@ -3,6 +3,7 @@
 	page reads it once, and draws it as it was recorded.
 -->
 <script lang="ts">
+	import Skeleton from '../../../../lib/Skeleton.svelte';
 	import { page } from '$app/state';
 	import { read, surface } from '../../../../lib/api';
 	import SignInForm from '../../../../lib/SignInForm.svelte';
@@ -38,12 +39,6 @@
 {:else if level}
 	<OriginView {level} motionAllowed={motion.allowed} />
 {:else}
-	<p class="status">Reading where the result came from…</p>
+	<Skeleton label="Reading where the result came from…" />
 {/if}
 
-<style>
-	.status {
-		color: var(--text-secondary);
-		font-size: 0.9rem;
-	}
-</style>

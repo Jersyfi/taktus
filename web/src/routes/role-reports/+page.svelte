@@ -4,6 +4,7 @@
 	own reports live under `#/reports/<id>`, a page of their own.
 -->
 <script lang="ts">
+	import Skeleton from '../../lib/Skeleton.svelte';
 	import { read, surface } from '../../lib/api';
 	import type { ComposedReport, Definitions } from '../../lib/figures';
 	import RoleReportsView from '../../lib/RoleReportsView.svelte';
@@ -45,12 +46,6 @@
 {:else if problem}
 	<Unavailable eyebrow="Reports" {problem} />
 {:else}
-	<p class="status">Reading the reports for your roles…</p>
+	<Skeleton label="Reading the reports for your roles…" />
 {/if}
 
-<style>
-	.status {
-		color: var(--text-secondary);
-		font-size: 0.9rem;
-	}
-</style>

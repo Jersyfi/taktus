@@ -17,8 +17,26 @@ export function surface(href: string): URL {
 
 export type Answer<T> = { ok: true; body: T } | { ok: false; problem: Problem };
 
+/** A request that failed before the surface answered — the network, or a body that is no JSON:
+ * an answer with status 0, so that a page says it failed and never waits for it (ADR-0322 §5). */
+export function unreached(detail: string): Answer<never> {
+	return { ok: false, problem: { status: 0, title: 'Not reached', detail } };
+}
+
+/** Whether a problem is a failure of the surface or the way to it, not a refusal: worth another
+ * try, never shown as empty. */
+export function failed(problem: Problem): boolean {
+	return problem.status === 0 || problem.status >= 500;
+}
+
 async function answered<T>(response: Response): Promise<Answer<T>> {
-	if (response.ok) return { ok: true, body: (await response.json()) as T };
+	if (response.ok) {
+		try {
+			return { ok: true, body: (await response.json()) as T };
+		} catch {
+			return unreached('The surface answered with something that is not JSON.');
+		}
+	}
 	let problem: Problem = { status: response.status, title: response.statusText, detail: '' };
 	try {
 		problem = { ...problem, ...((await response.json()) as Partial<Problem>) };
@@ -28,13 +46,24 @@ async function answered<T>(response: Response): Promise<Answer<T>> {
 	return { ok: false, problem };
 }
 
+/** One request, answered: a request that throws — the network is gone, the page is left — is an
+ * answer with status 0, never an exception (ADR-0322 §5). */
+async function call<T>(fetcher: typeof fetch, url: URL, init: RequestInit): Promise<Answer<T>> {
+	let response: Response;
+	try {
+		response = await fetcher(url, init);
+	} catch {
+		return unreached('The surface could not be reached.');
+	}
+	return answered<T>(response);
+}
+
 /** A JSON read as the signed-in reader. A refusal is the surface's problem, never thrown. */
 export async function read<T>(base: URL, path: string, fetcher: typeof fetch = fetch): Promise<Answer<T>> {
-	const response = await fetcher(new URL(path, base), {
+	return call<T>(fetcher, new URL(path, base), {
 		credentials: 'same-origin',
 		headers: { Accept: 'application/json' }
 	});
-	return answered<T>(response);
 }
 
 /** A JSON read with a key other than the reader's sign-in: the instance's administration key,
@@ -46,11 +75,10 @@ export async function readAs<T>(
 	key: string,
 	fetcher: typeof fetch = fetch
 ): Promise<Answer<T>> {
-	const response = await fetcher(new URL(path, base), {
+	return call<T>(fetcher, new URL(path, base), {
 		credentials: 'same-origin',
 		headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' }
 	});
-	return answered<T>(response);
 }
 
 /** A JSON write as the signed-in reader: an answer to a decision request, or its confirmation.
@@ -61,13 +89,12 @@ export async function send<T>(
 	body: unknown,
 	fetcher: typeof fetch = fetch
 ): Promise<Answer<T>> {
-	const response = await fetcher(new URL(path, base), {
+	return call<T>(fetcher, new URL(path, base), {
 		method: 'POST',
 		credentials: 'same-origin',
 		headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
 		body: JSON.stringify(body)
 	});
-	return answered<T>(response);
 }
 
 /** A JSON replacement as the signed-in reader: settings the reader sets for themselves. A
@@ -78,24 +105,22 @@ export async function put<T>(
 	body: unknown,
 	fetcher: typeof fetch = fetch
 ): Promise<Answer<T>> {
-	const response = await fetcher(new URL(path, base), {
+	return call<T>(fetcher, new URL(path, base), {
 		method: 'PUT',
 		credentials: 'same-origin',
 		headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
 		body: JSON.stringify(body)
 	});
-	return answered<T>(response);
 }
 
 /** A delete as the signed-in reader: a share withdrawn. A refusal is the surface's problem,
  * never thrown. */
 export async function remove<T>(base: URL, path: string, fetcher: typeof fetch = fetch): Promise<Answer<T>> {
-	const response = await fetcher(new URL(path, base), {
+	return call<T>(fetcher, new URL(path, base), {
 		method: 'DELETE',
 		credentials: 'same-origin',
 		headers: { Accept: 'application/json' }
 	});
-	return answered<T>(response);
 }
 
 /** A JSON write by another method — PUT to set a thing, PATCH to change some of its fields —
@@ -107,11 +132,10 @@ export async function write<T>(
 	body: unknown,
 	fetcher: typeof fetch = fetch
 ): Promise<Answer<T>> {
-	const response = await fetcher(new URL(path, base), {
+	return call<T>(fetcher, new URL(path, base), {
 		method,
 		credentials: 'same-origin',
 		headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
 		body: JSON.stringify(body)
 	});
-	return answered<T>(response);
 }

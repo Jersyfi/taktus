@@ -82,7 +82,7 @@
 	}
 	.card {
 		background: var(--bg-surface);
-		border-radius: 18px;
+		border-radius: var(--r-xl);
 		padding: 0.8rem 0.9rem;
 	}
 	.card.core {
@@ -99,7 +99,7 @@
 		margin: 0;
 	}
 	.edge {
-		font-size: 0.8rem;
+		font-size: var(--fs-090);
 		color: var(--text-subtle);
 		margin: 0;
 	}
@@ -109,7 +109,7 @@
 	.bar {
 		display: flex;
 		height: 0.5rem;
-		border-radius: 4px;
+		border-radius: var(--r-xs);
 		overflow: hidden;
 		background: var(--border-subtle);
 	}
@@ -132,7 +132,7 @@
 		margin: 0;
 	}
 	dt {
-		font-size: 0.72rem;
+		font-size: var(--fs-075);
 		color: var(--text-subtle);
 	}
 	dd {
@@ -142,7 +142,7 @@
 	.text,
 	.muted {
 		color: var(--text-secondary);
-		font-size: 0.82rem;
+		font-size: var(--fs-090);
 		margin: 0.3rem 0 0;
 	}
 </style>

@@ -4,6 +4,7 @@
 	part the surface refuses says so and leaves the others standing.
 -->
 <script lang="ts">
+	import Skeleton from '../../lib/Skeleton.svelte';
 	import { read, surface, type Answer } from '../../lib/api';
 	import type { Proposals, Transformation, ValueIndex } from '../../lib/figures';
 	import SignInForm from '../../lib/SignInForm.svelte';
@@ -44,12 +45,6 @@
 {:else if read_}
 	<ValueView {proposals} {index} {transformation} {problems} />
 {:else}
-	<p class="status">Reading the value ledger…</p>
+	<Skeleton label="Reading the value ledger…" />
 {/if}
 
-<style>
-	.status {
-		color: var(--text-secondary);
-		font-size: 0.9rem;
-	}
-</style>

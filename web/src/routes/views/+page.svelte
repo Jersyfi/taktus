@@ -2,6 +2,7 @@
 	The reader's views and their figures (UC-6.4, ADR-0241): `GET /views`, read once on opening.
 -->
 <script lang="ts">
+	import Skeleton from '../../lib/Skeleton.svelte';
 	import { read, surface } from '../../lib/api';
 	import type { Views } from '../../lib/figures';
 	import SignInForm from '../../lib/SignInForm.svelte';
@@ -29,12 +30,6 @@
 {:else if problem}
 	<Unavailable eyebrow="Figures" {problem} />
 {:else}
-	<p class="status">Reading your views…</p>
+	<Skeleton label="Reading your views…" />
 {/if}
 
-<style>
-	.status {
-		color: var(--text-secondary);
-		font-size: 0.9rem;
-	}
-</style>

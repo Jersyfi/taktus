@@ -83,7 +83,7 @@
 <style>
 	table {
 		border-collapse: collapse;
-		font-size: 0.85rem;
+		font-size: var(--fs-100);
 		max-width: 52rem;
 		width: 100%;
 	}

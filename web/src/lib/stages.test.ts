@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { followLevel } from './live';
+import { ofRun, watchLevel } from './live';
+import type { StreamEvent } from './stream';
 import { runLink, stagesLink } from './links';
 import type { StageView } from './types';
 
@@ -33,41 +34,31 @@ describe('the stages of a run', () => {
 		expect(runLink(VIEW.run_id)).toBe('#/runs/r1');
 	});
 
-	it('are read from the stages route on the snapshot and again on every change', async () => {
+	it('are read from the stages route at once and again on every change of the run', async () => {
 		const seen: StageView[] = [];
 		const reads: string[] = [];
-		const controller = new AbortController();
+		const listeners: ((e: StreamEvent) => void)[] = [];
+		const hub = { subscribe: (l: (e: StreamEvent) => void) => (listeners.push(l), () => {}) };
 		const fetcher = (async (input: RequestInfo | URL) => {
-			const url = new URL(String(input));
-			if (url.pathname.endsWith('/changes')) {
-				const text =
-					'event: snapshot\ndata: {"position":"1","scope":{"kind":"run","id":"r1"}}\n\n' +
-					'event: change\ndata: {"position":"2","run":"r1"}\n\n';
-				return new Response(new TextEncoder().encode(text), { status: 200 });
-			}
-			reads.push(url.pathname);
+			reads.push(new URL(String(input)).pathname);
 			return json(VIEW);
 		}) as typeof fetch;
-		await followLevel<StageView>({
+		watchLevel<StageView>({
 			base: new URL('https://h.test/'),
 			path: 'levels/runs/r1/stages',
-			scope: { run: 'r1' },
-			signal: controller.signal,
+			concerns: ofRun('r1'),
+			hub,
+			signal: new AbortController().signal,
 			onLevel: (found) => seen.push(found),
 			onAbsent: () => {},
 			onRefused: () => {},
-			fetcher,
-			// The stream stays away a moment, so that the reads it asked for land, and then ends.
-			sleep: () =>
-				new Promise<void>((r) =>
-					setTimeout(() => {
-						controller.abort();
-						r();
-					}, 20)
-				)
+			onFailed: () => {},
+			fetcher
 		});
-		expect(reads.every((p) => p === '/levels/runs/r1/stages')).toBe(true);
-		expect(seen.length).toBeGreaterThan(0);
+		await new Promise((r) => setTimeout(r, 5));
+		for (const l of listeners) l({ kind: 'change', change: { position: '2', run: 'r1', kind: 'step.finished', recorded_at: 't', state: { step: 'succeeded' } } });
+		await new Promise((r) => setTimeout(r, 5));
+		expect(reads).toEqual(['/levels/runs/r1/stages', '/levels/runs/r1/stages']);
 		expect(seen[0]?.stages.map((s) => s.state)).toEqual(['done', 'current', 'ahead']);
 	});
 });

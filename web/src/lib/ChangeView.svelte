@@ -325,7 +325,7 @@
 <style>
 	.muted {
 		color: var(--text-secondary);
-		font-size: 0.85rem;
+		font-size: var(--fs-100);
 	}
 	.ask {
 		display: grid;
@@ -341,28 +341,28 @@
 		font: inherit;
 		padding: 0.6rem 0.8rem;
 		border: 1px solid var(--border-subtle);
-		border-radius: 12px;
+		border-radius: var(--r-lg);
 		background: var(--bg-canvas);
 		color: var(--text-primary);
 	}
 	.proposal {
 		border: 1px solid var(--border-subtle);
-		border-radius: 18px;
+		border-radius: var(--r-xl);
 		padding: 1rem 1.2rem;
 		margin: 1rem 0;
 		max-width: 52rem;
 	}
 	.state {
 		font-family: var(--font-mono);
-		font-size: 0.72rem;
+		font-size: var(--fs-075);
 		border: 1px solid var(--border-subtle);
-		border-radius: 6px;
+		border-radius: var(--r-sm);
 		padding: 0 0.35rem;
 		margin-left: 0.5rem;
 	}
 	.request {
 		font-family: var(--font-display);
-		font-size: 1.1rem;
+		font-size: var(--fs-300);
 	}
 	.difference {
 		list-style: none;
@@ -372,12 +372,12 @@
 	}
 	.difference li {
 		padding: 0.5rem 0.75rem;
-		border-radius: 10px;
+		border-radius: var(--r-md);
 		background: var(--bg-surface);
 	}
 	.kind {
 		font-family: var(--font-mono);
-		font-size: 0.72rem;
+		font-size: var(--fs-075);
 		text-transform: uppercase;
 		margin-right: 0.4rem;
 		color: var(--text-secondary);
@@ -421,7 +421,7 @@
 	}
 	.evaluation {
 		border: 1px solid var(--border-subtle);
-		border-radius: 14px;
+		border-radius: var(--r-lg);
 		padding: 0.8rem 1rem;
 		margin: 0.75rem 0;
 		background: var(--bg-canvas);
@@ -434,10 +434,10 @@
 	}
 	.verdict {
 		font-family: var(--font-mono);
-		font-size: 0.72rem;
+		font-size: var(--fs-075);
 		text-transform: uppercase;
 		letter-spacing: 0.06em;
-		border-radius: 999px;
+		border-radius: var(--r-full);
 		padding: 0.1rem 0.6rem;
 		border: 1px solid currentColor;
 		color: var(--family-waiting);
@@ -463,12 +463,12 @@
 		display: grid;
 	}
 	.label {
-		font-size: 0.75rem;
+		font-size: var(--fs-075);
 		color: var(--text-subtle);
 	}
 	.figure {
 		font-family: var(--font-display);
-		font-size: 2rem;
+		font-size: var(--fs-600);
 		line-height: 1.1;
 	}
 	.side[data-side='proposed'] .figure {
@@ -477,7 +477,7 @@
 	.cases {
 		width: 100%;
 		border-collapse: collapse;
-		font-size: 0.85rem;
+		font-size: var(--fs-100);
 		display: block;
 		overflow-x: auto;
 	}
@@ -498,7 +498,7 @@
 		display: inline-block;
 		width: 4rem;
 		height: 0.45rem;
-		border-radius: 999px;
+		border-radius: var(--r-full);
 		margin-right: 0.4rem;
 		background: linear-gradient(to right, var(--text-secondary) var(--w), var(--bg-surface) var(--w));
 	}
@@ -527,7 +527,7 @@
 	.against label {
 		display: grid;
 		gap: 0.3rem;
-		font-size: 0.9rem;
+		font-size: var(--fs-100);
 	}
 	.overridden ul {
 		list-style: none;
@@ -549,7 +549,7 @@
 	}
 	.message {
 		background: var(--bg-surface);
-		border-radius: 12px;
+		border-radius: var(--r-lg);
 		padding: 0.7rem 0.9rem;
 		max-width: 46rem;
 	}

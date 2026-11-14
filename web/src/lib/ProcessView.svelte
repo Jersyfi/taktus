@@ -1,23 +1,33 @@
 <!--
 	The process level of UC-6.10: the steps of one process version as a graph, each showing how it
 	works, with the autonomy statement — the level the process runs at, and why (ADR-0026). A step
-	moves only while a run of the version runs it. The runs of the version lead down to their run
-	level, the versions to their own graphs. Written out below the drawing as its text equivalent
-	(ADR-0064).
+	moves only while a run of the version runs it. The newest runs of the version lead down to their
+	run level, the rest to the list of runs narrowed to the process; the versions lead to their own
+	graphs (ADR-0064, ADR-0321 §2). The drawing is shown first and its text equivalent on a switch
+	(ADR-0322): the runs are a list, so each run's text stands in its own row and nowhere else.
 -->
 <script lang="ts">
+	import DisplaySwitch from './DisplaySwitch.svelte';
 	import ExactnessStatement from './ExactnessStatement.svelte';
 	import Glyph from './Glyph.svelte';
 	import Graph from './Graph.svelte';
+	import TextEquivalent from './TextEquivalent.svelte';
+	import { display, type Display } from './display.svelte';
 	import { chosen } from './motion.svelte';
 	import { changeLink, processLink, runLink, variantsLink } from './links';
+	import { when } from './runs';
 	import { processSpendLink } from './spend';
 	import type { ProcessLevel } from './types';
 
-	let { level, motionAllowed }: { level: ProcessLevel; motionAllowed: boolean } = $props();
+	/** How many of the version's runs the page lists; the rest are on the list of runs. */
+	const NEWEST = 10;
 
+	let { level, motionAllowed, mode }: { level: ProcessLevel; motionAllowed: boolean; mode?: Display } = $props();
+
+	const shown = $derived(mode ?? display.of('process'));
 	const process = $derived(level.process);
 	const runs = $derived(level.runs ?? []);
+	const newest = $derived(runs.slice(0, NEWEST));
 	const byId = $derived(new Map(level.steps.map((s) => [s.id, s])));
 
 	function notes(id: string): string[] {
@@ -58,68 +68,71 @@
 		<p>{process.autonomy_text}</p>
 	</section>
 
+	<div class="tools"><DisplaySwitch page="process" /></div>
+
+	{#if shown === 'picture'}
+		<Graph steps={level.steps} {motionAllowed} {notes} />
+	{/if}
+	<TextEquivalent label="The process as text" mode={shown}>
+		<li data-text="summary">{level.summary}</li>
+		<li data-text="process">{process.text}</li>
+		{#each level.steps as step (step.id)}
+			<li data-text={step.id}>{step.text}</li>
+		{/each}
+	</TextEquivalent>
+
 	{#if level.exactness}
 		<ExactnessStatement statement={level.exactness} />
 	{/if}
-
-	<Graph steps={level.steps} {motionAllowed} {notes} />
 
 	<section class="runs" aria-labelledby="runs-title">
 		<h2 id="runs-title">Runs of this version</h2>
 		{#if runs.length === 0}
 			<p>No run you may see.</p>
 		{:else}
-			<ul>
-				{#each runs as run (run.id)}
-					<li>
+			<ul data-runs-of-version>
+				{#each newest as run (run.id)}
+					<li data-text="run:{run.id}">
 						<Glyph glyph={chosen(run.drawn, motionAllowed)} size={22} />
 						<a href={runLink(run.id)}>{run.id}</a>
 						<span class="state">{run.state.replace('_', ' ')}</span>
+						<time datetime={run.created_at}>{when(run.created_at)}</time>
+						<span class="said" class:sr-only={shown === 'picture'}>{run.text}</span>
 					</li>
 				{/each}
 			</ul>
+			{#if runs.length > newest.length}
+				<p><a href="#/runs?process={encodeURIComponent(process.id)}">All {runs.length} runs of {process.name}</a></p>
+			{/if}
 		{/if}
-	</section>
-
-	<section class="text" aria-label="The process as text">
-		<h2>As text</h2>
-		<ol>
-			<li data-text="summary">{level.summary}</li>
-			<li data-text="process">{process.text}</li>
-			{#each level.steps as step (step.id)}
-				<li data-text={step.id}>{step.text}</li>
-			{/each}
-			{#each runs as run (run.id)}
-				<li data-text="run:{run.id}">{run.text}</li>
-			{/each}
-		</ol>
 	</section>
 </section>
 
 <style>
 	.meta {
-		margin: 0.15rem 0 0;
-		opacity: 0.75;
-	}
-	a {
-		color: inherit;
+		margin: var(--sp-025) 0 0;
+		color: var(--text-secondary);
 	}
 	.version {
-		margin-right: 0.4rem;
+		margin-inline-end: var(--sp-050);
 	}
 	.autonomy {
-		margin: 1rem 0 1.5rem;
-		padding: 0.9rem 1.1rem;
-		border: 1px solid var(--border-subtle);
-		border-radius: 14px;
+		margin: var(--sp-200) 0 var(--sp-300);
+		padding: var(--sp-150) var(--sp-200);
+		border: var(--bw-hairline) solid var(--border-subtle);
+		border-radius: var(--r-lg);
 		max-width: 56rem;
 		color: var(--text-secondary);
 	}
 	.autonomy p {
-		margin: 0.2rem 0;
+		margin: var(--sp-025) 0;
 	}
 	.level {
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
+	}
+	.tools {
+		display: flex;
+		justify-content: flex-end;
 	}
 	.runs ul {
 		list-style: none;
@@ -127,11 +140,21 @@
 	}
 	.runs li {
 		display: flex;
-		gap: 0.6rem;
+		flex-wrap: wrap;
+		gap: var(--sp-100);
 		align-items: center;
-		padding: 0.2rem 0;
+		padding: var(--sp-050) 0;
 	}
 	.state {
+		color: var(--text-secondary);
+	}
+	time {
+		font-size: var(--fs-090);
+		color: var(--text-subtle);
+	}
+	.said {
+		flex-basis: 100%;
+		font-size: var(--fs-090);
 		color: var(--text-secondary);
 	}
 </style>

@@ -5,16 +5,28 @@ records as they are now and moving when the work moves (ADR-0063).
 
 ## What it draws today
 
-- **The overview** — where the web app starts: the areas the reader may look into (today the
-  tenant), the processes in each, how many of their runs work and wait right now, and the steps
-  running now, each leading down to its process or run (ADR-0067).
+- **Today** — where the web app starts (ADR-0322 §4): the pulse card, with how many items wait
+  for the reader first, the overview's sentence, the live state and the Takt of the last 60
+  minutes drawn from recorded changes; a glance strip of counts; the waits, at most five, all of
+  them on `#/waits`; what runs now; the last ten changes; and the processes drawn as one body.
+- **The frame** (ADR-0321, ADR-0323) — five bands with a fold each, tabs for the pages of one
+  question, a trail of links to where the reader stands, a bottom bar on a phone and an account
+  menu with the theme, *Reduce motion*, *Picture or text* and *Sign out*. It holds one stream of
+  the tenant's changes: the mark beats on it on every page, and every live page reads its level
+  at once and again when a change concerns it.
+- **Picture first, text on a switch** (ADR-0322) — every drawing's text equivalent stays in the
+  page for a screen reader and replaces the drawing on the switch.
+- **The overview** — `#/processes`: the areas the reader may look into (today the tenant), the
+  processes in each, how many of their runs work and wait right now, and the steps running now,
+  each leading down to its process or run (ADR-0067). `#/runs` lists the runs, newest first, a
+  page at a time, narrowed by state and process.
 - **The process level** — the steps of a process version as a graph, each with how it works and
   the runs it is running in right now, with the autonomy statement: the level the process runs
   at, and why. It lists the version's runs and every registered version (ADR-0064).
 - **The run level** — where one run stands: each step with its method kind, exactness class and
   state, what a waiting step waits on, what each step used and what the run consumed so far,
-  and all of it again as text. It follows the run's stream of changes and reads the level again
-  on every change, without a reload.
+  and all of it as text on a switch. It reads the level again on every change of the run, without
+  a reload.
 
 - **The origin of a result** — the path from a step's result back through the steps and sources
   that produced it, from the provenance records, across runs; read once, since a record never
@@ -33,8 +45,8 @@ origin.
 - **What governs the work** (ADR-0122, DEC-0218) — the needs among the reports to the owner;
   each process's level, why it is there, and its correction rates per process and action; the
   instance's findings with their classification and their review, read back before it acts; and
-  the tenants, for the holder of the administration key. The start page has one line per kind,
-  saying how many are open or waiting, each leading to its page.
+  the tenants, for the holder of the administration key. What waits for the reader of it is among
+  Today's waits; the lines that wait for nothing stand at the foot of Today.
 - **What acts, what depends on it, and how a process really runs** (ADR-0147) — every
   adapter that acts for the tenant, those that need attention first, with a stop the person
   confirms once and the AI inventory as a file marked not legally reviewed; what breaks and
@@ -44,11 +56,11 @@ origin.
 - **A report to the owner** — the page every link a channel carries to a report opens: what is
   needed, the steps, what stands still, by when, and how to answer. The reader answers there as
   in the channel; the reading comes back, and nothing is filed before the reader confirms it.
-  The overview lists the open reports and alerts below it, newest first, each leading to its
-  page (DEC-0218, ADR-0120).
+  Today lists the open reports among its waits, each leading to its page (DEC-0218, ADR-0120).
 - **What keeps the operation running** — the incidents, the alerts, the backup and the signals
-  with the newest daily report, each a page of its own, and a line for each on the start page
-  saying how many are open or red (ADR-0121). Each page is read once on opening.
+  with the newest daily report, each a tab of *Operation*; Today counts the open incidents and the
+  alerts in effect and says the operation's own sentence (ADR-0121, ADR-0322). Each page is read
+  once on opening.
 
 - **Where a process spends** (#449, ADR-0148) — a run step by step: money at its own price
   table and tokens split by price kind, each charted on one axis from zero, with turns, what a
@@ -97,10 +109,13 @@ origin.
   literal in a page's style fails `design.test.ts`, which also measures every text and mark for
   contrast in both modes. The reader picks *System*, *Light* or *Dark* in the bar; the choice is
   the device's.
-- **The frame** (ADR-0178): a skip link, the bar, and one list of destinations in four bands —
-  *Now*, *Start work*, *Steer*, *Keep running* — pinned from 905 px and a drawer below. A
-  destination whose page holds something waiting for the reader carries a mark, read from the
-  surface's own lines. The start page, *Today*, puts what waits for the reader before what runs.
+- **The frame** (ADR-0178, ADR-0321): a skip link, the bar, and one list of destinations in five
+  bands — *For you*, *Work*, *Steer*, *Depends on*, *Keep running* — pinned from 905 px, a drawer
+  below it and a sheet behind a bottom bar below 600 px. A destination whose page holds something
+  waiting for the reader carries a mark, read from the surface's own lines. Today puts what waits
+  for the reader before what runs (NTC-0290).
+- **Loading, empty and failed** (ADR-0322 §5): `Skeleton`, `EmptyState` and `ErrorState`. A
+  failed read is said as a failure with *Read again*, never as empty.
 - The reader signs in with an account key once per browser (ADR-0119). The app sends it in
   `Authorization: Bearer` to `POST {prefix}/session`, once, and forgets it. The instance answers
   with a session cookie the page cannot read, which the browser sends with every request, in
@@ -110,12 +125,16 @@ origin.
 | Path | What it is |
 |---|---|
 | `design/`, `scripts/tokens.js`, `src/app.css` | the design system's tokens, the stylesheet written from them, and what every page shares (ADR-0177) |
-| `src/lib/navigation.ts`, `frame.svelte.ts`, `theme.svelte.ts`, `Icon.svelte`, `Mark.svelte` | the one list of destinations and its marks, what the bar shows of the page's stream, the theme the device keeps, the frame's icons and the mark (ADR-0178) |
-| `src/lib/today.ts` | the start page's own words: the changes since it opened, and what does not wait |
+| `src/lib/navigation.ts`, `frame.svelte.ts`, `pulse.ts`, `theme.svelte.ts`, `Icon.svelte`, `Mark.svelte` | the one list of destinations, its folds, tabs, trail and bottom bar, and its marks; the frame's one stream of the tenant; the theme the device keeps; the frame's icons and the mark (ADR-0178, ADR-0321, ADR-0323) |
+| `src/lib/today.ts`, `todayData.ts`, `shared.ts` | Today's words and tiles; what Today reads, from `GET /levels/today` or put together from the older reads; reads the frame and a page share |
+| `src/lib/takt.ts`, `TaktStrip.svelte`, `changes.ts` | the last 60 minutes from recorded changes, one mark per minute, and a change as one line |
+| `src/lib/display.svelte.ts`, `DisplaySwitch.svelte`, `TextEquivalent.svelte` | picture or text: the default the device keeps, the switch per page, and the text equivalent that stays in the page (ADR-0322) |
+| `src/lib/Skeleton.svelte`, `EmptyState.svelte`, `ErrorState.svelte` | a read under way, a read that found nothing, a read that failed |
+| `src/lib/runs.ts`, `#/runs`, `#/processes`, `#/waits` | the list of runs, a page at a time; every process; everything that waits for the reader |
 | `src/lib/types.ts` | the shapes the surface answers: a run level, a snapshot, a change |
 | `src/lib/api.ts` | the surface's address, and a read or a write as the signed-in reader |
 | `src/lib/stream.ts` | the stream of changes, read with `fetch`, resumed from its last position |
-| `src/lib/live.ts` | a level followed live, read again on every change |
+| `src/lib/live.ts` | a level read at once, and again when a change on the frame's stream concerns it |
 | `src/lib/cells.ts`, `Glyph.svelte` | a glyph's tokens turned into a cell — membrane, nucleus, rings, cytoplasm, badge — each token kept on it as an attribute; a family's hue on top (M1.20) |
 | `src/lib/Graph.svelte` | steps as a graph, placed by their dependencies |
 | `src/lib/RunView.svelte` | the run level, and its text equivalent |
@@ -136,7 +155,7 @@ origin.
 | `src/routes/` | the pages: the overview at `#/`, `#/runs/<id>`, `#/processes/<id>` with an optional `/<version>`, `#/origins/<run>/<step>`, and `#/requests` with an optional `/<id>`: the decision requests addressed to the reader, answered and confirmed there (ADR-0063 §4), and `#/changes/<process>`, where a process is changed in dialogue and rolled back (ADR-0091 §6) |
 | `src/lib/RequestView.svelte` | one decision request: what happened, the options with the recommended one, what is blocked, by when; an answer by option or in the reader's words, and the reading confirmed before anything takes effect |
 | `src/lib/ChangeView.svelte` | a process changed in dialogue: the request in words, each open proposal as its difference in words, its rehearsal with the result read from the rehearsal's run (offered when there is none, shown as a rehearsal in which nothing left the system), commissioning offered once that run has finished, and discarding, and a rollback for every earlier version |
-| `src/lib/governance.ts`, `GovernanceLines.svelte` | the shapes of what governs the work, its reads and answers, the start page's line per kind, and the administration key for the tab's session (ADR-0122) |
+| `src/lib/governance.ts`, `GovernanceLines.svelte` | the shapes of what governs the work, its reads and answers, Today's line per kind, and the administration key for the tab's session (ADR-0122) |
 | `src/lib/NeedsView.svelte`, `#/needs` | the needs among `GET /owner/reports`: what is needed, the steps, what stands still, by when, the state and the answer filed; each need leads to its report's page, where it is answered (ADR-0120) |
 | `src/lib/AutonomyView.svelte`, `#/autonomy` | `GET /autonomy`: each process's level in force, the stated one and why, the incident that lowered it, and each unit's rates over 7 and 28 days against the tenant's limit |
 | `src/lib/FindingsView.svelte`, `#/findings` | `GET /findings`: each lack with its classification and the text it would leave in; at the level `review`, send, not now or local for us, read back and confirmed |
@@ -146,14 +165,12 @@ origin.
 | `src/lib/VariantsView.svelte`, `#/variants/<process>` | a process's variants as bars of their share with their deviations marked, the waiting by step and cause, a role's waiting where two hold it, and the proposals |
 | `src/lib/TenantsView.svelte`, `#/tenants` | the tenants under the administration key: listed, created and renamed, each said back first |
 | `src/lib/reports.ts`, `ReportPage.svelte`, `#/reports/<id>` | a report to the owner: its view as `GET /owner/reports/{id}` sends it, the answers it offers, an answer sent to `POST …/answer` and the reading confirmed at `…/confirm` (ADR-0120) |
-| `src/lib/OpenReports.svelte` | the overview's list of the reports that wait for an answer, newest first, read from `GET /owner/reports` |
 | `src/lib/YoursView.svelte`, `#/me` | the reader's own page: how long runs waited on their own decisions, each with its time, their median, and beside it their role and department only aggregated — `GET /decisions/response-times`, computed for its reader alone (ADR-0015) |
 | `src/lib/operation.ts`, `OperationPage.svelte` | what keeps the operation running (ADR-0121): the shapes `GET /operation`, `/incidents`, `/alerts`, `/backup`, `/signals` and `/signals/daily-report` answer, where each page lives, the sentence each opens with, and their common frame |
 | `src/lib/IncidentsView.svelte`, `#/incidents` | the incidents, open ones first: what was expected, what happened since, the process version and every run each names (ADR-0107) |
 | `src/lib/AlertsView.svelte`, `#/alerts` | the alerts in effect first, what became of each report, and the runs, steps and process versions each is about (ADR-0106) |
 | `src/lib/BackupView.svelte`, `#/backup` | the backup's last success, its newest failure and by when the next success is due (ADR-0106) |
 | `src/lib/SignalsView.svelte`, `#/signals` | every signal judged against its corridor, red first, each with the run that measured it and its case, and the newest daily report (ADR-0109) |
-| `src/lib/OperationSection.svelte`, `OperationLines.svelte` | the start page's section: its own sentence of what needs a look, then one line per kind leading to its page |
 
 ## Working on it
 

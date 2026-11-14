@@ -211,7 +211,7 @@
 		display: inline-block;
 		font-size: var(--fs-075);
 		padding: var(--sp-050) var(--sp-150);
-		border-radius: 999px;
+		border-radius: var(--r-full);
 		border: var(--bw-hairline) solid var(--border-subtle);
 		color: var(--text-secondary);
 	}

@@ -5,6 +5,7 @@
 -->
 <script lang="ts">
 	import { surface } from './api';
+	import { frame } from './frame.svelte';
 	import Mark from './Mark.svelte';
 	import { signIn } from './session';
 
@@ -22,7 +23,11 @@
 		const answer = await signIn(surface(location.href), key);
 		busy = false;
 		refused = !answer.ok;
-		if (answer.ok) onSignedIn();
+		if (answer.ok) {
+			// The frame's stream was refused without a sign-in: it opens again with it.
+			frame.reopen(surface(location.href));
+			onSignedIn();
+		}
 	}
 </script>
 

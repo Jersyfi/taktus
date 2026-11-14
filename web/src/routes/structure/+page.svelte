@@ -7,6 +7,7 @@
 	`POST /sessions/{s}/turns` and `POST /sessions/{s}/plan` (ADR-0279).
 -->
 <script lang="ts">
+	import Skeleton from '../../lib/Skeleton.svelte';
 	import { read, send, surface, write, type Answer } from '../../lib/api';
 	import SignInForm from '../../lib/SignInForm.svelte';
 	import StructureView from '../../lib/StructureView.svelte';
@@ -89,12 +90,12 @@
 			session && void act(send<{ ref: string }>(base(), `sessions/${part(session.id)}/plan`, { goal }), (o) => `A plan draft ${o.ref} waits in Plans.`)}
 	/>
 {:else}
-	<p class="status">{message ?? 'Reading the structure…'}</p>
+	{#if message}<p class="status">{message}</p>{:else}<Skeleton label="Reading the structure…" />{/if}
 {/if}
 
 <style>
 	.status {
 		color: var(--text-secondary);
-		font-size: 0.9rem;
+		font-size: var(--fs-100);
 	}
 </style>
