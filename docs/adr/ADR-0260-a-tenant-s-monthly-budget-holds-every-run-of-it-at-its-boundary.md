@@ -6,7 +6,7 @@ monthly quota) · serves UC-8.5
 ## Context
 
 A tenant wants one monthly money budget across all its processes and agents together, for
-example 100 euros a month. When the month's runs have cost it, every run of the tenant should
+example a fixed amount a month. When the month's runs have cost it, every run of the tenant should
 wait at its next step boundary, not only the run that crossed the line. The role that answers
 for the money is told. A person raising the budget, or the month's turn, lets the runs go on.
 

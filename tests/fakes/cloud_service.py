@@ -40,7 +40,7 @@ What it enforces, because the connector's checks depend on it:
   or `location.region`) and by whether it unnests `credits`. It answers the published
   `QueryResponse` shape — `schema`, `rows` of `f`/`v` cells, `jobComplete`, `jobReference`,
   `totalRows`, `pageToken` — with every NUMERIC sum as decimal text. With `pending` set, the
-  first answers say `jobComplete: false`. The job runs in `europe-west3`, so a
+  first answers say `jobComplete: false`. The job runs in `europe-west1`, so a
   `getQueryResults` without `location` is 404, as the reference says it must be named.
 - **Secret Manager.** Secrets newest created first, versions newest first; `filter` supports
   `name:<text>` (a case-insensitive part of the name) on secrets and `state:<STATE>` on
@@ -72,7 +72,7 @@ from urllib.parse import parse_qs, urlparse
 
 PROJECT = "example"
 TABLE = "example-billing.billing_export.gcp_billing_export_v1_000000_000000_000000"
-LOCATION = "europe-west3"
+LOCATION = "europe-west1"
 GRANT = "urn:ietf:params:oauth:grant-type:jwt-bearer"
 AUTH = "https://www.googleapis.com/auth/"
 LOGGING_SCOPES = {
@@ -97,7 +97,7 @@ SECRETS = re.compile(r"^/v1/projects/([^/]+)/secrets$")
 VERSIONS = re.compile(r"^/v1/projects/([^/]+)/secrets/([^/]+)/versions$")
 ACCESS = re.compile(r"^/v1/projects/([^/]+)/secrets/([^/]+)/versions/([^/]+):access$")
 SERVICES = ("Compute Engine", "Cloud Storage", "BigQuery")
-REGIONS = ("europe-west3", "europe-west1", None)
+REGIONS = ("europe-west1", "europe-west4", None)
 PROJECTS = ("example", "example-data", None)
 
 
