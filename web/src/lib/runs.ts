@@ -1,7 +1,6 @@
-// The runs the reader may see, a page at a time (ADR-0321 §2): `GET /runs`. The surface pages by
-// a cursor. It is asked to narrow by state and by process (`state`, `process`); a surface that does
-// not narrow answers every run, and the page narrows what it was handed. The cursor is sent both
-// as `cursor` and as `after`, the name the older surface reads.
+// The runs the reader may see, a page at a time (ADR-0321 §2, ADR-0319 §2): `GET /runs`,
+// newest first, narrowed where the runs are stored — `state` (repeatable) and `process`. The
+// surface answers `next` where more follow; it is passed back as `cursor`.
 
 import { read, type Answer } from './api';
 
@@ -23,7 +22,7 @@ export interface RunPage {
 }
 
 export interface RunQuery {
-	state?: string;
+	states?: string[];
 	process?: string;
 	cursor?: string;
 	limit?: number;
@@ -42,28 +41,17 @@ export function processOfRun(run: Pick<RunRow, 'process_version'>): string {
 export function runsPath(query: RunQuery): string {
 	const params = new URLSearchParams();
 	params.set('limit', String(query.limit ?? 50));
-	if (query.state) params.set('state', query.state);
+	for (const state of query.states ?? []) params.append('state', state);
 	if (query.process) params.set('process', query.process);
-	if (query.cursor) {
-		params.set('cursor', query.cursor);
-		params.set('after', query.cursor);
-	}
+	if (query.cursor) params.set('cursor', query.cursor);
 	return `runs?${params}`;
 }
 
-/** Whether a run is one the query asks for: the page's own narrowing, where the surface did not. */
-export function matches(run: RunRow, query: RunQuery): boolean {
-	if (query.state && run.state !== query.state) return false;
-	if (query.process && processOfRun(run) !== query.process && run.process_version !== query.process) return false;
-	return true;
-}
-
-/** One page of runs, narrowed. */
+/** One page of runs. */
 export async function readRuns(base: URL, query: RunQuery, fetcher: typeof fetch = fetch): Promise<Answer<RunPage>> {
 	const answer = await read<{ runs?: RunRow[]; next?: string | null }>(base, runsPath(query), fetcher);
 	if (!answer.ok) return answer;
-	const runs = (answer.body.runs ?? []).filter((r) => matches(r, query));
-	return { ok: true, body: { runs, ...(answer.body.next ? { next: answer.body.next } : {}) } };
+	return { ok: true, body: { runs: answer.body.runs ?? [], ...(answer.body.next ? { next: answer.body.next } : {}) } };
 }
 
 /** When a run was created, as the reader's clock shows it. */

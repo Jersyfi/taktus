@@ -95,6 +95,7 @@ with a way to read again. It is never shown as empty, and never as *Reading…* 
 - **Forced colours set the default only.** A reader can still choose *Picture* there.
 - **The text equivalent is the surface's.** The web app shows the sentences the surface hands
   over and writes none of its own about a step or a run.
-- **Today's tiles depend on the surface.** Where `GET /levels/today` is not served, the tiles are
-  counted from the lines the older reads answer. *Waiting on a person* and *failed in 24 hours*
-  are then not shown, because no older read counts them.
+- **Today's tiles are the surface's counts.** A count the surface withholds from the reader, as
+  the alerts from a reader who does not read them, has no tile; it is never shown as zero.
+- **Today lists the five most urgent waits.** `#/waits` shows the same five and leads to every
+  one of a kind on its own page; no page lists every wait of every kind at once.

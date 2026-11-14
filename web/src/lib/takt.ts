@@ -58,11 +58,13 @@ export function taktLine(drawn: Minute[], changes: Change[], now: number): strin
 	return `${total} ${total === 1 ? 'change' : 'changes'} recorded in the last ${drawn.length} minutes${failures}.${when}`;
 }
 
-/** What the surface kept of the last hour: the changes, or null where it does not serve them. */
-export async function recentChanges(base: URL, fetcher: typeof fetch = fetch): Promise<Change[] | null> {
-	const answer = await read<{ changes: Change[] } | Change[]>(base, `changes/recent?minutes=${SPAN_MINUTES}`, fetcher);
-	if (!answer.ok) return null;
-	const body = answer.body;
-	if (Array.isArray(body)) return body;
-	return Array.isArray(body?.changes) ? body.changes : null;
+/** What the surface kept of the last hour (ADR-0317 §4): the changes, oldest first, and whether
+ * they are all of them — the surface reads at most its newest 500. Null where the read failed. */
+export async function recentChanges(
+	base: URL,
+	fetcher: typeof fetch = fetch
+): Promise<{ changes: Change[]; complete: boolean } | null> {
+	const answer = await read<{ minutes: number; changes: Change[]; complete: boolean }>(base, `changes/recent?minutes=${SPAN_MINUTES}`, fetcher);
+	if (!answer.ok || !Array.isArray(answer.body?.changes)) return null;
+	return { changes: answer.body.changes, complete: answer.body.complete !== false };
 }

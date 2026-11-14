@@ -36,7 +36,7 @@
 
 	const base = () => surface(location.href);
 	async function first() {
-		const found = await readRuns(base(), { state: query.state || undefined, process: query.process || undefined });
+		const found = await readRuns(base(), { states: query.state ? [query.state] : undefined, process: query.process || undefined });
 		if (found.ok) {
 			runs = found.body.runs;
 			next = found.body.next;
@@ -57,7 +57,7 @@
 	async function readMore() {
 		if (!next || !runs) return;
 		more = true;
-		const found = await readRuns(base(), { state: query.state || undefined, process: query.process || undefined, cursor: next });
+		const found = await readRuns(base(), { states: query.state ? [query.state] : undefined, process: query.process || undefined, cursor: next });
 		more = false;
 		if (found.ok) {
 			runs = [...runs, ...found.body.runs.filter((r) => !runs!.some((s) => s.id === r.id))];

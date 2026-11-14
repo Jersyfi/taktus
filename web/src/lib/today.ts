@@ -20,11 +20,11 @@ export interface Tile {
 }
 
 const TILES: { key: keyof Counts; one: string; many: string; href: string; alerting: boolean }[] = [
-	{ key: 'running', one: 'run working now', many: 'runs working now', href: '#/runs?state=running', alerting: false },
-	{ key: 'waiting_on_person', one: 'run waiting on a person', many: 'runs waiting on a person', href: '#/runs?state=waiting_human', alerting: false },
-	{ key: 'failed_24h', one: 'failure in 24 hours', many: 'failures in 24 hours', href: '#/runs?state=escalated', alerting: true },
-	{ key: 'incidents', one: 'incident open', many: 'incidents open', href: '#/incidents', alerting: true },
-	{ key: 'alerts', one: 'alert in effect', many: 'alerts in effect', href: '#/alerts', alerting: true }
+	{ key: 'running_now', one: 'run working now', many: 'runs working now', href: '#/runs?state=running', alerting: false },
+	{ key: 'waiting_on_a_person', one: 'run waiting on a person', many: 'runs waiting on a person', href: '#/runs?state=waiting_human', alerting: false },
+	{ key: 'failed_last_24h', one: 'failure in 24 hours', many: 'failures in 24 hours', href: '#/runs?state=escalated', alerting: true },
+	{ key: 'open_incidents', one: 'incident open', many: 'incidents open', href: '#/incidents', alerting: true },
+	{ key: 'open_alerts', one: 'alert in effect', many: 'alerts in effect', href: '#/alerts', alerting: true }
 ];
 
 /** The glance strip: one tile per count the surface made, in a fixed order. */

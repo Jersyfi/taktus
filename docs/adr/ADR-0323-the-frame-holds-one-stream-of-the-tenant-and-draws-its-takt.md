@@ -61,17 +61,19 @@ drawn as its own mark in the alert family, by form and not by colour alone.
 
 ### 4. What the web app reads, in one place
 
-Every read the new surface offers is behind a typed adapter in `web/src/lib`:
+Every read the surface offers for this (ADR-0317 to ADR-0319) is behind a typed adapter in
+`web/src/lib`:
 
-| Read | Adapter | Without it |
+| Read | Adapter | What the web app takes |
 |---|---|---|
-| `GET /levels/today` | `todayData.ts` | the overview, `GET /operation` and the governance reads |
-| `GET /changes/recent?minutes=60` | `takt.ts` | the strip starts with the changes since opening and says so |
-| `GET /changes?snapshot=position` | `pulse.ts` | the full snapshot, ignored |
-| `GET /runs?state=&process=&cursor=&limit=` | `runs.ts` | `limit` and `after`, narrowed on the page |
+| `GET /levels/today` | `todayData.ts` | `overview`, `counts`, `waits` and `marks` |
+| `GET /changes/recent?minutes=60` | `takt.ts` | `changes` and `complete` |
+| `GET /changes?snapshot=position` | `pulse.ts` | the position; the snapshot says `listed: false` |
+| `GET /runs?state=&process=&cursor=&limit=` | `runs.ts` | `runs` and `next` |
+| `GET /levels/processes/{id}` | `ProcessView.svelte` | `runs`, `counts` and `next` |
 
-The governance and operation reads made by the frame and by a page are shared for 15 seconds, so
-that opening Today does not read each of them twice.
+`GET /levels/today` is shared by the frame and Today for 15 seconds, so that opening Today reads
+it once.
 
 ## Consequences
 
@@ -83,8 +85,9 @@ that opening Today does not read each of them twice.
 
 - **The strip shows changes, not work.** A step that runs for an hour without a recorded change
   leaves the strip flat in that hour. Now running says that it runs.
-- **The history is what the surface keeps.** Where `GET /changes/recent` is not served, the strip
-  starts empty when the page opens and fills as changes arrive. It says so in words.
+- **The history is what the surface keeps.** The surface lists at most its newest 500 changes of
+  the hour; where it cut older ones off, the strip says so. Where the read fails, the strip starts
+  empty when the page opens and fills as changes arrive, and says that in words.
 - **One stream per tab.** Two tabs open two streams. Nothing is shared between tabs.
 - **A dropped connection is said, not hidden.** While the stream reconnects, the frame says
   *Reconnecting*, and the strip draws nothing it did not receive.

@@ -10,9 +10,8 @@ import ProcessView from './ProcessView.svelte';
 import RunView from './RunView.svelte';
 import TaktStrip from './TaktStrip.svelte';
 import { isFailure, merged, minutes, taktLine } from './takt';
-import { readToday, forgetServed, waitsOf } from './todayData';
-import type { AddressedRequest, Change, ProcessLevel, RunLevel } from './types';
-import type { ReportView } from './reports';
+import { destinationsOf, linesOf, readToday } from './todayData';
+import type { Change, ProcessLevel, RunLevel } from './types';
 
 const PROCESS = fixtures.process_level as unknown as ProcessLevel;
 const RUN = fixtures.run_level as unknown as RunLevel;
@@ -120,11 +119,10 @@ describe('nothing is listed twice', () => {
 		expect(html).toContain(RUN.run.text);
 	});
 
-	it('lists a wait once, whether it comes as a request or as a report', () => {
-		const request = { id: 'q1', overdue: false, request: { question: 'Approve the refund?', due: '2026-11-20' } } as unknown as AddressedRequest;
-		const report = (id: string, due: string) => ({ id, kind: 'need', title: `Need ${id}`, due, state: 'open', raised_at: '2026-11-01' }) as unknown as ReportView;
-		const waits = waitsOf([request], [report('q1', '2026-11-20'), report('n1', '2026-11-15'), { ...report('n2', '2026-11-10'), state: 'filed' } as ReportView]);
-		expect(waits.map((w) => w.id)).toEqual(['n1', 'q1']);
+	it('lists each run of a version once and says how many there are by state', () => {
+		const level = { ...PROCESS, counts: { finished: 3, running: 1, waiting_human: 0 } };
+		const html = unescape(render(ProcessView, { props: { level, motionAllowed: true, mode: 'picture' } }).body);
+		expect(html).toContain('4 in all: 3 finished, 1 running.');
 	});
 });
 
@@ -139,53 +137,42 @@ describe('a failure is said as a failure', () => {
 	});
 
 	it('answers Today as failed when the surface fails, not as a tenant with nothing', async () => {
-		forgetServed();
 		const fetcher = (async () => new Response(JSON.stringify({ status: 503, title: 'Service Unavailable', detail: '' }), { status: 503 })) as unknown as typeof fetch;
-		const found = await readToday(new URL('https://h.test/'), null, fetcher);
+		const found = await readToday(new URL('https://h.test/'), fetcher);
 		expect(found.ok).toBe(false);
 		if (!found.ok) expect(found.problem.status).toBe(503);
 	});
 
-	it('names the part of Today whose read failed, and counts nothing it did not read', async () => {
-		forgetServed();
-		const overview = fixtures.overview;
-		const fetcher = (async (url: URL) => {
-			const path = new URL(String(url)).pathname;
-			if (path === '/levels/today') return new Response('{}', { status: 404 });
-			if (path === '/levels/overview') return new Response(JSON.stringify(overview), { status: 200 });
-			if (path === '/operation') return new Response('{}', { status: 500 });
-			if (path === '/decisions') return new Response(JSON.stringify({ requests: [], overdue: 0 }), { status: 200 });
-			if (path === '/owner/reports') return new Response(JSON.stringify({ reports: [] }), { status: 200 });
-			return new Response('{}', { status: 403 });
-		}) as unknown as typeof fetch;
-		const found = await readToday(new URL('https://h.test/'), null, fetcher);
-		expect(found.ok).toBe(true);
-		if (!found.ok) return;
-		expect(found.today.source).toBe('composed');
-		expect(found.today.failed).toEqual(['what keeps the operation running']);
-		expect(found.today.counts.incidents).toBeNull();
-		expect(found.today.counts.waiting_for_you).toBe(0);
-		expect(found.today.counts.failed_24h).toBeNull();
-	});
-
-	it('takes the surface’s one summary where it is served', async () => {
-		forgetServed();
+	it('takes the surface’s one summary, every count and wait as it answers them (ADR-0318)', async () => {
 		const body = {
 			overview: fixtures.overview,
-			counts: { waiting_for_you: 2, running: 1, waiting_on_person: 1, failed_24h: 0, incidents: 0, alerts: 0 },
-			waits: [{ id: 'q1', kind: 'decision', title: 'Approve?', due: null, overdue: true }],
-			waits_total: 2,
-			marks: ['requests'],
-			lines: [{ kind: 'requests', href: '#/requests', text: 'Decision requests: 2 wait for you.', waiting: true }]
+			counts: { waiting_for_you: 2, running_now: 1, waiting_on_a_person: 1, failed_last_24h: 0, open_incidents: 0, open_alerts: null },
+			waits: [{ kind: 'decision', title: 'Approve?', link: '#/requests/q1', since: '2026-11-14T10:00:00Z', urgent: true }],
+			marks: {
+				requests: { waiting: 1, overdue: 1 },
+				needs: { readable: true, open: 1 },
+				autonomy: { below: 0, raises: 0 },
+				findings: { readable: false },
+				operation: { tenant: 't', incidents: { readable: true, open: 0, total: 0 }, signals: { readable: true, red: 1, yellow: 0, unmeasured: 0, total: 1 }, alerts: { readable: false }, backup: { readable: false }, daily_report: { readable: false } }
+			}
 		};
 		const reads: string[] = [];
 		const fetcher = (async (url: URL) => {
 			reads.push(new URL(String(url)).pathname);
 			return new Response(JSON.stringify(body), { status: 200 });
 		}) as unknown as typeof fetch;
-		const found = await readToday(new URL('https://h.test/'), null, fetcher);
-		expect(reads).toEqual(['/levels/today']);
-		expect(found.ok && found.today.counts.waiting_on_person).toBe(1);
-		expect(found.ok && found.today.waits[0]?.href).toBe('#/requests/q1');
+		const found = await readToday(new URL('https://h.test/x/'), fetcher);
+		expect(reads).toEqual(['/x/levels/today']);
+		if (!found.ok) throw new Error('read');
+		expect(found.today.counts.waiting_on_a_person).toBe(1);
+		expect(found.today.counts.open_alerts).toBeNull();
+		expect(found.today.waits[0]).toMatchObject({ link: '#/requests/q1', urgent: true });
+		expect(found.today.marks.sort()).toEqual(['needs', 'operation', 'requests']);
+		expect(found.today.operation).toBe('Signals needs a look.');
+	});
+
+	it('marks nothing and says no line of a kind the reader does not read', () => {
+		expect(destinationsOf({})).toEqual([]);
+		expect(linesOf({ needs: { readable: false, open: null }, findings: { readable: false } })).toEqual([]);
 	});
 });

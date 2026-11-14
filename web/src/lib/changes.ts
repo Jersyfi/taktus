@@ -35,11 +35,9 @@ const VERB: Record<string, string> = {
 	'step.waiting': 'waits'
 };
 
-/** The process a change is of, by its name without the version, where the change says it. */
+/** The process a change is of, where the change says it (ADR-0317 §3). */
 export function processOf(change: Change): string | null {
-	if (!change.process) return null;
-	const at = change.process.lastIndexOf('@');
-	return at > 0 ? change.process.slice(0, at) : change.process;
+	return change.process?.id ?? null;
 }
 
 /** One line: "Step draft of run r1 finished", "Decision request q1 raised". */

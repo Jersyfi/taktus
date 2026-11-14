@@ -16,7 +16,6 @@
 	import EmptyState from '../lib/EmptyState.svelte';
 	import ErrorState from '../lib/ErrorState.svelte';
 	import { frame } from '../lib/frame.svelte';
-	import { currentAdministrationKey } from '../lib/governance';
 	import GovernanceLines from '../lib/GovernanceLines.svelte';
 	import Glyph from '../lib/Glyph.svelte';
 	import { galleryLink, runLink } from '../lib/links';
@@ -28,7 +27,7 @@
 	import TaktStrip from '../lib/TaktStrip.svelte';
 	import { merged, minutes, recentChanges, taktLine } from '../lib/takt';
 	import { glance, waitsLine } from '../lib/today';
-	import { markOf } from '../lib/navigation';
+	import { when } from '../lib/runs';
 	import { KIND_WORD, readToday, WAITS_ON_TODAY, type TodayData } from '../lib/todayData';
 	import type { Change, Problem } from '../lib/types';
 
@@ -38,13 +37,15 @@
 	let problem = $state<Problem | null>(null);
 	/** The last hour as the surface kept it; null where it does not serve it. */
 	let history = $state<Change[] | null>(null);
+	/** Whether the surface's history of the hour holds every change, or only its newest 500. */
+	let complete = $state(true);
 	let now = $state(Date.now());
 	/** How many changes had arrived when the page opened: only later ones are new here. */
 	let openedAt = frame.changes;
 
 	const base = () => surface(location.href);
 	const rereader = new Rereader(async () => {
-		const found = await readToday(base(), currentAdministrationKey());
+		const found = await readToday(base());
 		if (found.ok) {
 			today = found.today;
 			problem = null;
@@ -54,7 +55,10 @@
 
 	onMount(() => {
 		void rereader.request();
-		void recentChanges(base()).then((found) => (history = found));
+		void recentChanges(base()).then((found) => {
+			history = found?.changes ?? null;
+			complete = found?.complete ?? true;
+		});
 		const stop = frame.subscribe(() => void rereader.request());
 		const timer = setInterval(() => (now = Date.now()), 30_000);
 		return () => {
@@ -122,7 +126,7 @@
 			<div class="axis" aria-hidden="true"><span>60 min ago</span><span>now</span></div>
 			<p class="takt-line" data-takt-line>
 				{taktLine(drawn, changes, now)}
-				{#if history === null}<span class="note"> The surface keeps no history of the last hour here; the strip shows what arrived since you opened Taktus.</span>{/if}
+				{#if history === null}<span class="note"> The history of the last hour could not be read; the strip shows what arrived since you opened Taktus.</span>{:else if !complete}<span class="note"> More changes were recorded than the surface lists; the earliest are left out.</span>{/if}
 			</p>
 		</div>
 	</section>
@@ -138,7 +142,7 @@
 				</li>
 			{/each}
 			{#if today.operation}
-				<li data-tile="operation" class="wide" class:alert={today.marks.some((m) => markOf(m) === 'operation')}>
+				<li data-tile="operation" class="wide" class:alert={today.marks.includes('operation')}>
 					<a href="#/incidents">
 						<span class="what">Operation</span>
 						<span class="said">{today.operation}</span>
@@ -148,22 +152,19 @@
 		</ul>
 	{/if}
 
-	{#if today.failed.length}
-		<ErrorState what={`Part of Today (${today.failed.join(', ')})`} problem={{ status: 0, title: '', detail: 'A read failed; what it shows is left out, not shown as nothing.' }} onRetry={() => void rereader.request()} />
-	{/if}
 
 	<section class="block" aria-labelledby="waits-title">
 		<div class="head">
 			<h2 id="waits-title">Waits for you</h2>
-			{#if today.waits_total > shownWaits.length}<a href="#/waits">All {today.waits_total}</a>{/if}
+			{#if (today.counts.waiting_for_you ?? 0) > shownWaits.length || shownWaits.length >= WAITS_ON_TODAY}<a href="#/waits">All that waits</a>{/if}
 		</div>
 		{#if shownWaits.length}
 			<ol class="waits" data-waits>
-				{#each shownWaits as w (w.id)}
-					<li data-wait={w.id} class:overdue={w.overdue}>
-						<a href={w.href}>
+				{#each shownWaits as w (w.link + w.since)}
+					<li data-wait={w.link} class:overdue={w.urgent}>
+						<a href={w.link}>
 							<span class="title">{w.title}</span>
-							<span class="meta">{KIND_WORD[w.kind] ?? 'Report'} · {w.id}{w.due ? ` · needed by ${w.due}` : ''}{w.overdue ? ' · past its date' : ''}</span>
+							<span class="meta">{KIND_WORD[w.kind] ?? 'Report'}{w.since ? ` · since ${when(w.since)}` : ''}{w.urgent ? ' · urgent' : ''}</span>
 						</a>
 					</li>
 				{/each}

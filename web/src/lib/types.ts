@@ -137,14 +137,15 @@ export interface Snapshot {
 	position: string | null;
 	scope: { kind: 'tenant' | 'process' | 'run'; id?: string };
 	runs?: SnapshotRun[];
+	/** False where the reader asked for the position alone: no run was read (ADR-0317 §2). */
+	listed?: false;
 }
 
 export interface Change {
 	position: string;
 	run: string;
-	/** The process version of the run, `process@version`, where the surface sends it
-	 * (ADR-0323 §2). Absent from a surface that does not. */
-	process?: string;
+	/** The process and version of the run the change belongs to (ADR-0317 §3). */
+	process?: { id: string; version: string };
 	step?: string;
 	decision_request?: string;
 	kind: string;
@@ -207,6 +208,10 @@ export interface ProcessLevel {
 	};
 	steps: ProcessStepElement[];
 	runs?: RunAtVersionElement[];
+	/** Every run of the version by state, counted where they are stored (ADR-0319 §3). */
+	counts?: Record<string, number>;
+	/** Where the next page of ended runs starts; absent on the last (ADR-0319 §3). */
+	next?: string;
 	/** One sentence: how its steps work, and how many run now. */
 	summary: string;
 	/** The exactness statement of this version. */

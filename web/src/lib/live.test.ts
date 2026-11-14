@@ -180,8 +180,8 @@ describe('a level watched on the frame’s stream', () => {
 		const concerns = ofProcess('invoices');
 		const base: Change = { position: 'p', run: 'r', kind: 'run.started', recorded_at: 't', state: { run: 'running' } };
 		expect(concerns(base)).toBe(true);
-		expect(concerns({ ...base, process: 'invoices@2' })).toBe(true);
-		expect(concerns({ ...base, process: 'payroll@1' })).toBe(false);
+		expect(concerns({ ...base, process: { id: 'invoices', version: '2' } })).toBe(true);
+		expect(concerns({ ...base, process: { id: 'payroll', version: '1' } })).toBe(false);
 	});
 });
 
