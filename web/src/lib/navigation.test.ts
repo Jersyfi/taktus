@@ -24,10 +24,6 @@ const IDS = Object.keys(import.meta.glob('../routes/**/+page.svelte')).map((file
 	return id === '' ? '/' : id;
 });
 
-/** Pages another area of the same concept branch builds: the conversation's `#/ask` (DEC-0239
- * item 6). The frame names it; its page lands beside this one. */
-const BUILT_ELSEWHERE = new Set(['#/ask']);
-
 describe('the navigation', () => {
 	it('has five bands, and puts every destination in exactly one, in the bands’ order', () => {
 		expect(BANDS.map((b) => b.label)).toEqual(['For you', 'Work', 'Steer', 'Depends on', 'Keep running']);
@@ -59,7 +55,6 @@ describe('the navigation', () => {
 	it('leads each destination, each tab and each item of the bottom bar to a page that exists', () => {
 		const hrefs = [...DESTINATIONS.map((d) => d.href), ...Object.values(TABS).flat().map((t) => t.href), ...BOTTOM.map((b) => b.href)];
 		for (const href of hrefs) {
-			if (BUILT_ELSEWHERE.has(href)) continue;
 			const route = href.slice(1);
 			expect(IDS.some((id) => id === route || (route !== '/' && id.startsWith(route))), href).toBe(true);
 		}

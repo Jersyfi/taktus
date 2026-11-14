@@ -72,6 +72,6 @@
 <style>
 	.status {
 		color: var(--text-secondary);
-		font-size: 0.9rem;
+		font-size: var(--fs-090);
 	}
 </style>
