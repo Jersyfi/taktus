@@ -31,9 +31,11 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Any
 
 from taktus.components.governance.domain.model.corrections import (
     CorrectionLimits,
+    CountRule,
     Figures,
     Lowered,
     Proposed,
@@ -93,6 +95,12 @@ class ConfigureCorrections:
     lower_rate: float | None = None
     lower_window: timedelta | None = None
     lower_minimum: int | None = None
+    lower_count: int | None = None
+    """Corrections within `lower_count_days` that lower a unit beside the rate (ADR-0333); 0
+    removes the count."""
+    lower_count_days: int | None = None
+    process: str | None = None
+    """The process the count is set for, in place of the tenant's; None for the tenant's."""
 
 
 @dataclass(frozen=True)
@@ -142,6 +150,8 @@ class Corrections:
             )
             if value is not None
         }
+        if command.lower_count is not None or command.lower_count_days is not None:
+            changes.update(_count_changes(current, command))
         configured = CorrectionLimits.model_validate(
             {**current.model_dump(), **changes, "configured_at": self._clock.now()}
         )
@@ -216,8 +226,14 @@ class Corrections:
         else:
             unit = Unit(process_id=process, action=decision.action)
         now = self._clock.now()
-        counted = await self.counted(tenant, now, max(rule.MONTH, limits.lower_window))
+        count = None if decision.case_class is not None else limits.count_for(process)
+        widest = max(rule.MONTH, limits.lower_window, count.window if count else rule.MONTH)
+        counted = await self.counted(tenant, now, widest)
         due = state.lowering_due(counted, unit, now, limits)
+        if due is None and count is not None:
+            # Beside the rate, the count (ADR-0333): this many corrections within its days.
+            limits = by_count(limits, count)
+            due = state.lowering_due(counted, unit, now, limits)
         if due is not None:
             current = await self._current(tenant, decision.process_version, unit, decision.level)
             lowered = await self._lower(
@@ -361,6 +377,37 @@ def of_class(tenant: CorrectionLimits, limits: ClassLimits) -> CorrectionLimits:
             "lower_window": timedelta(days=limits.lower_days),
             "lower_corrections": limits.lower_corrections,
         }
+    )
+
+
+def _count_changes(current: CorrectionLimits, command: ConfigureCorrections) -> dict[str, Any]:
+    """The count a command sets, for the tenant or for one process; a count of 0 removes it, and
+    days alone change the count already set."""
+    held = (
+        current.lower_count if command.process is None else current.processes.get(command.process)
+    )
+    corrections = command.lower_count if command.lower_count is not None else None
+    if corrections is None:
+        if held is None:
+            raise ValueError("a count's days are set with the count: --lower-count")
+        corrections = held.corrections
+    days = command.lower_count_days or (held.days if held is not None else 7)
+    count = None if corrections == 0 else CountRule(corrections=corrections, days=days).document()
+    if command.process is None:
+        return {"lower_count": count}
+    processes = {name: rule.document() for name, rule in current.processes.items()}
+    if count is None:
+        processes.pop(command.process, None)
+    else:
+        processes[command.process] = count
+    return {"processes": processes}
+
+
+def by_count(limits: CorrectionLimits, count: CountRule) -> CorrectionLimits:
+    """The tenant's limits with a count in place of the rate (ADR-0333): the count of
+    corrections within the count's days, as a class's own limits lower (ADR-0215 §4)."""
+    return limits.model_copy(
+        update={"lower_window": count.window, "lower_corrections": count.corrections}
     )
 
 

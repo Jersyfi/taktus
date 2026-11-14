@@ -21,9 +21,11 @@ count, a share, a duration or a token, and none names a person (principle 14, AD
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from datetime import datetime, timedelta
 from enum import StrEnum
+from typing import Any
 
 from pydantic import Field, model_validator
 
@@ -137,6 +139,21 @@ LOWER_WINDOW = timedelta(days=7)
 LOWER_MINIMUM = 4
 
 
+PROCESS = re.compile(r"[a-z0-9][a-z0-9-]*")
+
+
+class CountRule(Value):
+    """A number of corrections within a span of days that lowers a unit one level (ADR-0333).
+    A count of decisions, never of who made them (principle 14)."""
+
+    corrections: int = Field(ge=1)
+    days: int = Field(default=7, ge=1, le=28)
+
+    @property
+    def window(self) -> timedelta:
+        return timedelta(days=self.days)
+
+
 class CorrectionLimits(Value):
     """One tenant's limits, stored under the tenant's own identifier (ADR-0110 §5)."""
 
@@ -158,6 +175,11 @@ class CorrectionLimits(Value):
     """Where set, a count lowers instead of the rate: this many corrected or rejected decisions
     within the window. Only a class of request's own limits set it (ADR-0215 §4); a tenant's
     limits leave it None."""
+    lower_count: CountRule | None = None
+    """Beside the rate, a count that lowers too: this many corrected or rejected decisions of a
+    process or an action of it within the rule's days (ADR-0333). None: the rate alone."""
+    processes: dict[str, CountRule] = Field(default_factory=dict)
+    """A process's own count, in place of the tenant's `lower_count` for its units (ADR-0333)."""
     configured_at: datetime | None = None
     """When it was configured; None for the shipped default, which nobody configured."""
 
@@ -172,7 +194,25 @@ class CorrectionLimits(Value):
                 "the rate a raise needs is below the rate that lowers; otherwise one rate "
                 "would raise and lower at once"
             )
+        for process in self.processes:
+            if PROCESS.fullmatch(process) is None:
+                raise ValueError(f"{process!r} is not a process: lowercase, digits and -")
         return self
+
+    def document(self) -> dict[str, Any]:
+        """Limits without a count are written as the previous release wrote them, so that the
+        release before reads them (ADR-0093)."""
+        written = super().document()
+        if self.lower_count is None:
+            written.pop("lower_count", None)
+        if not self.processes:
+            written.pop("processes", None)
+        return written
+
+    def count_for(self, process_id: str) -> CountRule | None:
+        """The count that lowers a unit of the process beside the rate: the process's own, or
+        the tenant's; None where neither is set."""
+        return self.processes.get(process_id, self.lower_count)
 
 
 def shipped_limits(tenant: str) -> CorrectionLimits:

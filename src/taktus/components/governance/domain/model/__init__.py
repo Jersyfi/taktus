@@ -16,6 +16,7 @@ from taktus.components.governance.domain.model.connections import (
 )
 from taktus.components.governance.domain.model.corrections import (
     CorrectionLimits,
+    CountRule,
     Decided,
     Figures,
     Lowered,
@@ -88,6 +89,7 @@ __all__ = [
     "Condition",
     "ConnectionGrant",
     "CorrectionLimits",
+    "CountRule",
     "Decided",
     "Egress",
     "Erased",
