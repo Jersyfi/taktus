@@ -834,6 +834,7 @@ async def wire(
                     decisions=decisions.requests,
                     levels=decisions.levels,
                     residency=decisions.residency,
+                    terms=decisions.residency,
                     sources=decisions.sources,
                     open_work=decisions.open_work,
                     repetition=decisions.repetition,
@@ -1069,7 +1070,9 @@ async def wire(
                 structure=identities,
                 rights=identities,
                 domains=decisions.domains,
-                residency=PoolBindings(pools, decisions.residency, settings.host_locations),
+                residency=PoolBindings(
+                    pools, decisions.residency, settings.host_locations, decisions.residency
+                ),
             )
             moves = MethodMoves(
                 versions=PostgresRepository(persistence, ProcessVersion),

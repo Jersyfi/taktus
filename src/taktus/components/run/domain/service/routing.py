@@ -2,7 +2,8 @@
 I/O.
 
 The chain is every model configured for the step's purpose, in order. The route is its first
-member that fits the step: the tenant's residency rule admits where it processes, it may produce
+member that fits the step: the tenant's residency rule admits where it processes and finds the
+provider's terms it demands declared (ADR-0334), it may produce
 the step's exactness class, and it is not cooling down. Every member passed over is named with
 its reason, so that the route can be read back from the provenance record and computed again.
 """
@@ -25,6 +26,8 @@ class Needs:
     exactness: ExactnessClass | None
     permitted: Permitted
     data_class: str | None = None
+    terms: frozenset[str] = frozenset()
+    """The provider's terms the tenant's rule demands for the step's data (ADR-0334)."""
 
 
 @dataclass(frozen=True)
@@ -87,6 +90,9 @@ def route(
         if not admits(needs.permitted, member.location):
             skipped.append(RouteSkip(adapter=member.adapter, reason="residency"))
             continue
+        if needs.terms - member.terms:
+            skipped.append(RouteSkip(adapter=member.adapter, reason="terms"))
+            continue
         if needs.exactness is not None and needs.exactness.value not in member.classes:
             skipped.append(RouteSkip(adapter=member.adapter, reason="exactness"))
             continue
@@ -106,6 +112,12 @@ def _said(reason: str, needs: Needs) -> str:
     if reason == "residency":
         scope = f"data class {needs.data_class!r}" if needs.data_class else "the tenant"
         return f"processes outside what the residency rule permits for {scope} ({needs.permitted})"
+    if reason == "terms":
+        scope = f"data class {needs.data_class!r}" if needs.data_class else "the tenant's data"
+        return (
+            f"does not declare the provider's terms the residency rule demands for {scope}: "
+            f"{', '.join(sorted(needs.terms))} (ADR-0334)"
+        )
     if reason == "exactness":
         return f"may not produce a {needs.exactness} result"
     if reason == "not_shared":

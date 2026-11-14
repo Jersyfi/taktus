@@ -24,6 +24,8 @@ class Declared:
 
     location: Location = "elsewhere"
     classes: tuple[str, ...] = MODEL_CLASSES
+    terms: frozenset[str] = frozenset()
+    """The provider's terms declared for it (ADR-0334)."""
 
 
 class StaticModelPool:
@@ -43,6 +45,7 @@ class StaticModelPool:
             version=version,
             location=declared.location,
             classes=declared.classes,
+            terms=declared.terms,
         )
 
     async def resolve(self, purpose: str) -> ResolvedModel | None:

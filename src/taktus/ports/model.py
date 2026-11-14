@@ -55,6 +55,11 @@ LOCATIONS: tuple[Location, ...] = ("own", "eu", "elsewhere")
 PERMITTED: tuple[Permitted, ...] = ("own", "eu", "anywhere")
 """Both from the narrowest to the widest: a location is admitted where its rank is at most the
 rule's."""
+TERMS: tuple[str, ...] = ("processing-agreement", "no-training")
+"""The provider's terms a model's operator may declare (ADR-0334): a data-processing agreement
+is in place, and the provider does not train on the data it is sent. Declared, never verified."""
+
+
 MODEL_CLASSES: tuple[str, ...] = ("sourced", "tolerant", "free")
 """The exactness classes a model may produce a result for. Never `exact`: a language model
 proposes an exact value and never produces it (ADR-0014)."""
@@ -164,6 +169,8 @@ class ResolvedModel:
     """Where it processes, as its operator declared it; `elsewhere` where nobody did."""
     classes: tuple[str, ...] = MODEL_CLASSES
     """The exactness classes of a step it may produce a result for."""
+    terms: frozenset[str] = frozenset()
+    """The provider's terms its operator declares, out of `TERMS` (ADR-0334); none by default."""
 
 
 # --- the price table (Model.json#/$defs/PriceTable) ----------------------------------------------

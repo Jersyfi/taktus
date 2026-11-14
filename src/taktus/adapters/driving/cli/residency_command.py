@@ -4,6 +4,8 @@
 and the narrower location of each data class and each process it names (ADR-0258). `set`
 changes it and prints the rule in
 force. A step on a model is routed only to a model whose declared location the rule permits.
+`--terms` and `--class-terms` demand the provider's terms of such a model — a data-processing
+agreement, no training on the data — for all the tenant's data or for one class (ADR-0334).
 
 The command line authenticates by holding the instance's state, as `corrections` does;
 `--by` names who acts, for the ledger.
@@ -29,7 +31,7 @@ from taktus.adapters.driving.cli.run_command import (
 from taktus.adapters.driving.cli.wiring import NotOperable, Wiring
 from taktus.components.governance.application.service import ConfigureResidency, TenantResidency
 from taktus.components.governance.domain.model import ResidencyRule
-from taktus.ports.model import PERMITTED, Permitted
+from taktus.ports.model import PERMITTED, TERMS, Permitted
 
 residency = typer.Typer(
     help="Where a tenant's data may be processed: its residency rule, per data class.",
@@ -80,6 +82,25 @@ def _classes(given: list[str], option: str = "--class") -> dict[str, Permitted]:
     return classes
 
 
+def _terms(given: list[str]) -> tuple[str, ...]:
+    named = tuple(term.strip() for term in given if term.strip())
+    unknown = [term for term in named if term not in TERMS]
+    if unknown:
+        raise ValueError(f"{', '.join(unknown)} is not a term; one of {', '.join(TERMS)}")
+    return named
+
+
+def _class_terms(given: list[str]) -> dict[str, tuple[str, ...]]:
+    """`personal=processing-agreement+no-training` pairs; `personal=` removes the class's."""
+    found: dict[str, tuple[str, ...]] = {}
+    for pair in given:
+        name, separator, terms = pair.partition("=")
+        if not separator or not name.strip():
+            raise ValueError(f"--class-terms {pair!r} is not class=term+term")
+        found[name.strip()] = _terms(terms.split("+"))
+    return found
+
+
 @residency.command("show")
 def show(
     ctx: typer.Context,
@@ -117,6 +138,22 @@ def set_(
         list[str] | None,
         typer.Option("--clear-process", help="A process whose own rule is removed. Repeatable."),
     ] = None,
+    terms: Annotated[
+        str | None,
+        typer.Option(
+            "--terms",
+            help="The provider's terms a model must declare for any of the data: "
+            "processing-agreement,no-training; empty for none.",
+        ),
+    ] = None,
+    class_terms: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--class-terms",
+            help="A data class's terms beside them: personal=processing-agreement+no-training; "
+            "personal= removes them. Repeatable.",
+        ),
+    ] = None,
     tenant: Tenant = DEFAULT_TENANT,
     by: By = "operator",
     state_dir: StateDir = Path(DEFAULT_STATE_DIR),
@@ -130,6 +167,8 @@ def set_(
             cleared=tuple(cleared or ()),
             processes=_classes(processes or [], "--process"),
             cleared_processes=tuple(cleared_processes or ()),
+            terms=None if terms is None else _terms(terms.split(",")),
+            class_terms=_class_terms(class_terms or []),
         )
     except ValueError as error:
         typer.echo(f"error: {error}", err=True)

@@ -29,7 +29,7 @@ from taktus.components.run.ports.repetition import (
     RepetitionLimits,
 )
 from taktus.components.run.ports.replay import Replay
-from taktus.components.run.ports.residency import Residency
+from taktus.components.run.ports.residency import ProviderTerms, Residency
 from taktus.components.run.ports.scores import EvaluationScores
 from taktus.components.run.ports.shares import CallerCall, Shares
 from taktus.components.run.ports.sources import Sources
@@ -66,6 +66,7 @@ __all__ = [
     "OrgUnits",
     "PersonalCredentials",
     "ProposalDecided",
+    "ProviderTerms",
     "QuietHours",
     "Repeated",
     "Repetition",

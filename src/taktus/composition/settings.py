@@ -28,7 +28,14 @@ from taktus.ports.administration import NONE, Administration
 from taktus.ports.configuration import Configuration, ConfigurationError, Secret
 from taktus.ports.execution import variable_refusal
 from taktus.ports.hardware import HardwareNeeds
-from taktus.ports.model import LOCATIONS, MODEL_CLASSES, Location, PriceTable, WeightingTable
+from taktus.ports.model import (
+    LOCATIONS,
+    MODEL_CLASSES,
+    TERMS,
+    Location,
+    PriceTable,
+    WeightingTable,
+)
 from taktus.ports.worker import Host
 
 
@@ -496,6 +503,10 @@ class ModelSettings:
     classes: tuple[str, ...] = MODEL_CLASSES
     """`TAKTUS_MODEL_EXACTNESS`: the exactness classes of a step the model may produce a result
     for, out of `sourced`, `tolerant` and `free`; all three by default. Never `exact`."""
+    terms: tuple[str, ...] = ()
+    """`TAKTUS_MODEL_TERMS`: the provider's terms the operator declares for the model, out of
+    `processing-agreement` and `no-training`, comma-separated; none by default. A tenant's
+    residency rule may demand them for its data (ADR-0334)."""
     cool_down_seconds: float = 60.0
     """`TAKTUS_MODEL_COOL_DOWN_SECONDS`: how long a model is passed over after a failure, or
     after a rate limit whose answer named no delay (ADR-0116 §5). The instance's alone."""
@@ -536,6 +547,7 @@ class ModelSettings:
             (f"{prefix}_USAGE_KINDS", ",".join(self.usage_kinds)),
             (f"{prefix}_LOCATION", self.location),
             (f"{prefix}_EXACTNESS", ",".join(self.classes)),
+            (f"{prefix}_TERMS", ",".join(self.terms)),
             (f"{prefix}_DIALECT", self.dialect),
             (f"{prefix}_NEEDS", needs_text(self.needs)),
             (key, credential),
@@ -752,6 +764,7 @@ def _model_settings(
         member=member,
         location=location,
         classes=_exactness_classes(reader, configuration),
+        terms=_terms(reader, configuration),
         cool_down_seconds=reader.number("model.cool.down.seconds", 60.0, low=0.0),
         dialect=reader.choice(
             "model.dialect", "chat_completions", ("chat_completions", "generate_content")
@@ -759,6 +772,18 @@ def _model_settings(
         location_declared=configuration.get("model.location") is not None,
         needs=parse_needs(configuration.name("model.needs"), reader.names("model.needs", ())),
     )
+
+
+def _terms(reader: _Reader, configuration: Configuration) -> tuple[str, ...]:
+    """`TAKTUS_MODEL_TERMS`, each one of `TERMS` (ADR-0334)."""
+    terms = reader.names("model.terms", ())
+    unknown = [term for term in terms if term not in TERMS]
+    if unknown:
+        raise ConfigurationError(
+            configuration.name("model.terms"),
+            f"{', '.join(unknown)} is not a term; one of {', '.join(TERMS)}",
+        )
+    return tuple(dict.fromkeys(terms))
 
 
 SIZE = re.compile(r"^(\d+(?:\.\d+)?)\s*(MiB|GiB|TiB)$")

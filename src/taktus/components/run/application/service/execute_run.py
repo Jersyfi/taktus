@@ -319,6 +319,7 @@ from taktus.components.run.ports import (
     OrgUnits,
     PersonalCredentials,
     ProposalDecided,
+    ProviderTerms,
     Repeated,
     Repetition,
     Replay,
@@ -863,6 +864,7 @@ class RunEngine:
         replay: Replay | None = None,
         levels: Levels | None = None,
         residency: Residency | None = None,
+        terms: ProviderTerms | None = None,
         sources: Sources | None = None,
         open_work: OpenWork | None = None,
         repetition: Repetition | None = None,
@@ -945,6 +947,9 @@ class RunEngine:
         self._residency = residency
         """Where a step on a model learns the location its tenant's rule permits. None: every
         tenant permits `anywhere` (ADR-0116 §3)."""
+        self._terms = terms
+        """Which provider's terms a tenant's rule demands of a model its data is sent to. None:
+        none are demanded (ADR-0334)."""
         self._sources = sources
         """What the tenant declares about the data behind a capability (ADR-0130). None: no
         source is declared free of personal fields, and only a connector's own declaration says
@@ -6669,11 +6674,15 @@ class RunEngine:
             permitted = await self._residency.permitted(
                 run.tenant, work.data_class, process_of(run.process_version)
             )
+        demanded: frozenset[str] = frozenset()
+        if self._terms is not None:
+            demanded = await self._terms.demanded(run.tenant, work.data_class)
         needs = routing.Needs(
             purpose=work.purpose,
             exactness=step.exactness,
             permitted=permitted,
             data_class=work.data_class,
+            terms=demanded,
         )
         unshared: frozenset[str] = frozenset()
         if self._shares is not None and chain:

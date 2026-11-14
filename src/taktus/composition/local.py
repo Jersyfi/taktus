@@ -487,6 +487,7 @@ class LocalWiring:
                     decisions=decisions.requests,
                     levels=decisions.levels,
                     residency=decisions.residency,
+                    terms=decisions.residency,
                     sources=decisions.sources,
                     open_work=decisions.open_work,
                     repetition=decisions.repetition,
@@ -693,7 +694,9 @@ class LocalWiring:
                 structure=identities,
                 rights=identities,
                 domains=decisions.domains,
-                residency=PoolBindings(pools, decisions.residency, host_locations),
+                residency=PoolBindings(
+                    pools, decisions.residency, host_locations, decisions.residency
+                ),
             )
             findings = ProductFindings(
                 RunBlocks(BlockedTime(ledger, objects, stores.work, runs)),

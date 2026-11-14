@@ -71,6 +71,18 @@ class Rule:
         return self.own
 
 
+class Terms:
+    """The provider's terms a tenant's rule demands: for all its data, and per class."""
+
+    def __init__(self, *every: str, **classes: tuple[str, ...]) -> None:
+        self.every = frozenset(every)
+        self.classes = classes
+
+    async def demanded(self, tenant: str, data_class: str | None) -> frozenset[str]:
+        own = self.classes.get(data_class, ()) if data_class is not None else ()
+        return self.every | frozenset(own)
+
+
 def llm(
     exactness: ExactnessClass = ExactnessClass.SOURCED, data_class: str | None = None
 ) -> tuple[Step, dict[str, Any]]:
@@ -97,6 +109,8 @@ class World:
         *,
         rule: Rule | None = None,
         classes: Mapping[str, tuple[str, ...]] | None = None,
+        terms: Mapping[str, frozenset[str]] | None = None,
+        demanded: Terms | None = None,
     ) -> None:
         self.clock = FakeClock(AT)
         self.persistence = MemoryPersistence()
@@ -105,7 +119,11 @@ class World:
         self.ledger = ChainedLedger(MemoryLedgerStore(self.persistence), self.clock)
         self.provenance = MemoryProvenanceStore(self.persistence)
         declared = {
-            f"model.{name}": Declared(location=location, **_classes(classes, name))
+            f"model.{name}": Declared(
+                location=location,
+                terms=(terms or {}).get(name, frozenset()),
+                **_classes(classes, name),
+            )
             for name, _, location in members
         }
         pool = StaticModelPool(
@@ -126,6 +144,7 @@ class World:
             options=EngineOptions(uncalibrated_margin=0.0),
             maturities=FakeMaturities(),
             residency=rule,
+            terms=demanded,
         )
         self.accounts = BlockedTime(self.ledger, self.objects, self.persistence, self.runs)
 
@@ -430,3 +449,40 @@ async def test_a_purpose_bound_to_a_model_nobody_configured_has_no_model() -> No
     run = await w.start(llm(), bindings={"reasoning": "model.absent"})
     assert run.state is RunState.ESCALATED and run.cause is Cause.FAILURE
     assert first.prompts == []
+
+
+DPA = "processing-agreement"
+NO_TRAINING = "no-training"
+
+
+async def test_a_member_without_the_terms_the_rule_demands_is_never_sent_the_data() -> None:
+    """ADR-0334: where the tenant's rule demands a data-processing agreement and no training on
+    its data, a model whose operator declared neither is passed over, and never called."""
+    plain = FakeModel(answer="no", name="plain-model@1")
+    agreed = FakeModel(answer="yes", name="agreed-model@1")
+    w = World(
+        [("plain", plain, "eu"), ("agreed", agreed, "eu")],
+        rule=Rule("eu"),
+        terms={"plain": frozenset({DPA}), "agreed": frozenset({DPA, NO_TRAINING})},
+        demanded=Terms(DPA, NO_TRAINING),
+    )
+    run = await w.start(llm())
+    assert run.state is RunState.FINISHED and plain.prompts == []
+    record = await w.record(run)
+    assert record.adapter == "model.agreed"
+    assert record.route is not None
+    assert [(s.adapter, s.reason) for s in record.route.skipped] == [("model.plain", "terms")]
+
+
+async def test_a_class_s_terms_are_demanded_for_its_data_and_none_fitting_fails_naming_them() -> (
+    None
+):
+    plain = FakeModel(answer="yes", name="plain-model@1")
+    w = World([("plain", plain, "eu")], demanded=Terms(customer=(DPA,)))
+    run = await w.start(llm())
+    assert run.state is RunState.FINISHED, "data of no class: nothing is demanded"
+    run = await w.start(llm(data_class="customer"))
+    assert run.state is RunState.ESCALATED and run.cause is Cause.FAILURE
+    reason = run.step_run("draft").reason or ""
+    assert "model.plain" in reason and DPA in reason and "ADR-0334" in reason
+    assert len(plain.prompts) == 1, "the customer's data reached no model"
