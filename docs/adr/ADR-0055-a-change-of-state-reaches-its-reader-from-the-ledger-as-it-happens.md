@@ -1,6 +1,6 @@
 # ADR-0055 — A change of state reaches its reader from the ledger, as it happens
 
-**Status:** accepted · makes UC-6.10's condition *live* buildable (issue #103, DEC-0055) · amended by ADR-0119: the web app's session cookie is accepted beside the key (§1) · amended by ADR-0164: the order of the reading positions is not the order of commit; a reader reads up to the stable head (§6)
+**Status:** accepted · makes UC-6.10's condition *live* buildable (issue #103, DEC-0055) · amended by ADR-0119: the web app's session cookie is accepted beside the key (§1) · amended by ADR-0164: the order of the reading positions is not the order of commit; a reader reads up to the stable head (§6) · amended by ADR-0317: the snapshot lists a bounded set of runs, or the position alone; a change names its process (§4, §6)
 
 ## Context
 UC-6.10 requires that a change of a run's state reaches every open representation of that run
@@ -208,6 +208,14 @@ after a higher one. §6 holds all the same, because a stream reads only up to th
 below which no entry can still commit. A snapshot reads the stable head in a transaction of its
 own and then its state; the state may already show a change after that position, which the
 stream then sends again. A change sets a state, so sending it twice changes nothing.
+
+## Amendment — a bounded snapshot (ADR-0317, 2026-11-14)
+
+§4 said the snapshot lists every run of the scope. Since ADR-0317 the tenant scope lists the runs
+not yet ended, every scope at most 1,000 runs, and a reader may ask for the position alone. §6
+holds: a reader that asks for the position alone subscribes first and reads what it draws after
+the position arrived, so no change falls between the two. Every change carries the process and
+the version of its run.
 
 ## Where this promise ends
 The 5 seconds hold from the commit of an entry to its hand-over at the replica, and across a

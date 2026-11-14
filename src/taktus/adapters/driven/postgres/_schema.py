@@ -1031,6 +1031,7 @@ run = Table(
     PrimaryKeyConstraint("tenant", "id"),
     Index("run_state", "tenant", "state"),
     Index("run_created", "tenant", "created_at", "id"),  # ADR-0094
+    Index("run_version_created", "tenant", "process_version", "created_at", "id"),  # ADR-0319
 )
 
 step_run = Table(

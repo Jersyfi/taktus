@@ -1,0 +1,13 @@
+{
+  "position": "sha256:c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+  "run": "run_01",
+  "kind": "run.started",
+  "recorded_at": "2026-11-14T09:00:00Z",
+  "rehearsal": false,
+  "state": {
+    "run": "running"
+  },
+  "process": {
+    "id": "invoices"
+  }
+}

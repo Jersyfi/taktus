@@ -191,6 +191,7 @@ class PostgresLedgerStore:
         *,
         since: datetime | None = None,
         until: datetime | None = None,
+        newest: int | None = None,
     ) -> Sequence[LedgerEntry]:
         """One statement over the index `ledger_entry_kind_ts` (migration 0060)."""
         connection = self._persistence.connection(tenant)
@@ -199,6 +200,11 @@ class PostgresLedgerStore:
             where = where & (s.ledger_entry.c.ts >= since)
         if until is not None:
             where = where & (s.ledger_entry.c.ts <= until)
+        if newest is not None:
+            statement = (
+                select(s.ledger_entry).where(where).order_by(s.ledger_entry.c.seq.desc())
+            ).limit(newest)
+            return [_entry(row) for row in reversed(list(await connection.execute(statement)))]
         rows = await connection.execute(
             select(s.ledger_entry).where(where).order_by(s.ledger_entry.c.seq)
         )

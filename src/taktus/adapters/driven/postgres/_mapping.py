@@ -28,7 +28,7 @@ from sqlalchemy.engine import Row
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from taktus.adapters.driven.postgres import _schema as s
-from taktus.ports.persistence import Mark, NotQueryable, Tenant
+from taktus.ports.persistence import Mark, NotQueryable, Tenant, Where
 
 type Document = dict[str, Any]
 type Rows = list[Row[Any]]
@@ -51,11 +51,20 @@ class QueriedMapper(Mapper, Protocol):
     """A mapper that answers the queries of the port's `Queried` from its rows (ADR-0094)."""
 
     async def newest(
-        self, connection: AsyncConnection, tenant: Tenant, limit: int, after: Mark | None
+        self,
+        connection: AsyncConnection,
+        tenant: Tenant,
+        limit: int,
+        after: Mark | None,
+        where: Where | None = None,
     ) -> list[Document]: ...
 
     async def count(
-        self, connection: AsyncConnection, tenant: Tenant, by: Sequence[str]
+        self,
+        connection: AsyncConnection,
+        tenant: Tenant,
+        by: Sequence[str],
+        where: Where | None = None,
     ) -> dict[tuple[Any, ...], int]: ...
 
     async def having(
@@ -659,10 +668,15 @@ class RunMapper:
         return await self._documents(connection, tenant, list(rows), every=True)
 
     async def newest(
-        self, connection: AsyncConnection, tenant: Tenant, limit: int, after: Mark | None
+        self,
+        connection: AsyncConnection,
+        tenant: Tenant,
+        limit: int,
+        after: Mark | None,
+        where: Where | None = None,
     ) -> builtins.list[Document]:
         run = s.run.c
-        statement = select(s.run).where(run.tenant == tenant)
+        statement = select(s.run).where(run.tenant == tenant, *self._where(where))
         if after is not None:
             statement = statement.where(
                 or_(
@@ -675,11 +689,17 @@ class RunMapper:
         return await self._documents(connection, tenant, rows)
 
     async def count(
-        self, connection: AsyncConnection, tenant: Tenant, by: Sequence[str]
+        self,
+        connection: AsyncConnection,
+        tenant: Tenant,
+        by: Sequence[str],
+        where: Where | None = None,
     ) -> dict[tuple[Any, ...], int]:
         columns = [self._column(field) for field in by]
         statement = (
-            select(*columns, func.count()).where(s.run.c.tenant == tenant).group_by(*columns)
+            select(*columns, func.count())
+            .where(s.run.c.tenant == tenant, *self._where(where))
+            .group_by(*columns)
         )
         return {tuple(row[:-1]): row[-1] for row in await connection.execute(statement)}
 
@@ -703,6 +723,11 @@ class RunMapper:
             raise NotQueryable("run", field)
         rows = list(await connection.execute(statement.order_by(s.run.c.created_at, s.run.c.id)))
         return await self._documents(connection, tenant, rows)
+
+    @classmethod
+    def _where(cls, where: Where | None) -> builtins.list[Any]:
+        """One condition per field `where` names: the column holds one of its values."""
+        return [cls._column(f).in_(builtins.list(v)) for f, v in (where or {}).items()]
 
     @staticmethod
     def _column(field: str) -> Any:

@@ -1766,6 +1766,7 @@
         "text": "run run_example: running. Running score, draft, review."
       }
     ],
+    "counts": {},
     "summary": "10 steps: 6 reproducible, 2 variable, 1 with a person, 1 waiting. 3 steps running now.",
     "exactness": {
       "process_version": "six-times-seven@4",

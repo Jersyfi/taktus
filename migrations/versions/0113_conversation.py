@@ -1,7 +1,7 @@
 """A person's conversation with Taktus, tied to no project (ADR-0325, UC-1.14).
 
 Revision: 0113
-Revises: 0111
+Revises: 0112
 
 What this adds: `conversation`, one row per person and tenant, the conversation as a document
 beside the tenant, its identifier and the moment it was opened. Its turns and the acts read
@@ -18,7 +18,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision = "0113"
-down_revision = "0111"
+down_revision = "0112"
 branch_labels = None
 depends_on = None
 

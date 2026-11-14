@@ -192,8 +192,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         if isinstance(given, JSONResponse):
             return given
         who, found = given
-        waiting = frozenset(o.finding.lack.key for o in await found.pending(who.tenant))
+        # Read once: what waits for a review is chosen from what would leave (ADR-0320).
         outgoing = await found.outgoing(who.tenant)
+        waiting = frozenset(o.finding.lack.key for o in await found.pending(who.tenant, outgoing))
         return JSONResponse(findings_document(found.level, outgoing, waiting))
 
     @routes.post(

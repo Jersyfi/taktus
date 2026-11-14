@@ -17,9 +17,11 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime
 
 from taktus.components.reporting.domain.model.live import (
     Change,
+    ProcessOf,
     Reader,
     RunRef,
     Scope,
@@ -34,6 +36,14 @@ from taktus.components.reporting.domain.service.live import (
 )
 from taktus.components.reporting.ports.live import LiveRecords, States
 from taktus.ports.persistence import Tenant
+from taktus.shared.v1 import LedgerEntry
+
+SNAPSHOT_RUNS = 1_000
+"""The most runs one snapshot lists: the newest of the scope (ADR-0317 §1)."""
+RECENT_MINUTES = 60
+"""How far back the recent changes reach at most, and unless asked otherwise (ADR-0317 §4)."""
+RECENT_CHANGES = 500
+"""The most entries one read of the recent changes takes: the newest (ADR-0317 §4)."""
 
 KNOWN_RUNS = 10_000
 """How many runs the service remembers where they belong before it forgets them all and reads
@@ -67,24 +77,39 @@ class Read:
     through: int
 
 
+@dataclass(frozen=True)
+class Recent:
+    """The changes of the last minutes a reader may see, and whether the bound on the entries
+    read may have cut older ones off: `complete` is false where it may have."""
+
+    changes: tuple[Change, ...]
+    complete: bool
+
+
 class LiveChanges:
     def __init__(self, records: LiveRecords, states: States) -> None:
         self._records = records
         self._states = states
         self._known: dict[tuple[Tenant, str], RunRef] = {}
 
-    async def open(self, reader: Reader, scope: Scope, position: str | None) -> Opening:
+    async def open(
+        self, reader: Reader, scope: Scope, position: str | None, *, listed: bool = True
+    ) -> Opening:
         tenant = reader.tenant
         if position is not None:
             seq = await self._records.position(tenant, position)
             if not needs_snapshot(seq, await self._records.head(tenant)) and seq is not None:
                 return Opening(seq=seq, snapshot=None)
-        return await self.snapshot(reader, scope)
+        return await self.snapshot(reader, scope, listed=listed)
 
-    async def snapshot(self, reader: Reader, scope: Scope) -> Opening:
-        """Every run the reader may see in the scope, at one position. A run withheld leaves
-        no trace: it is not listed, and the position is a hash."""
-        state = await self._records.state(reader.tenant)
+    async def snapshot(self, reader: Reader, scope: Scope, *, listed: bool = True) -> Opening:
+        """The runs the reader may see in the scope, at one position: in the tenant scope those
+        not yet ended, at most `SNAPSHOT_RUNS`, the newest. Without `listed`, the position
+        alone, and no run is read (ADR-0317). A run withheld leaves no trace: it is not listed,
+        and the position is a hash."""
+        state = await self._records.state(
+            reader.tenant, scope, limit=SNAPSHOT_RUNS if listed else 0
+        )
         runs = tuple(
             shown
             for ref, shown in state.runs
@@ -92,13 +117,36 @@ class LiveChanges:
         )
         return Opening(
             seq=state.seq,
-            snapshot=Snapshot(position=state.position, scope=scope, runs=runs),
+            snapshot=Snapshot(
+                position=state.position,
+                scope=scope,
+                runs=runs,
+                truncated=True if state.truncated else None,
+                listed=None if listed else False,
+            ),
+        )
+
+    async def recent(self, reader: Reader, scope: Scope, since: datetime) -> Recent:
+        """The changes recorded since `since` that this reader receives in this scope, oldest
+        first: the same projection, predicate and visibility as the stream, over the newest
+        `RECENT_CHANGES` entries of the kinds that change a state (ADR-0317 §4)."""
+        tenant = reader.tenant
+        entries = await self._records.recent(tenant, since, limit=RECENT_CHANGES)
+        read = await self._paired(tenant, entries)
+        return Recent(
+            changes=tuple(self.visible(reader, scope, read)),
+            complete=len(entries) < RECENT_CHANGES,
         )
 
     async def read(self, tenant: Tenant, after: int, *, limit: int) -> Read:
         entries = await self._records.after(tenant, after, limit=limit)
         if not entries:
             return Read(pending=(), through=after)
+        return Read(pending=await self._paired(tenant, entries), through=entries[-1].seq)
+
+    async def _paired(self, tenant: Tenant, entries: Sequence[LedgerEntry]) -> tuple[Pending, ...]:
+        """Each entry that changed a state, projected and paired with its run, which names the
+        process and version the change carries (ADR-0317 §3)."""
         projected: list[tuple[int, Change]] = []
         for entry in entries:
             state = self._states(entry.kind, entry.outcome)
@@ -108,12 +156,17 @@ class LiveChanges:
             if change is not None:
                 projected.append((entry.seq, change))
         runs = await self._runs(tenant, [c.run for _, c in projected])
-        pending = tuple(
-            Pending(seq, change, runs[change.run])
+        return tuple(
+            Pending(
+                seq,
+                change.model_copy(
+                    update={"process": ProcessOf.of(runs[change.run].process_version)}
+                ),
+                runs[change.run],
+            )
             for seq, change in projected
             if change.run in runs
         )
-        return Read(pending=pending, through=entries[-1].seq)
 
     @staticmethod
     def visible(reader: Reader, scope: Scope, pending: Sequence[Pending]) -> list[Change]:

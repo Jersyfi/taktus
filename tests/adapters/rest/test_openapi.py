@@ -96,6 +96,8 @@ def test_the_document_is_openapi_3_1_with_the_prefix_as_a_server_variable() -> N
         "/stages",
         "/stages/{stage_id}/open",
         "/changes",
+        "/changes/recent",
+        "/levels/today",
         "/levels/runs/{run_id}",
         "/levels/runs/{run_id}/stages",
         "/catalogue",

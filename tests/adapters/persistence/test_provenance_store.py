@@ -97,6 +97,9 @@ async def test_records_come_back_per_run_in_ledger_order_with_every_field(
         assert [r.id for r in of_run] == ["prov_1", "prov_2"], "ledger order"
         assert of_run[1] == full and of_run[1].document() == full.document()
         assert await store.of_run(tenant, "nope") == []
+        of_runs = await store.of_runs(tenant, {"r1", "r0", "nope"})
+        assert [r.id for r in of_runs] == ["prov_0", "prov_1", "prov_2"], "one read, ledger order"
+        assert await store.of_runs(tenant, set()) == []
 
 
 async def test_a_step_run_is_recorded_once(backend: Backend) -> None:

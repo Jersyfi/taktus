@@ -498,6 +498,14 @@ role it would tie the core to a model stack and the removal test would be lost.
   (`GET /autonomy`) and `adapters/driving/rest/review.py` (`GET /findings` and the review).
   `RestServices` hands them the governance component's `Corrections` and the reporting
   component's `ProductFindings`; the daemon's `Wired` gives the ones it built (ADR-0122).
+- **The start page** is one request, `GET /levels/today` (`adapters/driving/rest/today.py`,
+  ADR-0318): the overview, counts, what waits — ordered by the rule of
+  `components/reporting/domain/service/today.py` — and the marks of the navigation, each read
+  through the route it summarises. The stream's snapshot reads only the runs of its scope, in
+  the tenant scope those not yet ended, or its position alone (`composition/live.py`,
+  ADR-0317); the runs are filtered where they are stored by `Queried`'s `where`, and the process
+  level reads a page (ADR-0319). `tests/integration/test_run_listing_at_scale.py` holds the
+  start page and the views to their time budget (ADR-0320).
 - **A running step taken over by a person** is asked and handed back on the HTTP surface
   (`adapters/driving/rest/takeover.py`, ADR-0128) through the port `Takeovers` of
   `adapters/driving/rest/wiring.py`; the daemon's `Wired` gives its engine. The ask is written

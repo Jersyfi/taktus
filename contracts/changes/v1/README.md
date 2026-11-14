@@ -37,7 +37,7 @@ data: {"position":"sha256:b2…","run":"run_01","step":"classify","kind":"step.f
 
 | Event | When | Shape |
 |---|---|---|
-| `snapshot` | first, and again after a long absence (§3) | `#/$defs/Snapshot` |
+| `snapshot` | first, and again after a long absence (§3); the runs of §5, or the position alone | `#/$defs/Snapshot` |
 | `change` | once for every ledger entry of a kind of `#/$defs/Kind` in the scope that the reader may see | `#/$defs/Change` |
 | heartbeat | a comment line every 15 seconds, from the opening of the stream, whatever happens | none |
 
@@ -83,3 +83,20 @@ sent. Until the role-based views of UC-6.4 exist, it is the tenant boundary.
 
 The account key is read from `Authorization: Bearer` and from nowhere else. A stream whose key
 no longer proves an identity ends at its next change or heartbeat.
+
+## 5. A bounded opening, and what just happened (ADR-0317)
+
+A snapshot never reads a tenant's whole history. In the tenant scope it lists the runs that have
+not ended — every state but `finished`; a process scope lists the runs of the process, a run
+scope the run. Each lists at most 1,000 runs, the newest, and says `truncated: true` where more
+were left. `?snapshot=position` asks for the position alone: the snapshot then carries
+`listed: false` and no run, and no run is read. A reader that draws from its own requests needs
+nothing more to resume.
+
+Every change carries `process`: the process and the version of its run, read from the run
+itself. It is optional in the schema, because a reader of an older replica receives none.
+
+`GET /changes/recent?minutes=N` (at most 60, 60 unless given) answers the changes of the last
+`N` minutes as one JSON document, oldest first: each exactly as the stream sends it, with the
+same scope parameters, predicate and visibility. It reads at most the newest 500 entries that
+change a state, and says `complete: false` where that bound may have cut older ones off.

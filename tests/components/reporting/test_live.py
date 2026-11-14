@@ -57,13 +57,19 @@ class Records:
         self.entries = list(entries)
         self.known = {r.id: r for r in runs}
 
-    async def state(self, tenant: str) -> TenantState:
+    async def state(self, tenant: str, scope: Scope, *, limit: int) -> TenantState:
         newest = self.entries[-1] if self.entries else None
+        runs = list(self.known.values())
         return TenantState(
             seq=0 if newest is None else newest.seq,
             position=None if newest is None else newest.hash,
-            runs=[(r, shown(r)) for r in self.known.values()],
+            runs=[(r, shown(r)) for r in runs[:limit]],
+            truncated=0 < limit < len(runs),
         )
+
+    async def recent(self, tenant: str, since: datetime, *, limit: int) -> Sequence[LedgerEntry]:
+        found = [e for e in self.entries if e.ts >= since]
+        return found[len(found) - min(limit, len(found)) :]
 
     async def head(self, tenant: str) -> int:
         return self.entries[-1].seq if self.entries else 0
@@ -126,3 +132,42 @@ async def test_a_run_the_reader_may_not_see_is_absent_from_snapshot_and_changes(
     sent = live.visible(ADA, Scope(kind=ScopeKind.TENANT), read.pending)
     assert [c.run for c in sent] == ["run_1"]
     assert "run_9" not in str([c.document() for c in sent])
+
+
+async def test_a_position_alone_reads_no_run_and_says_so() -> None:
+    """`snapshot=position`: the opening carries the position, no run, and `listed` false
+    (ADR-0317 §2)."""
+    records = Records([entry(1, "step.started")], [MINE])
+    opening = await LiveChanges(records, states).open(
+        ADA, Scope(kind=ScopeKind.TENANT), None, listed=False
+    )
+    assert opening.snapshot is not None
+    document = opening.snapshot.document()
+    assert document == {
+        "position": entry(1, "step.started").hash,
+        "scope": {"kind": "tenant"},
+        "runs": [],
+        "listed": False,
+    }
+
+
+async def test_a_change_carries_the_process_and_version_of_its_run() -> None:
+    records = Records([entry(1, "step.started")], [MINE])
+    read = await LiveChanges(records, states).read("acme", 0, limit=10)
+    [pending] = read.pending
+    assert pending.change.document()["process"] == {"id": "invoices", "version": "1"}
+
+
+async def test_the_recent_changes_are_the_streams_own_and_bounded() -> None:
+    """The same projection and predicate as the stream; a read that reached its bound says it
+    may be incomplete (ADR-0317 §4)."""
+    records = Records(
+        [entry(1, "step.started"), entry(2, "step.started", run="run_9"), entry(3, "x.y")],
+        [MINE, THEIRS],
+    )
+    live = LiveChanges(records, states)
+    found = await live.recent(ADA, Scope(kind=ScopeKind.TENANT), AT)
+    assert [c.run for c in found.changes] == ["run_1"] and found.complete
+    sent = await live.read("acme", 0, limit=10)
+    assert found.changes[0] == live.visible(ADA, Scope(kind=ScopeKind.TENANT), sent.pending)[0]
+    assert not (await live.recent(ADA, Scope(kind=ScopeKind.RUN, id="run_2"), AT)).changes

@@ -39,12 +39,14 @@ from taktus.components.reporting.domain.model import (
     RunCount,
     RunFacts,
     RunningStep,
+    StateCount,
     Statement,
     StepFacts,
     TakeoverFacts,
     VersionRef,
     Wait,
 )
+from taktus.components.reporting.ports.levels import OPEN_RUNS, RunPage
 from taktus.components.run.domain.model import WAITING, WORKING, Run, RunState, StepRun, StepState
 from taktus.components.value.application.query import CorrectionRates
 from taktus.ports.ledger import Ledger
@@ -173,8 +175,15 @@ class RepositoryLevelRecords:
         return OriginFacts(tenant=tenant, run_id=run_id, step_id=step_id, records=tuple(path))
 
     async def process(
-        self, tenant: Tenant, process_id: str, version: str | None
+        self,
+        tenant: Tenant,
+        process_id: str,
+        version: str | None,
+        page: RunPage | None = None,
     ) -> ProcessFacts | None:
+        runs: list[Run] = []
+        counted: Mapping[tuple[Any, ...], int] = {}
+        older: Run | None = None
         async with self._work.transaction(tenant):
             process = await self._processes.get(tenant, process_id)
             known = [v for v in await self._versions.list(tenant) if v.process_id == process_id]
@@ -183,7 +192,11 @@ class RepositoryLevelRecords:
             found = next((v for v in known if v.version == chosen), None)
             if found is None:
                 return None
-            runs = await self._runs.having(tenant, "process_version", found.ref)
+            if page is not None:
+                runs, older = await self._runs_of(tenant, found.ref, page)
+                counted = await self._runs.count(
+                    tenant, ("state",), where={"process_version": (found.ref,)}
+                )
             trials = await self._tried(tenant)
         return ProcessFacts(
             id=found.process_id,
@@ -211,20 +224,38 @@ class RepositoryLevelRecords:
                 VersionRef(version=v.version, active=v.version == active)
                 for v in sorted(known, key=lambda v: v.version)
             ),
-            runs=tuple(
-                RunAtVersion(
-                    id=r.id,
-                    tenant=r.tenant,
-                    state=str(r.state),
-                    rehearsal=r.rehearsal,
-                    running=tuple(s.step_id for s in r.step_runs if s.state is StepState.RUNNING),
-                    created_at=r.created_at,
-                )
-                for r in runs
+            runs=tuple(at_version(r) for r in runs),
+            counts=tuple(
+                StateCount(state=str(state), runs=n) for (state,), n in sorted(counted.items())
             ),
+            older=None if older is None else at_version(older),
             exactness=statement_of(found, await measured_of(self._rates, tenant, found)),
             untried=untried(found.autonomy.level, trials, found.ref),
         )
+
+    async def _runs_of(
+        self, tenant: Tenant, version: str, page: RunPage
+    ) -> tuple[list[Run], Run | None]:
+        """The runs of the version not yet ended — on the first page only — and a page of the
+        newest ended ones, with the last of them where more follow (ADR-0319 §3)."""
+        of_version = {"process_version": (version,)}
+        open_runs: list[Run] = []
+        if page.after is None:
+            open_runs = list(
+                await self._runs.newest(
+                    tenant, limit=OPEN_RUNS, where={**of_version, "state": NOT_ENDED}
+                )
+            )
+        ended = list(
+            await self._runs.newest(
+                tenant,
+                limit=page.limit + 1,
+                after=page.after,
+                where={**of_version, "state": ENDED},
+            )
+        )
+        shown = ended[: page.limit]
+        return open_runs + shown, shown[-1] if len(ended) > page.limit and shown else None
 
     async def _tried(self, tenant: Tenant) -> list[TakeoverTrial]:
         return [] if self._trials is None else list(await self._trials.list(tenant))
@@ -319,6 +350,25 @@ def counts_of(tenant: Tenant, counted: Mapping[tuple[Any, ...], int]) -> tuple[R
             waiting=waiting[version],
         )
         for version in sorted(working)
+    )
+
+
+NOT_ENDED: tuple[str, ...] = tuple(sorted(str(s) for s in WORKING | WAITING))
+"""The states of a run that has not ended, by the run component's own definitions."""
+ENDED: tuple[str, ...] = tuple(sorted(str(s) for s in RunState if s not in WORKING | WAITING))
+"""The states of a run that has ended."""
+
+
+def at_version(run: Run) -> RunAtVersion:
+    """A run as the process level draws it: its state and the steps running in it now."""
+    return RunAtVersion(
+        id=run.id,
+        tenant=run.tenant,
+        state=str(run.state),
+        rehearsal=run.rehearsal,
+        running=tuple(s.step_id for s in run.step_runs if s.state is StepState.RUNNING),
+        created_at=run.created_at,
+        ended=run.state not in WORKING | WAITING,
     )
 
 

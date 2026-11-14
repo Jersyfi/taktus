@@ -370,6 +370,7 @@ from taktus.ports.model import (
 from taktus.ports.objectstore import ObjectStore
 from taktus.ports.persistence import (
     Claims,
+    Mark,
     PersistenceError,
     ProvenanceStore,
     Repository,
@@ -4366,9 +4367,12 @@ class RunEngine:
         budget = await self._tenant_budget.month_budget(run.tenant)
         if budget is None:
             return None
-        month = f"{self._clock.now():%Y-%m}"
+        now = self._clock.now()
+        month = f"{now:%Y-%m}"
+        # A day before the month's first: a run's own zone may place it in the month earlier.
+        since = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
         async with self._work.transaction(run.tenant):
-            runs = list(await self._runs.list(run.tenant))
+            runs = await self._runs_since(run.tenant, since)
         spent: dict[str, float] = {}
         for each in runs:
             if each.rehearsal or f"{each.created_at:%Y-%m}" != month:
@@ -4377,6 +4381,23 @@ class RunEngine:
                 spent[currency] = spent.get(currency, 0.0) + float(amount)
         reached = [c for c, limit in budget.amounts.items() if spent.get(c, 0.0) >= limit]
         return (budget, month, spent, reached) if reached else None
+
+    async def _runs_since(self, tenant: Tenant, since: datetime) -> list[Run]:
+        """The tenant's runs created at or after `since`, read newest first a page at a time
+        until a page reaches before it, inside the caller's unit of work: what a rule over a
+        period reads, instead of every run the tenant ever had (ADR-0320). A repository that
+        cannot be queried answers with every run, filtered here."""
+        newest = getattr(self._runs, "newest", None)
+        if newest is None:
+            return [r for r in await self._runs.list(tenant) if r.created_at >= since]
+        found: list[Run] = []
+        after: Mark | None = None
+        while True:
+            page = list(await newest(tenant, limit=RUNS_PAGE, after=after))
+            found += [r for r in page if r.created_at >= since]
+            if len(page) < RUNS_PAGE or page[-1].created_at < since:
+                return found
+            after = Mark(created_at=page[-1].created_at, id=page[-1].id)
 
     def _cost(self, run: Run) -> ConsumptionQuantities:
         """What the run used, with the money of its tokens and compute at the instance's table
@@ -4536,7 +4557,7 @@ class RunEngine:
         now = self._clock.now()
         since = now - timedelta(days=UNIT_HISTORY_DAYS)
         async with self._work.transaction(tenant):
-            stored = list(await self._runs.list(tenant))
+            stored = await self._runs_since(tenant, _earliest(now, limits))
         past = [
             self._lines(self._cost(r), r.compute_by_class())
             for r in stored
@@ -4637,13 +4658,11 @@ class RunEngine:
         runs `own` commissioned, and nothing where `own` is None (ADR-0282 §6). A rule over
         the runs' records."""
         now = self._clock.now()
-        earliest = min(
-            [now - timedelta(days=UNIT_HISTORY_DAYS + 1), *(lim.starts for lim in limits)]
-        )
+        earliest = _earliest(now, limits)
         if stored is None:
             # Read in a unit of work of its own; `stored` is given where one is open already.
             async with self._work.transaction(tenant):
-                stored = list(await self._runs.list(tenant))
+                stored = await self._runs_since(tenant, earliest)
         runs = list(stored) if run is None else [run, *(r for r in stored if r.id != run.id)]
         found: dict[str, tuple[dict[str, float], dict[date, dict[str, float]]]] = {
             lim.name: ({}, {}) for lim in limits
@@ -4827,7 +4846,7 @@ class RunEngine:
         async def recheck() -> None:
             for name in sorted({limit.name for limit in limits}):
                 await claims.hold(run.tenant, f"unit_limit:{name}")
-            stored = list(await self._runs.list(run.tenant))
+            stored = await self._runs_since(run.tenant, _earliest(self._clock.now(), limits))
             costs = await self._unit_costs(run.tenant, run, limits, run.identity, stored)
             refusal = self._refused_by(limits, costs, demand)
             if refusal is not None:
@@ -8720,6 +8739,16 @@ UNIT_LIMIT_HELD = "unit_limit.held"
 UNIT_LIMIT_RELEASED = "unit_limit.released"
 UNIT_HISTORY_DAYS = 28
 """The days before today a unit's cost per day is read for, to judge an anomaly (ADR-0282)."""
+RUNS_PAGE = 500
+"""How many runs one read of a period takes, newest first (ADR-0320)."""
+
+
+def _earliest(now: datetime, limits: Sequence[AppliedLimit]) -> datetime:
+    """From when a unit's costs are read: its period's start or the 28 days before today and
+    one more, whichever is earlier (ADR-0282)."""
+    return min([now - timedelta(days=UNIT_HISTORY_DAYS + 1), *(lim.starts for lim in limits)])
+
+
 """A run waits at its boundary because the tenant's monthly budget is reached (ADR-0260)."""
 """A run held before its first step by its unit's budget quota, outcome `budget` or
 `no_amount` (ADR-0166)."""

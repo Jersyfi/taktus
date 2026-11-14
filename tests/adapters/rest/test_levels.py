@@ -149,6 +149,30 @@ async def test_the_web_apps_fonts_are_served_as_fonts(prefix: str, tmp_path: Pat
         assert font.status_code == 200 and font.headers["content-type"] == "font/woff2"
 
 
+async def test_a_hashed_file_is_kept_for_good_and_a_large_answer_travels_compressed(
+    prefix: str, tmp_path: Path
+) -> None:
+    """A file under `_app/immutable/` is cached for a year, the page itself asked again; a JSON
+    answer above 1 KiB is compressed where the reader accepts it (ADR-0318 §4)."""
+    (tmp_path / "index.html").write_text("<!doctype html><title>Taktus</title>", "utf-8")
+    (tmp_path / "_app" / "immutable").mkdir(parents=True)
+    (tmp_path / "_app" / "immutable" / "start.abc123.js").write_text("export {}", "utf-8")
+    app = build_app(services(), prefix=prefix, web=tmp_path)
+    base = "" if prefix == "/" else prefix
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://taktus.test"
+    ) as http:
+        hashed = await http.get(f"{base}/app/_app/immutable/start.abc123.js")
+        assert hashed.headers["cache-control"] == "public, max-age=31536000, immutable"
+        page = await http.get(f"{base}/app/")
+        assert page.headers["cache-control"] == "no-cache"
+        zipped = await http.get(f"{base}/vocabulary", headers={"Accept-Encoding": "gzip"})
+        assert zipped.headers["content-encoding"] == "gzip"
+        assert zipped.json() == VOCABULARY.document()
+        plain = await http.get(f"{base}/vocabulary", headers={"Accept-Encoding": "identity"})
+        assert "content-encoding" not in plain.headers
+
+
 async def test_without_a_build_no_web_app_is_served(prefix: str, tmp_path: Path) -> None:
     app = build_app(services(), prefix=prefix, web=tmp_path)
     base = "" if prefix == "/" else prefix

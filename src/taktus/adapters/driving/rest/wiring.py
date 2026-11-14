@@ -61,6 +61,7 @@ from taktus.components.reporting.application.service import (
     BackupWatched,
     FindingsIntake,
     ProductFindings,
+    Recent,
     StepQueries,
     StepTraces,
 )
@@ -123,11 +124,18 @@ class ChangeStreams(Protocol):
         scope: Scope,
         position: str | None,
         authenticate: Callable[[], Awaitable[Reader | None]],
+        *,
+        listed: bool = True,
     ) -> AsyncIterator[Snapshot | Change | None]:
         """The stream: its snapshot or what the reader missed, then every change as it
-        happens; None is a heartbeat. `authenticate` is asked again before every batch and
-        every heartbeat; when it answers None the stream ends. `StreamsFull` when the replica
-        holds its maximum."""
+        happens; None is a heartbeat. Without `listed`, a snapshot carries the position alone
+        (ADR-0317). `authenticate` is asked again before every batch and every heartbeat; when
+        it answers None the stream ends. `StreamsFull` when the replica holds its maximum."""
+        ...
+
+    async def recent(self, reader: Reader, scope: Scope, minutes: int) -> Recent:
+        """The changes of the last `minutes` the reader may see in the scope, oldest first, as
+        the stream would have sent them (ADR-0317 §4)."""
         ...
 
 

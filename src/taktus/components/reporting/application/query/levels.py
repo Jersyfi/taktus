@@ -21,7 +21,11 @@ from taktus.components.reporting.domain.service.levels import (
     run_level,
 )
 from taktus.components.reporting.domain.service.stages import StageView, stage_view
-from taktus.components.reporting.ports.levels import LevelRecords
+from taktus.components.reporting.ports.levels import LevelRecords, RunPage
+
+FIRST_PAGE = RunPage()
+"""The runs a process level reads unless asked otherwise: those not yet ended, and the first
+page of the ended ones."""
 
 
 class LevelQueries:
@@ -56,12 +60,17 @@ class LevelQueries:
         return stage_view(facts)
 
     async def process(
-        self, reader: Reader, process_id: str, version: str | None = None
+        self,
+        reader: Reader,
+        process_id: str,
+        version: str | None = None,
+        page: RunPage | None = FIRST_PAGE,
     ) -> ProcessLevel | None:
         """The process level of one version — the active one by default; None when there is
         no such process or version, or the reader may not see it. Only the runs the reader may
-        see are drawn and counted."""
-        facts = await self._records.process(reader.tenant, process_id, version)
+        see are drawn, and counted where `may_count` admits the version. Without a `page` no
+        run is read: what a reader of the level and the statement alone asks (ADR-0319)."""
+        facts = await self._records.process(reader.tenant, process_id, version, page)
         if facts is None:
             return None
         if not visibility.may_see_process(reader, ProcessRef(id=facts.id, tenant=facts.tenant)):
@@ -72,7 +81,12 @@ class LevelQueries:
             for run in facts.runs
             if visibility.may_see(reader, RunRef(id=run.id, tenant=run.tenant, process_version=ref))
         )
-        return process_level(facts.model_copy(update={"runs": seen}))
+        counted = visibility.may_count(
+            reader, CountedRuns(tenant=facts.tenant, process_version=ref)
+        )
+        return process_level(
+            facts.model_copy(update={"runs": seen, "counts": facts.counts if counted else ()})
+        )
 
     async def overview(self, reader: Reader) -> OverviewLevel:
         """The overview of the reader's tenant. A process the reader may not see is absent, and

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 
 from taktus.adapters.driven.memory.persistence import MemoryPersistence
 from taktus.ports.persistence import DuplicateProvenance, Tenant
@@ -29,6 +29,12 @@ class MemoryProvenanceStore:
         self._persistence.current(tenant)
         return sorted(
             (r for r in self._all(tenant) if r.run_id == run_id), key=lambda r: r.ledger_seq
+        )
+
+    async def of_runs(self, tenant: Tenant, run_ids: Collection[str]) -> Sequence[Provenance]:
+        self._persistence.current(tenant)
+        return sorted(
+            (r for r in self._all(tenant) if r.run_id in run_ids), key=lambda r: r.ledger_seq
         )
 
     async def of_subject(self, tenant: Tenant, subject: str) -> Sequence[Provenance]:

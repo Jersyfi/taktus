@@ -36,15 +36,17 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, FastAPI, Header, Query
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
+from taktus.adapters.driving.rest.cursors import marked, unmarked
 from taktus.adapters.driving.rest.problems import MEDIA_TYPE, problem
 from taktus.adapters.driving.rest.wiring import RestServices
 from taktus.components.reporting.application.service import BadRole
 from taktus.components.reporting.domain.model import Reader
 from taktus.components.reporting.domain.model.vocabulary import VOCABULARY
+from taktus.components.reporting.ports.levels import PROCESS_RUNS, PROCESS_RUNS_MAXIMUM, RunPage
 from taktus.ports.identity import Resolution
 from taktus.ports.traces import ROLE_PATTERN
 
@@ -169,9 +171,11 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         "method, what was not chosen, where it falls back, which steps it follows, and the "
         "runs it is running in right now. With the process's autonomy statement — the level "
         "it runs at and why (ADR-0026) — its registered versions, and the runs of the version "
-        "you may see. Every element carries its glyph with motion and without, and its text "
-        "equivalent. Follow `GET /changes?process=…` and read this again when a change "
-        "arrives (ADR-0064).",
+        "you may see: every run not yet ended, then the newest `limit` that ended, with `next` "
+        "where more follow, passed back as `after` for the next page of ended runs; and "
+        "`counts`, every run of the version by state (ADR-0319). Every element carries its "
+        "glyph with motion and without, and its text equivalent. Follow "
+        "`GET /changes?process=…` and read this again when a change arrives (ADR-0064).",
         responses={
             200: {"description": "The process level."},
             401: {"description": "No account key, or one that proves no identity.", **PROBLEM},
@@ -188,19 +192,39 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         version: str | None = Query(
             default=None, min_length=1, description="The version; the active one when absent."
         ),
+        limit: int = Query(
+            default=PROCESS_RUNS,
+            ge=1,
+            le=PROCESS_RUNS_MAXIMUM,
+            description=f"How many ended runs a page lists; {PROCESS_RUNS} unless given.",
+        ),
+        after: str | None = Query(
+            default=None,
+            min_length=1,
+            description="The `next` of the page before: only the ended runs after it.",
+        ),
         authorization: str | None = Header(default=None),
     ) -> JSONResponse:
         who = await authenticated(services, authorization)
         if who is None:
             return problem(401, "an account key is needed: Authorization: Bearer <key>")
+        mark = None if after is None else unmarked(after)
+        if after is not None and mark is None:
+            return problem(422, "`after` is not the `next` of a page")
         reader = Reader(
             tenant=who.tenant, identity=who.identity, roles=who.roles, unseen=who.unseen
         )
-        level = await services.levels.process(reader, process_id, version)
+        level = await services.levels.process(
+            reader, process_id, version, RunPage(limit=limit, after=mark)
+        )
         if level is None:
             named = process_id if version is None else f"{process_id}@{version}"
             return problem(404, f"no process {named!r} you may see")
-        return JSONResponse(level.document())
+        document = level.document()
+        document.pop("older", None)
+        if level.older is not None:
+            document["next"] = marked(level.older.created_at, level.older.id)
+        return JSONResponse(document)
 
     @routes.get(
         "/levels/origins/{run_id}/{step_id}",
@@ -387,4 +411,23 @@ def mount_web(app: FastAPI, base: str, directory: Path) -> None:
     async def to_app() -> RedirectResponse:
         return RedirectResponse(url=f"{WEB_PATH.lstrip('/')}/", status_code=308)
 
-    app.mount(f"{base}{WEB_PATH}", StaticFiles(directory=directory, html=True), name="web")
+    app.mount(f"{base}{WEB_PATH}", WebFiles(directory=directory, html=True), name="web")
+
+
+IMMUTABLE = "public, max-age=31536000, immutable"
+"""What a browser may do with a file of the build whose name carries its content's hash: keep
+it for a year and never ask again (ADR-0318 §4)."""
+
+
+class WebFiles(StaticFiles):
+    """The web app's build. A file under `_app/immutable/` is named by the hash of its content:
+    a new build names a new file, so the browser keeps the old one for good. Every other file —
+    the page itself — is asked again each time, and answered `304` where it did not change."""
+
+    def file_response(
+        self, full_path: Any, stat_result: Any, scope: Any, status_code: int = 200
+    ) -> Response:
+        response = super().file_response(full_path, stat_result, scope, status_code)
+        path = str(scope.get("path", ""))
+        response.headers["Cache-Control"] = IMMUTABLE if "/_app/immutable/" in path else "no-cache"
+        return response

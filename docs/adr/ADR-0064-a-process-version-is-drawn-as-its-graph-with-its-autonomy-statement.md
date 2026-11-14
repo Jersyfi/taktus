@@ -1,7 +1,7 @@
 # ADR-0064 — A process version is drawn as its graph, with its autonomy statement and its runs
 
 **Status:** accepted · builds the process level of UC-6.10 (issue #190, DEC-0055) on the shape
-ADR-0063 set for every level
+ADR-0063 set for every level · amended by ADR-0319: the runs not yet ended and a page of the ended are listed, with every run counted by state
 
 ## Context
 UC-6.10's second level is *the process*: the steps of a process version as a graph, each step

@@ -40,6 +40,7 @@ from taktus.components.reporting.application.service.live import (
     Opening,
     Pending,
     Read,
+    Recent,
 )
 from taktus.components.reporting.application.service.product_findings import (
     DISABLED,
@@ -146,6 +147,7 @@ __all__ = [
     "RaiseReportHandler",
     "Read",
     "Received",
+    "Recent",
     "Reported",
     "ReportingError",
     "Sending",
