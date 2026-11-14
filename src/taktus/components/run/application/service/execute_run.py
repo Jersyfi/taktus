@@ -6787,6 +6787,18 @@ class RunEngine:
             raise UnsupportedWork(
                 step_run.step_id, "only a reading carries an expectation; a write acts once"
             )
+        if work.on_behalf and operation.outward:
+            # Nothing leaves the system in a person's name: Taktus acts outward as an identity
+            # of its own, and a person's own credential only reads (ADR-0332).
+            raise _StepFailed(
+                reason=f"{operation.name} was not called: it acts outward, and a step on behalf "
+                f"of {run.identity} only reads with that person's credential; nothing is sent "
+                "or written in a person's name (ADR-0332)",
+                retryable=False,
+                consumption=None,
+                adapter=resolved.adapter,
+                outcome="refused on behalf",
+            )
         span.set_attribute("adapter", resolved.adapter)
         # Before the call is booked: a stopped connector is neither called nor counted.
         await self._not_stopped(run, resolved.adapter)
