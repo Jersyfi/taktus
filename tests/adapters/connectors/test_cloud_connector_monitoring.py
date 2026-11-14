@@ -203,3 +203,19 @@ async def test_a_catalogue_cut_by_its_limit_says_so(cloud: str) -> None:
     result = await connector(cloud).call("models.catalogue.list", context(), {"limit": 2})
     assert result.output["ids"] == ["gemini-2.5-flash", "gemini-2.5-pro"]
     assert result.output["complete"] is False
+
+
+# expiry.credentials: the project's service account keys (ADR-0337)
+
+
+async def test_the_user_managed_keys_are_listed_nearest_expiry_first_without_material(
+    cloud: str,
+) -> None:
+    result = await connector(cloud).call("expiry.credentials.list", context(), {})
+    keys = result.output["credentials"]
+    assert [k["id"] for k in keys] == ["e5f6", "a1b2", "c3d4"], "no system-managed key"
+    assert keys[0]["state"] == "DISABLED:USER_INITIATED" and keys[0]["days_left"] < 0
+    assert keys[1]["name"] == "deployer@example.iam.gserviceaccount.com"
+    assert keys[1]["days_left"] in (19, 20) and keys[2]["expires_at"].startswith("9999-12-31")
+    assert result.output["complete"] is True
+    assert "privateKeyData" not in str(result.output)

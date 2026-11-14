@@ -25,7 +25,15 @@
 # is taken by the step `soonest-signing`, judged by the same corridor on its own step. A secret's
 # age is B-1.10's.
 #
-# Not built here: a key's expiry, which no store the business names publishes; and the renewal,
+# Where the run names `keys`, the configured connector of the business's cloud, the service
+# account keys a person created there are read through `expiry.credentials` too (version 4,
+# ADR-0337), each with its expiry as the cloud's identity API states it, and the step
+# `soonest-key` takes the one that expires first, disabled keys left out, judged by the same
+# corridor on its own step. Two connectors may then serve `expiry.credentials`: `stores` names
+# the app stores' connector the signing credentials are read from (ADR-0311).
+#
+# Not built here: the expiry of an OAuth client or of a key the business keeps elsewhere, which
+# no store the business names publishes; and the renewal,
 # which needs control of the server, a new signing request or a purchase. A renewal that costs
 # money stays with a person (UC-03 §4.1).
 #
@@ -38,7 +46,7 @@
 # reads.
 
 id: b-1-09
-version: "3"
+version: "4"
 name: B-1.09 Things that expire
 autonomy:
   level: 1
@@ -76,6 +84,18 @@ inputs:
       `yes` where the business's signing certificates and provisioning profiles are read too,
       through `expiry.credentials`; left out, they are not
     example: "yes"
+    required: false
+  stores:
+    description: >
+      the configured connector the signing credentials are read from, by its identifier; without
+      it, the first connector configured for expiry.credentials
+    example: connector.stores
+    required: false
+  keys:
+    description: >
+      the configured connector of the business's cloud whose service account keys are read, by
+      its identifier; left out, no key is read
+    example: connector.cloud
     required: false
 
 limits:
@@ -168,6 +188,7 @@ steps:
       when:
         - { value: { $input: signing, $otherwise: "" }, matches: "^yes$" }
       rule: connector
+      connector: { $input: stores, $otherwise: null }
       operation: expiry.credentials.list
       input: {}
       credentials:
@@ -195,6 +216,57 @@ steps:
       all:
         - { field: days_left, at_least: -36500 }
         - { field: state, not_matches: "^\"?INVALID" }
+      order: days_left
+      limit: 1
+
+  - id: read-keys
+    method: rule
+    reason: the cloud's service account keys are read as its identity API lists them, never their material
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what expiry.credentials.list answered", columns: [complete, credentials] }
+    fallback:
+      when: the connector serving the cloud's expiry.credentials is unavailable
+      to: human
+      role: owner
+    depends_on: [soonest]
+    work:
+      checking: { select: output }
+      when:
+        - { value: { $input: keys, $otherwise: "" }, not_matches: "^$" }
+      rule: connector
+      connector: { $input: keys, $otherwise: null }
+      operation: expiry.credentials.list
+      input:
+        kinds: [key]
+      credentials:
+        - { name: CLOUD_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true, says: "the cloud listed more keys than were read" }
+
+  - id: soonest-key
+    method: rule
+    reason: >
+      the key that expires first is a fixed ordering of the cloud's days left; a disabled key is
+      left out, never read as one about to expire
+    rejected:
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+    exactness: exact
+    checks:   # recomputation: DEC-0173
+      - { kind: recomputation, subject: the service account key that expires first }
+    depends_on: [read-keys]
+    work:
+      when:
+        - { value: { $input: keys, $otherwise: "" }, not_matches: "^$" }
+      rule: filter
+      items: { $from: read-keys, $select: output.credentials }
+      all:
+        - { field: days_left, at_least: -36500 }
+        - { field: state, not_matches: "^\"?DISABLED" }
       order: days_left
       limit: 1
 
@@ -271,3 +343,25 @@ takeover:
       expertise: the tenant's corridor for expiry
       credentials: []
       done: the signing credential that expires first is written down and judged, or the step is skipped
+    read-keys:
+      system: the cloud's console, under the project's service accounts
+      do: >
+        only where the run names the cloud: list every key a person created for each service
+        account, with its expiry and whether it is disabled, and work out the whole days left
+        for each. Never create or download a key.
+      expertise: reading service accounts and their keys in the cloud's console
+      credentials:
+        - parameter: CLOUD_TOKEN
+          where: >
+            the operator's secret store, under the parameter Cloud token of the requesting
+            identity described in CREDENTIALS.md; a person may instead sign in to the console
+            with their own account that may list service account keys
+      done: every key is noted with its days left, or the step is skipped
+    soonest-key:
+      system: the noted keys
+      do: >
+        leave out the disabled keys, take the one with the fewest days left, and judge it as
+        the thing that expires first is judged: 30 days for yellow, 7 for red.
+      expertise: the tenant's corridor for expiry
+      credentials: []
+      done: the key that expires first is written down and judged, or the step is skipped

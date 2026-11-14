@@ -11,6 +11,9 @@ The cloud operations connector under `connectors/taktus_connectors/gcp/` asks:
   query` and `.../query_range`: every parsable query is answered with two series of one function
   each, the second `NaN`, and each body asked is kept in `promql`; a query whose parentheses do
   not balance is 400 with the Prometheus API's `status: error`;
+- the identity API's `GET /v1/projects/<project>/serviceAccounts` and `.../<account>/keys`, with
+  `keyTypes` filtering: three user-managed keys and a system-managed one per account
+  (`account_keys`), no key material;
 - the model service's `GET /v1beta1/publishers/google/models`: three models paged by `pageSize`,
   each with its launch stage and no date, as the API states none; and a cost query kept to one
   service by the STRING parameter `service`, answered from `model_rows`;
@@ -103,6 +106,12 @@ MONITORING_SCOPES = {
 MODEL_SCOPES = {AUTH + "cloud-platform"}
 PROMQL = re.compile(r"^/v1/projects/([^/]+)/location/global/prometheus/api/v1/(query|query_range)$")
 PUBLISHER_MODELS = "/v1beta1/publishers/google/models"
+ACCOUNTS = re.compile(r"^/v1/projects/([^/]+)/serviceAccounts$")
+KEYS = re.compile(r"^/v1/projects/([^/]+)/serviceAccounts/([^/]+)/keys$")
+SERVICE_ACCOUNTS = (
+    "deployer@example.iam.gserviceaccount.com",
+    "backup@example.iam.gserviceaccount.com",
+)
 MODELS = (
     ("gemini-2.5-flash", "GA"),
     ("gemini-2.5-pro", "GA"),
@@ -210,6 +219,38 @@ def model_rows(day: date) -> list[dict[str, Any]]:
             "cost": Decimal(("0.000123", "1.1")[i]) * (1 + day.day % 2),
         }
         for i, sku in enumerate(MODEL_SKUS)
+    ]
+
+
+def account_keys(email: str, now: datetime) -> list[dict[str, Any]]:
+    """Each account's keys as the identity API lists them: the deployer's user-managed key
+    expires in 20 days and a second one has no expiry; the backup account's key expired two
+    days ago and is disabled; each account also holds a system-managed key."""
+
+    def key(n: str, kind: str, before: str, **more: Any) -> dict[str, Any]:
+        return {
+            "name": f"projects/{PROJECT}/serviceAccounts/{email}/keys/{n}",
+            "validAfterTime": "2026-01-01T00:00:00Z",
+            "validBeforeTime": before,
+            "keyAlgorithm": "KEY_ALG_RSA_2048",
+            "keyOrigin": "GOOGLE_PROVIDED",
+            "keyType": kind,
+            **more,
+        }
+
+    def later(days: int) -> str:
+        return (now + timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    system = key("sys" + email[:3], "SYSTEM_MANAGED", later(5))
+    if email.startswith("deployer"):
+        return [
+            key("a1b2", "USER_MANAGED", later(20)),
+            key("c3d4", "USER_MANAGED", "9999-12-31T23:59:59Z"),
+            system,
+        ]
+    return [
+        key("e5f6", "USER_MANAGED", later(-2), disabled=True, disableReason="USER_INITIATED"),
+        system,
     ]
 
 
@@ -352,6 +393,10 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
                 if self.admitted(MODEL_SCOPES):
                     self._models(query)
                 return
+            if (found := ACCOUNTS.match(url.path) or KEYS.match(url.path)) is not None:
+                if self.admitted(SECRET_SCOPES):
+                    self._accounts(found, query)
+                return
             if not self.admitted(SECRET_SCOPES):
                 return
             for pattern, answer in (
@@ -422,6 +467,36 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
                 ]
                 data = {"resultType": "matrix", "result": result}
             self.answer(200, {"status": "success", "data": data})
+
+        # The identity API's service accounts and their keys.
+
+        def _accounts(self, found: re.Match[str], query: dict[str, str]) -> None:
+            if found.group(1) != PROJECT:
+                self.error(404, "NOT_FOUND", "Project not found.")
+                return
+            if found.re is ACCOUNTS:
+                offset = _offset(query.get("pageToken")) or 0
+                size = int(query.get("pageSize", "0") or 0) or 100
+                page = SERVICE_ACCOUNTS[offset : offset + size]
+                answer: dict[str, Any] = {
+                    "accounts": [
+                        {"name": f"projects/{PROJECT}/serviceAccounts/{e}", "email": e}
+                        for e in page
+                    ]
+                }
+                if offset + size < len(SERVICE_ACCOUNTS):
+                    answer["nextPageToken"] = str(offset + size)
+                self.answer(200, answer)
+                return
+            email = found.group(2)
+            if email not in SERVICE_ACCOUNTS:
+                self.error(404, "NOT_FOUND", "Service account not found.")
+                return
+            kept = account_keys(email, datetime.now(UTC))
+            wanted = query.get("keyTypes")
+            if wanted:
+                kept = [k for k in kept if k["keyType"] == wanted]
+            self.answer(200, {"keys": kept})
 
         # The model service's publisher models.
 

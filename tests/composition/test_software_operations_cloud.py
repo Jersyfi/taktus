@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import threading
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 from urllib.request import urlopen
 
@@ -24,7 +25,7 @@ from taktus.adapters.driven.connectors.mcp import McpActionConnector
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.components.run.domain.model import RunState
 
-from .test_software_operations import TOKEN, Outside
+from .test_software_operations import TOKEN, Outside, World
 from .test_software_operations import outside as outside
 from .test_software_operations_repository import RepositoryWorld
 from .test_software_operations_repository import cluster as cluster
@@ -93,3 +94,43 @@ async def test_a_name_the_tenant_did_not_map_fails_the_read_and_guesses_nothing(
     reason = run.step_run("read-quotas").reason or ""
     assert "quotas.used_share is not mapped" in reason
     assert asked(monitoring) == [], "nothing reached the monitoring service"
+
+
+class KeysWorld(World):
+    """The world of `test_software_operations.py`, with the cloud named `connector.cloud`."""
+
+    def __init__(self, outside: Outside, cloud: str) -> None:
+        super().__init__(outside)
+        pool = self.engine._connectors
+        assert isinstance(pool, StaticConnectorPool)
+        config = CloudConfig.at("example", "", 5.0, cloud)
+        pool._connectors.append(
+            ("connector.cloud", McpActionConnector(cloud_server(config), timeout=10.0))
+        )
+
+    async def ready(self) -> KeysWorld:
+        await super().ready()
+        return self
+
+
+async def test_b_1_09_takes_the_cloud_key_that_expires_first_and_leaves_a_disabled_one_out(
+    outside: Outside, monitoring: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "CLOUD_TOKEN"
+    path.write_text(TOKEN, encoding="utf-8")
+    monkeypatch.setenv("TAKTUS_CREDENTIAL_CLOUD_TOKEN_FILE", str(path))
+    w = await KeysWorld(outside, monitoring).ready()
+    version = await w.registered("B-1.09-expiry.yaml")
+    run = await w.start(
+        version,
+        host="127.0.0.1",
+        port=outside.tls.port,
+        domain="example-product.test",
+        keys="connector.cloud",
+    )
+    assert run.state is RunState.FINISHED, [(s.step_id, s.reason) for s in run.step_runs]
+    first = (await w.result(run, "soonest-key"))["first"]
+    assert first["id"] == "a1b2", "the disabled, expired key is left out"
+    assert first["name"] == "deployer@example.iam.gserviceaccount.com"
+    assert first["days_left"] in (19, 20)
+    assert (await w.result(run, "read-signing"))["skipped"] is True
