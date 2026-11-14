@@ -255,7 +255,7 @@ async def test_only_a_lack_the_product_does_not_ship_reaches_the_intake() -> Non
     )
     reported = await said.report(TENANT)
     assert reported.raised == 2 and reported.delivered == 2
-    messages = [s.text for s in sender.given.deliveries.said]
+    messages = [await sender.given.record_of(s.text) for s in sender.given.deliveries.said]
     configuration = next(m for m in messages if "knowledge.pages" in m)
     assert "`bookstack`" in configuration and "TAKTUS_CONNECTORS" in configuration
     own = next(m for m in messages if "warehouse.stock.merge" in m)

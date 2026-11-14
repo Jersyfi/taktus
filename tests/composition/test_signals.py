@@ -221,7 +221,7 @@ async def test_a_red_value_measured_by_a_run_is_an_incident_and_reaches_the_owne
     (incident,) = await w.expected.incidents(TENANT)
     assert incident.kind is IncidentKind.SIGNAL_RED and incident.run_id == red.id
     assert looked.incidents == (incident.id,)
-    message = w.given.deliveries.said[-1].text
+    message = await w.given.record_of(w.given.deliveries.said[-1].text)
     assert "RED cost.cloud_daily: 412" in message and red.id in message and incident.id in message
 
 

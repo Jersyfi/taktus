@@ -21,6 +21,9 @@ class Item(Value):
     kind: Literal["figure", "decision", "escalation", "blocked", "switch_off"]
     text: str = Field(min_length=1)
     ref: str = Field(min_length=1)
+    values: dict[str, str] = Field(default_factory=dict)
+    """What a message says of the item in the reader's language: names, never sentences
+    (ADR-0316 §5)."""
 
 
 class ReportFacts(Value):
@@ -61,7 +64,12 @@ def compose(d: ReportDefinition, facts: ReportFacts) -> Composed:
         for r in facts.decisions
     ]
     items += [
-        Item(kind="escalation", ref=run, text=f"Run {run} of {process} escalated.")
+        Item(
+            kind="escalation",
+            ref=run,
+            text=f"Run {run} of {process} escalated.",
+            values={"process": process},
+        )
         for run, process in facts.escalated
     ]
     items += [
@@ -69,6 +77,7 @@ def compose(d: ReportDefinition, facts: ReportFacts) -> Composed:
             kind="blocked",
             ref=run,
             text=f"Run {run} of {process} waits at {step} for {facts.reader}.",
+            values={"process": process, "step": step},
         )
         for run, process, step in facts.blocked
     ]

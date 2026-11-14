@@ -44,7 +44,7 @@ from taktus.components.reporting.application.service.raise_report import (
     RaiseReport,
     RaiseReportHandler,
 )
-from taktus.components.reporting.domain.model import Finding, ReportKind, Submission
+from taktus.components.reporting.domain.model import Brief, Finding, ReportKind, Said, Submission
 from taktus.components.reporting.domain.model.finding import short
 from taktus.components.reporting.domain.service import leaving
 from taktus.components.reporting.ports import FindingChannel, IntakeAnswer, Signatures, Signed
@@ -225,6 +225,7 @@ class FindingsIntake:
                         "answers it `held`, and the sender tries again at its interval.",
                     ),
                     due=today + timedelta(days=CONFIRM_DAYS),
+                    brief=Brief(headline=Said(entry="sender")),
                 )
             )
         except ReportingError:

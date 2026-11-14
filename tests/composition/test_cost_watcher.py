@@ -275,7 +275,7 @@ async def test_a_usual_day_is_normal_and_a_jump_is_an_incident_naming_its_servic
     (incident,) = await w.expected.incidents(TENANT)
     assert incident.kind is IncidentKind.SIGNAL_RED and incident.run_id == jump.id
     assert looked.incidents == (incident.id,)
-    message = w.given.deliveries.said[-1].text
+    message = await w.given.record_of(w.given.deliveries.said[-1].text)
     assert "RED cost.cloud_daily" in message and jump.id in message
 
 

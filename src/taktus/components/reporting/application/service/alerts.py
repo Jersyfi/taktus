@@ -46,8 +46,10 @@ from taktus.components.reporting.domain.model import (
     ID_PREFIXES,
     Alert,
     BackupState,
+    Brief,
     Report,
     ReportKind,
+    Said,
 )
 from taktus.components.reporting.domain.service import alerts as rule
 from taktus.components.reporting.ports import Signals
@@ -234,4 +236,5 @@ class Alerts:
             standing_still=alert.standing_still,
             # The condition holds now, and a person must act on it now.
             due=self._clock.now().date(),
+            brief=Brief(headline=Said(entry=f"alert_{alert.kind}"), quote=alert.summary),
         )

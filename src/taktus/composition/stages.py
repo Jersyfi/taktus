@@ -41,7 +41,7 @@ from taktus.components.reporting.application.service import (
     RaiseReportHandler,
     ReportingError,
 )
-from taktus.components.reporting.domain.model import ReportKind
+from taktus.components.reporting.domain.model import Brief, ReportKind, Said
 from taktus.composition.tenancy import this_round
 from taktus.ports.clock import Clock
 from taktus.ports.identity import ServedTenants
@@ -167,6 +167,9 @@ class StageReportsOfTheChannel:
                     for p in stage.stage.processes
                 ],
                 due=self._due(),
+                brief=Brief(
+                    headline=Said(entry="stage_proposed", values={"stage": stage.stage.name})
+                ),
             ),
         )
 
@@ -196,6 +199,7 @@ class StageReportsOfTheChannel:
                 ]
                 or [f"the stage {stage.stage.id!r} grants no level until it holds again"],
                 due=self._due(),
+                brief=Brief(headline=Said(entry="stage_fell", values={"stage": stage.stage.name})),
             ),
         )
 

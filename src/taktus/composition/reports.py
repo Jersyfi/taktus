@@ -32,6 +32,7 @@ from taktus.components.process.domain.model import (
 )
 from taktus.components.process.domain.model.proposal import Proposal
 from taktus.components.reporting.application.query import LevelQueries
+from taktus.components.reporting.application.service import ChannelOf
 from taktus.components.reporting.domain.model.live import Reader, RunRef
 from taktus.components.reporting.domain.model.views import (
     OWNER,
@@ -39,7 +40,13 @@ from taktus.components.reporting.domain.model.views import (
     ReportDefinition,
     ViewConfiguration,
 )
-from taktus.components.reporting.domain.service import explaining, own, reports, visibility
+from taktus.components.reporting.domain.service import (
+    explaining,
+    own,
+    rendering,
+    reports,
+    visibility,
+)
 from taktus.components.reporting.domain.service import views as selection
 from taktus.components.reporting.ports import Deliveries, Sent
 from taktus.components.run.application.query.blocked_time import BlockedTime
@@ -88,7 +95,11 @@ class ReportBook:
         identities: IdentityDirectory,
         work: UnitOfWork,
         clock: Clock,
+        channels: ChannelOf | None = None,
     ) -> None:
+        """`channels` gives the tenant's phrasebook a scheduled report is said in (ADR-0316
+        §5); without it, or without a channel, its own lines are said."""
+        self._channels = channels
         self._definitions = definitions
         self._figures = figures
         self._requests = requests
@@ -203,11 +214,17 @@ class ReportBook:
             if slot is None:
                 continue
             composed = await self.compose(definition, visible)
+            channel = None if self._channels is None else await self._channels.of(tenant)
+            text = (
+                None
+                if channel is None
+                else rendering.role_message(composed, definition.reader_role, channel)
+            )
             answer = await self._deliveries.say(
                 tenant,
                 definition.channel,
                 definition.address,
-                "\n".join(composed.lines),
+                "\n".join(composed.lines) if text is None else text,
                 key=f"report:{definition.id}:{slot}",
             )
             if not isinstance(answer, Sent):
@@ -486,6 +503,7 @@ def reading_wiring(
     work: UnitOfWork,
     clock: Clock,
     identifiers: Identifiers,
+    channels: ChannelOf | None = None,
 ) -> ReadingWiring:
     """`of` gives the repository of an aggregate, as the entry point stores it."""
     bases = ValueBases(of(ValueBasis), ledger, work, clock)
@@ -523,6 +541,7 @@ def reading_wiring(
             identities=identities,
             work=work,
             clock=clock,
+            channels=channels,
         ),
         explanations=Explanations(
             runs=of(Run),

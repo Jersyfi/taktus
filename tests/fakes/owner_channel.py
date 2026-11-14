@@ -12,6 +12,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Any
+from urllib.parse import quote
 
 from fakes.clock import FakeClock
 from fakes.identity import Directory, directory
@@ -25,6 +26,7 @@ from taktus.components.reporting.application.service import (
 )
 from taktus.components.reporting.domain.model import OwnerChannel as Channel
 from taktus.components.reporting.domain.model import Report, ReportKind
+from taktus.components.reporting.domain.service.rendering import repository_text
 from taktus.components.reporting.ports import Deliveries, LevelRecords, NotDelivered, Sent
 from taktus.components.run.ports import Draft, DraftOption
 from taktus.composition.decisions import DecisionWiring, decision_wiring
@@ -212,6 +214,15 @@ class OwnerChannel:
             ),
         )
         return await self.owner.queries.one(TENANT, id)
+
+    async def record_of(self, message: str) -> str:
+        """The repository text of the report a message is the short form of (ADR-0316): what
+        happened and what to do, in full. The message names its report by its identifier, in
+        the link to its page or on its own."""
+        for report in await self.owner.queries.reports(TENANT):
+            if f"({report.id})" in message or f"/reports/{quote(report.id, safe='')}" in message:
+                return repository_text(report)
+        raise AssertionError(f"no report is named in {message!r}")
 
     def thread_of(self, report: Report) -> str:
         message = report.message()

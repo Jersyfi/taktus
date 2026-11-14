@@ -270,10 +270,9 @@ async def test_a_red_value_raises_an_incident_and_reaches_its_role_at_once() -> 
     )
     (message,) = w.said
     assert "cost.cloud_daily" in message and "412" in message and "150" in message
-    assert (
-        f"Run {red.run_id}, step read" in message and f"{VIEW}/app/#/runs/{red.run_id}" in message
-    )
-    assert CASE in message and "inc_" + red.run_id in message
+    assert f"{VIEW}/app/#/runs/{red.run_id}" in message, "the run that measured it"
+    assert CASE in message, "and the case"
+    assert red.run_id not in message.replace(f"/runs/{red.run_id}", ""), "no identifier as text"
     assert await w.watch.look(TENANT) == type(looked)(), "nothing new is judged again"
     assert len(w.said) == 1
 
@@ -330,7 +329,9 @@ async def test_the_daily_report_lists_only_what_deviates_and_names_what_was_not_
     assert "1 outside their corridor, 1 not measured" in report.title
     assert [o.label for o in report.offered] == ["erledigt", "starte throttle-cloud"]
     (message,) = w.said
-    assert message.startswith("*Signale: Signals of") and "starte throttle-cloud" in message
+    assert message.startswith("*Signale: 1 außerhalb") and "starte throttle-cloud" in message
+    assert message.count("• ") == 2, "one line for each signal outside, each with its links"
+    assert all(CASE in line for line in message.splitlines() if line.startswith("• "))
     assert await w.watch.daily(TENANT) is None, "raised once a day"
 
 

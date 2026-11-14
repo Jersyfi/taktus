@@ -13,6 +13,7 @@ unanswered past its time is recorded once, and one the person reacted to is not.
 
 from __future__ import annotations
 
+import re
 from datetime import timedelta
 from typing import Any
 
@@ -40,11 +41,13 @@ from taktus.components.process.application.service.register_version import (
 )
 from taktus.components.process.domain.model import Process, ProcessVersion
 from taktus.components.reporting.domain.model import ReportKind
+from taktus.components.reporting.domain.service.backlog import PER_LOOK
 from taktus.components.run.application.service import RunEngine, StartRun
 from taktus.components.run.domain.model import Run, RunState
 from taktus.composition.escalations import EscalationWatch, report_id
+from taktus.ports.ledger import Fact
 from taktus.ports.worker import Limits
-from taktus.shared.v1 import Command, Intent, Plan, ReplyTo
+from taktus.shared.v1 import Command, Intent, LedgerRefs, Plan, ReplyTo
 
 
 def bundle(escalation: dict[str, Any] | None) -> dict[str, Any]:
@@ -256,3 +259,99 @@ def test_a_version_carries_its_time_to_react_and_path_and_refuses_a_bad_one() ->
     ):
         with pytest.raises(InvalidProcess):
             parse_bundle(bundle(wrong))
+
+
+# --- a backlog is never a flood (ADR-0316 §1) ----------------------------------------------------
+
+
+async def history(world: World, run: Run, n: int, *, ago: timedelta, waiting: bool) -> list[str]:
+    """`n` escalations of earlier runs, as an instance upgraded with history holds them: each run
+    escalated `ago` before now, and still escalated where `waiting`."""
+    now = world.clock.current
+    world.clock.current = now - ago
+    made: list[str] = []
+    state = RunState.ESCALATED if waiting else RunState.HALTED
+    for i in range(n):
+        suffix = f"w{i}" if waiting else f"s{i}"
+        old = run.model_copy(update={"id": f"{run.id}_{suffix}", "state": state})
+        async with world.persistence.transaction(TENANT):
+            await world.runs.put(TENANT, old)
+            await world.ledger.record(
+                TENANT,
+                Fact(
+                    kind="run.escalated",
+                    refs=LedgerRefs(
+                        tenant=TENANT,
+                        run_id=old.id,
+                        process_version=old.process_version,
+                        step_id="send",
+                    ),
+                    outcome="failure",
+                ),
+            )
+        made.append(old.id)
+    world.clock.current = now
+    return made
+
+
+def summary_of(text: str) -> str:
+    """The summary report a message names, by the identifier it carries."""
+    match = re.search(r"\((escalations-[^)]+)\)", text)
+    assert match is not None, text
+    return match.group(1)
+
+
+async def test_an_upgraded_instance_s_history_is_never_delivered_as_a_flood() -> None:
+    """The case of 2026-11-14: the watch starts fresh on an instance with weeks of escalations.
+    The current one is delivered on its own; those still open are summarised in one message;
+    those settled long ago say nothing; and nothing is said twice."""
+    world = World()
+    run = await world.escalated({"role": "owner", "react_within": "30m"})
+    waiting = await history(world, run, 40, ago=timedelta(days=30), waiting=True)
+    settled = await history(world, run, 45, ago=timedelta(days=30), waiting=False)
+    world.given.deliveries.said.clear()
+
+    done = await world.watch.look(TENANT)
+
+    assert done.delivered == (run.id,), "only the current escalation on its own"
+    said = [s.text for s in world.given.deliveries.said]
+    assert len(said) == 2, "the current one, and one summary of the open backlog"
+    assert said[1].startswith("*Störung: 40 ältere Eskalationen sind offen*")
+    summary = await world.given.owner.queries.one(TENANT, summary_of(said[1]))
+    assert summary is not None and len(summary.needed) == len(waiting), "the record lists each"
+    outcomes = [o for k, o in await world.kinds("escalation.") if k == "escalation.not_sent"]
+    assert outcomes.count("summarised") == len(waiting)
+    assert outcomes.count("settled") == len(settled)
+    assert (await world.watch.look(TENANT)).delivered == ()
+    assert len(world.given.deliveries.said) == 2, "nothing is said twice"
+    world.clock.current += timedelta(days=3)
+    assert (await world.watch.look(TENANT)).overdue == (run.id,), "only one delivered is watched"
+
+
+async def test_more_current_escalations_than_the_limit_are_summarised_beyond_it() -> None:
+    world = World()
+    run = await world.escalated({"role": "owner", "react_within": "30m"})
+    await history(world, run, 6, ago=timedelta(minutes=5), waiting=True)
+    world.given.deliveries.said.clear()
+
+    done = await world.watch.look(TENANT)
+
+    assert len(done.delivered) == PER_LOOK, "at most three on their own per role and look"
+    said = world.given.deliveries.said
+    assert len(said) == PER_LOOK + 1, "and one summary of the four others"
+    assert said[-1].text.startswith("*Störung: 4 ältere Eskalationen")
+
+
+async def test_an_escalation_s_message_is_short_in_one_language_and_names_the_process() -> None:
+    """The message is the package's short form (ADR-0316 §2): the process by its name, the
+    failure on one quoted line, the options in a few words; the package stays in the record."""
+    world = World()
+    run = await world.escalated({"role": "owner", "react_within": "30m"})
+    await world.watch.look(TENANT)
+    (said,) = [s.text for s in world.given.deliveries.said]
+    assert said.splitlines()[0] == "*Störung: Notify steht bei Schritt send*"
+    assert run.id not in said.replace(f"({report_id(run.id, 1)})", "")
+    assert "notify@" not in said and "lacks" not in said and "Risk" not in said
+    assert len(said) <= 400, said
+    report = await world.given.owner.queries.one(TENANT, report_id(run.id, 1))
+    assert report is not None and any("Risk:" in s for s in report.steps), "the record is whole"

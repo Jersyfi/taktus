@@ -76,6 +76,7 @@ from taktus.components.reporting.domain.model.live import (
     StateAfter,
 )
 from taktus.components.reporting.domain.model.report import (
+    Brief,
     Delivery,
     DeliveryChannel,
     DeliveryState,
@@ -87,6 +88,7 @@ from taktus.components.reporting.domain.model.report import (
     Report,
     ReportKind,
     ReportState,
+    Said,
 )
 from taktus.components.reporting.domain.model.signal import (
     Corridor,
@@ -108,6 +110,7 @@ __all__ = [
     "BackupRun",
     "BackupState",
     "Blocked",
+    "Brief",
     "BrokenInterface",
     "CapacityCrossing",
     "Change",
@@ -160,6 +163,7 @@ __all__ = [
     "RunFacts",
     "RunRef",
     "RunningStep",
+    "Said",
     "Scope",
     "ScopeKind",
     "Shipped",
