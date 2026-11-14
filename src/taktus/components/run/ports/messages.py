@@ -7,7 +7,8 @@ components never import each other.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import time
 from typing import Protocol
 
@@ -35,6 +36,13 @@ class MessageRules:
     delay_seconds: int
     quiet: QuietHours | None
     recipient_limit: int
+    daily_limit: int | None = None
+    """The most messages a process sends within 24 hours without a person (ADR-0335 §5)."""
+    process_limits: Mapping[str, int] = field(default_factory=dict)
+    """A process's own daily limit, in place of the tenant's."""
+
+    def daily_for(self, process: str) -> int | None:
+        return self.process_limits.get(process, self.daily_limit)
 
 
 class Messages(Protocol):

@@ -416,6 +416,25 @@ async def test_an_outward_step_no_model_wrote_is_held_by_the_recipient_limit_too
     assert run.state is RunState.WAITING_HUMAN and h.sent() == []
 
 
+async def test_a_process_at_its_daily_limit_of_messages_waits_for_a_person() -> None:
+    """ADR-0335 §5: beside money, tokens and compute, a process may send at most so many
+    messages within 24 hours without a person. Two runs of one process at a limit of one: the
+    first sends, the second waits for a person; another process's limit is its own."""
+    rules = MessageRules(None, 600, None, 10, daily_limit=None, process_limits={"support": 1})
+    h = Outward([step("notice", MAIL, {"to": "x", "text": "t"})], told=Told(rules_=rules))
+    first = await h.begin()
+    assert first.state is RunState.FINISHED, first.reason
+    second = await h.begin()
+    assert second.state is RunState.WAITING_HUMAN
+    assert [d.anchor for d in h.requests.raised] == ["anc-daily-messages"]
+    assert h.sent() == [{"to": "x", "text": "t"}], "one message, and no second"
+
+    other = MessageRules(None, 600, None, 10, process_limits={"other": 1})
+    h = Outward([step("notice", MAIL, {"to": "x", "text": "t"})], told=Told(rules_=other))
+    for _ in range(2):
+        assert (await h.begin()).state is RunState.FINISHED
+
+
 async def test_a_delivery_no_model_wrote_is_sent_as_the_process_says() -> None:
     h = Outward([step("notice", MAIL, {"to": "x", "text": "t"})])
     run = await h.begin()

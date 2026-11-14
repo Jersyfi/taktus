@@ -23,6 +23,7 @@ from pydantic import TypeAdapter, ValidationError
 from taktus.components.reporting.domain.model import LEVELS
 from taktus.components.reporting.domain.service import texts
 from taktus.components.run.domain.service import budget as budgeting
+from taktus.components.run.domain.service.exchange import ExchangeRates
 from taktus.conformance.contracts import contracts_root
 from taktus.ports.administration import NONE, Administration
 from taktus.ports.configuration import Configuration, ConfigurationError, Secret
@@ -584,6 +585,11 @@ class BudgetSettings:
     the default: no seed, and such a worker reserves the uncalibrated margin (DEC-0034). What
     was measured on one tenant's runs enters another instance only as data its operator chose
     to load here (ADR-0092 §2)."""
+    exchange_rates: Path | None = None
+    """`TAKTUS_EXCHANGE_RATES`: a JSON file of dated exchange rates — `version`, `valid_from`,
+    `source`, and `rates` from each lowercase currency code into others — that money in a
+    currency a budget does not limit is counted against it at (ADR-0335). Absent, the default:
+    such money counts against nothing."""
     model_classes: Mapping[str, str] = field(default_factory=dict)
     """`TAKTUS_TAKT_MODEL_CLASSES`: which class of the weighting table each model is in, as
     `model=class` pairs, comma-separated — `fake-model@1=medium`. A model in no class has its
@@ -612,6 +618,19 @@ class BudgetSettings:
                 f"PriceTable): {str(error)[:200]}",
             ) from error
 
+    def rates(self) -> ExchangeRates | None:
+        """The exchange-rate table the file holds, validated; None when none is configured."""
+        if self.exchange_rates is None:
+            return None
+        try:
+            document = json.loads(self.exchange_rates.read_text(encoding="utf-8"))
+            return ExchangeRates.model_validate(document)
+        except (OSError, ValueError) as error:
+            raise ConfigurationError(
+                "TAKTUS_EXCHANGE_RATES",
+                f"{self.exchange_rates} is not an exchange-rate table: {str(error)[:200]}",
+            ) from error
+
     def seeds(self) -> tuple[budgeting.Seed, ...]:
         """The seeds the file holds, validated; none when no file is configured."""
         if self.seeds_file is None:
@@ -631,6 +650,10 @@ class BudgetSettings:
             ("TAKTUS_BUDGET_MARGIN", f"{self.margin:g}"),
             ("TAKTUS_BUDGET_UNCALIBRATED_MARGIN", f"{self.uncalibrated_margin:g}"),
             ("TAKTUS_BUDGET_SEEDS", "" if self.seeds_file is None else str(self.seeds_file)),
+            (
+                "TAKTUS_EXCHANGE_RATES",
+                "" if self.exchange_rates is None else str(self.exchange_rates),
+            ),
             (
                 "TAKTUS_TAKT_MODEL_CLASSES",
                 ",".join(f"{m}={c}" for m, c in sorted(self.model_classes.items())),
@@ -676,6 +699,7 @@ def load_budget(configuration: Configuration) -> BudgetSettings:
     reader = _Reader(configuration)
     table = reader.text("price.table", "") or None
     seeds = reader.text("budget.seeds", "") or None
+    rates = reader.text("exchange.rates", "") or None
     margin = reader.number("budget.margin", DEFAULT_MARGIN, low=0.0)
     if margin > 0.9:
         raise ConfigurationError(
@@ -689,6 +713,7 @@ def load_budget(configuration: Configuration) -> BudgetSettings:
             "budget.uncalibrated.margin", DEFAULT_UNCALIBRATED_MARGIN, low=0.0
         ),
         seeds_file=None if seeds is None else Path(seeds).expanduser(),
+        exchange_rates=None if rates is None else Path(rates).expanduser(),
         model_classes=_model_classes(
             configuration.name("takt.model.classes"), reader.names("takt.model.classes", ())
         ),

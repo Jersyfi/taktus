@@ -40,6 +40,10 @@ class ConfigureMessages:
     quiet: tuple[time, time] | str | None = None
     zone: str | None = None
     recipient_limit: int | None = None
+    daily_limit: int | None = None
+    """The most messages a process sends within 24 hours without a person; 0 removes it."""
+    process: str | None = None
+    """The process the daily limit is set for, in place of the tenant's; None for the tenant's."""
 
 
 class TenantMessages:
@@ -80,6 +84,17 @@ class TenantMessages:
             changes["zone"] = command.zone
         if command.recipient_limit is not None:
             changes["recipient_limit"] = command.recipient_limit
+        if command.daily_limit is not None:
+            limit = command.daily_limit or None
+            if command.process is None:
+                changes["daily_limit"] = limit
+            else:
+                processes = dict(current.processes)
+                if limit is None:
+                    processes.pop(command.process, None)
+                else:
+                    processes[command.process] = limit
+                changes["processes"] = processes
         configured = MessageRules.model_validate({**current.document(), **changes})
         async with self._work.transaction(command.tenant):
             await self._rules.put(command.tenant, configured)

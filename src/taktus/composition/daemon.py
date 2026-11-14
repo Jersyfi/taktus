@@ -725,6 +725,7 @@ async def wire(
                 model_pool(settings.models),
             )
             prices = settings.budget.table()
+            rates = settings.budget.rates()
             weights = settings.budget.weights()
             seeds = settings.budget.seeds()
             shape = settings.findings.form()
@@ -808,6 +809,7 @@ async def wire(
                     options=EngineOptions(
                         step_ceiling_seconds=settings.shutdown_ceiling_seconds,
                         prices=prices,
+                        exchange_rates=rates,
                         weights=weights,
                         model_classes=settings.budget.model_classes,
                         margin=settings.budget.margin,
