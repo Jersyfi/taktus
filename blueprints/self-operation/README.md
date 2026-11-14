@@ -14,6 +14,7 @@ first process is the check of the product's own central claim.
 | **S-06 Maturation** — every step measured, and a step on a language model proposed a trained model where the evidence holds; never applied | **runs** weekly | [`processes/S-06-maturation.yaml`](processes/S-06-maturation.yaml) |
 | **S-07 Change in dialogue** — a request in a person's own words becomes a proposal for a changed process; nothing is registered | **runs** when a person asks, from the web app or the chat | [`processes/S-07-change-in-dialogue.yaml`](processes/S-07-change-in-dialogue.yaml) |
 | **S-08 Process from a description** — a description in a person's own words becomes a proposal for a new process; nothing is registered | **runs** when a person describes a process the tenant does not have, from the web app or the chat | [`processes/S-08-process-from-a-description.yaml`](processes/S-08-process-from-a-description.yaml) |
+| **S-09 Conversation turn** — a person's message is answered, and an act it proposes is read back and waits for their yes; nothing is done | **runs** when a person writes to Taktus, from the web app or the chat | [`processes/S-09-conversation-turn.yaml`](processes/S-09-conversation-turn.yaml) |
 
 ## S-01 Removal test
 
@@ -498,3 +499,40 @@ A person does the same without the model (ADR-0013 B). Copy a bundle of `example
 new process into it, and hand it over: `POST /processes/{id}/proposals` with the bundle keeps
 the proposal, as S-08 would, and registers nothing. Without Taktus, the bundle is a YAML file:
 `taktusctl submit` registers it directly.
+
+## S-09 Conversation turn
+
+UC-1.14 asks that a person builds in Taktus by talking to it, in the web app and the chat.
+ADR-0325 makes every turn a run of a process of Taktus's own: the one variable step is visible,
+and the rest are rules.
+
+**What one run does:**
+
+1. **context** — the instance reads the person's last message, up to twelve turns before it, the
+   closed list of acts (`ACTS`, the same as the tools of a person's own agent) and what the person
+   may see: the processes and their open plan drafts.
+2. **think** — a language model, for the purpose `reasoning`, answers in words and names at most
+   one act of the list with its arguments, as one JSON object.
+3. **answer** — the instance keeps the answer as Taktus's turn. The act is checked against the
+   list by rule and read back by rule; an act off the list, or on a process the person may not
+   see, is not kept, and the answer says so. A text not in the agreed form is kept as "no
+   answer could be formed". Nothing is done: the act waits for the person's yes.
+
+**Started by a person.** It has no trigger. `POST /conversation` with the words starts one run,
+and so does a message in a chat that no rule of the owner's conversation reads and no process
+starts on. The instance starts it only where its operator names it:
+`TAKTUS_CONVERSATION_PROCESS=s09-conversation-turn` (ADR-0092).
+
+`tests/composition/test_conversation.py` runs it end to end with a scripted model.
+
+### Its autonomy, with the reason
+
+Level 3: the values a language model produces are an answer in words and a proposed act, and
+the act leaves its step only through the rule that checks it; nothing is done before the
+person's yes, at every level. No raise is planned: the person's yes stays the act.
+
+### By hand — the takeover test of this process
+
+A person does the same without the model (ADR-0013 B). Read the person's message and the turns
+before it on the page "Ask Taktus", answer it, and where one act of `docs/guides/use/talking.md`
+serves it, say what it would do and ask for their yes; on the yes, do it in the web app.

@@ -19,8 +19,11 @@ actor and its outcome: `served`, `refused` or `failed` (§6).
 The tools call the application services the HTTP surface calls. Answering a decision request
 never takes effect alone: the reading comes back, and only `confirm_decision` makes it count
 (ADR-0008). The take-over tools are those of ADR-0128; `steer_step` sends a running step a
-message (ADR-0156). The surface offers no resources and no prompts, and passes nothing on to
-another MCP server.
+message (ADR-0156). The tools to build (ADR-0324) plan, ask a change or a description of a
+process, rehearse, commission and discard a proposal, and roll a process back, through the
+same services as the web app; commissioning and a rollback come back read back, and only
+`confirm_act` does them. The surface offers no resources and no prompts, and passes nothing on
+to another MCP server.
 """
 
 from __future__ import annotations
@@ -39,7 +42,9 @@ from starlette.types import Receive, Scope, Send
 
 from taktus.adapters.driving.rest.problems import problem
 from taktus.adapters.driving.rest.views import decision_view
-from taktus.adapters.driving.rest.wiring import RestServices, StartRefused
+from taktus.adapters.driving.rest.wiring import BuildRefused, RestServices, StartRefused
+from taktus.components.command.domain.model.conversation import ACTS
+from taktus.components.command.domain.service.guided import Mode
 from taktus.components.decision.application.query import Addressed
 from taktus.components.decision.application.service import (
     AnswerRequest,
@@ -76,6 +81,7 @@ class Call:
     services: RestServices
     who: Resolution
     arguments: Mapping[str, Any]
+    rights: frozenset[Right] = frozenset()
 
     def text(self, name: str) -> str:
         value = self.arguments.get(name)
@@ -118,7 +124,8 @@ class Tool:
             + ("" if self.right is None else f" Needs the right `{self.right.value}`."),
             input_schema=self.schema,
             annotations=types.ToolAnnotations(
-                read_only_hint=self.right is None, open_world_hint=False
+                read_only_hint=self.right is None and self.name != "confirm_act",
+                open_world_hint=False,
             ),
         )
 
@@ -310,6 +317,152 @@ async def _hand_back(call: Call) -> Json:
     return {"run_id": run.id, "state": run.state}
 
 
+# --- building (ADR-0324) ---------------------------------------------------------------------
+
+CHANNEL = "channel.agent"
+BUILD_RIGHTS: dict[str, Right] = {
+    "open_plan": Right.PLAN,
+    "answer_plan": Right.PLAN,
+    "set_plan": Right.PLAN,
+    "commission_plan": Right.PLAN,
+    "ask_change": Right.CHANGE,
+    "ask_description": Right.CHANGE,
+    "rehearse_proposal": Right.CHANGE,
+    "commission_proposal": Right.CHANGE,
+    "discard_proposal": Right.CHANGE,
+    "rollback_process": Right.CHANGE,
+}
+"""The right each act of building needs on this surface; `start_process` keeps its own."""
+
+
+def _building(name: str) -> Act:
+    spec = ACTS[name]
+
+    async def act(call: Call) -> Json:
+        arguments = dict(call.arguments)
+        try:
+            if spec.read_back_on_agent:
+                proposed = await call.services.building.propose(call.who, name, arguments, CHANNEL)
+                return {
+                    "act": proposed.id,
+                    "read_back": proposed.read_back,
+                    "takes_effect": "only once confirm_act confirms this reading",
+                }
+            done, links = await call.services.building.do(call.who, name, arguments)
+        except BuildRefused as error:
+            raise Refused(str(error)) from error
+        return {"done": done, **links}
+
+    return act
+
+
+async def _confirm_act(call: Call) -> Json:
+    confirmed = call.arguments.get("confirmed")
+    if not isinstance(confirmed, bool):
+        raise Refused("`confirmed` is true or false")
+    try:
+        waiting = await call.services.building.waiting(call.who, call.text("act"))
+        needed = BUILD_RIGHTS.get(waiting.act)
+        if needed is not None and needed not in call.rights:
+            raise Refused(
+                f"{waiting.act} needs the right `{needed.value}`, which none of your roles "
+                "holds; an administrator grants it to a role"
+            )
+        settled = await call.services.building.confirm(call.who, waiting.id, confirmed, say=False)
+    except BuildRefused as error:
+        raise Refused(str(error)) from error
+    return {
+        "act": settled.id,
+        "state": str(settled.state),
+        "outcome": settled.outcome,
+        **settled.links,
+    }
+
+
+async def _list_plans(call: Call) -> Json:
+    return {"plans": await call.services.building.plans(call.who)}
+
+
+async def _get_plan(call: Call) -> Json:
+    mode = call.arguments.get("mode", "guided")
+    if mode not in ("guided", "expert"):
+        raise Refused("`mode` is guided or expert")
+    try:
+        return await call.services.building.plan(call.who, call.text("draft"), Mode(mode))
+    except BuildRefused as error:
+        raise Refused(str(error)) from error
+
+
+async def _list_proposals(call: Call) -> Json:
+    try:
+        return {"proposals": await call.services.building.proposals(call.who, call.text("process"))}
+    except BuildRefused as error:
+        raise Refused(str(error)) from error
+
+
+async def _get_proposal(call: Call) -> Json:
+    try:
+        return await call.services.building.proposal(
+            call.who, call.text("process"), call.text("proposal")
+        )
+    except BuildRefused as error:
+        raise Refused(str(error)) from error
+
+
+BUILD_TOOLS: tuple[Tool, ...] = (
+    Tool(
+        "list_plans",
+        "Your plan drafts, the newest change first.",
+        _object({}),
+        _list_plans,
+    ),
+    Tool(
+        "get_plan",
+        "One plan draft of yours: what it lacks, its estimates, and the question it asks next.",
+        _object(
+            {"draft": TEXT, "mode": {"type": "string", "enum": ["guided", "expert"]}}, ("draft",)
+        ),
+        _get_plan,
+    ),
+    Tool(
+        "list_proposals",
+        "The proposals for a process you may see, newest first.",
+        _object({"process": TEXT}, ("process",)),
+        _list_proposals,
+    ),
+    Tool(
+        "get_proposal",
+        "One proposal, with its difference against the active version.",
+        _object({"process": TEXT, "proposal": TEXT}, ("process", "proposal")),
+        _get_proposal,
+    ),
+    *(
+        Tool(
+            name,
+            ACTS[name].summary
+            + (
+                " Nothing takes effect: it comes back as it was read, and only confirm_act "
+                "makes it count."
+                if ACTS[name].read_back_on_agent
+                else ""
+            ),
+            ACTS[name].schema(),
+            _building(name),
+            right,
+        )
+        for name, right in BUILD_RIGHTS.items()
+    ),
+)
+CONFIRM = Tool(
+    "confirm_act",
+    "Confirm, or reject, an act as it was read back: commissioning a plan or a proposal, or a "
+    "rollback. Confirmed, it is done as you; rejected, nothing is done.",
+    _object({"act": TEXT, "confirmed": {"type": "boolean"}}, ("act", "confirmed")),
+    _confirm_act,
+)
+"""Listed to whoever holds a right to build; the act's own right is checked on the call."""
+
+
 TOOLS: tuple[Tool, ...] = (
     Tool(
         "list_processes",
@@ -409,7 +562,15 @@ TOOLS: tuple[Tool, ...] = (
         Right.TAKE_OVER,
     ),
 )
+TOOLS = (*TOOLS, *BUILD_TOOLS, CONFIRM)
 BY_NAME = {tool.name: tool for tool in TOOLS}
+
+
+def offered(tool: Tool, rights: frozenset[Right]) -> bool:
+    """Whether a client holding `rights` is offered the tool (ADR-0131 §4, ADR-0324 §2)."""
+    if tool is CONFIRM:
+        return bool(rights & {Right.PLAN, Right.CHANGE})
+    return tool.right is None or tool.right in rights
 
 
 def _result(body: Json, *, error: bool = False) -> types.CallToolResult:
@@ -436,9 +597,7 @@ def server_for(services: RestServices, who: Resolution, rights: frozenset[Right]
     async def list_tools(
         ctx: ServerRequestContext[Any], params: types.PaginatedRequestParams | None
     ) -> types.ListToolsResult:
-        return types.ListToolsResult(
-            tools=[t.listed() for t in TOOLS if t.right is None or t.right in rights]
-        )
+        return types.ListToolsResult(tools=[t.listed() for t in TOOLS if offered(t, rights)])
 
     async def call_tool(
         ctx: ServerRequestContext[Any], params: types.CallToolRequestParams
@@ -455,7 +614,7 @@ def server_for(services: RestServices, who: Resolution, rights: frozenset[Right]
                     f"{tool.name} needs the right `{tool.right.value}`, which none of your "
                     "roles holds; an administrator grants it to a role"
                 )
-            answer = await tool.act(Call(services, who, arguments))
+            answer = await tool.act(Call(services, who, arguments, rights))
         except Refused as refused:
             outcome, result = REFUSED, _result({"refused": str(refused)}, error=True)
         except Exception as error:

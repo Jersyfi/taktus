@@ -36,8 +36,10 @@ from taktus.components.command.application.service import (
     ReceiveIntakeHandler,
 )
 from taktus.components.command.application.service.coach import Coach
+from taktus.components.command.application.service.conversations import Conversations
 from taktus.components.command.application.service.sessions import Sessions
 from taktus.components.command.domain.model import IntakeEvent
+from taktus.components.command.domain.model.conversation import Conversation
 from taktus.components.decision.application.query import DecisionQueries
 from taktus.components.decision.application.service import (
     AnswerRequestHandler,
@@ -76,7 +78,9 @@ from taktus.components.run.application.query.blocked_time import BlockedTime
 from taktus.components.run.application.service import HandBack, RunEngine, SteerStep, TakeOver
 from taktus.components.run.domain.model import Run, RunError, UnknownTakeover
 from taktus.composition.agent_surface import AgentSurface
+from taktus.composition.building import BuildActs
 from taktus.composition.chains import ChainRuns
+from taktus.composition.conversation import ConversationActs
 from taktus.composition.decisions import DecisionWiring, decision_wiring
 from taktus.composition.levels import RepositoryLevelRecords
 from taktus.composition.live import LiveHub, LiveOptions, Records, state_of
@@ -347,6 +351,44 @@ class Services:
                 chain_runs=MemoryRepository(self.persistence, ChainRun),
             )
         return self.built_chains
+
+    @property
+    def conversations(self) -> Conversations:
+        """A person's conversation and the acts read back in it, over this world's stores."""
+        return Conversations(
+            MemoryRepository(self.persistence, Conversation),
+            self.ledger,
+            self.persistence,
+            self.clock,
+            self.ids,
+        )
+
+    @property
+    def building(self) -> BuildActs:
+        """The acts of building, over this world's stores (ADR-0324). The acts on a proposal
+        are the ones the test sets, or none."""
+        return BuildActs(
+            planning=self.planning,
+            proposals=self.proposals,
+            acts=self.acts,
+            agent=self.agent,
+            conversations=self.conversations,
+        )
+
+    @property
+    def talking(self) -> ConversationActs:
+        """Taktus's own conversation, over this world's stores; no conversation process is
+        named, so a turn is refused (ADR-0325). `tests/composition/test_conversation.py` runs
+        one end to end."""
+        return ConversationActs(
+            conversations=self.conversations,
+            building=self.building,
+            agent=self.agent,
+            identities=self.identities,
+            runs=self.runs,
+            work=self.persistence,
+            process=None,
+        )
 
     @property
     def streams(self) -> StreamReads:

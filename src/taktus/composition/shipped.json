@@ -421,6 +421,7 @@
       "capabilities": [
         "orchestrator.changes",
         "orchestrator.conformance",
+        "orchestrator.conversation",
         "orchestrator.guides",
         "orchestrator.integrations",
         "orchestrator.maturation",
@@ -435,6 +436,8 @@
         "orchestrator.changes.propose",
         "orchestrator.changes.read",
         "orchestrator.conformance.run",
+        "orchestrator.conversation.answer",
+        "orchestrator.conversation.context",
         "orchestrator.guides.measure",
         "orchestrator.guides.publish",
         "orchestrator.guides.render",

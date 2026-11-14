@@ -157,6 +157,8 @@ def test_the_document_is_openapi_3_1_with_the_prefix_as_a_server_variable() -> N
         "/plans/{draft_id}/answers",
         "/plans/{draft_id}/commission",
         "/coach",
+        "/conversation",
+        "/conversation/acts/{act_id}",
         "/coach/hints/{hint_id}/dismiss",
         "/coach/hints/{hint_id}/accept",
         "/process-proposals",

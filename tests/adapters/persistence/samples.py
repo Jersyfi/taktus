@@ -1494,6 +1494,38 @@ def chain_run(tenant: str = "t") -> Any:
     )
 
 
+def conversation(tenant: str = "t") -> Any:
+    from taktus.components.command.domain.model.conversation import (
+        Conversation,
+        Exchange,
+        ProposedAct,
+    )
+
+    return Conversation(
+        id="cnv_1",
+        tenant=tenant,
+        participant="idn_ada",
+        opened_at=AT,
+        turns=(
+            Exchange(at=AT, channel="channel.web", speaker="person", text="plan the invoices"),
+            Exchange(
+                at=AT, channel="channel.web", speaker="taktus", text="Open a plan?", act="act_1"
+            ),
+        ),
+        acts=(
+            ProposedAct(
+                id="act_1",
+                act="open_plan",
+                arguments={"said": "plan the invoices"},
+                read_back="Open a plan draft for: plan the invoices.",
+                channel="channel.web",
+                asked_at=AT,
+            ),
+        ),
+        reply={"channel": "channel.chat", "address": "C1"},
+    )
+
+
 def org_structure(tenant: str = "t") -> OrgStructure:
     return OrgStructure(id=tenant, tenant=tenant, levels=("company", "area", "team", "project"))
 

@@ -38,6 +38,14 @@ proposed. The instance answers through the `Changes` protocol below, which the c
 implements over the process component's proposals (`composition/proposals.py`). Keeping a
 proposal validates it as registration would and registers nothing; both operations are a `read`.
 
+A turn of a person's conversation with Taktus (ADR-0325) runs as a process too, S-09 of
+`blueprints/self-operation/`. It asks the instance for the capability
+`orchestrator.conversation`: what the turn is answered from, and the answer kept by rule with
+its act read back. The instance answers through the `Conversing` protocol below
+(`composition/conversation.py`). Both are a `read`: the answer is a record of the person's
+conversation, and saying it in a chat is the reporting component's delivery, which records
+itself.
+
 What a process spends per case (ADR-0216) is read by a process too, B-2.02 of the blueprint
 `software-operations`. It asks the instance for the capability `orchestrator.spend`: a process's
 runs over a window, grouped by the case each run was about, the costliest first. The instance
@@ -96,6 +104,7 @@ MATURATION = "orchestrator.maturation"
 CHANGES = "orchestrator.changes"
 SPEND = "orchestrator.spend"
 SCAFFOLDS = "orchestrator.scaffolds"
+CONVERSATION = "orchestrator.conversation"
 
 LIST = f"{INTEGRATIONS}.list"
 DESCRIBE = f"{INTEGRATIONS}.describe"
@@ -114,6 +123,8 @@ CHANGES_PROPOSE = f"{CHANGES}.propose"
 SPEND_CASES = f"{SPEND}.cases"
 SCAFFOLD_CHECK = f"{SCAFFOLDS}.check"
 SCAFFOLD_FURNISH = f"{SCAFFOLDS}.furnish"
+CONVERSATION_CONTEXT = f"{CONVERSATION}.context"
+CONVERSATION_ANSWER = f"{CONVERSATION}.answer"
 
 
 class UnknownIntegration(LookupError):
@@ -237,6 +248,23 @@ class Changes(Protocol):
         ...
 
 
+class Conversing(Protocol):
+    """What the connector needs from the instance for a turn of a person's conversation
+    (ADR-0325). The instance validates what it is given and raises `ValueError`, naming what
+    is wrong."""
+
+    async def context(self, tenant: str, identity: str, conversation: str) -> dict[str, Any]:
+        """What the model is told: `message`, `history`, `acts` and `known`, as texts."""
+        ...
+
+    async def answer(
+        self, tenant: str, identity: str, run_id: str, conversation: str, text: str
+    ) -> dict[str, Any]:
+        """The model's answer kept as Taktus's turn, its act checked and read back by rule:
+        `formed`, `act` and `read_back`."""
+        ...
+
+
 class Spend(Protocol):
     """What the connector needs from the instance for the spend per case (ADR-0216). The
     instance validates what it is given and raises `ValueError`, naming what is wrong."""
@@ -276,6 +304,7 @@ DECLARATION = Capabilities.model_validate(
             CHANGES,
             SPEND,
             SCAFFOLDS,
+            CONVERSATION,
         ],
         "operations": [
             {
@@ -411,6 +440,25 @@ DECLARATION = Capabilities.model_validate(
                 "would; nothing is registered.",
             },
             {
+                "name": CONVERSATION_CONTEXT,
+                "capability": CONVERSATION,
+                "effect": "read",
+                "demand": {"quota_units": 1},
+                "summary": "What a turn of a person's conversation is answered from: the "
+                "message, the turns before it, the closed list of acts and what the person may "
+                "see.",
+            },
+            {
+                "name": CONVERSATION_ANSWER,
+                "capability": CONVERSATION,
+                "effect": "read",
+                "demand": {"quota_units": 1},
+                "summary": "The answer kept as Taktus's turn, its act checked against the closed "
+                "list and read back by rule; nothing is done before the person's yes. Said in "
+                "the chat the message came from, which the reporting component delivers and "
+                "records itself.",
+            },
+            {
                 "name": SPEND_CASES,
                 "capability": SPEND,
                 "effect": "read",
@@ -440,7 +488,9 @@ class LoopbackConnector:
         changes: Changes | None = None,
         spend: Spend | None = None,
         scaffolds: Scaffolds | None = None,
+        conversing: Conversing | None = None,
     ) -> None:
+        self._conversing = conversing
         self._scaffolds = scaffolds
         self._orchestrator = orchestrator
         self._guides = guides
@@ -456,7 +506,10 @@ class LoopbackConnector:
         changes: Changes | None = None,
         spend: Spend | None = None,
         scaffolds: Scaffolds | None = None,
+        conversing: Conversing | None = None,
     ) -> None:
+        if conversing is not None:
+            self._conversing = conversing
         if scaffolds is not None:
             self._scaffolds = scaffolds
         if spend is not None:
@@ -481,6 +534,13 @@ class LoopbackConnector:
                 return await self._scaffold(operation, context, dict(input))
             if operation.startswith(f"{CHANGES}."):
                 output = await self._change(operation, context, dict(input))
+                return Result(
+                    output=output,
+                    effect=EffectReport(kind=Effect.READ),
+                    consumption=Consumption(quota_units=1),
+                )
+            if operation.startswith(f"{CONVERSATION}."):
+                output = await self._converse(operation, context, dict(input))
                 return Result(
                     output=output,
                     effect=EffectReport(kind=Effect.READ),
@@ -632,6 +692,15 @@ class LoopbackConnector:
             raise CallFailed(operation, _failure(Cause.NOT_FOUND, f"no operation {operation!r}"))
         return Result(output=output, effect=effect, consumption=Consumption(quota_units=1))
 
+    async def _converse(
+        self, operation: str, context: CallContext, input: dict[str, Any]
+    ) -> dict[str, Any]:
+        if self._conversing is None:
+            raise CallFailed(
+                operation, _failure(Cause.NOT_FOUND, "this instance has no conversation")
+            )
+        return await _conversed(self._conversing, operation, context, input)
+
     async def _change(
         self, operation: str, context: CallContext, input: dict[str, Any]
     ) -> dict[str, Any]:
@@ -651,6 +720,24 @@ class LoopbackConnector:
                 request=_text(input, "request"),
             )
         raise CallFailed(operation, _failure(Cause.NOT_FOUND, f"no operation {operation!r}"))
+
+
+async def _conversed(
+    conversing: Conversing, operation: str, context: CallContext, input: dict[str, Any]
+) -> dict[str, Any]:
+    if operation == CONVERSATION_CONTEXT:
+        return await conversing.context(
+            context.tenant, context.identity, _text(input, "conversation")
+        )
+    if operation == CONVERSATION_ANSWER:
+        return await conversing.answer(
+            context.tenant,
+            context.identity,
+            context.run_id,
+            _text(input, "conversation"),
+            _text(input, "text"),
+        )
+    raise CallFailed(operation, _failure(Cause.NOT_FOUND, f"no operation {operation!r}"))
 
 
 def _no_spend(operation: str) -> CallFailed:

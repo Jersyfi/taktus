@@ -167,7 +167,8 @@ class BrowserSession(Value):
 class Right(StrEnum):
     """What a role may let an agent do on the MCP surface beyond reading (ADR-0131 §3), what a
     role may do to runs beyond its own (ADR-0236), the three acts on a process that are
-    rights of their own (ADR-0257), and steering processes by their targets (ADR-0293)."""
+    rights of their own (ADR-0257), steering processes by their targets (ADR-0293), and
+    building through a person's own agent (ADR-0324)."""
 
     PROCESS_CREATE = "process.create"
     """Register the first version of a process the tenant does not have yet."""
@@ -188,6 +189,11 @@ class Right(StrEnum):
     """Take over a running step, and hand its result back."""
     STEER = "agent.steer"
     """Send a message to a running step (ADR-0156 §7)."""
+    PLAN = "agent.plan"
+    """Open, answer, set and commission a plan draft of the person's own (ADR-0324)."""
+    CHANGE = "agent.change"
+    """Ask for a change or a description of a process; rehearse, commission and discard a
+    proposal; roll a process back (ADR-0324)."""
     STEER_RUN = "run.steer"
     """Pause or cancel a run that does not act on the person's own behalf, through any channel
     (ADR-0236). A run that acts on a person's behalf is theirs to steer without it."""

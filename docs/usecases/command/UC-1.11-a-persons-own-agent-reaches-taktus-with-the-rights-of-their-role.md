@@ -4,10 +4,10 @@ title: A person's own agent reaches Taktus, with the rights of their role
 component: command
 epic: E1
 serves: [P4, P7, P13, P14]
-state: building
+state: built
 version: 0.5.0
-tests: [tests/adapters/rest/test_agent_surface.py::test_only_an_agent_key_opens_the_surface, tests/adapters/rest/test_agent_surface.py::test_without_a_right_the_agent_only_reads_and_a_write_is_refused, tests/adapters/rest/test_agent_surface.py::test_a_right_granted_to_a_role_lists_its_tools_and_starts_a_process_as_the_person, tests/adapters/rest/test_agent_surface.py::test_a_run_the_reader_may_not_see_is_answered_as_one_that_does_not_exist, tests/adapters/rest/test_agent_surface.py::test_a_free_text_answer_is_read_back_and_counts_only_once_confirmed, tests/adapters/rest/test_agent_surface.py::test_a_step_is_taken_over_shown_and_handed_back_by_the_agent_as_the_person, tests/adapters/rest/test_agent_surface.py::test_every_call_is_in_the_ledger_with_the_person_and_no_argument, tests/adapters/rest/test_agent_surface.py::test_an_agent_of_the_protocols_own_client_reaches_the_tools, tests/adapters/rest/test_agent_surface.py::test_the_person_creates_their_agents_key_with_their_account_key, tests/components/identity/test_agent_rights.py::test_an_agent_key_proves_the_identity_only_as_an_agent_and_a_new_one_ends_it, tests/components/identity/test_agent_rights.py::test_an_identity_holds_the_rights_of_its_roles_as_they_are_now, tests/components/identity/test_agent_rights.py::test_every_grant_and_withdrawal_is_an_entry_and_a_repeat_changes_nothing]
-adrs: {ADR-0008: e6a4e033abd4, ADR-0033: eb18bea6bfb4, ADR-0117: 68746e0ef8ea, ADR-0128: 5292b4b5fe7e, ADR-0131: 7b1cf7e37d35}
+tests: [tests/adapters/rest/test_agent_surface.py::test_only_an_agent_key_opens_the_surface, tests/adapters/rest/test_agent_surface.py::test_without_a_right_the_agent_only_reads_and_a_write_is_refused, tests/adapters/rest/test_agent_surface.py::test_a_right_granted_to_a_role_lists_its_tools_and_starts_a_process_as_the_person, tests/adapters/rest/test_agent_surface.py::test_a_run_the_reader_may_not_see_is_answered_as_one_that_does_not_exist, tests/adapters/rest/test_agent_surface.py::test_a_free_text_answer_is_read_back_and_counts_only_once_confirmed, tests/adapters/rest/test_agent_surface.py::test_a_step_is_taken_over_shown_and_handed_back_by_the_agent_as_the_person, tests/adapters/rest/test_agent_surface.py::test_every_call_is_in_the_ledger_with_the_person_and_no_argument, tests/adapters/rest/test_agent_surface.py::test_an_agent_of_the_protocols_own_client_reaches_the_tools, tests/adapters/rest/test_agent_surface.py::test_the_person_creates_their_agents_key_with_their_account_key, tests/components/identity/test_agent_rights.py::test_an_agent_key_proves_the_identity_only_as_an_agent_and_a_new_one_ends_it, tests/components/identity/test_agent_rights.py::test_an_identity_holds_the_rights_of_its_roles_as_they_are_now, tests/components/identity/test_agent_rights.py::test_every_grant_and_withdrawal_is_an_entry_and_a_repeat_changes_nothing, tests/adapters/rest/test_agent_surface.py::test_an_agent_plans_and_a_commission_counts_only_once_its_reading_is_confirmed, tests/adapters/rest/test_agent_surface.py::test_an_agent_asks_rehearses_commissions_discards_and_rolls_back_as_the_person, tests/adapters/rest/test_agent_surface.py::test_without_the_right_to_build_a_build_tool_or_its_confirmation_is_refused]
+adrs: {ADR-0008: e6a4e033abd4, ADR-0033: eb18bea6bfb4, ADR-0117: 68746e0ef8ea, ADR-0128: 5292b4b5fe7e, ADR-0131: 7b1cf7e37d35, ADR-0324: 543aa33782ff}
 supersedes: null
 ---
 
@@ -74,6 +74,10 @@ changes. A right granted to a role lists its tools and starts a process as the p
 person may not see is answered as one that does not exist. A free-text answer counts only once
 its reading is confirmed. A step is taken over, shown and handed back. Every call is a ledger
 entry with the person as actor and no argument kept. The protocol's own client reaches the
-tools. Rights are granted and withdrawn per role as ledger entries — by the named tests. The
-README's description of the surface is not checked by a test. The tools to build (DEC-0239)
-are not built yet.
+tools. Rights are granted and withdrawn per role as ledger entries. The tools to build (ADR-0324): a
+plan is opened, answered and commissioned, and the commission counts only once `confirm_act`
+confirms its reading; a change and a description are asked, a proposal rehearsed, commissioned
+on confirmation and discarded, and a rollback rejected changes nothing, each through the web
+app's services as the person; without `agent.plan` or `agent.change` a build tool, and a
+confirmation whose right was withdrawn, is refused naming the right — by the named tests. The
+README's description of the surface is not checked by a test.
