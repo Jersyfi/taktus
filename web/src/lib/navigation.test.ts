@@ -128,9 +128,9 @@ describe('Today', () => {
 	});
 
 	it('leaves out a tile the surface did not count, instead of showing a zero', () => {
-		const tiles = glance({ waiting_for_you: 2, running: 3, waiting_on_person: null, failed_24h: null, incidents: 0, alerts: 1 });
-		expect(tiles.map((t) => t.key)).toEqual(['running', 'incidents', 'alerts']);
-		expect(tiles.find((t) => t.key === 'alerts')?.alert).toBe(true);
-		expect(tiles.find((t) => t.key === 'incidents')?.alert).toBe(false);
+		const tiles = glance({ waiting_for_you: 2, running_now: 3, waiting_on_a_person: 1, failed_last_24h: 2, open_incidents: 0, open_alerts: null });
+		expect(tiles.map((t) => t.key)).toEqual(['running_now', 'waiting_on_a_person', 'failed_last_24h', 'open_incidents']);
+		expect(tiles.find((t) => t.key === 'failed_last_24h')?.alert).toBe(true);
+		expect(tiles.find((t) => t.key === 'open_incidents')?.alert).toBe(false);
 	});
 });

@@ -84,9 +84,8 @@ export function ofRun(runId: string): (change: Change) => boolean {
 	return (change) => change.run === runId;
 }
 
-/** A change concerns a process's level when it names that process. A change that names no
- * process — a surface that does not send the field yet — may concern any process. */
+/** A change concerns a process's level when it names that process (ADR-0317 §3). A change
+ * that names none may concern any process, and reads it again. */
 export function ofProcess(processId: string): (change: Change) => boolean {
-	return (change) =>
-		change.process === undefined || change.process === processId || change.process.startsWith(`${processId}@`);
+	return (change) => change.process === undefined || change.process.id === processId;
 }

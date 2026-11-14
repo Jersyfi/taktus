@@ -28,6 +28,9 @@
 	const process = $derived(level.process);
 	const runs = $derived(level.runs ?? []);
 	const newest = $derived(runs.slice(0, NEWEST));
+	/** Every run of the version by state, as the surface counted them (ADR-0319 §3). */
+	const counted = $derived(Object.entries(level.counts ?? {}).filter(([, n]) => n > 0));
+	const total = $derived(level.counts ? counted.reduce((n, [, c]) => n + c, 0) : runs.length);
 	const byId = $derived(new Map(level.steps.map((s) => [s.id, s])));
 
 	function notes(id: string): string[] {
@@ -87,6 +90,9 @@
 
 	<section class="runs" aria-labelledby="runs-title">
 		<h2 id="runs-title">Runs of this version</h2>
+		{#if counted.length}
+			<p class="counted" data-counts>{total} in all: {counted.map(([state, n]) => `${n} ${state.replace('_', ' ')}`).join(', ')}.</p>
+		{/if}
 		{#if runs.length === 0}
 			<p>No run you may see.</p>
 		{:else}
@@ -101,8 +107,8 @@
 					</li>
 				{/each}
 			</ul>
-			{#if runs.length > newest.length}
-				<p><a href="#/runs?process={encodeURIComponent(process.id)}">All {runs.length} runs of {process.name}</a></p>
+			{#if total > newest.length || level.next}
+				<p><a href="#/runs?process={encodeURIComponent(process.id)}">Every run of {process.name}</a></p>
 			{/if}
 		{/if}
 	</section>
@@ -145,7 +151,8 @@
 		align-items: center;
 		padding: var(--sp-050) 0;
 	}
-	.state {
+	.state,
+	.counted {
 		color: var(--text-secondary);
 	}
 	time {

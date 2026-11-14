@@ -15,7 +15,6 @@
 	import { surface } from '../lib/api';
 	import { display, type Display } from '../lib/display.svelte';
 	import { frame } from '../lib/frame.svelte';
-	import { currentAdministrationKey } from '../lib/governance';
 	import Icon from '../lib/Icon.svelte';
 	import Mark from '../lib/Mark.svelte';
 	import { motion } from '../lib/motion.svelte';
@@ -67,7 +66,7 @@
 
 	/** The marks of what waits, from the reads Today shares (ADR-0323 §4). */
 	async function readWaiting() {
-		const found = await readToday(surface(location.href), currentAdministrationKey());
+		const found = await readToday(surface(location.href));
 		if (found.ok) waiting = new Set(found.today.marks.map(markOf));
 	}
 	// A return to Today reads them too: the reads are shared, so this costs nothing twice.

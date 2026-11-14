@@ -126,7 +126,7 @@ origin.
 |---|---|
 | `design/`, `scripts/tokens.js`, `src/app.css` | the design system's tokens, the stylesheet written from them, and what every page shares (ADR-0177) |
 | `src/lib/navigation.ts`, `frame.svelte.ts`, `pulse.ts`, `theme.svelte.ts`, `Icon.svelte`, `Mark.svelte` | the one list of destinations, its folds, tabs, trail and bottom bar, and its marks; the frame's one stream of the tenant; the theme the device keeps; the frame's icons and the mark (ADR-0178, ADR-0321, ADR-0323) |
-| `src/lib/today.ts`, `todayData.ts`, `shared.ts` | Today's words and tiles; what Today reads, from `GET /levels/today` or put together from the older reads; reads the frame and a page share |
+| `src/lib/today.ts`, `todayData.ts`, `shared.ts` | Today's words and tiles; what Today and the frame read in one request, `GET /levels/today` (ADR-0318); a read the frame and a page share |
 | `src/lib/takt.ts`, `TaktStrip.svelte`, `changes.ts` | the last 60 minutes from recorded changes, one mark per minute, and a change as one line |
 | `src/lib/display.svelte.ts`, `DisplaySwitch.svelte`, `TextEquivalent.svelte` | picture or text: the default the device keeps, the switch per page, and the text equivalent that stays in the page (ADR-0322) |
 | `src/lib/Skeleton.svelte`, `EmptyState.svelte`, `ErrorState.svelte` | a read under way, a read that found nothing, a read that failed |
