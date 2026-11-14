@@ -89,6 +89,8 @@ free number of its area, built with package D in concept mode (DEC-0222).
 area.
 `UC-13.7` every role finds its way in one measured design system (DEC-0227, NTC-0260), the
 number package E gave it, built in concept mode.
+`UC-7.12` Taktus never acts outward in a person's name (DEC-0239, NTC-0295), the next free
+number of its area, built with package F in concept mode.
 
 ## Numbers of the definition with no file of their own
 
