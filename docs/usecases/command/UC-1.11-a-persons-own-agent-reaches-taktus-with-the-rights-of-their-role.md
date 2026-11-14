@@ -4,7 +4,7 @@ title: A person's own agent reaches Taktus, with the rights of their role
 component: command
 epic: E1
 serves: [P4, P7, P13, P14]
-state: built
+state: building
 version: 0.5.0
 tests: [tests/adapters/rest/test_agent_surface.py::test_only_an_agent_key_opens_the_surface, tests/adapters/rest/test_agent_surface.py::test_without_a_right_the_agent_only_reads_and_a_write_is_refused, tests/adapters/rest/test_agent_surface.py::test_a_right_granted_to_a_role_lists_its_tools_and_starts_a_process_as_the_person, tests/adapters/rest/test_agent_surface.py::test_a_run_the_reader_may_not_see_is_answered_as_one_that_does_not_exist, tests/adapters/rest/test_agent_surface.py::test_a_free_text_answer_is_read_back_and_counts_only_once_confirmed, tests/adapters/rest/test_agent_surface.py::test_a_step_is_taken_over_shown_and_handed_back_by_the_agent_as_the_person, tests/adapters/rest/test_agent_surface.py::test_every_call_is_in_the_ledger_with_the_person_and_no_argument, tests/adapters/rest/test_agent_surface.py::test_an_agent_of_the_protocols_own_client_reaches_the_tools, tests/adapters/rest/test_agent_surface.py::test_the_person_creates_their_agents_key_with_their_account_key, tests/components/identity/test_agent_rights.py::test_an_agent_key_proves_the_identity_only_as_an_agent_and_a_new_one_ends_it, tests/components/identity/test_agent_rights.py::test_an_identity_holds_the_rights_of_its_roles_as_they_are_now, tests/components/identity/test_agent_rights.py::test_every_grant_and_withdrawal_is_an_entry_and_a_repeat_changes_nothing]
 adrs: {ADR-0008: e6a4e033abd4, ADR-0033: eb18bea6bfb4, ADR-0117: 68746e0ef8ea, ADR-0128: 5292b4b5fe7e, ADR-0131: 7b1cf7e37d35}
@@ -18,7 +18,9 @@ supersedes: null
 A person works with an agent of their own: a coding agent, or a chat assistant. That agent
 reaches Taktus over the Model Context Protocol, the open standard by which an agent is offered
 tools. Through it the person starts a process, reads how its runs stand, answers a decision
-request addressed to them, and takes over a running step. The agent acts as the person and
+request addressed to them, and takes over a running step. Through it the person also builds:
+plans a process, asks Taktus to change or describe one, rehearses and commissions what it
+proposes, and rolls a process back (DEC-0239). The agent acts as the person and
 never as more than the person. It may only read, unless a role the person holds was granted the
 right to act this way.
 
@@ -27,6 +29,11 @@ right to act this way.
 - The `api` role serves tools over the Model Context Protocol to start a process, to read the
   runs and their state, to answer a decision request, and to take over a step: ask for it, show
   its state, and hand its result back.
+- It also serves tools to build: open a plan draft, answer and set its questions, read it and
+  commission it; ask for a change or a description of a process; read, rehearse, commission and
+  discard a proposal; roll a process back. Each acts through the same service, the same checks
+  and the same read-back as the web app, and an act that changes a process takes effect only
+  once the person confirms it (ADR-0008).
 - Every call acts as the identity the caller's credential proves (UC-1.7). A call without a
   credential, or with one that proves no identity, is refused and does nothing.
 - Every call that acts is recorded in the ledger with that identity as its actor.
@@ -45,9 +52,9 @@ right to act this way.
 
 **Not a gateway.** Taktus does not pass a client through to another MCP server. Using a vendor's
 server as a connector is ADR-0117's. **Not an identity of the agent's own.** The agent acts as
-the person; an identity of its own for an automation is ADR-0033's. **Not every act.** Changing a
-process, steering a run and the emergency stop stay with the web app, the chat and the command
-line (UC-1.5, UC-4.15, UC-7.2). **Not rights in general.** Which rights a role holds for the web
+the person; an identity of its own for an automation is ADR-0033's. **Not every act.** Steering a
+run and the emergency stop stay with the web app, the chat and the command line (UC-1.5,
+UC-7.2); building a process is part of this surface since DEC-0239. **Not rights in general.** Which rights a role holds for the web
 app, the chat and the command line is UC-7.3; this use case requires the rights of this surface.
 
 ## 4. What it rests on
@@ -68,4 +75,5 @@ person may not see is answered as one that does not exist. A free-text answer co
 its reading is confirmed. A step is taken over, shown and handed back. Every call is a ledger
 entry with the person as actor and no argument kept. The protocol's own client reaches the
 tools. Rights are granted and withdrawn per role as ledger entries — by the named tests. The
-README's description of the surface is not checked by a test.
+README's description of the surface is not checked by a test. The tools to build (DEC-0239)
+are not built yet.
