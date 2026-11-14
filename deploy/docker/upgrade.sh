@@ -256,8 +256,8 @@ read -r s c <<<"$(state_of "$parked")"
 [ "$s" = halted ] && [ "$c" = parked ] || { echo "the parked run woke before the upgrade ended: ${s} ${c}"; exit 1; }
 
 say "6. each run continued, as its operator would"
-# This checkout registers a bundle only with takeover instructions (ADR-0180), which the
-# previous release may not know. A registered version never changes, so the copies this checkout
+# This checkout registers a bundle only with takeover instructions (ADR-0180) and a tolerance
+# on every variable step (ADR-0300), which the previous release may not know. A registered version never changes, so the copies this checkout
 # reads are the processes' next version, carrying them; the runs keep the version they began on.
 python3 - "$work" <<'PY'
 import json, sys
@@ -275,6 +275,9 @@ for path in Path(sys.argv[1]).glob("*.yaml"):
                                "done": "its result is written down"}
                   for step in document["steps"]},
     })
+    for step in document["steps"]:
+        if step["method"] == "worker":
+            document.setdefault("tolerances", {})[step["id"]] = 0.25
     path.write_text(json.dumps(document), encoding="utf-8")
 PY
 for name in finished waiting parked halted escalated; do
