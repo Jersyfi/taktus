@@ -537,6 +537,14 @@ role it would tie the core to a model stack and the removal test would be lost.
   the governance component's `handover_package`, raised in the owner-facing channel; a person's
   decision goes through `ChainRuns.decide`; a chain that ended is measured against its own
   objectives (ADR-0302).
+- **A message is a report's short form; a backlog is never a flood** (ADR-0316): the reporting
+  component renders every message (`domain/service/rendering.py`) from the report's `Brief`,
+  whose sentences are the phrasebooks' `briefs` (`composition/phrasebooks/`), and sorts what a
+  watch has not handled (`domain/service/backlog.py`). `composition/escalations.py` and
+  `composition/partner_exchange.py` deliver a current entry on its own and summarise the rest once
+  per role; `composition/chains.py`, `objectives.py`, `stages.py` and `guides.py` give their
+  reports a brief, and `composition/reports.py` says a role's scheduled report in the tenant's
+  phrasebook, which `composition/daemon.py` hands it.
 - **The load measurement** (S-04, ADR-0223) is `adapters/driving/cli/load_command.py`: it
   submits the probe `blueprints/self-operation/processes/S-04-load-probe.yaml`, which the control
   plane's image carries, through the same services as `taktusctl submit`, and reads each run's

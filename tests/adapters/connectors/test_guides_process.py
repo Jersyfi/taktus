@@ -368,7 +368,9 @@ async def test_a_hand_edit_is_kept_and_its_difference_reaches_the_person_respons
     assert (await world.report(run)).startswith("Guides at ")
     assert "1 withheld" in (await world.report(run))
     (said,) = world.given.deliveries.said
-    assert "What Taktus truly" in said.text, "the difference is in the message"
+    assert "What Taktus truly" in await world.given.record_of(said.text), (
+        "the difference is reported"
+    )
     reports = await world.given.owner.queries.reports(TENANT)
     (report,) = reports
     assert report.kind is ReportKind.NEED and report.id.startswith("guides-use-people-")

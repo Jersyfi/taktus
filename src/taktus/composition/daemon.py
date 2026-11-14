@@ -1489,6 +1489,7 @@ async def wire(
                     work=persistence,
                     clock=clock,
                     identifiers=ids,
+                    channels=owner.channel,
                 ),
                 profiles=RoleProfiles(
                     processes=PostgresRepository(persistence, Process),

@@ -5,7 +5,8 @@ backup, a level that fell by rule or a raise Taktus proposes (ADR-0110) — is r
 producer records it: the ledger entry of the capacity report and of the runner, the row of the
 backup program, the governance component's incident and entry. The owner-facing channel is the
 one the composition root wires, with a carrier that records what it was told to deliver
-(`fakes/owner_channel.py`). Each produces one message, with what happened and what to do; a
+(`fakes/owner_channel.py`). Each produces one report, whose record says what happened and what
+to do, and one message, its short form (ADR-0316); a
 repeated look sends nothing new until it clears. Without a channel, nothing is sent, the view
 says why, and the startup log says which tenant hears nothing.
 """
@@ -27,6 +28,7 @@ from taktus.components.governance.application.service import (
 )
 from taktus.components.reporting.application.service import Alerts, Reported
 from taktus.components.reporting.domain.model import ReportKind
+from taktus.components.reporting.domain.service.rendering import repository_text
 from taktus.components.run.application.service import CLAIM_LOST
 from taktus.composition.alerts import alerts, alerts_tick, say_who_hears
 from taktus.ports.backups import BackupOutcome
@@ -56,6 +58,14 @@ class World:
     @property
     def said(self) -> list[str]:
         return [s.text for s in self.given.deliveries.said]
+
+    async def records(self) -> list[str]:
+        """What each report holds, as its repository text: the message is its short form, and
+        the record keeps what happened and what to do (ADR-0316 §2)."""
+        reports = await self.given.owner.queries.reports(TENANT)
+        top = [s for s in self.given.deliveries.said if s.thread is None]
+        assert len(reports) == len(top), "one message for each report"
+        return [repository_text(r) for r in sorted(reports, key=lambda r: r.raised_at)]
 
     async def record(self, kind: str, *, outcome: str, run_id: str | None = None) -> None:
         async with self.given.persistence.transaction(TENANT):
@@ -98,7 +108,7 @@ async def test_a_capacity_finding_that_turns_to_act_is_said_once_until_it_clears
     await w.record(DATABASE, outcome="act")
 
     assert await w.alerts.report(TENANT) == Reported(raised=1, delivered=1)
-    (message,) = w.said
+    (message,) = await w.records()
     assert "storage (database)" in message and DATABASE in message
     assert "taktusctl capacity" in message, "what to do"
     w.later(hours=2)
@@ -121,7 +131,7 @@ async def test_a_runner_that_lost_its_claim_is_one_message_until_it_is_answered_
     await w.record(CLAIM_LOST, outcome="lost", run_id="run_2")
 
     assert await w.alerts.report(TENANT) == Reported(raised=1, delivered=1)
-    (message,) = w.said
+    (message,) = await w.records()
     assert "run_1" in message and "run_2" in message and "TAKTUS_LEASE_SECONDS" in message
     await w.record(CLAIM_LOST, outcome="lost", run_id="run_3")
     assert await w.alerts.report(TENANT) == Reported(), "one alert holds every loss"
@@ -133,7 +143,7 @@ async def test_a_runner_that_lost_its_claim_is_one_message_until_it_is_answered_
     w.later(minutes=5)
     await w.record(CLAIM_LOST, outcome="lost", run_id="run_4")
     assert await w.alerts.report(TENANT) == Reported(raised=1, delivered=1)
-    assert "run_4" in w.given.deliveries.said[-1].text
+    assert "run_4" in (await w.records())[-1]
 
 
 async def test_a_failed_backup_is_said_with_its_step_and_clears_with_the_next_success() -> None:
@@ -142,7 +152,7 @@ async def test_a_failed_backup_is_said_with_its_step_and_clears_with_the_next_su
     w.backed_up(ok=False, reason="store")
 
     assert await w.alerts.report(TENANT) == Reported(raised=1, delivered=1)
-    message = w.said[-1]
+    message = (await w.records())[-1]
     assert "`store`" in message and "backup store" in message
     w.later(hours=24)
     w.backed_up(ok=False, reason="database")
@@ -162,7 +172,7 @@ async def test_a_missing_backup_is_said_once_the_expected_interval_has_passed() 
     assert await w.alerts.report(TENANT) == Reported()
     w.later(hours=2)
     assert await w.alerts.report(TENANT) == Reported(raised=1, delivered=1)
-    assert "none succeeded in the last 26 hours" in w.said[-1]
+    assert "none succeeded in the last 26 hours" in (await w.records())[-1]
     w.later(hours=24)
     assert await w.alerts.report(TENANT) == Reported(), "still missing, said once"
     w.backed_up(ok=True)
@@ -181,7 +191,7 @@ async def test_a_tenant_never_backed_up_counts_from_its_creation_and_unwatched_s
     )  # fmt: skip
     await w.given.configure()
     assert await w.alerts.report(TENANT) == Reported(raised=1, delivered=1)
-    assert "No successful backup was ever recorded" in w.said[-1]
+    assert "No successful backup was ever recorded" in (await w.records())[-1]
 
     unwatched = World(expected_hours=None)
     unwatched.later(days=30)
@@ -259,7 +269,7 @@ async def test_a_level_that_fell_by_rule_reaches_the_owner_until_answered() -> N
     )
 
     assert await w.alerts.report(TENANT) == Reported(raised=1, delivered=1)
-    (message,) = w.said
+    (message,) = await w.records()
     assert "now runs at level 2" in message and "anc-w" in message and "run_1" in message
     assert "--approve-raise" in message, "how it rises again"
     w.later(hours=2)
@@ -297,7 +307,7 @@ async def test_a_raise_taktus_proposes_reaches_the_owner_with_its_figures() -> N
         )
 
     assert await w.alerts.report(TENANT) == Reported(raised=1, delivered=1)
-    (message,) = w.said
+    (message,) = await w.records()
     assert "proposes raising the process p" in message
     assert "0% of 1 proposal(s) over 7 days" in message and "0% of 2 over 28 days" in message
     assert "never applies a raise" in message

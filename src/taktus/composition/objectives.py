@@ -32,7 +32,7 @@ from taktus.components.reporting.application.service import (
     RaiseReport,
     RaiseReportHandler,
 )
-from taktus.components.reporting.domain.model import ReportKind
+from taktus.components.reporting.domain.model import Brief, ReportKind, Said
 from taktus.composition.tenancy import this_round
 from taktus.ports.clock import Clock
 from taktus.ports.identity import ServedTenants
@@ -235,6 +235,17 @@ class ObjectivesWatch:
                         f"Nothing yet: each run of {recurring.process} heals the failure again.",
                     ),
                     due=self._clock.now().date(),
+                    brief=Brief(
+                        headline=Said(
+                            entry="recurred",
+                            values={
+                                "process": recurring.process,
+                                "step": recurring.step,
+                                "count": str(recurring.count),
+                            },
+                        ),
+                        ask=Said(entry="recurred_ask"),
+                    ),
                 )
             )
         except (NotSent, NoChannel) as error:

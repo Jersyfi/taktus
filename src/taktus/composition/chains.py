@@ -57,7 +57,7 @@ from taktus.components.reporting.application.service import (
     RaiseReport,
     RaiseReportHandler,
 )
-from taktus.components.reporting.domain.model import ReportKind
+from taktus.components.reporting.domain.model import Brief, ReportKind, Said
 from taktus.components.run.application.service import RunEngine, StartRun
 from taktus.components.run.domain.model import Run, RunState
 from taktus.composition.tenancy import this_round
@@ -527,6 +527,14 @@ class ChainRuns:
                     standing_still=tuple(p for p in (package.tried, package.affected) if p),
                     due=(self._clock.now() + react).date(),
                     links=((f"chain {chain.id}", f"/chains/{chain.id}"),),
+                    brief=Brief(
+                        headline=Said(
+                            entry="chain_halted",
+                            values={"chain": chain.name, "step": _next(chain, boundary)},
+                        ),
+                        quote=chain_run.reason,
+                        ask=Said(entry="escalated_ask"),
+                    ),
                 )
             )
         except (NotSent, NoChannel) as error:
@@ -732,6 +740,13 @@ def _kept(outcome: ChainOutcome) -> ChainRun:
     if outcome.chain_run is None:
         raise LookupError("the chain run was not kept")
     return outcome.chain_run
+
+
+def _next(chain: Chain, boundary: int) -> str:
+    """The process the chain halted before, by its identifier without the version."""
+    if 0 <= boundary < len(chain.links):
+        return chain.links[boundary].process_version.rsplit("@", 1)[0]
+    return chain.name
 
 
 def _canonical(value: Any) -> bytes:

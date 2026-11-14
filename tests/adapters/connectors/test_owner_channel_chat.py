@@ -326,16 +326,19 @@ async def test_a_report_is_said_in_the_owner_s_chat_and_opened_in_the_ticket_sys
     report = await given.need()
     thread = thread_of(report)
     [top] = [m for m in chat_service.messages(CONVERSATION) if m.get("ts") == thread]
-    assert f"({report.id})" in top["text"]
-    for label in ("needed", "steps", "standing_still", "due"):
+    assert f"/reports/{report.id}" in top["text"], "the report, by the link to its page"
+    for label in ("need", "due"):
         assert GERMAN[label] in top["text"]
+    for item in report.needed:
+        assert f"> {item}" in top["text"], "each needed item, as the short form carries it"
     assert "https://repository.example/issues/146" in top["text"]
     task = report.task()
     assert task is not None and task.url is not None and task.url in top["text"]
     opened = service.state()[REPOSITORY]["issues"]
     for item in (*report.needed, *report.standing_still):
         assert item in repository_text(report)
-        assert item in top["text"]
+    for item in report.needed:
+        assert item in top["text"], "the message, the short form, carries what is needed"
     again = await given.owner.raising.execute(
         RaiseReport(
             tenant=TENANT,
@@ -462,7 +465,7 @@ async def test_a_failure_taktus_noticed_is_said_in_the_same_channel(
         due=given.due(1),
     )
     [top] = [m for m in chat_service.messages(CONVERSATION) if m.get("ts") == thread_of(report)]
-    assert top["text"].startswith(f"*{GERMAN['failure']}: ")
+    assert top["text"].startswith(f"*{GERMAN['failure']}")
 
 
 async def test_a_run_asked_for_in_the_chat_is_answered_with_its_text_and_a_link_to_it_live(

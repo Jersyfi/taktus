@@ -187,14 +187,15 @@ async def test_failures_the_contract_does_not_foresee_make_one_report_per_interf
     assert await w.broken.report(TENANT) == Reported(raised=2, delivered=2)
     said = w.given.deliveries.said
     assert [s.channel for s in said] == [CHANNEL, CHANNEL]
-    first_message = said[0].text
+    first_message = await w.given.record_of(said[0].text)
     assert unexpected.id in first_message
     for run in (shape, status):
         assert run.id in first_message
     assert "read-issue" in first_message
     assert unexpected.first.at.isoformat(timespec="seconds") in first_message
     assert unexpected.last.at.isoformat(timespec="seconds") in first_message
-    assert all(r.id in said[1].text for r in refused)
+    second = await w.given.record_of(said[1].text)
+    assert all(r.id in second for r in refused)
 
     # A later failure adds to the broken interface; nothing is said again.
     w.later(5)

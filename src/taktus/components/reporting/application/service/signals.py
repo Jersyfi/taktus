@@ -31,7 +31,13 @@ from taktus.components.reporting.application.service.raise_report import (
     RaiseReport,
     RaiseReportHandler,
 )
-from taktus.components.reporting.domain.model import OwnerChannel, Report, ReportKind
+from taktus.components.reporting.domain.model import (
+    Brief,
+    OwnerChannel,
+    Report,
+    ReportKind,
+    Said,
+)
 from taktus.components.reporting.domain.model.signal import (
     ADMITTED,
     MEASURING,
@@ -392,6 +398,10 @@ class SignalWatch:
             else "Nothing stands still: a deviation waits for a person's look."
         )
         links = [(f"{c.signal}: case", c.case) for c, _ in listed]
+        items = tuple(
+            rule.said(c, j, run_url=None if j.run_id is None else run_url(channel, j.run_id))
+            for c, j in listed
+        )
         return RaiseReport(
             tenant=tenant,
             id=report_id,
@@ -403,6 +413,7 @@ class SignalWatch:
             due=now.date(),
             offered=offered,
             links=links,
+            brief=Brief(headline=rule.daily_said(now, deviating, unmeasured), items=items),
         )
 
     def _red_report(
@@ -434,6 +445,11 @@ class SignalWatch:
             ),
             due=self._clock.now().date(),
             links=links,
+            brief=Brief(
+                headline=Said(entry="signal_red", values={"signal": corridor.signal}),
+                items=(rule.said(corridor, judged, run_url=url),),
+                ask=Said(entry="signal_ask"),
+            ),
         )
 
 
