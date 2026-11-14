@@ -151,11 +151,15 @@ class SignatureScheme(StrEnum):
     moment of sending and the raw body, and bounds a replay by that moment (§7);
     `hmac-sha256-identified` is the open specification of signed webhooks: it signs the
     delivery's identifier, the moment and the raw body, in base64, and bounds a replay the same
-    way (ADR-0186)."""
+    way (ADR-0186). `hmac-sha256-stamped` signs the moment and the raw body, both carried in
+    one header of entries `t=` and `v1=`, and bounds a replay the same way; `shared-token` signs
+    nothing: a header carries a configured value, the weakest scheme (ADR-0337)."""
 
     HMAC_SHA256 = "hmac-sha256"
     HMAC_SHA256_TIMESTAMPED = "hmac-sha256-timestamped"
     HMAC_SHA256_IDENTIFIED = "hmac-sha256-identified"
+    HMAC_SHA256_STAMPED = "hmac-sha256-stamped"
+    SHARED_TOKEN = "shared-token"  # noqa: S105 — a scheme's name, no secret
 
 
 class IntakeSignature(Value):

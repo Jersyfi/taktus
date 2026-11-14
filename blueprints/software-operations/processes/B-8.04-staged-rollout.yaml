@@ -21,9 +21,15 @@
 #         --input max_error_rate=0.02
 #
 # Switching it off (`taktusctl deactivate --process b-8-04`) changes nothing in the cluster.
+#
+# Named metrics (ADR-0328): each read names the metric it needs, `canary.error_rate`, and the
+# connector serving `metrics.series` maps the name to its own store's query — PromQL on a
+# Prometheus store or on a cloud's monitoring service — from the tenant's configuration
+# (`--metrics`). A query given as an input is asked verbatim instead. Version 3
+# passes its target to the name as parameters and changes nothing else.
 
 id: b-8-04
-version: "2"
+version: "3"
 name: B-8.04 Staged rollout
 autonomy:
   level: 2
@@ -53,6 +59,7 @@ inputs:
   error_rate_query:
     description: the tenant's query that answers the canary's error rate over the last ten minutes, one number
     example: sum(rate(http_errors_total{track="canary"}[10m]))/sum(rate(http_requests_total{track="canary"}[10m]))
+    required: false
   max_error_rate:
     description: the rate at or above which the rollout halts, a decimal
     example: "0.02"
@@ -111,7 +118,9 @@ steps:
       rule: connector
       operation: metrics.series.query
       input:
-        query: { $input: error_rate_query }
+        metric: canary.error_rate
+        parameters: { canary: { $input: canary } }
+        query: { $input: error_rate_query, $otherwise: "" }
       credentials:
         - { name: METRICS_TOKEN, injected_as: env }
 
@@ -214,7 +223,9 @@ steps:
       rule: connector
       operation: metrics.series.query
       input:
-        query: { $input: error_rate_query }
+        metric: canary.error_rate
+        parameters: { canary: { $input: canary } }
+        query: { $input: error_rate_query, $otherwise: "" }
       credentials:
         - { name: METRICS_TOKEN, injected_as: env }
 
@@ -319,7 +330,9 @@ steps:
       rule: connector
       operation: metrics.series.query
       input:
-        query: { $input: error_rate_query }
+        metric: canary.error_rate
+        parameters: { canary: { $input: canary } }
+        query: { $input: error_rate_query, $otherwise: "" }
       credentials:
         - { name: METRICS_TOKEN, injected_as: env }
 

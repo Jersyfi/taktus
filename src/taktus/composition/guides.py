@@ -48,7 +48,7 @@ from taktus.components.reporting.application.service import (
     RaiseReportHandler,
     ReportingError,
 )
-from taktus.components.reporting.domain.model import ReportKind
+from taktus.components.reporting.domain.model import Brief, ReportKind, Said
 from taktus.components.run.ports import ConnectorPool
 from taktus.ports.clock import Clock
 from taktus.ports.connector import ActionConnector, CallContext, Capabilities, Result
@@ -190,6 +190,9 @@ class InstanceGuides:
                         steps=edits.steps(str(page["difference"])),
                         standing_still=edits.standing_still(place),
                         due=due,
+                        brief=Brief(
+                            headline=Said(entry="page_edited", values={"page": "/".join(place)})
+                        ),
                     )
                 )
             except ReportingError as error:

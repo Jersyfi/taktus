@@ -35,7 +35,8 @@ from taktus.components.reporting.domain.model.signal import Corridor, Judged
 from taktus.components.reporting.domain.model.views import Shown, ViewConfiguration
 from taktus.components.reporting.domain.service import views as selection
 from taktus.components.reporting.domain.service import warehouse
-from taktus.components.reporting.domain.service.levels import RunLevel
+from taktus.components.reporting.domain.service.levels import RunAtVersionElement, RunLevel
+from taktus.components.reporting.ports.levels import PROCESS_RUNS_MAXIMUM, RunPage
 from taktus.components.run.domain.model import Run
 from taktus.components.value.application.query import ValueLedger
 from taktus.components.value.application.service import ValueBases
@@ -47,7 +48,7 @@ from taktus.composition.evaluation_platform import RECONCILED
 from taktus.ports.clock import Clock
 from taktus.ports.connector import QUERYING
 from taktus.ports.ledger import Fact, Ledger
-from taktus.ports.persistence import Repository, Tenant, UnitOfWork
+from taktus.ports.persistence import Mark, Repository, Tenant, UnitOfWork
 from taktus.shared.v1 import LedgerRefs, Method
 
 CONFIGURED = "views.configured"
@@ -506,26 +507,38 @@ class FigureReads:
                         unit="runs",
                         scope="process",
                         subject=summary.id,
-                        value=len(active.runs),
+                        value=sum(active.counts.values()) if active.counts else len(active.runs),
                         method="counted, as the process level draws its runs",
                         basis={"version": active.process.version},
                     )
                 )
                 for ref in active.process.versions:
-                    level = (
-                        active
-                        if ref.version == active.process.version
-                        else await self.levels.process(reader, summary.id, ref.version)
-                    )
-                    if level is None:
-                        continue
-                    for at in level.runs:
+                    for at in await self._runs_since(reader, summary.id, ref.version, since):
                         if not since <= at.created_at <= until:
                             continue
                         run = await self.levels.run(reader, at.id)
                         if run is not None:
                             out.extend(_consumed(summary.id, run, since, until))
         return out
+
+    async def _runs_since(
+        self, reader: Reader, process_id: str, version: str, since: datetime
+    ) -> list[RunAtVersionElement]:
+        """The runs of a version the process level draws, page by page, until a page reaches
+        back before `since`: the ended runs come newest first (ADR-0319 §3)."""
+        found: list[RunAtVersionElement] = []
+        page = RunPage(limit=PROCESS_RUNS_MAXIMUM)
+        while True:
+            level = await self.levels.process(reader, process_id, version, page)
+            if level is None:
+                return found
+            found.extend(level.runs)
+            older = level.older
+            if older is None or older.created_at < since:
+                return found
+            page = RunPage(
+                limit=PROCESS_RUNS_MAXIMUM, after=Mark(created_at=older.created_at, id=older.id)
+            )
 
     async def _process_facts(
         self,

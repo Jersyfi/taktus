@@ -294,6 +294,7 @@ from taktus.components.run.domain.service.capacity import (
     CapacityRules,
     admit_capacity,
 )
+from taktus.components.run.domain.service.exchange import ExchangeRates, ceiling_in, converted
 from taktus.components.run.domain.service.projections import CALIBRATION, step_key
 from taktus.components.run.domain.service.rehearsal import REHEARSED
 from taktus.components.run.domain.service.trace import line_of
@@ -319,6 +320,7 @@ from taktus.components.run.ports import (
     OrgUnits,
     PersonalCredentials,
     ProposalDecided,
+    ProviderTerms,
     Repeated,
     Repetition,
     Replay,
@@ -370,6 +372,7 @@ from taktus.ports.model import (
 from taktus.ports.objectstore import ObjectStore
 from taktus.ports.persistence import (
     Claims,
+    Mark,
     PersistenceError,
     ProvenanceStore,
     Repository,
@@ -439,6 +442,9 @@ from taktus.shared.v1 import (
 )
 from taktus.shared.v1.autonomy import depending_on
 from taktus.shared.v1.consumption import MODEL_NAME_PATTERN
+
+DELIVERED = "egress.delivery"
+"""What a delivery left the system as (ADR-0022 §4): what a daily limit of messages counts."""
 
 RECOUNTS = 5
 """How often a run counts its process's open work again when other runs of it pass at the same
@@ -777,6 +783,9 @@ class EngineOptions:
     prices: PriceTable | None = None
     """The price table money is computed at. None: no model is priced, and a budget in a
     currency says so when it is set."""
+    exchange_rates: ExchangeRates | None = None
+    """The rates money in a currency a budget does not limit is counted against it at
+    (ADR-0335). None: such money counts against nothing, as before."""
     weights: WeightingTable | None = None
     """The weighting table in force, the Takt is computed at (ADR-0010). Its digest is named in
     every run's budget statement when the run starts. None: the run's Takt is not computed, and
@@ -863,6 +872,7 @@ class RunEngine:
         replay: Replay | None = None,
         levels: Levels | None = None,
         residency: Residency | None = None,
+        terms: ProviderTerms | None = None,
         sources: Sources | None = None,
         open_work: OpenWork | None = None,
         repetition: Repetition | None = None,
@@ -945,6 +955,9 @@ class RunEngine:
         self._residency = residency
         """Where a step on a model learns the location its tenant's rule permits. None: every
         tenant permits `anywhere` (ADR-0116 §3)."""
+        self._terms = terms
+        """Which provider's terms a tenant's rule demands of a model its data is sent to. None:
+        none are demanded (ADR-0334)."""
         self._sources = sources
         """What the tenant declares about the data behind a capability (ADR-0130). None: no
         source is declared free of personal fields, and only a connector's own declaration says
@@ -3531,6 +3544,22 @@ class RunEngine:
             return None
         return resolved
 
+    async def _sent_today(self, run: Run) -> int:
+        """The messages the run's process delivered within the last 24 hours, by its ledger
+        entries `egress.delivery`; a rehearsal delivers none (ADR-0335 §5)."""
+        since = self._clock.now() - timedelta(hours=24)
+        process = process_of(run.process_version)
+        async with self._work.transaction(run.tenant):
+            entries = await self._ledger.of_kinds(run.tenant, (DELIVERED,))
+        return sum(
+            1
+            for entry in entries
+            if entry.ts > since
+            and not entry.rehearsal
+            and entry.refs.process_version is not None
+            and process_of(entry.refs.process_version) == process
+        )
+
     async def _message_gate(
         self, run: Run, step: Step, work: ConnectorRule, control: Control
     ) -> _Gate | None:
@@ -3547,6 +3576,11 @@ class RunEngine:
             anchors.append(
                 messages.mass_anchor(operation.capability, recipients, rules_.recipient_limit)
             )
+        daily = rules_.daily_for(process_of(run.process_version))
+        if daily is not None and operation.effect is Effect.DELIVERY and not run.rehearsal:
+            sent = await self._sent_today(run)
+            if sent >= daily:
+                anchors.append(messages.daily_anchor(operation.capability, sent, daily))
         drafts = self._drafts(run, step.id)
         declared = control.message
         if declared is None and not (operation.effect is Effect.DELIVERY and drafts):
@@ -4366,17 +4400,62 @@ class RunEngine:
         budget = await self._tenant_budget.month_budget(run.tenant)
         if budget is None:
             return None
-        month = f"{self._clock.now():%Y-%m}"
-        async with self._work.transaction(run.tenant):
-            runs = list(await self._runs.list(run.tenant))
+        month, spent = await self._month_spent(run.tenant, budget)
+        reached = [c for c, limit in budget.amounts.items() if spent.get(c, 0.0) >= limit]
+        return (budget, month, spent, reached) if reached else None
+
+    async def _month_spent(
+        self, tenant: Tenant, budget: MonthBudget, instead: Run | None = None
+    ) -> tuple[str, dict[str, float]]:
+        """The month, and what the tenant's runs of it cost in the budget's currencies, money
+        in another converted at the instance's table (ADR-0335). Only the runs of the period are
+        read (ADR-0320). `instead` takes the place of the stored run of its identifier."""
+        now = self._clock.now()
+        month = f"{now:%Y-%m}"
+        # A day before the month's first: a run's own zone may place it in the month earlier.
+        since = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
+        async with self._work.transaction(tenant):
+            runs = list(await self._runs_since(tenant, since))
+        if instead is not None:
+            runs = [instead if each.id == instead.id else each for each in runs]
         spent: dict[str, float] = {}
+        limited = sorted(budget.amounts)
         for each in runs:
             if each.rehearsal or f"{each.created_at:%Y-%m}" != month:
                 continue
-            for currency, amount in (self._cost(each).currency or {}).items():
+            cost = converted(self._cost(each), limited, self._options.exchange_rates)
+            for currency, amount in (cost.currency or {}).items():
                 spent[currency] = spent.get(currency, 0.0) + float(amount)
-        reached = [c for c, limit in budget.amounts.items() if spent.get(c, 0.0) >= limit]
-        return (budget, month, spent, reached) if reached else None
+        return month, spent
+
+    async def _tenant_left(self, run: Run, step_id: StepId) -> dict[str, float] | None:
+        """What is left of the tenant's monthly budget for a step about to be handed to a
+        worker, its own reservation released; None where no monthly budget holds the run
+        (ADR-0335 §4)."""
+        if self._tenant_budget is None or run.rehearsal:
+            return None
+        budget = await self._tenant_budget.month_budget(run.tenant)
+        if budget is None:
+            return None
+        _, spent = await self._month_spent(run.tenant, budget, _released(run, step_id))
+        return {c: max(0.0, limit - spent.get(c, 0.0)) for c, limit in budget.amounts.items()}
+
+    async def _runs_since(self, tenant: Tenant, since: datetime) -> list[Run]:
+        """The tenant's runs created at or after `since`, read newest first a page at a time
+        until a page reaches before it, inside the caller's unit of work: what a rule over a
+        period reads, instead of every run the tenant ever had (ADR-0320). A repository that
+        cannot be queried answers with every run, filtered here."""
+        newest = getattr(self._runs, "newest", None)
+        if newest is None:
+            return [r for r in await self._runs.list(tenant) if r.created_at >= since]
+        found: list[Run] = []
+        after: Mark | None = None
+        while True:
+            page = list(await newest(tenant, limit=RUNS_PAGE, after=after))
+            found += [r for r in page if r.created_at >= since]
+            if len(page) < RUNS_PAGE or page[-1].created_at < since:
+                return found
+            after = Mark(created_at=page[-1].created_at, id=page[-1].id)
 
     def _cost(self, run: Run) -> ConsumptionQuantities:
         """What the run used, with the money of its tokens and compute at the instance's table
@@ -4536,7 +4615,7 @@ class RunEngine:
         now = self._clock.now()
         since = now - timedelta(days=UNIT_HISTORY_DAYS)
         async with self._work.transaction(tenant):
-            stored = list(await self._runs.list(tenant))
+            stored = await self._runs_since(tenant, _earliest(now, limits))
         past = [
             self._lines(self._cost(r), r.compute_by_class())
             for r in stored
@@ -4637,13 +4716,11 @@ class RunEngine:
         runs `own` commissioned, and nothing where `own` is None (ADR-0282 §6). A rule over
         the runs' records."""
         now = self._clock.now()
-        earliest = min(
-            [now - timedelta(days=UNIT_HISTORY_DAYS + 1), *(lim.starts for lim in limits)]
-        )
+        earliest = _earliest(now, limits)
         if stored is None:
             # Read in a unit of work of its own; `stored` is given where one is open already.
             async with self._work.transaction(tenant):
-                stored = list(await self._runs.list(tenant))
+                stored = await self._runs_since(tenant, earliest)
         runs = list(stored) if run is None else [run, *(r for r in stored if r.id != run.id)]
         found: dict[str, tuple[dict[str, float], dict[date, dict[str, float]]]] = {
             lim.name: ({}, {}) for lim in limits
@@ -4827,7 +4904,7 @@ class RunEngine:
         async def recheck() -> None:
             for name in sorted({limit.name for limit in limits}):
                 await claims.hold(run.tenant, f"unit_limit:{name}")
-            stored = list(await self._runs.list(run.tenant))
+            stored = await self._runs_since(run.tenant, _earliest(self._clock.now(), limits))
             costs = await self._unit_costs(run.tenant, run, limits, run.identity, stored)
             refusal = self._refused_by(limits, costs, demand)
             if refusal is not None:
@@ -6002,8 +6079,16 @@ class RunEngine:
             (items, excluding), read = await self._resolved(run, [work.items, work.excluding])
             return rules.filter_items(work, items, excluding), Trace(inputs=read), None, None
         if isinstance(work, MatchRule):
-            (left, right), read = await self._resolved(run, [work.left.items, work.right.items])
-            return rules.match(work, left, right), Trace(inputs=read), None, None
+            lefts = [part.reading for part in work.left.more]
+            rights = [part.reading for part in work.right.more]
+            resolved, read = await self._resolved(
+                run, [work.left.items, work.right.items, *lefts, *rights]
+            )
+            left, right = resolved[0], resolved[1]
+            left_more = resolved[2 : 2 + len(lefts)]
+            right_more = resolved[2 + len(lefts) :]
+            matched = rules.match(work, left, right, left_more, right_more)
+            return matched, Trace(inputs=read), None, None
         if isinstance(work, CommitTitleRule):
             (title, number, labels, files, proposal), read = await self._resolved(
                 run, [work.title, work.number, work.labels, work.files, work.proposal]
@@ -6108,17 +6193,23 @@ class RunEngine:
             tokens, _ = run.tokens_without_money()
             consumed = budgeting.with_token_money(consumed, tokens, tokens_table)[0]
         table = self._compute_table(run)
-        if table is None:
-            return consumed
-        return budgeting.with_money(consumed, run.compute_by_class(), table)[0]
+        if table is not None:
+            consumed = budgeting.with_money(consumed, run.compute_by_class(), table)[0]
+        return self._converted(run, consumed)
+
+    def _converted(self, run: Run, quantities: ConsumptionQuantities) -> ConsumptionQuantities:
+        """Money in a currency the run's budget does not limit, counted in one it does at the
+        instance's exchange-rate table (ADR-0335)."""
+        limited = sorted(run.budget.currency or {})
+        return converted(quantities, limited, self._options.exchange_rates)
 
     def _priced(self, run: Run, quantities: ConsumptionQuantities) -> ConsumptionQuantities:
         """A step's quantities with the money of its compute seconds, where it is held."""
         table = self._compute_table(run)
         if table is None or not quantities.compute_seconds or quantities.resource_class is None:
-            return quantities
+            return self._converted(run, quantities)
         seconds = {quantities.resource_class: quantities.compute_seconds}
-        return budgeting.with_money(quantities, seconds, table)[0]
+        return self._converted(run, budgeting.with_money(quantities, seconds, table)[0])
 
     def _per_second(self, run: Run, reservation: ConsumptionQuantities) -> tuple[str, float] | None:
         """The currency and the price of a second of the reservation's resource class, where
@@ -6669,11 +6760,15 @@ class RunEngine:
             permitted = await self._residency.permitted(
                 run.tenant, work.data_class, process_of(run.process_version)
             )
+        demanded: frozenset[str] = frozenset()
+        if self._terms is not None:
+            demanded = await self._terms.demanded(run.tenant, work.data_class)
         needs = routing.Needs(
             purpose=work.purpose,
             exactness=step.exactness,
             permitted=permitted,
             data_class=work.data_class,
+            terms=demanded,
         )
         unshared: frozenset[str] = frozenset()
         if self._shares is not None and chain:
@@ -6786,6 +6881,18 @@ class RunEngine:
         if work.expect and operation.outward:
             raise UnsupportedWork(
                 step_run.step_id, "only a reading carries an expectation; a write acts once"
+            )
+        if work.on_behalf and operation.outward:
+            # Nothing leaves the system in a person's name: Taktus acts outward as an identity
+            # of its own, and a person's own credential only reads (ADR-0332).
+            raise _StepFailed(
+                reason=f"{operation.name} was not called: it acts outward, and a step on behalf "
+                f"of {run.identity} only reads with that person's credential; nothing is sent "
+                "or written in a person's name (ADR-0332)",
+                retryable=False,
+                consumption=None,
+                adapter=resolved.adapter,
+                outcome="refused on behalf",
             )
         span.set_attribute("adapter", resolved.adapter)
         # Before the call is booked: a stopped connector is neither called nor counted.
@@ -7525,16 +7632,31 @@ class RunEngine:
         # more than what is left of the whole budget: it halts at its next boundary before its
         # running total would cross it (W-14).
         reservation = step_run.reservation or demand
-        assignment = assignment.model_copy(
-            update={
-                "limits": budgeting.ceiling(
-                    budgeting.grow(reservation, run.margin),
-                    remaining(run.budget, self._spent(_released(run, step_run.step_id))),
-                    run.budget,
-                    self._per_second(run, reservation),
-                )
-            }
+        limits = budgeting.ceiling(
+            budgeting.grow(reservation, run.margin),
+            remaining(run.budget, self._spent(_released(run, step_run.step_id))),
+            run.budget,
+            self._per_second(run, reservation),
         )
+        month_left = await self._tenant_left(run, step_run.step_id)
+        if month_left:
+            # The tenant's monthly budget is a ceiling of the step too: a worker that measures
+            # its money halts at it during the step, not only at the next boundary (ADR-0335 §4).
+            own = dict((limits.currency if limits is not None else None) or {})
+            for code, amount in month_left.items():
+                own[code] = min(own[code], amount) if code in own else amount
+            limits = (
+                Limits(currency=own)
+                if limits is None
+                else limits.model_copy(update={"currency": own})
+            )
+        if limits is not None and limits.currency:
+            # A worker that measures its money in another currency halts at the same line
+            # during the step (ADR-0335 §3).
+            limits = limits.model_copy(
+                update={"currency": ceiling_in(limits.currency, self._options.exchange_rates)}
+            )
+        assignment = assignment.model_copy(update={"limits": limits})
 
         # 3: hand over. The assignment's id is committed first, with `step.assigned`: whatever
         # the worker accepts is named in the ledger even if this instance dies before it learns
@@ -8720,6 +8842,16 @@ UNIT_LIMIT_HELD = "unit_limit.held"
 UNIT_LIMIT_RELEASED = "unit_limit.released"
 UNIT_HISTORY_DAYS = 28
 """The days before today a unit's cost per day is read for, to judge an anomaly (ADR-0282)."""
+RUNS_PAGE = 500
+"""How many runs one read of a period takes, newest first (ADR-0320)."""
+
+
+def _earliest(now: datetime, limits: Sequence[AppliedLimit]) -> datetime:
+    """From when a unit's costs are read: its period's start or the 28 days before today and
+    one more, whichever is earlier (ADR-0282)."""
+    return min([now - timedelta(days=UNIT_HISTORY_DAYS + 1), *(lim.starts for lim in limits)])
+
+
 """A run waits at its boundary because the tenant's monthly budget is reached (ADR-0260)."""
 """A run held before its first step by its unit's budget quota, outcome `budget` or
 `no_amount` (ADR-0166)."""

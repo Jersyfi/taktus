@@ -5,7 +5,7 @@ must be written down and practised (ADR-0013, requirement C).
 **On one machine**, the service `backup` of the compose file takes a backup every 24 hours: the
 database's dump, the stored files and a manifest with every tenant's ledger head, in the volume
 `taktus-backups` or the directory `TAKTUS_BACKUP_DIRECTORY` names (`deploy/docker/README.md`,
-*Backups*). Every seventh day it restores the newest backup into a database of its own and checks
+section *Operating it*, the paragraph *Backups*). Every seventh day it restores the newest backup into a database of its own and checks
 every tenant's chain against the heads the manifest noted: the restore drill. A failed backup and
 a failed drill each reach the owner. To restore by hand, without Taktus:
 

@@ -7,6 +7,7 @@ the reader may not see, or one that does not exist, is answered alike; a key is 
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any
 
 import httpx
@@ -204,3 +205,54 @@ async def test_the_process_level_needs_a_key(client: Client) -> None:
     http, given, base = client
     await register(given, bundle("1"))
     assert (await http.get(f"{base}/levels/processes/invoices")).status_code == 401
+
+
+async def test_the_runs_are_those_not_ended_then_the_ended_a_page_at_a_time(
+    client: Client,
+) -> None:
+    """Every run not yet ended, then the newest ended ones a page at a time, and every run of
+    the version counted by state, read where they are stored (ADR-0319 §3)."""
+    http, given, base = client
+    await register(given, bundle("1"))
+    async with given.persistence.transaction(TENANT):
+        version = await MemoryRepository(given.persistence, ProcessVersion).get(
+            TENANT, "invoices@1"
+        )
+    assert version is not None
+    states = [RunState.FINISHED] * 5 + [RunState.RUNNING, RunState.WAITING_HUMAN]
+    async with given.persistence.transaction(TENANT):
+        for n, state in enumerate(states):
+            at = given.clock.now() + timedelta(seconds=n)
+            await given.runs.put(
+                TENANT,
+                Run(
+                    id=f"run_{n}",
+                    plan_id=f"pln_{n}",
+                    process_version=version.ref,
+                    tenant=TENANT,
+                    identity="idn_ada",
+                    autonomy_level=2,
+                    budget=Limits(compute=ComputeLimit(seconds=10, resource_class="cpu.small")),
+                    steps=version.ordered(),
+                    work=version.work,
+                    state=state,
+                    created_at=at,
+                    updated_at=at,
+                ),
+            )
+    _, key = await given.identity.person(TENANT, "idn_ada")
+    url = f"{base}/levels/processes/invoices"
+    first = (await http.get(url, params={"limit": 2}, headers=bearer(key))).json()
+    assert [r["id"] for r in first["runs"]] == ["run_6", "run_5", "run_4", "run_3"]
+    assert first["counts"] == {"finished": 5, "running": 1, "waiting_human": 1}
+    assert "7 runs" in first["process"]["text"]
+    second = (
+        await http.get(url, params={"limit": 2, "after": first["next"]}, headers=bearer(key))
+    ).json()
+    assert [r["id"] for r in second["runs"]] == ["run_2", "run_1"]
+    last = (
+        await http.get(url, params={"limit": 2, "after": second["next"]}, headers=bearer(key))
+    ).json()
+    assert [r["id"] for r in last["runs"]] == ["run_0"] and "next" not in last
+    for wrong in ({"limit": 0}, {"limit": 101}, {"after": "eA=="}):
+        assert (await http.get(url, params=wrong, headers=bearer(key))).status_code == 422

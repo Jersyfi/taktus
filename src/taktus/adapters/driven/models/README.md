@@ -67,7 +67,7 @@ an OAuth 2.0 access token with the scope `https://www.googleapis.com/auth/cloud-
 
 ```
 TAKTUS_MODEL_DIALECT=generate_content
-TAKTUS_MODEL_ENDPOINT=https://europe-west3-aiplatform.googleapis.com/v1/projects/<project>/locations/europe-west3/publishers/google/models
+TAKTUS_MODEL_ENDPOINT=https://<region>-aiplatform.googleapis.com/v1/projects/<project>/locations/<region>/publishers/google/models
 TAKTUS_MODEL_NAME=<a Gemini model id>
 TAKTUS_CREDENTIAL_MODEL_API_KEY_FILE=<a service account's key file, as the console issues it>
 ```

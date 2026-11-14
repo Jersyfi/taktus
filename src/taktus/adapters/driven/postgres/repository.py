@@ -9,7 +9,7 @@ from typing import Any
 
 from taktus.adapters.driven.postgres._mapping import MAPPERS, Mapper, QueriedMapper
 from taktus.adapters.driven.postgres.persistence import PostgresPersistence
-from taktus.ports.persistence import Mark, NotQueryable, Stored, Tenant, WrongTenant
+from taktus.ports.persistence import Mark, NotQueryable, Stored, Tenant, Where, WrongTenant
 
 THREADED = 50
 """From how many documents on the aggregates are validated in a thread rather than on the loop."""
@@ -50,14 +50,25 @@ class PostgresRepository[T: Stored]:
         connection = self._persistence.connection(tenant)
         return await self._validated(await self._mapper.list(connection, tenant))
 
-    async def newest(self, tenant: Tenant, *, limit: int, after: Mark | None = None) -> Sequence[T]:
+    async def newest(
+        self,
+        tenant: Tenant,
+        *,
+        limit: int,
+        after: Mark | None = None,
+        where: Where | None = None,
+    ) -> Sequence[T]:
         connection = self._persistence.connection(tenant)
-        documents = await self._queried("created_at").newest(connection, tenant, limit, after)
+        documents = await self._queried("created_at").newest(
+            connection, tenant, limit, after, where
+        )
         return await self._validated(documents)
 
-    async def count(self, tenant: Tenant, by: Sequence[str]) -> Mapping[tuple[Any, ...], int]:
+    async def count(
+        self, tenant: Tenant, by: Sequence[str], *, where: Where | None = None
+    ) -> Mapping[tuple[Any, ...], int]:
         connection = self._persistence.connection(tenant)
-        return await self._queried(", ".join(by)).count(connection, tenant, by)
+        return await self._queried(", ".join(by)).count(connection, tenant, by, where)
 
     async def having(self, tenant: Tenant, field: str, value: Any) -> Sequence[T]:
         connection = self._persistence.connection(tenant)

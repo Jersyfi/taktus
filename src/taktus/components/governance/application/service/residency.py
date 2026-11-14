@@ -34,6 +34,11 @@ class ConfigureResidency:
     processes: Mapping[str, Permitted] = field(default_factory=dict)
     """Adds or replaces the rule of each process it names (ADR-0258)."""
     cleared_processes: tuple[str, ...] = ()
+    terms: tuple[str, ...] | None = None
+    """The terms demanded for all the tenant's data, in place of the current ones; None keeps
+    them (ADR-0334)."""
+    class_terms: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    """Adds or replaces the terms demanded for each class it names; an empty tuple removes them."""
 
 
 class TenantResidency:
@@ -58,6 +63,11 @@ class TenantResidency:
         of the process."""
         return (await self.rule(tenant)).permitted(data_class, process)
 
+    async def demanded(self, tenant: Tenant, data_class: str | None) -> frozenset[str]:
+        """The run's port `ProviderTerms`: the provider's terms a model must declare to be sent
+        the tenant's data of the class (ADR-0334)."""
+        return (await self.rule(tenant)).demanded(data_class)
+
     async def configure(self, command: ConfigureResidency, *, by: str) -> ResidencyRule:
         """Set what the command names, keep the rest. A rule that does not hold — a class wider
         than the tenant's own — is refused as a ValueError and changes nothing."""
@@ -78,6 +88,12 @@ class TenantResidency:
                 "location": command.location or current.location,
                 "classes": classes,
                 "processes": processes,
+                "terms": current.terms if command.terms is None else command.terms,
+                "class_terms": {
+                    name: terms
+                    for name, terms in {**current.class_terms, **command.class_terms}.items()
+                    if terms
+                },
                 "configured_at": self._clock.now(),
             }
         )

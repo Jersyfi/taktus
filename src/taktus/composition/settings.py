@@ -23,12 +23,20 @@ from pydantic import TypeAdapter, ValidationError
 from taktus.components.reporting.domain.model import LEVELS
 from taktus.components.reporting.domain.service import texts
 from taktus.components.run.domain.service import budget as budgeting
+from taktus.components.run.domain.service.exchange import ExchangeRates
 from taktus.conformance.contracts import contracts_root
 from taktus.ports.administration import NONE, Administration
 from taktus.ports.configuration import Configuration, ConfigurationError, Secret
 from taktus.ports.execution import variable_refusal
 from taktus.ports.hardware import HardwareNeeds
-from taktus.ports.model import LOCATIONS, MODEL_CLASSES, Location, PriceTable, WeightingTable
+from taktus.ports.model import (
+    LOCATIONS,
+    MODEL_CLASSES,
+    TERMS,
+    Location,
+    PriceTable,
+    WeightingTable,
+)
 from taktus.ports.worker import Host
 
 
@@ -496,6 +504,10 @@ class ModelSettings:
     classes: tuple[str, ...] = MODEL_CLASSES
     """`TAKTUS_MODEL_EXACTNESS`: the exactness classes of a step the model may produce a result
     for, out of `sourced`, `tolerant` and `free`; all three by default. Never `exact`."""
+    terms: tuple[str, ...] = ()
+    """`TAKTUS_MODEL_TERMS`: the provider's terms the operator declares for the model, out of
+    `processing-agreement` and `no-training`, comma-separated; none by default. A tenant's
+    residency rule may demand them for its data (ADR-0334)."""
     cool_down_seconds: float = 60.0
     """`TAKTUS_MODEL_COOL_DOWN_SECONDS`: how long a model is passed over after a failure, or
     after a rate limit whose answer named no delay (ADR-0116 §5). The instance's alone."""
@@ -536,6 +548,7 @@ class ModelSettings:
             (f"{prefix}_USAGE_KINDS", ",".join(self.usage_kinds)),
             (f"{prefix}_LOCATION", self.location),
             (f"{prefix}_EXACTNESS", ",".join(self.classes)),
+            (f"{prefix}_TERMS", ",".join(self.terms)),
             (f"{prefix}_DIALECT", self.dialect),
             (f"{prefix}_NEEDS", needs_text(self.needs)),
             (key, credential),
@@ -572,6 +585,11 @@ class BudgetSettings:
     the default: no seed, and such a worker reserves the uncalibrated margin (DEC-0034). What
     was measured on one tenant's runs enters another instance only as data its operator chose
     to load here (ADR-0092 §2)."""
+    exchange_rates: Path | None = None
+    """`TAKTUS_EXCHANGE_RATES`: a JSON file of dated exchange rates — `version`, `valid_from`,
+    `source`, and `rates` from each lowercase currency code into others — that money in a
+    currency a budget does not limit is counted against it at (ADR-0335). Absent, the default:
+    such money counts against nothing."""
     model_classes: Mapping[str, str] = field(default_factory=dict)
     """`TAKTUS_TAKT_MODEL_CLASSES`: which class of the weighting table each model is in, as
     `model=class` pairs, comma-separated — `fake-model@1=medium`. A model in no class has its
@@ -600,6 +618,19 @@ class BudgetSettings:
                 f"PriceTable): {str(error)[:200]}",
             ) from error
 
+    def rates(self) -> ExchangeRates | None:
+        """The exchange-rate table the file holds, validated; None when none is configured."""
+        if self.exchange_rates is None:
+            return None
+        try:
+            document = json.loads(self.exchange_rates.read_text(encoding="utf-8"))
+            return ExchangeRates.model_validate(document)
+        except (OSError, ValueError) as error:
+            raise ConfigurationError(
+                "TAKTUS_EXCHANGE_RATES",
+                f"{self.exchange_rates} is not an exchange-rate table: {str(error)[:200]}",
+            ) from error
+
     def seeds(self) -> tuple[budgeting.Seed, ...]:
         """The seeds the file holds, validated; none when no file is configured."""
         if self.seeds_file is None:
@@ -619,6 +650,10 @@ class BudgetSettings:
             ("TAKTUS_BUDGET_MARGIN", f"{self.margin:g}"),
             ("TAKTUS_BUDGET_UNCALIBRATED_MARGIN", f"{self.uncalibrated_margin:g}"),
             ("TAKTUS_BUDGET_SEEDS", "" if self.seeds_file is None else str(self.seeds_file)),
+            (
+                "TAKTUS_EXCHANGE_RATES",
+                "" if self.exchange_rates is None else str(self.exchange_rates),
+            ),
             (
                 "TAKTUS_TAKT_MODEL_CLASSES",
                 ",".join(f"{m}={c}" for m, c in sorted(self.model_classes.items())),
@@ -664,6 +699,7 @@ def load_budget(configuration: Configuration) -> BudgetSettings:
     reader = _Reader(configuration)
     table = reader.text("price.table", "") or None
     seeds = reader.text("budget.seeds", "") or None
+    rates = reader.text("exchange.rates", "") or None
     margin = reader.number("budget.margin", DEFAULT_MARGIN, low=0.0)
     if margin > 0.9:
         raise ConfigurationError(
@@ -677,6 +713,7 @@ def load_budget(configuration: Configuration) -> BudgetSettings:
             "budget.uncalibrated.margin", DEFAULT_UNCALIBRATED_MARGIN, low=0.0
         ),
         seeds_file=None if seeds is None else Path(seeds).expanduser(),
+        exchange_rates=None if rates is None else Path(rates).expanduser(),
         model_classes=_model_classes(
             configuration.name("takt.model.classes"), reader.names("takt.model.classes", ())
         ),
@@ -752,6 +789,7 @@ def _model_settings(
         member=member,
         location=location,
         classes=_exactness_classes(reader, configuration),
+        terms=_terms(reader, configuration),
         cool_down_seconds=reader.number("model.cool.down.seconds", 60.0, low=0.0),
         dialect=reader.choice(
             "model.dialect", "chat_completions", ("chat_completions", "generate_content")
@@ -759,6 +797,18 @@ def _model_settings(
         location_declared=configuration.get("model.location") is not None,
         needs=parse_needs(configuration.name("model.needs"), reader.names("model.needs", ())),
     )
+
+
+def _terms(reader: _Reader, configuration: Configuration) -> tuple[str, ...]:
+    """`TAKTUS_MODEL_TERMS`, each one of `TERMS` (ADR-0334)."""
+    terms = reader.names("model.terms", ())
+    unknown = [term for term in terms if term not in TERMS]
+    if unknown:
+        raise ConfigurationError(
+            configuration.name("model.terms"),
+            f"{', '.join(unknown)} is not a term; one of {', '.join(TERMS)}",
+        )
+    return tuple(dict.fromkeys(terms))
 
 
 SIZE = re.compile(r"^(\d+(?:\.\d+)?)\s*(MiB|GiB|TiB)$")
@@ -1400,6 +1450,11 @@ class Settings:
     the tenant does not have yet into a proposal for its first version (UC-4.1, ADR-0251), by
     its identifier. None, the default: a new process is created from its bundle only. A tenant's
     bundle, never a default of the product (ADR-0092)."""
+    conversation_process: str | None
+    """`TAKTUS_CONVERSATION_PROCESS`: the process that answers a turn of a person's conversation
+    with Taktus (UC-1.14, ADR-0325), by its identifier. None, the default: no conversation is
+    had, and the page "Ask Taktus" says so. A tenant's bundle, never a default of the product
+    (ADR-0092); the repository's is S-09."""
     state_dir: Path
     """Where artifact bytes are written with the object store `filesystem`."""
     object_store: ObjectStoreSettings
@@ -1490,6 +1545,7 @@ class Settings:
             ("TAKTUS_BACKUP_EXPECTED_HOURS", str(self.backup_expected_hours or "")),
             ("TAKTUS_CHANGE_PROCESS", self.change_process or ""),
             ("TAKTUS_DESCRIBE_PROCESS", self.describe_process or ""),
+            ("TAKTUS_CONVERSATION_PROCESS", self.conversation_process or ""),
             ("TAKTUS_PLATFORM", self.administration.platform or ""),
             (
                 "TAKTUS_ADMINISTERS",
@@ -1567,6 +1623,7 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         backup_expected_hours=load_backup_expected_hours(configuration),
         change_process=reader.text("change.process", "").strip() or None,
         describe_process=reader.text("describe.process", "").strip() or None,
+        conversation_process=reader.text("conversation.process", "").strip() or None,
         state_dir=Path(reader.text("state.dir", "~/.cache/taktus/taktusd")).expanduser(),
         object_store=load_object_store(configuration),
         object_cache_mb=reader.integer("object.cache.mb", 64, low=0),

@@ -29,6 +29,7 @@ from datetime import datetime
 from typing import Any
 
 from taktus.components.reporting.domain.model.finding import short
+from taktus.components.reporting.domain.model.report import Said
 from taktus.components.reporting.domain.model.signal import (
     ADMITTED,
     MEASURING,
@@ -267,6 +268,36 @@ def _days(corridor: Corridor) -> str:
         days = int(seconds // 86400)
         return f"{days} day" + ("" if days == 1 else "s")
     return f"{seconds / 3600:g} hours"
+
+
+def said(corridor: Corridor, judged: Judged, *, run_url: str | None) -> Said:
+    """One line of a message's list (ADR-0316): the level, the signal, its value and its
+    threshold, as values the phrasebook says; the case and the run that measured it, as links."""
+    links = (corridor.case,) + (() if run_url is None else (run_url,))
+    if judged.level is Level.UNMEASURED:
+        return Said(entry="unmeasured", values={"signal": corridor.signal}, links=links)
+    red = judged.level is Level.RED
+    threshold = judged.red_at if red else judged.yellow_at
+    return Said(
+        entry="red" if red else "yellow",
+        values={
+            "signal": corridor.signal,
+            "value": _figure(judged.value),
+            "threshold": _figure(threshold),
+        },
+        links=links,
+    )
+
+
+def daily_said(day: datetime, deviating: int, unmeasured: int) -> Said:
+    """The daily report's headline, as the phrasebook says it."""
+    date = day.date().isoformat()
+    if not deviating and not unmeasured:
+        return Said(entry="signals_quiet", values={"date": date})
+    return Said(
+        entry="signals_deviating",
+        values={"date": date, "deviating": str(deviating), "unmeasured": str(unmeasured)},
+    )
 
 
 def daily_title(day: datetime, deviating: int, unmeasured: int) -> str:

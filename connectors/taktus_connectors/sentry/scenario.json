@@ -1,6 +1,7 @@
 {
   "credentials": {
-    "actions": "ERRORS_TOKEN"
+    "actions": "ERRORS_TOKEN",
+    "intake": "ERRORS_INTAKE_SECRET"
   },
   "read": {
     "operation": "errors.issues.list",
@@ -15,5 +16,19 @@
       "id": "999999"
     },
     "expected_cause": "invalid"
+  },
+  "intake": {
+    "signature": {
+      "header": "sentry-hook-signature",
+      "prefix": ""
+    },
+    "supported": {
+      "headers_file": "payloads/issue-created.headers.json",
+      "body_file": "payloads/issue-created.body.json"
+    },
+    "unsupported": {
+      "headers_file": "payloads/issue-resolved.headers.json",
+      "body_file": "payloads/issue-resolved.body.json"
+    }
   }
 }

@@ -79,7 +79,7 @@
 <style>
 	.muted {
 		color: var(--text-secondary);
-		font-size: 0.84rem;
+		font-size: var(--fs-090);
 	}
 	.scroll {
 		overflow-x: auto;
@@ -94,14 +94,14 @@
 	td {
 		vertical-align: top;
 		text-align: left;
-		font-size: 0.84rem;
+		font-size: var(--fs-090);
 	}
 	tbody th {
 		min-width: 9rem;
 	}
 	td {
 		background: var(--bg-surface);
-		border-radius: 10px;
+		border-radius: var(--r-md);
 		padding: 0.35rem;
 		min-width: 8rem;
 	}
@@ -111,13 +111,13 @@
 	.units {
 		display: block;
 		color: var(--text-subtle);
-		font-size: 0.76rem;
+		font-size: var(--fs-075);
 	}
 	.chip {
 		display: inline-block;
 		margin: 0.15rem;
 		padding: 0.15rem 0.45rem;
-		border-radius: 999px;
+		border-radius: var(--r-full);
 		border: 1px solid var(--border-subtle);
 		background: var(--bg-canvas);
 	}
@@ -137,6 +137,6 @@
 	}
 	.texts {
 		color: var(--text-secondary);
-		font-size: 0.82rem;
+		font-size: var(--fs-090);
 	}
 </style>

@@ -14,6 +14,7 @@ import json
 import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import pytest
 from fakes.owner_channel import (
@@ -74,11 +75,15 @@ async def every_kind(given: OwnerChannel) -> list[Report]:
 
 
 def the_message(given: OwnerChannel, report: Report) -> str:
-    sent = [
-        s.text for s in given.deliveries.said if s.thread is None and f"({report.id})" in s.text
-    ]
+    sent = [s.text for s in given.deliveries.said if s.thread is None and carries(s.text, report)]
     assert len(sent) == 1, "one message per report, said once"
     return sent[0]
+
+
+def carries(text: str, report: Report) -> bool:
+    """Whether a message carries the report's identifier: in the link to its page, or on its
+    own where no page is configured (ADR-0316 §2)."""
+    return f"/reports/{quote(report.id, safe='')}" in text or f"({report.id})" in text
 
 
 # --- three renderings ----------------------------------------------------------------------------
@@ -86,7 +91,9 @@ def the_message(given: OwnerChannel, report: Report) -> str:
 
 async def test_every_kind_produces_three_renderings_that_agree(given: OwnerChannel) -> None:
     """A decision request, a need, a date and a failure: each repository text, message and
-    view carries the same identifier, the same needed items and the same date."""
+    view carries the same identifier and the same date; the text and the view the same items.
+    The message is the short form (ADR-0316): a decision request's, a need's and a date's
+    carries each needed item, and a decision request's each option."""
     reports = await every_kind(given)
     assert [r.kind for r in reports] == [
         ReportKind.DECISION,
@@ -101,12 +108,16 @@ async def test_every_kind_produces_three_renderings_that_agree(given: OwnerChann
         said = the_message(given, stored)
         seen = view(stored, OWNER)
         due = stored.due.isoformat()
-        assert stored.id in text and stored.id in said and seen["id"] == stored.id
+        assert stored.id in text and carries(said, stored) and seen["id"] == stored.id
         assert due in text and due in said and seen["due"] == due
         assert tuple(seen["needed"]) == stored.needed
         for item in (*stored.needed, *stored.steps, *stored.standing_still):
             assert item in text, item
-            assert item in said, item
+        if stored.kind is not ReportKind.FAILURE:
+            for item in stored.needed:
+                assert f"> {item}" in said, item
+        for option in stored.offered if stored.kind is ReportKind.DECISION else ():
+            assert f"> {option.id}: {option.label[:40]}" in said, option
         assert tuple(seen["steps"]) == stored.steps
         assert tuple(seen["standing_still"]) == stored.standing_still
 
@@ -161,9 +172,9 @@ async def test_the_message_is_in_the_configured_language_and_links_everything(
 ) -> None:
     report = await given.need()
     said = the_message(given, report)
-    for label in ("needed", "steps", "standing_still", "due", "links"):
+    for label in ("need", "due", "links"):
         assert GERMAN[label] in said, label
-        assert ENGLISH[label] not in said, label
+        assert ENGLISH[label] not in said.replace(GERMAN[label], ""), label
     for link in report.links:
         assert link.url in said
     assert GERMAN["answer_with"].format(answers=GERMAN["done"]) in said
@@ -179,7 +190,7 @@ async def test_the_language_is_configuration_and_the_core_names_none(
     await english.configure(language="en")
     report = await english.need()
     said = the_message(english, report)
-    assert ENGLISH["needed"] in said and GERMAN["needed"] not in said
+    assert ENGLISH["due"] in said and GERMAN["due"] not in said
     sentences = [
         v for k, v in GERMAN.items() if isinstance(v, str) and len(v) > 6 and k != "language"
     ]
@@ -422,7 +433,7 @@ async def test_a_failure_taktus_noticed_about_itself_reaches_the_owner_the_same_
     report = await given.failure()
     assert report.kind is ReportKind.FAILURE
     said = the_message(given, report)
-    assert said.startswith(f"*{GERMAN['failure']}: ")
+    assert said.startswith(f"*{GERMAN['failure']}")
     assert given.deliveries.said[0].channel == CHANNEL
     assert given.deliveries.said[0].address == ADDRESS
     assert (await given.answer(report, "erledigt")).outcome == "reflected"

@@ -5,7 +5,7 @@
 <script lang="ts">
 	import type { IconName } from './navigation';
 
-	type Name = IconName | 'menu' | 'close' | 'motion' | 'leave' | 'sun' | 'moon' | 'system';
+	type Name = IconName | 'menu' | 'close' | 'motion' | 'leave' | 'sun' | 'moon' | 'system' | 'account' | 'more' | 'picture' | 'text';
 	let { name, size = 20 }: { name: Name; size?: number } = $props();
 
 	const PATHS: Record<Name, string> = {
@@ -14,6 +14,9 @@
 		need: 'M12 3l9 16H3L12 3ZM12 10v4M12 17v.5',
 		yours: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 21c1.5-4 4.5-6 8-6s6.5 2 8 6',
 		ask: 'M5 12h11M12 6l6 6-6 6',
+		chat: 'M4 5h16v11h-7l-5 4v-4H4V5ZM8 10h8M8 13h5',
+		processes: 'M5 5a2 2 0 1 0 0 .1M5 19a2 2 0 1 0 0 .1M19 12a2 2 0 1 0 0 .1M7 5h4l4 7M7 19h4l4-7',
+		runs: 'M4 6h10M4 12h16M4 18h7M17 4l3 2-3 2M14 16l3 2-3 2',
 		gallery: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
 		streams: 'M3 7c4 0 4 4 9 4s5-4 9-4M3 17c4 0 4-4 9-4s5 4 9 4',
 		discover: 'M4 12h3M17 12h3M12 4v3M12 17v3M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z',
@@ -38,7 +41,11 @@
 		leave: 'M14 4h5v16h-5M10 8l-4 4 4 4M6 12h10',
 		sun: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5',
 		moon: 'M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5Z',
-		system: 'M3 5h18v11H3zM8 20h8M12 16v4'
+		system: 'M3 5h18v11H3zM8 20h8M12 16v4',
+		account: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM12 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6ZM6.5 18c1.3-2.2 3.2-3 5.5-3s4.2.8 5.5 3',
+		more: 'M5 12h.01M12 12h.01M19 12h.01',
+		picture: 'M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4',
+		text: 'M5 6h14M5 10h14M5 14h10M5 18h7'
 	};
 </script>
 

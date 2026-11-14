@@ -6,6 +6,9 @@
 	below as its text equivalent.
 -->
 <script lang="ts">
+	import DisplaySwitch from './DisplaySwitch.svelte';
+	import TextEquivalent from './TextEquivalent.svelte';
+	import { display } from './display.svelte';
 	import Graph from './Graph.svelte';
 	import { runLink, wrongResultLink } from './links';
 	import type { OriginLevel } from './types';
@@ -41,7 +44,10 @@
 		· <a href={wrongResultLink(level.result.run, level.result.step)}>if it was wrong, where it went</a>
 	</p>
 
-	<Graph steps={nodes} {motionAllowed} notes={(id) => labels.get(id) ?? []} />
+	<div class="as-text"><DisplaySwitch page="origin" /></div>
+	{#if display.of('origin') === 'picture'}
+		<Graph steps={nodes} {motionAllowed} notes={(id) => labels.get(id) ?? []} />
+	{/if}
 
 	{#if runs.length > 1}
 		<p class="meta">
@@ -50,9 +56,7 @@
 		</p>
 	{/if}
 
-	<section class="text" aria-label="The origin as text">
-		<h2>As text</h2>
-		<ol>
+	<TextEquivalent label="The origin as text" mode={display.of('origin')}>
 			<li data-text="summary">{level.summary}</li>
 			<li data-text="result">{level.result.text}</li>
 			{#each level.steps as step (step.id)}
@@ -61,11 +65,15 @@
 			{#each sources as source (source.id)}
 				<li data-text={source.id}>{source.text}</li>
 			{/each}
-		</ol>
-	</section>
+	</TextEquivalent>
 </section>
 
 <style>
+	.as-text {
+		display: flex;
+		justify-content: flex-end;
+		margin-top: var(--sp-400);
+	}
 	.meta {
 		color: var(--text-secondary);
 		margin: 0.2rem 0 1rem;

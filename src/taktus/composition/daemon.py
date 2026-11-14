@@ -91,8 +91,10 @@ from taktus.components.command.application.service import (
     ReceiveIntakeHandler,
 )
 from taktus.components.command.application.service.coach import Coach
+from taktus.components.command.application.service.conversations import Conversations
 from taktus.components.command.application.service.sessions import Sessions
 from taktus.components.command.domain.model import IntakeEvent
+from taktus.components.command.domain.model.conversation import Conversation
 from taktus.components.decision.application.query import DecisionQueries
 from taktus.components.decision.application.service import (
     AnswerRequestHandler,
@@ -188,6 +190,7 @@ from taktus.composition.agents import SharedAgents
 from taktus.composition.alerts import alerts, alerts_tick, say_who_hears
 from taktus.composition.anchors import anchors_tick
 from taktus.composition.assistants import Assistants
+from taktus.composition.building import BuildActs
 from taktus.composition.capacity import capacity_report, capacity_tick, rules_of
 from taktus.composition.case_spend import InstanceSpend
 from taktus.composition.catalogue_in_channel import CatalogueInChannel
@@ -196,6 +199,7 @@ from taktus.composition.change_in_channel import ChangeInChannel
 from taktus.composition.conformance import InstanceSuites, worker_suites
 from taktus.composition.contents import StepContents
 from taktus.composition.control import TaskControl
+from taktus.composition.conversation import ConversationActs, ConversationInChat
 from taktus.composition.deadlines import Deadlines
 from taktus.composition.decisions import DecisionWiring, decision_wiring
 from taktus.composition.defects import (
@@ -424,6 +428,10 @@ class Wired:
     acting: ActingReads
     """The register, the dependencies and the variants of a process (ADR-0147)."""
     agent: AgentSurface
+    building: BuildActs
+    """The acts of building for a person's own agent and the conversation (ADR-0324)."""
+    talking: ConversationActs
+    """Taktus's own conversation (ADR-0325)."""
     streams: StreamReads
     """The organisation as value streams, and their declaration (ADR-0159)."""
     chains: ChainRuns
@@ -725,6 +733,7 @@ async def wire(
                 model_pool(settings.models),
             )
             prices = settings.budget.table()
+            rates = settings.budget.rates()
             weights = settings.budget.weights()
             seeds = settings.budget.seeds()
             shape = settings.findings.form()
@@ -808,6 +817,7 @@ async def wire(
                     options=EngineOptions(
                         step_ceiling_seconds=settings.shutdown_ceiling_seconds,
                         prices=prices,
+                        exchange_rates=rates,
                         weights=weights,
                         model_classes=settings.budget.model_classes,
                         margin=settings.budget.margin,
@@ -834,6 +844,7 @@ async def wire(
                     decisions=decisions.requests,
                     levels=decisions.levels,
                     residency=decisions.residency,
+                    terms=decisions.residency,
                     sources=decisions.sources,
                     open_work=decisions.open_work,
                     repetition=decisions.repetition,
@@ -1069,7 +1080,9 @@ async def wire(
                 structure=identities,
                 rights=identities,
                 domains=decisions.domains,
-                residency=PoolBindings(pools, decisions.residency, settings.host_locations),
+                residency=PoolBindings(
+                    pools, decisions.residency, settings.host_locations, decisions.residency
+                ),
             )
             moves = MethodMoves(
                 versions=PostgresRepository(persistence, ProcessVersion),
@@ -1320,6 +1333,44 @@ async def wire(
             owner.answers.sessions_with(
                 SessionsInChat(workspace.sessions, owner.deliveries, owner.secrets)
             )
+            # The acts of building for a person's own agent, and Taktus's own conversation,
+            # whose every turn is a run of the process the operator names (ADR-0324, ADR-0325).
+            conversations = Conversations(
+                PostgresRepository(persistence, Conversation), ledger, persistence, clock, ids
+            )
+            building = BuildActs(
+                planning=workspace.planning,
+                proposals=proposals,
+                acts=proposal_acts,
+                agent=agent,
+                conversations=conversations,
+            )
+            talking = ConversationActs(
+                conversations=conversations,
+                building=building,
+                agent=agent,
+                identities=identities,
+                runs=runs,
+                work=persistence,
+                process=settings.conversation_process,
+                deliveries=owner.deliveries,
+                secrets=owner.secrets,
+            )
+            loopback.bind(conversing=talking)
+            owner.answers.converse_with(
+                ConversationInChat(
+                    conversation=talking,
+                    conversations=conversations,
+                    building=building,
+                    identities=identities,
+                    channels=PostgresRepository(persistence, OwnerChannel),
+                    processes=PostgresRepository(persistence, Process),
+                    versions=PostgresRepository(persistence, ProcessVersion),
+                    work=persistence,
+                    deliveries=owner.deliveries,
+                    secrets=owner.secrets,
+                )
+            )
             wired = Wired(
                 connected=connected_host(settings.workers, configuration, relay),
                 platform=platform,
@@ -1448,6 +1499,8 @@ async def wire(
                     trials=PostgresRepository(persistence, TakeoverTrial),
                 ),
                 agent=agent,
+                building=building,
+                talking=talking,
                 chains=ChainRuns(
                     engine=engine,
                     versions=PostgresRepository(persistence, ProcessVersion),
@@ -1489,6 +1542,7 @@ async def wire(
                     work=persistence,
                     clock=clock,
                     identifiers=ids,
+                    channels=owner.channel,
                 ),
                 profiles=RoleProfiles(
                     processes=PostgresRepository(persistence, Process),

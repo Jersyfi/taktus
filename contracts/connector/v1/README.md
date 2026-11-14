@@ -300,18 +300,24 @@ endpoint would.
 
 `body` is the raw body as text, exactly as received, because the signature covers it byte for
 byte. **Signature verification is part of the contract:** an unsigned or wrongly signed payload
-is refused before its body is read, never processed. The scheme is declared, and there are two:
+is refused before its body is read, never processed. The scheme is declared, and there are five:
 
 | Scheme | What is signed | What it adds |
 |---|---|---|
 | `hmac-sha256` | the raw body, keyed with the intake secret | — |
 | `hmac-sha256-timestamped` | `<version>:<moment>:<raw body>`, keyed with the intake secret; the version is a token the target fixes, the moment of sending is whole seconds since the epoch and travels in a header of its own | a bound on replay: a payload whose moment lies more than 300 seconds from `received_at` is refused as `bad_signature` |
+| `hmac-sha256-stamped` | `<moment>.<raw body>`, keyed with the intake secret, in lowercase hex; one header carries entries `t=<moment>` and one or more `v1=<digest>`, separated by commas, of which one must verify; entries of other names are ignored | the same bound on replay; the moment travels beside the digest, signed (ADR-0337) |
+| `shared-token` | nothing: a header carries a value the operator configured at the target, compared in constant time with the intake secret | proof that the sender knows the value — not that the body is unaltered, and no bound on replay; the weakest scheme, for a target that signs nothing (ADR-0337) |
 | `hmac-sha256-identified` | `<delivery identifier>.<moment>.<raw body>`, keyed with the bytes the intake secret encodes in base64 after an optional `whsec_`; the identifier and the moment travel in headers of their own, the signature as one or more entries `v1,<base64 digest>` separated by spaces, of which one must verify | the same bound on replay, and an identifier that cannot be changed on the way: the open specification of signed webhooks (ADR-0186) |
 
 There is no scheme `none`, and an intake declaration without a signature is not valid. The
 second scheme exists because a chat service signs that way (ADR-0024, amendment of
 2026-10-09); a target that signs the raw body uses the first. The third is the open
-specification of signed webhooks, which many systems send under (ADR-0186).
+specification of signed webhooks, which many systems send under (ADR-0186). The fourth
+is the form a payment provider signs in, the moment and the digest in one header; the fifth is
+for a target that signs nothing and sends a configured value instead, admitted because its
+events are otherwise not received at all, and only for events that start reading processes or
+processes a person confirms (ADR-0337).
 
 The structured content is exactly one of `accepted` and `refused`:
 

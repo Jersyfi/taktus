@@ -209,6 +209,20 @@ def mass_anchor(capability: str, recipients: int | None, limit: int) -> Anchor:
     )
 
 
+def daily_anchor(capability: str, sent: int, limit: int) -> Anchor:
+    """The anchor on a message beyond the most a process sends within 24 hours (ADR-0335 §5)."""
+    return Anchor.model_validate(
+        {
+            "id": "anc-daily-messages",
+            "class": "legal",
+            "act": f"send through {capability} after {sent} messages of the process within 24 "
+            f"hours, at its limit of {limit} (ADR-0335)",
+            "applies_to": {"actions": [capability]},
+            "decider": {"role": "owner"},
+        }
+    )
+
+
 def over_limit(recipients: int | None, limit: int) -> bool:
     return recipients is None or recipients > limit
 

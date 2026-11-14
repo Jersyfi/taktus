@@ -12,7 +12,7 @@
 NEED-0027 asked for the complete use case of a real business by 2026-10-31. Otherwise the
 owner's household administration would have become the second tenant (DEC-0195, plan B).
 
-On 2026-10-14 the owner received it. It is a catalogue for operating a small software company:
+The owner received it. It is a catalogue for operating a small software company:
 a web and a mobile app, a cloud backend, subscriptions, private and business customers, and
 agents in support and development. It has eleven areas and 96 use cases. Each use case names
 its trigger, what the agent does, what a person decides, and a target autonomy stage. The

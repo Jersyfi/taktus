@@ -16,3 +16,10 @@ class Residency(Protocol):
         process — the narrowest of the class's rule, the process's and the tenant's own.
         `anywhere` for a tenant that set no rule (ADR-0258)."""
         ...
+
+
+class ProviderTerms(Protocol):
+    async def demanded(self, tenant: Tenant, data_class: str | None) -> frozenset[str]:
+        """The provider's terms a model must declare to be sent the tenant's data of the class:
+        a data-processing agreement, no training on the data (ADR-0334). Empty for none."""
+        ...

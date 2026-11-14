@@ -5,9 +5,12 @@ over the models list of the Mistral AI API: which models a key may use, and whic
 provider has set a deprecation for. Everywhere else it is the capability `models.catalogue`
 (ADR-0150, ADR-0204, issue #447).
 
-It serves no `models.costs`. The provider's published API names no endpoint for an
-organisation's costs or usage; its spend is read in the provider's console. A process that
-watches model costs (B-2.01) reads them from the providers that publish them.
+It serves no `models.costs` (ADR-0330). The provider's administration API, offered on
+enterprise plans only, answers monthly usage per model in entries whose fields its reference
+does not describe, and a list of unit prices; it computes no cost. A cost built from it would
+rest on a guess about those fields, so none is built; its spend is read in the provider's
+console. No interface states the credit left. A process that watches model costs (B-2.01)
+reads them from the providers that publish them.
 
 It is product support for any tenant, not a requirement: the control plane runs with it removed.
 

@@ -1035,8 +1035,18 @@ ADDRESS = re.compile(
 SECRET_KEY = re.compile(r"(?i)(password|passphrase|token|apikey|api_key|private)$")
 
 
+def a_manifest(path: Path) -> bool:
+    """A file of Kubernetes objects applied as they are, such as the deployment identity, not
+    values for the chart: each of its documents names its `apiVersion` and `kind`."""
+    documents = [d for d in yaml.safe_load_all(path.read_text(encoding="utf-8")) if d]
+    return bool(documents) and all(
+        isinstance(d, dict) and "apiVersion" in d and "kind" in d for d in documents
+    )
+
+
 def values_files() -> list[Path]:
-    files = [CHART / "values.yaml", *sorted((ROOT / "deploy" / "k8s").glob("*.yaml"))]
+    found = sorted((ROOT / "deploy" / "k8s").glob("*.yaml"))
+    files = [CHART / "values.yaml", *(path for path in found if not a_manifest(path))]
     assert EXAMPLE in files
     return files
 
@@ -1485,3 +1495,12 @@ def test_without_the_wiki_connector_the_guides_go_to_the_directory() -> None:
     [config] = of_kind(documents, "ConfigMap")
     assert "knowledge.pages" not in config["data"].get("TAKTUS_CONNECTORS", "")
     assert config["data"]["TAKTUS_KNOWLEDGE_DIRECTORY"] == "/var/lib/taktus/guides"
+
+
+def test_the_chart_states_the_oldest_kubernetes_it_runs_on() -> None:
+    """A CronJob's `timeZone` is stable from Kubernetes 1.27: the chart says so, and helm
+    refuses an older cluster before anything is installed."""
+    base = ["template", "taktus", str(CHART), "--namespace", RELEASE_NAMESPACE, "-f", str(EXAMPLE)]
+    assert run_helm(*base, "--kube-version", "1.27.0").returncode == 0
+    refused = run_helm(*base, "--kube-version", "1.26.9")
+    assert refused.returncode != 0 and "kubeVersion" in refused.stderr

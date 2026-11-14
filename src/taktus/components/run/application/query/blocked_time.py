@@ -27,6 +27,7 @@ Three reads of what ended, and one of what has not:
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Sequence
 
@@ -52,6 +53,10 @@ from taktus.ports.objectstore import ObjectStore
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 from taktus.shared.v1 import LedgerEntry
 
+FETCHED_AT_ONCE = 32
+"""How many records' contents are fetched from the object store together."""
+KEPT_BLOCKS = 50_000
+"""How many blocks read are kept before they are all forgotten and read again."""
 ANSWERS = frozenset({"step.confirmed", "step.performed", "step.declined", "step.decided"})
 """The entries that end a wait on a person, each naming who answered as its actor."""
 
@@ -70,6 +75,8 @@ class BlockedTime:
         self._work = work
         self._runs = runs
         self._departments = departments
+        self._read: dict[str, Block] = {}
+        """The blocks read, by the digest of their record's content."""
 
     async def waiting(self, tenant: Tenant) -> tuple[Waiting, ...]:
         """Every block that has not ended, in the order of the runs and their steps. A
@@ -145,16 +152,38 @@ class BlockedTime:
 
     async def _recorded(self, entries: Sequence[LedgerEntry]) -> list[tuple[LedgerEntry, Block]]:
         """The blocks the entries name, each with its entry. A record whose content is gone
-        cannot be read; it is left out, and the ledger still shows the entry."""
-        found: list[tuple[LedgerEntry, Block]] = []
-        for entry in entries:
-            if entry.kind != RECORD_KIND or entry.rehearsal or entry.content_digest is None:
-                continue
-            content = await self._objects.get(entry.content_digest)
-            if content is None:
-                continue
-            found.append((entry, parse(json.loads(content))))
-        return found
+        cannot be read; it is left out, and the ledger still shows the entry. The contents are
+        fetched together, `FETCHED_AT_ONCE` at a time, and a block once read is kept: a digest
+        names one content forever (ADR-0320)."""
+        named = [
+            entry
+            for entry in entries
+            if entry.kind == RECORD_KIND and not entry.rehearsal and entry.content_digest
+        ]
+        wanted = list(
+            dict.fromkeys(
+                e.content_digest
+                for e in named
+                if e.content_digest is not None and e.content_digest not in self._read
+            )
+        )
+        for start in range(0, len(wanted), FETCHED_AT_ONCE):
+            batch = wanted[start : start + FETCHED_AT_ONCE]
+            for digest, content in zip(
+                batch, await asyncio.gather(*(self._objects.get(d) for d in batch)), strict=True
+            ):
+                if content is not None:
+                    self._keep(digest, parse(json.loads(content)))
+        return [
+            (entry, self._read[entry.content_digest])
+            for entry in named
+            if entry.content_digest is not None and entry.content_digest in self._read
+        ]
+
+    def _keep(self, digest: str, block: Block) -> None:
+        if len(self._read) >= KEPT_BLOCKS:
+            self._read.clear()
+        self._read[digest] = block
 
 
 def _answerers(entries: Sequence[LedgerEntry]) -> dict[int, str | None]:

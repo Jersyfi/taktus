@@ -21,7 +21,7 @@ from taktus.components.run.domain.model import (
     WorkerWork,
     parse_work,
 )
-from taktus.components.run.ports.residency import Residency
+from taktus.components.run.ports.residency import ProviderTerms, Residency
 from taktus.composition.pools import Pools
 from taktus.ports.model import Location, Permitted, admits, host_location
 from taktus.ports.persistence import Tenant
@@ -33,11 +33,16 @@ class PoolBindings:
     """Which steps of a version would be bound outside the tenant's residency rule."""
 
     def __init__(
-        self, pools: Pools, residency: Residency, host_locations: Mapping[str, Location]
+        self,
+        pools: Pools,
+        residency: Residency,
+        host_locations: Mapping[str, Location],
+        terms: ProviderTerms | None = None,
     ) -> None:
         self._pools = pools
         self._residency = residency
         self._hosts = dict(host_locations)
+        self._terms = terms
 
     async def outside(self, tenant: Tenant, version: ProcessVersion) -> list[str]:
         examples = {name: given.example for name, given in version.inputs.items()}
@@ -49,14 +54,28 @@ class PoolBindings:
                 continue  # a work that cannot be read is refused by the run, not here
             data_class = getattr(work, "data_class", None)
             permitted = await self._residency.permitted(tenant, data_class, version.process_id)
-            if permitted == "anywhere":
+            demanded: frozenset[str] = frozenset()
+            if self._terms is not None and isinstance(work, LlmWork):
+                demanded = await self._terms.demanded(tenant, data_class)
+            if permitted == "anywhere" and not demanded:
                 continue
             handled = f"data of class {data_class!r}" if data_class else "data of no declared class"
-            for what, location in await self._bound(step, work, permitted):
+            bound = await self._bound(step, work, permitted)
+            for what, location in bound:
                 findings.append(
                     f"step {step.id!r} handles {handled}, and {what} is at {location}, outside "
                     f"the location the residency rule permits ({permitted}) (ADR-0281 §4)"
                 )
+            if demanded and not bound and isinstance(work, LlmWork):
+                chain = await self._pools.models.chain(work.purpose)
+                if chain and not any(
+                    admits(permitted, m.location) and not demanded - m.terms for m in chain
+                ):
+                    findings.append(
+                        f"step {step.id!r} handles {handled}, and no model of the purpose "
+                        f"{work.purpose!r} declares the provider's terms the residency rule "
+                        f"demands ({', '.join(sorted(demanded))}) (ADR-0334)"
+                    )
         return findings
 
     async def _bound(self, step: Step, work: object, permitted: Permitted) -> list[tuple[str, str]]:

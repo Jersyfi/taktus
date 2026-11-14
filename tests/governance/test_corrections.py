@@ -31,11 +31,12 @@ from taktus.adapters.driven.memory import (
 )
 from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
+from taktus.adapters.driving.cli.corrections_command import shown
 from taktus.components.governance.application.service import (
     ConfigureAnchors,
     ConfigureCorrections,
 )
-from taktus.components.governance.domain.model import IncidentKind, Unit
+from taktus.components.governance.domain.model import CountRule, Incident, IncidentKind, Unit
 from taktus.components.governance.domain.service import corrections as rule
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersion,
@@ -445,6 +446,51 @@ async def test_a_correction_rate_above_the_limit_lowers_the_process_one_level() 
     assert incident.facts["rate"] == 1.0 and incident.facts["decided"] == 2.0
     assert incident.facts["limit"] == 0.25
     assert (incident.facts["level_before"], incident.facts["level_after"]) == ("2", "1")
+
+
+async def lowered_by_count(**limits: Any) -> list[Incident]:
+    """Two corrections of a level-2 process, under a rate that alone never lowers."""
+    w = await World(
+        rule_step("a"), rule_step("b", after=("a",)), call("c", WRITE, after=("b",)), level=2
+    ).setup()
+    await w.limits(lower_rate=0.9, lower_minimum=10, **limits)
+    run = await w.start()
+    run = await w.answer(run, "a", corrected={"a": {"rule": "constant", "value": 5}})
+    run = await w.answer(run, "b", rejected=True)
+    return list(await w.corrections.lowerings(TENANT))
+
+
+async def test_a_count_of_corrections_in_its_days_lowers_the_process_beside_the_rate() -> None:
+    """ADR-0333: n corrections within a window lower one level at the next boundary, where the
+    rate does not; configurable per tenant."""
+    assert await lowered_by_count() == [], "the rate alone does not lower"
+    assert await lowered_by_count(lower_count=3) == [], "two corrections are below three"
+    (incident,) = await lowered_by_count(lower_count=2, lower_count_days=7)
+    assert incident.kind is IncidentKind.CORRECTIONS
+    assert incident.facts["corrections_limit"] == 2.0 and incident.facts["window_days"] == 7.0
+    assert incident.facts["corrected"] + incident.facts["rejected"] == 2.0
+    assert (incident.facts["level_before"], incident.facts["level_after"]) == ("2", "1")
+
+
+async def test_a_process_s_own_count_takes_the_place_of_the_tenant_s() -> None:
+    (incident,) = await lowered_by_count(lower_count=2, process="p")
+    assert incident.process_id == "p"
+    assert await lowered_by_count(lower_count=2, process="other") == [], "another process's"
+
+
+async def test_the_count_is_shown_beside_the_rate_and_never_names_a_person() -> None:
+    w = await World(rule_step("a"), level=2).setup()
+    await w.limits(lower_count=2, lower_count_days=7)
+    limits = await w.corrections.limits(TENANT)
+    assert limits.count_for("p") == CountRule(corrections=2, days=7)
+    run = await w.start()
+    await w.answer(run, "a", corrected={"a": {"rule": "constant", "value": 5}})
+    (figures,) = await w.corrections.figures(TENANT)
+    shown_ = shown(figures)
+    assert shown_["week"]["corrections"] == 1 and shown_["month"]["corrections"] == 1
+    assert PERSON not in json.dumps(shown_) and PERSON not in json.dumps(limits.document())
+    await w.limits(lower_count=0)
+    assert (await w.corrections.limits(TENANT)).lower_count is None
 
 
 async def test_a_rate_above_the_limit_lowers_the_action_class_and_leaves_the_process() -> None:

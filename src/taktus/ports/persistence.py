@@ -131,6 +131,12 @@ class Mark(Value):
     id: str = Field(min_length=1)
 
 
+type Where = Mapping[str, Collection[Any]]
+"""A filter of `Queried`: per field of one value, the values it may hold. An aggregate is
+admitted where every named field holds one of its values; an empty collection admits none
+(ADR-0319)."""
+
+
 class Queried[T: Identified](Repository[T], Protocol):
     """A repository that answers a reader in time proportional to what it returns, not to how
     much it holds (ADR-0094). Its aggregates carry `created_at`. A field is named by its key in
@@ -138,14 +144,25 @@ class Queried[T: Identified](Repository[T], Protocol):
     implementation answers for the fields its aggregate's storage can query and raises
     `NotQueryable` for any other."""
 
-    async def newest(self, tenant: Tenant, *, limit: int, after: Mark | None = None) -> Sequence[T]:
+    async def newest(
+        self,
+        tenant: Tenant,
+        *,
+        limit: int,
+        after: Mark | None = None,
+        where: Where | None = None,
+    ) -> Sequence[T]:
         """At most `limit` aggregates, newest first by `created_at`, ties in ascending `id`;
-        only those after `after` in that order when it is given."""
+        only those after `after` in that order when it is given, and only those `where`
+        admits when it is given (ADR-0319)."""
         ...
 
-    async def count(self, tenant: Tenant, by: Sequence[str]) -> Mapping[tuple[Any, ...], int]:
+    async def count(
+        self, tenant: Tenant, by: Sequence[str], *, where: Where | None = None
+    ) -> Mapping[tuple[Any, ...], int]:
         """How many aggregates hold each combination of values of the fields `by` names, in
-        that order. Counted where they are stored: no aggregate is read."""
+        that order, among those `where` admits. Counted where they are stored: no aggregate is
+        read."""
         ...
 
     async def having(self, tenant: Tenant, field: str, value: Any) -> Sequence[T]:
@@ -222,11 +239,13 @@ class LedgerStore(Protocol):
         *,
         since: datetime | None = None,
         until: datetime | None = None,
+        newest: int | None = None,
     ) -> Sequence[LedgerEntry]:
         """The entries of the given kinds recorded at or after `since` and at or before
         `until` (either may be absent), in sequence order,
         without reading the rest: the database reads them through the index
-        `ledger_entry_kind_ts` (ADR-0105 §9)."""
+        `ledger_entry_kind_ts` (ADR-0105 §9). With `newest`, only the newest that many of
+        them, still in sequence order (ADR-0317 §4)."""
         ...
 
     async def summary(self, tenant: Tenant, kind: str, *, since: datetime) -> KindSummary:
@@ -344,6 +363,11 @@ class ProvenanceStore(Protocol):
 
     async def of_run(self, tenant: Tenant, run_id: str) -> Sequence[Provenance]:
         """Every record of one run, in the order of the ledger entries they belong to."""
+        ...
+
+    async def of_runs(self, tenant: Tenant, run_ids: Collection[str]) -> Sequence[Provenance]:
+        """Every record of any of these runs, in the order of the ledger entries they belong
+        to: one read for many runs (ADR-0320)."""
         ...
 
     async def of_subject(self, tenant: Tenant, subject: str) -> Sequence[Provenance]:

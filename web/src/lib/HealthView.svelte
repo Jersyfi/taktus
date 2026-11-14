@@ -66,7 +66,7 @@
 <style>
 	.muted {
 		color: var(--text-secondary);
-		font-size: 0.88rem;
+		font-size: var(--fs-100);
 		max-width: 44rem;
 	}
 	.facts {
@@ -92,19 +92,19 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.25rem;
-		font-size: 0.88rem;
+		font-size: var(--fs-100);
 	}
 	input {
 		font: inherit;
 		padding: 0.4rem 0.6rem;
 		border: 1px solid var(--border-subtle);
-		border-radius: 10px;
+		border-radius: var(--r-md);
 		background: var(--bg-canvas);
 		color: var(--text-primary);
 	}
 	.message {
 		background: var(--bg-surface);
-		border-radius: 14px;
+		border-radius: var(--r-lg);
 		padding: 0.8rem 1rem;
 		max-width: 44rem;
 	}

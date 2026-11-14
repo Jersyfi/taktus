@@ -1,6 +1,6 @@
 """`taktusctl budget`: a tenant's monthly money budget across all its runs (ADR-0260, UC-8.5).
 
-`set --amount EUR=100 --role finance-lead` sets what all runs of the tenant may cost per calendar
+`set --amount EUR=250 --role finance-lead` sets what all runs of the tenant may cost per calendar
 month (UTC) and the role told once it is reached. Once it is, every run of the tenant waits at its
 next step boundary until a person raises the budget — `set` again — or the month turns. `show`
 prints the budget as JSON. The amount is the tenant's own; nothing is shipped.
@@ -53,7 +53,7 @@ def _run[T](ctx: typer.Context, state_dir: Path, act: Callable[[TenantBudgets], 
 
 
 def amounts_of(given: list[str]) -> dict[str, float]:
-    """`EUR=100` pairs: a currency and what the month may cost in it."""
+    """`EUR=250` pairs: a currency and what the month may cost in it."""
     found: dict[str, float] = {}
     for pair in given:
         currency, separator, amount = pair.partition("=")
@@ -85,7 +85,7 @@ def show(
 def set_(
     ctx: typer.Context,
     amount: Annotated[
-        list[str], typer.Option("--amount", help="Per month, e.g. EUR=100. Repeatable.")
+        list[str], typer.Option("--amount", help="Per month, e.g. EUR=250. Repeatable.")
     ],
     role: Annotated[str, typer.Option("--role", help="The role told when it is reached.")],
     tenant: Tenant = DEFAULT_TENANT,

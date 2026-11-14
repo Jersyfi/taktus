@@ -6,9 +6,8 @@ import { render } from 'svelte/server';
 import { describe, expect, it } from 'vitest';
 import { read } from './api';
 import { reportLink } from './links';
-import OpenReports from './OpenReports.svelte';
 import ReportPage from './ReportPage.svelte';
-import { openLine, openReports, type ReportView } from './reports';
+import { openReports, type ReportView } from './reports';
 
 const NEED: ReportView = {
 	id: 'need_0001',
@@ -114,23 +113,8 @@ describe("a report's page", () => {
 	});
 });
 
-describe("the start page's reports", () => {
+describe("the reports among Today's waits", () => {
 	it('lists the open reports and alerts newest first, without the filed ones', () => {
 		expect(openReports([DECISION, NEED, FILED, ALERT]).map((r) => r.id)).toEqual(['backup-missing', 'need_0001', 'dr_0001']);
-	});
-
-	it('says how many are open', () => {
-		expect(openLine(0)).toBe('No report waits for an answer.');
-		expect(openLine(1)).toBe('1 report waits for an answer.');
-		expect(openLine(3)).toBe('3 reports wait for an answer.');
-	});
-
-	it('links each open report to its page, under a line that counts them', () => {
-		const html = render(OpenReports, { props: { reports: [DECISION, NEED, FILED, ALERT] } }).body;
-		expect(html).toContain('3 reports wait for an answer.');
-		const links = [...html.matchAll(/href="([^"]+)"/g)].map((m) => m[1]);
-		expect(links).toEqual(['#/reports/backup-missing', '#/reports/need_0001', '#/reports/dr_0001']);
-		expect(html).toContain('Failure');
-		expect(html).not.toContain('need_0000');
 	});
 });

@@ -10,6 +10,9 @@ every step as it happens.
 
 ## Three things you can write
 
+In the chat; the page *Talking to Taktus* lists every other phrase, and the web app's
+**Ask Taktus** understands the same in your own words.
+
 | You write | Taktus does |
 |---|---|
 | `status`, or `what are you working on?` | lists every run you may see that has not ended: its process, its current step, its state, since when, and what it waits for |

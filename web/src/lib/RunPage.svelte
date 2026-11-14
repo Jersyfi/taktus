@@ -11,11 +11,14 @@
 -->
 <script lang="ts">
 	import { frame } from './frame.svelte';
-	import { onDestroy } from 'svelte';
-	import { surface } from './api';
+	import { failed, surface } from './api';
+	import EmptyState from './EmptyState.svelte';
+	import ErrorState from './ErrorState.svelte';
+	import Skeleton from './Skeleton.svelte';
+	import Unavailable from './Unavailable.svelte';
 	import ExplanationPanel from './ExplanationPanel.svelte';
 	import SignInForm from './SignInForm.svelte';
-	import { followLevel } from './live';
+	import { ofRun, watchLevel } from './live';
 	import { motion } from './motion.svelte';
 	import RunView from './RunView.svelte';
 	import SteeringPanel from './SteeringPanel.svelte';
@@ -23,19 +26,19 @@
 	import TakeoverPanel from './TakeoverPanel.svelte';
 	import TracePanel from './TracePanel.svelte';
 	import { askTakeover, handBack, handBackRefused, readState, type Asked } from './takeover';
-	import type { RunLevel, TakeoverState } from './types';
+	import type { Problem, RunLevel, TakeoverState } from './types';
 
 	let signedIn = $state(true);
 	let absent = $state(false);
-	let connected = $state(false);
 	let level: RunLevel | null = $state(null);
+	let problem: Problem | null = $state(null);
+	let again: (() => Promise<void>) | null = null;
 	let asked: Asked | null = $state(null);
 	let states: Record<string, TakeoverState> = $state({});
 	let message: string | null = $state(null);
 	let busy = $state(false);
 	let steered: string | null = $state(null);
 	let now = $state(new Date());
-	let stop: AbortController | null = null;
 
 	let {
 		runId,
@@ -49,19 +52,19 @@
 
 	$effect(() => {
 		if (!signedIn || !runId) return;
-		stop?.abort();
 		asked = null;
+		problem = null;
 		const controller = new AbortController();
-		stop = controller;
-		frame.follow();
-		void followLevel<RunLevel>({
+		again = watchLevel<RunLevel>({
 			base: base(),
 			path: `levels/runs/${encodeURIComponent(runId)}`,
-			scope: { run: runId },
+			concerns: ofRun(runId),
+			hub: frame,
 			signal: controller.signal,
 			onLevel: (found) => {
 				level = found;
 				absent = false;
+				problem = null;
 			},
 			onAbsent: () => {
 				absent = true;
@@ -70,16 +73,9 @@
 			onRefused: () => {
 				signedIn = false;
 			},
-			onConnected: (open) => {
-				connected = open;
-				frame.connected(open);
-			},
-			onChange: () => frame.changed()
-		});
-	});
-	onDestroy(() => {
-		stop?.abort();
-		frame.leave();
+			onFailed: (found) => (problem = found)
+		}).again;
+		return () => controller.abort();
 	});
 
 	// The time left on a held take-over moves without a change on the stream.
@@ -137,9 +133,8 @@
 {#if !signedIn}
 	<SignInForm onSignedIn={() => (signedIn = true)} />
 {:else if absent}
-	<p>No run {runId} you may see.</p>
+	<EmptyState title="No run {runId} you may see." />
 {:else if level}
-	<p class="sr-only" aria-live="polite">{connected ? 'Live.' : 'Reconnecting…'}</p>
 	{@const shown = level}
 	<RunView level={shown} motionAllowed={motion.allowed}>
 		{#snippet acts()}
@@ -149,13 +144,10 @@
 			<ExplanationPanel level={shown} base={base()} onRefused={() => (signedIn = false)} />
 		{/snippet}
 	</RunView>
+{:else if problem && failed(problem)}
+	<ErrorState what="Run {runId}" {problem} onRetry={() => void again?.()} />
+{:else if problem}
+	<Unavailable eyebrow="Run" problem={problem.detail || problem.title} />
 {:else}
-	<p class="status">Reading run {runId}…</p>
+	<Skeleton label="Reading run {runId}…" />
 {/if}
-
-<style>
-	.status {
-		color: var(--text-secondary);
-		font-size: 0.9rem;
-	}
-</style>

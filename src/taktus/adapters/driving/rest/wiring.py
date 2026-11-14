@@ -23,6 +23,7 @@ from taktus.components.command.application.service import (
 from taktus.components.command.application.service.coach import Coach
 from taktus.components.command.application.service.sessions import Sessions
 from taktus.components.command.domain.model import PlanDraft
+from taktus.components.command.domain.model.conversation import ProposedAct
 from taktus.components.command.domain.service.guided import Mode
 from taktus.components.decision.application.query import DecisionQueries
 from taktus.components.decision.application.service import (
@@ -60,6 +61,7 @@ from taktus.components.reporting.application.service import (
     BackupWatched,
     FindingsIntake,
     ProductFindings,
+    Recent,
     StepQueries,
     StepTraces,
 )
@@ -122,11 +124,18 @@ class ChangeStreams(Protocol):
         scope: Scope,
         position: str | None,
         authenticate: Callable[[], Awaitable[Reader | None]],
+        *,
+        listed: bool = True,
     ) -> AsyncIterator[Snapshot | Change | None]:
         """The stream: its snapshot or what the reader missed, then every change as it
-        happens; None is a heartbeat. `authenticate` is asked again before every batch and
-        every heartbeat; when it answers None the stream ends. `StreamsFull` when the replica
-        holds its maximum."""
+        happens; None is a heartbeat. Without `listed`, a snapshot carries the position alone
+        (ADR-0317). `authenticate` is asked again before every batch and every heartbeat; when
+        it answers None the stream ends. `StreamsFull` when the replica holds its maximum."""
+        ...
+
+    async def recent(self, reader: Reader, scope: Scope, minutes: int) -> Recent:
+        """The changes of the last `minutes` the reader may see in the scope, oldest first, as
+        the stream would have sent them (ADR-0317 §4)."""
         ...
 
 
@@ -353,6 +362,72 @@ class ProcessProposalActs(Protocol):
 class StartRefused(Exception):
     """A process was not started from the MCP surface; the message says why, in one sentence
     the person's agent can act on (ADR-0131 §5)."""
+
+
+class BuildRefused(Exception):
+    """An act of building was not done; the message says why, and nothing changed (ADR-0324)."""
+
+
+class Building(Protocol):
+    """The acts of building done for a person — plan, change, proposal, rollback, start — and
+    an act read back until the person's yes (ADR-0324, ADR-0325): the composition root's,
+    because an act crosses the command, process and run components. Every method raises
+    `BuildRefused` for what it does not do."""
+
+    async def plans(self, who: Resolution) -> list[dict[str, Any]]: ...
+
+    async def plan(
+        self, who: Resolution, draft: str, mode: Mode = Mode.GUIDED
+    ) -> dict[str, Any]: ...
+
+    async def proposals(self, who: Resolution, process: str) -> list[dict[str, Any]]: ...
+
+    async def proposal(self, who: Resolution, process: str, proposal: str) -> dict[str, Any]: ...
+
+    async def do(
+        self,
+        who: Resolution,
+        act: str,
+        arguments: Mapping[str, Any],
+        *,
+        channel: str = "channel.agent",
+    ) -> tuple[str, dict[str, str]]:
+        """The act done as `who` on `channel`: what came of it in one line, and what it created
+        by kind."""
+        ...
+
+    async def propose(
+        self, who: Resolution, act: str, arguments: Mapping[str, Any], channel: str
+    ) -> ProposedAct:
+        """The act read back by rule and kept waiting for the person's yes."""
+        ...
+
+    async def waiting(self, who: Resolution, act_id: str) -> ProposedAct:
+        """The person's act still waiting for their yes."""
+        ...
+
+    async def confirm(
+        self, who: Resolution, act_id: str, yes: bool, *, say: bool = True
+    ) -> ProposedAct:
+        """The waiting act done on the yes, or declined on the no."""
+        ...
+
+
+class Talking(Protocol):
+    """A person's conversation with Taktus (ADR-0325): the composition root's, because each
+    turn runs as a process of its own."""
+
+    async def view(self, who: Resolution) -> dict[str, Any]:
+        """The person's conversation: its turns, the acts read back in it, whether Taktus is
+        still forming an answer, and whether the conversation is available here."""
+        ...
+
+    async def say(self, who: Resolution, text: str) -> dict[str, Any]:
+        """The person's turn kept and the run forming the answer started; `BuildRefused` when
+        no answer can be formed here."""
+        ...
+
+    async def confirm(self, who: Resolution, act_id: str, yes: bool) -> ProposedAct: ...
 
 
 class AgentActs(Protocol):
@@ -855,6 +930,16 @@ class RestServices(Protocol):
     @property
     def agent(self) -> AgentActs:
         """What the MCP surface needs beyond these services (ADR-0131)."""
+        ...
+
+    @property
+    def building(self) -> Building:
+        """The acts of building, for a person's own agent and the conversation (ADR-0324)."""
+        ...
+
+    @property
+    def talking(self) -> Talking:
+        """A person's conversation with Taktus (ADR-0325)."""
         ...
 
     @property

@@ -1,0 +1,16 @@
+{
+  "position": "sha256:c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+  "run": "run_01",
+  "step": "classify",
+  "kind": "step.started",
+  "method": "rule",
+  "recorded_at": "2026-11-14T09:00:00Z",
+  "rehearsal": false,
+  "state": {
+    "step": "running"
+  },
+  "process": {
+    "id": "invoices",
+    "version": "3"
+  }
+}

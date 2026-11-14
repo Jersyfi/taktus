@@ -5,7 +5,7 @@ source — the call is never made with a wider credential of Taktus's own."""
 from __future__ import annotations
 
 from fakes import FakeConnector
-from fakes.connector import READ
+from fakes.connector import READ, WRITE
 from fakes.maturity import VERIFIED
 
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
@@ -17,8 +17,8 @@ from .test_connector_steps import ConnectorHarness, call
 
 
 class OnBehalf(ConnectorHarness):
-    def __init__(self, mapping: dict[tuple[str, str], str]) -> None:
-        step, work = call("read", READ, {"id": "doc-1"})
+    def __init__(self, mapping: dict[tuple[str, str], str], operation: str = READ) -> None:
+        step, work = call("read", operation, {"id": "doc-1"})
         super().__init__((step, {**work, "on_behalf": True}))
         self.connector = FakeConnector()
         self.connector.reads["doc-1"] = {"id": "doc-1"}
@@ -54,3 +54,15 @@ async def test_a_person_without_an_own_credential_gets_nothing_and_no_call_is_ma
     assert read.state is StepState.FAILED
     assert "idn_t has no credential of its own" in (read.reason or "")
     assert h.connector.calls == []
+
+
+async def test_an_outward_act_on_behalf_of_a_person_is_refused_before_any_call() -> None:
+    """ADR-0332: nothing is written or sent in a person's name, even where the person has a
+    credential of their own; Taktus acts outward as an identity of its own (ADR-0033)."""
+    h = OnBehalf({("idn_t", "FAKE_TOKEN"): "FAKE_TOKEN_ADA"}, WRITE)
+    run = await h.start()
+    step = run.step_run("read")
+    assert step.state is StepState.FAILED
+    assert "nothing is sent or written in a person's name" in (step.reason or "")
+    assert h.connector.calls == []
+    assert h.connector.records == {}

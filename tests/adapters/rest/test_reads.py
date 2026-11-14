@@ -20,6 +20,7 @@ import pytest
 
 from taktus.components.reporting.domain.model import Reader, RunRef
 from taktus.components.reporting.domain.service import visibility
+from taktus.components.run.domain.model import RunState
 
 from .conftest import OTHER, TENANT, Services, a_run
 
@@ -171,8 +172,54 @@ async def test_the_runs_are_read_a_page_at_a_time_newest_first(client: Client) -
     assert [r for p in pages for r in p] == [r["id"] for r in whole["runs"]]
 
 
+async def test_the_runs_are_filtered_by_state_and_process_a_page_at_a_time(
+    client: Client,
+) -> None:
+    """`state` and `process` narrow the list where the runs are stored, and a cursor keeps its
+    place within them (ADR-0319)."""
+    http, given, base = client
+    for n in range(1, 6):
+        run = await a_run(given, f"run_{n}")
+        update: dict[str, Any] = {"state": RunState.FINISHED if n % 2 else RunState.RUNNING}
+        if n == 5:
+            update["process_version"] = "q@2"
+        async with given.persistence.transaction(TENANT):
+            await given.runs.put(TENANT, run.model_copy(update=update))
+    _, key = await given.identity.person(TENANT, "idn_ada")
+
+    async def ids(**params: Any) -> list[str]:
+        answer = await http.get(f"{base}/runs", params=params, headers=bearer(key))
+        assert answer.status_code == 200, answer.text
+        return [r["id"] for r in answer.json()["runs"]]
+
+    assert await ids(state="running") == ["run_4", "run_2"]
+    assert await ids(state=["running", "finished"], process="p") == [
+        "run_4",
+        "run_3",
+        "run_2",
+        "run_1",
+    ]
+    assert await ids(process="q") == ["run_5"]
+    assert await ids(process="nothing") == []
+    first = (
+        await http.get(
+            f"{base}/runs", params={"state": "finished", "limit": 1}, headers=bearer(key)
+        )
+    ).json()
+    assert [r["id"] for r in first["runs"]] == ["run_5"]
+    assert await ids(state="finished", cursor=first["next"]) == ["run_3", "run_1"]
+
+
 @pytest.mark.parametrize(
-    "params", [{"limit": 0}, {"limit": 501}, {"after": "not a cursor"}, {"after": "eA=="}]
+    "params",
+    [
+        {"limit": 0},
+        {"limit": 501},
+        {"after": "not a cursor"},
+        {"after": "eA=="},
+        {"state": "asleep"},
+        {"after": "eA==", "cursor": "eA=="},
+    ],
 )
 async def test_a_page_that_cannot_be_read_is_422(client: Client, params: dict[str, Any]) -> None:
     http, given, base = client

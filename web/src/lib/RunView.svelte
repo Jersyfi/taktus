@@ -5,7 +5,10 @@
 	written out below the drawing, as its text equivalent. It leads to its process (ADR-0064).
 -->
 <script lang="ts">
+	import DisplaySwitch from './DisplaySwitch.svelte';
 	import ExactnessStatement from './ExactnessStatement.svelte';
+	import TextEquivalent from './TextEquivalent.svelte';
+	import { display, type Display } from './display.svelte';
 	import Glyph from './Glyph.svelte';
 	import Graph from './Graph.svelte';
 	import { chosen } from './motion.svelte';
@@ -17,14 +20,18 @@
 	let {
 		level,
 		motionAllowed,
+		mode,
 		acts
 	}: {
 		level: RunLevel;
 		motionAllowed: boolean;
+		/** Picture or text (ADR-0322); the reader's choice for the run page where not given. */
+		mode?: Display;
 		/** What a reader can do on the run, drawn above its text equivalent: a take-over. */
 		acts?: Snippet;
 	} = $props();
 
+	const shown = $derived(mode ?? display.of('run'));
 	const byId = $derived(new Map(level.steps.map((s) => [s.id, s])));
 	const decided = $derived(level.steps.filter((s) => s.decisions?.length));
 	const produced = $derived(level.steps.filter((s) => s.state === 'succeeded' && s.exactness));
@@ -60,12 +67,25 @@
 		</div>
 	</header>
 
-	<dl class="consumed">
-		<dt>Consumed so far</dt>
-		<dd data-figures="run">{figures(level.run.consumed) || 'nothing'}</dd>
-	</dl>
+	<!-- In the text mode the run's own text says what it consumed: said once (ADR-0322 §3). -->
+	{#if shown === 'picture'}
+		<dl class="consumed">
+			<dt>Consumed so far</dt>
+			<dd data-figures="run">{figures(level.run.consumed) || 'nothing'}</dd>
+		</dl>
+	{/if}
 
-	<Graph steps={level.steps} {motionAllowed} {notes} />
+	<div class="tools"><DisplaySwitch page="run" /></div>
+	{#if shown === 'picture'}
+		<Graph steps={level.steps} {motionAllowed} {notes} />
+	{/if}
+	<TextEquivalent label="The run as text" mode={shown}>
+		<li data-text="summary">{level.summary}</li>
+		<li data-text="run">{level.run.text}</li>
+		{#each level.steps as step (step.id)}
+			<li data-text={step.id}>{step.text}</li>
+		{/each}
+	</TextEquivalent>
 
 	{#if decided.length || produced.length}
 		<ul class="more">
@@ -88,20 +108,13 @@
 	{#if level.exactness}
 		<ExactnessStatement statement={level.exactness} />
 	{/if}
-
-	<section class="text" aria-label="The run as text">
-		<h2>As text</h2>
-		<ol>
-			<li data-text="summary">{level.summary}</li>
-			<li data-text="run">{level.run.text}</li>
-			{#each level.steps as step (step.id)}
-				<li data-text={step.id}>{step.text}</li>
-			{/each}
-		</ol>
-	</section>
 </section>
 
 <style>
+	.tools {
+		display: flex;
+		justify-content: flex-end;
+	}
 	header {
 		display: flex;
 		gap: 0.75rem;

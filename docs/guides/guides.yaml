@@ -25,6 +25,7 @@ guides:
         title: Installing from nothing
         parts:
           - file: docs/guides/administration/first-install.md
+          - file: docs/guides/administration/rebuilding-on-a-cluster.md
       - id: upgrading
         title: Upgrading
         parts:
@@ -39,6 +40,7 @@ guides:
           - file: deploy/docker/README.md
             section: Operating it
             heading: On one machine
+          - file: docs/guides/administration/single-server.md
           - file: deploy/k8s/README.md
             section: 1. The shape
             heading: On a cluster
@@ -99,6 +101,10 @@ guides:
         title: The web app
         parts:
           - file: docs/guides/use/web-app.md
+      - id: talking
+        title: Talking to Taktus
+        parts:
+          - file: docs/guides/use/talking.md
       - id: asking
         title: Asking Taktus for something
         parts:

@@ -10,9 +10,11 @@ connector's configured one, **never the `token_uri` the key names**: a key is da
 that named another address would otherwise receive a signed statement. The access token is
 held for the one call and dropped; the exchange is one request of that call.
 
-**The scope.** Each operation asks for the narrowest scope its API admits: `logs.query` and
-`billing.costs` ask for `cloud-platform.read-only`, which the logging and the query API both
-accept; `secrets.metadata` asks for `cloud-platform`, the only scope the secret API names.
+**The scope.** Each operation asks for the narrowest scope its API admits: `logs.query`,
+`billing.costs` and `models.costs` ask for `cloud-platform.read-only`, which the logging and the
+query API both accept; `metrics.series` asks for `monitoring.read`; `secrets.metadata` and
+`models.catalogue` and `expiry.credentials` ask for `cloud-platform`, the only scope the
+secret API, the model API and the identity API name besides their own.
 
 **One request.** Every answer maps to the contract's causes the same way:
 
@@ -34,7 +36,7 @@ from __future__ import annotations
 import json
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
@@ -48,6 +50,11 @@ type Json = dict[str, Any]
 LOGGING = "https://logging.googleapis.com"
 BIGQUERY = "https://bigquery.googleapis.com"
 SECRETS = "https://secretmanager.googleapis.com"
+MONITORING = "https://monitoring.googleapis.com"
+AIPLATFORM = "https://aiplatform.googleapis.com"
+IAM = "https://iam.googleapis.com"
+MODEL_SERVICE = "Vertex AI"
+"""The model service's description in the billing export, unless configured otherwise."""
 TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"  # noqa: S105 - an address, not a secret
 GRANT = "urn:ietf:params:oauth:grant-type:jwt-bearer"
 READ_ONLY = "https://www.googleapis.com/auth/cloud-platform.read-only"
@@ -70,6 +77,13 @@ class Config:
     bigquery: str = BIGQUERY
     secrets: str = SECRETS
     token_endpoint: str = TOKEN_ENDPOINT
+    monitoring: str = MONITORING
+    aiplatform: str = AIPLATFORM
+    iam: str = IAM
+    model_service: str = MODEL_SERVICE
+    """The model service's charges in the billing export are those of this description."""
+    metrics: dict[str, str] = field(default_factory=dict)
+    """The named metrics the monitoring service answers, each with its PromQL (ADR-0328)."""
 
     @classmethod
     def at(
@@ -78,6 +92,9 @@ class Config:
         billing_table: str = "",
         timeout: float = 30.0,
         target: str | None = None,
+        *,
+        metrics: dict[str, str] | None = None,
+        model_service: str = MODEL_SERVICE,
         **overrides: str | None,
     ) -> Config:
         """A configuration whose every service is at `target` when one is given (the token
@@ -87,12 +104,22 @@ class Config:
             "logging": base or LOGGING,
             "bigquery": base or BIGQUERY,
             "secrets": base or SECRETS,
+            "monitoring": base or MONITORING,
+            "aiplatform": base or AIPLATFORM,
+            "iam": base or IAM,
             "token_endpoint": f"{base}/token" if base else TOKEN_ENDPOINT,
         }
         for name, value in overrides.items():
             if value:
                 addresses[name] = value.rstrip("/")
-        return cls(project, billing_table, timeout, **addresses)
+        return cls(
+            project,
+            billing_table,
+            timeout,
+            **addresses,
+            model_service=model_service,
+            metrics=dict(metrics or {}),
+        )
 
 
 def project(config: Config) -> str:

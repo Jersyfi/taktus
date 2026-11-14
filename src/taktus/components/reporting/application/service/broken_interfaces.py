@@ -31,10 +31,12 @@ from taktus.components.reporting.application.service.raise_report import (
     RaiseReportHandler,
 )
 from taktus.components.reporting.domain.model import (
+    Brief,
     BrokenInterface,
     DeliveryChannel,
     Report,
     ReportKind,
+    Said,
 )
 from taktus.components.reporting.domain.model.interface import ID_PREFIX
 from taktus.components.reporting.domain.service import interfaces as rule
@@ -177,6 +179,11 @@ class BrokenInterfaces:
             standing_still=rule.standing_still(found),
             # The interface is broken now, and the runs it holds stand still now.
             due=self._clock.now().date(),
+            brief=Brief(
+                headline=Said(entry="interface_broken", values={"interface": found.interface}),
+                quote=str(found.cause),
+                ask=Said(entry="interface_ask"),
+            ),
         )
 
 

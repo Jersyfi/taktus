@@ -19,7 +19,8 @@
 # A stage opens only once every process it adds runs for the tenant, and holds only while they
 # do (ADR-0191 §1). A process is named by the identifier of the bundle that serves it:
 # `b-<area>-<number>`, the bundle under `processes/`, or the bundle of another blueprint that
-# serves it — B-7.02 and B-7.03 are the dev-orchestration blueprint's P-02 and P-03. A process
+# serves it — B-7.02 and B-7.03 are the dev-orchestration blueprint's P-02 and P-03, B-10.03 the
+# invoice-to-payment blueprint's two processes over incoming invoices. A process
 # without a bundle is declared in `blueprint.yaml` with where it is served or why it is not built;
 # a tenant's plan names the bundle that serves it, or leaves it out until one does. B-9.01, the daily report, is no process of
 # the tenant: it is the instance's daily report of signals (UC-6.13), which every tenant with a
@@ -29,8 +30,9 @@
 # B-4.03, the correction rate, is the instance's count per process and action (UC-7.5,
 # NTC-0263). A row served inside another process's bundle is named by that bundle: B-3.03,
 # B-3.12 and B-4.01 to B-4.06 by `b-3-02` (NTC-0263, NTC-0266). A row declared `not_built` in
-# `blueprint.yaml` stands in no stage until a bundle serves it: B-4.07, a document of the
-# business (NTC-0281). Every stage can thus be declared as shipped.
+# `blueprint.yaml` stands in no stage until a bundle serves it, because a stage that names it
+# could never open: B-4.07, B-6.05, B-9.05, B-9.08 and B-10.05 to B-10.07 (NTC-0281). Every
+# stage can thus be declared as shipped, and every one can open.
 
 kind: Stages
 blueprint: software-operations
@@ -147,22 +149,17 @@ stages:
       b-6-02: 4   # B-6.02
       b-6-03: 1   # B-6.03
       b-6-04: 3   # B-6.04
-      b-6-05: 2   # B-6.05
       b-6-06: 3   # B-6.06
       b-6-07: 2   # B-6.07
       b-9-02: 3   # B-9.02
       b-9-03: 3   # B-9.03
       b-9-04: 3   # B-9.04
-      b-9-05: 3   # B-9.05
       b-9-06: 2   # B-9.06
       b-9-07: 2   # B-9.07
-      b-9-08: 2   # B-9.08
       b-9-09: 2   # B-9.09
       b-9-10: 3   # B-9.10
       b-10-02: 2   # B-10.02
-      b-10-03: 3   # B-10.03
+      b-10-03-incoming-invoice: 3       # B-10.03, the invoice-to-payment blueprint's
+      b-10-03-unreferenced-invoice: 3   # B-10.03, the invoice-to-payment blueprint's
       b-10-04: 4   # B-10.04
-      b-10-05: 2   # B-10.05
-      b-10-06: 2   # B-10.06
-      b-10-07: 2   # B-10.07
     condition: { weeks: 4 }

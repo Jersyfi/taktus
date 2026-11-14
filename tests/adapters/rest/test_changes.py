@@ -92,6 +92,7 @@ async def test_the_stream_is_server_sent_events_and_ends_when_its_key_stops_prov
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
     assert response.headers["cache-control"] == "no-cache"
+    assert "content-encoding" not in response.headers, "the stream is never compressed"
     blocks = response.text.split("\n\n")
     assert blocks[0] == "retry: 1000"
     event, position, data = blocks[1].split("\n")
@@ -102,3 +103,52 @@ async def test_the_stream_is_server_sent_events_and_ends_when_its_key_stops_prov
     assert [r["id"] for r in snapshot["runs"]] == ["run_1"]
     assert ": heartbeat" in blocks[2:], "the connection is kept open between changes"
     assert given.changes.open_streams == 0
+
+
+async def test_a_stream_asked_for_its_position_alone_opens_with_no_run(
+    client: tuple[httpx.AsyncClient, Services, str],
+) -> None:
+    """`snapshot=position`: the first event carries the position and `listed: false`, and no
+    run (ADR-0317 §2)."""
+    http, given, base = client
+    await a_run(given)
+    _, key = await given.identity.person(TENANT, "idn_ada")
+    asked = asyncio.create_task(
+        http.get(f"{base}/changes", params={"snapshot": "position"}, headers=bearer(key))
+    )
+    await asyncio.sleep(0.2)
+    await given.identities.issue_key(TENANT, "idn_ada")
+    async with asyncio.timeout(5):
+        response = await asked
+    _, position, data = response.text.split("\n\n")[1].split("\n")
+    snapshot = json.loads(data.removeprefix("data: "))
+    assert snapshot == {
+        "position": position.removeprefix("id: "),
+        "scope": {"kind": "tenant"},
+        "runs": [],
+        "listed": False,
+    }
+    refused = await http.get(f"{base}/changes", params={"snapshot": "all"}, headers=bearer(key))
+    assert refused.status_code == 422
+
+
+async def test_the_recent_changes_answer_what_the_stream_would_send(
+    client: tuple[httpx.AsyncClient, Services, str],
+) -> None:
+    http, given, base = client
+    await a_run(given)
+    await a_run(given, "run_9", tenant="beta")
+    _, key = await given.identity.person(TENANT, "idn_ada")
+    response = await http.get(f"{base}/changes/recent", headers=bearer(key))
+    assert response.status_code == 200, response.text
+    answer = response.json()
+    assert answer["minutes"] == 60 and answer["complete"] is True
+    [created] = answer["changes"]
+    assert created["run"] == "run_1" and created["kind"] == "run.created"
+    assert created["process"] == {"id": "p", "version": "1"}
+    assert "actor" not in created
+    for wrong in ({"minutes": 61}, {"minutes": 0}, {"process": "p", "run": "run_1"}):
+        assert (
+            await http.get(f"{base}/changes/recent", params=wrong, headers=bearer(key))
+        ).status_code == 422
+    assert (await http.get(f"{base}/changes/recent")).status_code == 401

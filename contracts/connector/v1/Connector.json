@@ -220,12 +220,14 @@
     },
     "SignatureScheme": {
       "title": "SignatureScheme",
-      "description": "How the target system signs the events it sends. hmac-sha256: a keyed hash over the raw body with the intake secret, carried in a header. hmac-sha256-timestamped: a keyed hash with the intake secret over a base string of three parts joined by colons — a version token the target fixes, the moment of sending in whole seconds since the epoch, and the raw body — with the moment carried in a header of its own; a delivery whose moment lies more than 300 seconds from received_at is refused as bad_signature, so that a captured delivery cannot be replayed later. hmac-sha256-identified: the open specification of signed webhooks; a keyed hash over a base string of three parts joined by dots — the delivery's identifier, the moment of sending in whole seconds since the epoch, and the raw body — keyed with the bytes the intake secret encodes in base64 after an optional prefix whsec_; the identifier and the moment travel in headers of their own, and the signature header carries one or more entries v1,<base64 digest> separated by spaces, of which one must verify; a delivery whose moment lies more than 300 seconds from received_at is refused as bad_signature (ADR-0186). There is no scheme none: an intake without a signature is not a valid declaration.",
+      "description": "How the target system signs the events it sends. hmac-sha256: a keyed hash over the raw body with the intake secret, carried in a header. hmac-sha256-timestamped: a keyed hash with the intake secret over a base string of three parts joined by colons — a version token the target fixes, the moment of sending in whole seconds since the epoch, and the raw body — with the moment carried in a header of its own; a delivery whose moment lies more than 300 seconds from received_at is refused as bad_signature, so that a captured delivery cannot be replayed later. hmac-sha256-identified: the open specification of signed webhooks; a keyed hash over a base string of three parts joined by dots — the delivery's identifier, the moment of sending in whole seconds since the epoch, and the raw body — keyed with the bytes the intake secret encodes in base64 after an optional prefix whsec_; the identifier and the moment travel in headers of their own, and the signature header carries one or more entries v1,<base64 digest> separated by spaces, of which one must verify; a delivery whose moment lies more than 300 seconds from received_at is refused as bad_signature (ADR-0186). hmac-sha256-stamped: a keyed hash with the intake secret over the moment of sending in whole seconds since the epoch, a dot and the raw body, in lowercase hex; one header carries comma-separated entries t=<moment> and one or more v1=<digest>, of which one must verify; entries of other names are ignored; a delivery whose moment lies more than 300 seconds from received_at is refused as bad_signature (ADR-0337). shared-token: no signature; a header carries a value the operator configured at the target, compared in constant time with the intake secret; it proves the sender knows the value, not that the body is the one it sent, and bounds no replay (ADR-0337). There is no scheme none: an intake without a signature is not a valid declaration.",
       "type": "string",
       "enum": [
         "hmac-sha256",
         "hmac-sha256-timestamped",
-        "hmac-sha256-identified"
+        "hmac-sha256-identified",
+        "hmac-sha256-stamped",
+        "shared-token"
       ]
     },
     "IntakeDeclaration": {
@@ -1053,7 +1055,7 @@
           "type": "object",
           "properties": {
             "signature": {
-              "description": "Where the suite puts the signature it computes: the header, and the prefix before the lowercase hex digest. timestamp is for the scheme hmac-sha256-timestamped: the header the suite writes the moment of sending into, in whole seconds since the epoch, and the version token that opens the signed base string. identified is for the scheme hmac-sha256-identified instead of timestamp: the header the suite writes the delivery's identifier into, and the header it writes the moment of sending into; the suite then signs <identifier>.<moment>.<raw body> with the bytes the intake secret encodes in base64 and writes the prefix and the base64 digest, and also delivers one whose identifier and one whose moment differ from what was signed (ADR-0186).",
+              "description": "Where the suite puts the signature it computes: the header, and the prefix before the lowercase hex digest. timestamp is for the scheme hmac-sha256-timestamped: the header the suite writes the moment of sending into, in whole seconds since the epoch, and the version token that opens the signed base string. identified is for the scheme hmac-sha256-identified instead of timestamp: the header the suite writes the delivery's identifier into, and the header it writes the moment of sending into; the suite then signs <identifier>.<moment>.<raw body> with the bytes the intake secret encodes in base64 and writes the prefix and the base64 digest, and also delivers one whose identifier and one whose moment differ from what was signed (ADR-0186). stamped is for the scheme hmac-sha256-stamped: the names of the entries of the one header that carry the moment and the hex digest; the suite signs <moment>.<raw body>, and also delivers one whose moment differs from what was signed (ADR-0337). token true is for the scheme shared-token: the suite writes the prefix and the intake secret itself into the header (ADR-0337).",
               "type": "object",
               "properties": {
                 "header": {
@@ -1098,6 +1100,27 @@
                     "timestamp"
                   ],
                   "additionalProperties": false
+                },
+                "stamped": {
+                  "type": "object",
+                  "properties": {
+                    "moment": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "digest": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "moment",
+                    "digest"
+                  ],
+                  "additionalProperties": false
+                },
+                "token": {
+                  "type": "boolean"
                 }
               },
               "required": [

@@ -94,7 +94,7 @@
 	}
 	.muted {
 		color: var(--text-secondary);
-		font-size: 0.86rem;
+		font-size: var(--fs-100);
 		margin: 0.2rem 0;
 	}
 	.tiles {
@@ -104,17 +104,17 @@
 	}
 	.tiles div {
 		background: var(--bg-surface);
-		border-radius: 18px;
+		border-radius: var(--r-xl);
 		padding: 0.7rem 0.9rem;
 	}
 	.tiles dt {
 		color: var(--text-subtle);
-		font-size: 0.75rem;
+		font-size: var(--fs-075);
 	}
 	.tiles dd {
 		margin: 0;
 		font-family: var(--font-display);
-		font-size: 1.6rem;
+		font-size: var(--fs-500);
 	}
 	.designed {
 		display: flex;
@@ -126,7 +126,7 @@
 	}
 	.designed li {
 		border: 1.5px solid var(--family-reproducible);
-		border-radius: 999px;
+		border-radius: var(--r-full);
 		padding: 0.1rem 0.7rem;
 	}
 	.designed li + li::before {
@@ -144,7 +144,7 @@
 		position: relative;
 		padding: 0.5rem 0.8rem;
 		margin: 0.4rem 0;
-		border-radius: 14px;
+		border-radius: var(--r-lg);
 		background: var(--bg-surface);
 		overflow: hidden;
 	}
@@ -161,8 +161,8 @@
 		margin: 0.15rem 0;
 	}
 	.mark {
-		font-size: 0.75rem;
-		border-radius: 999px;
+		font-size: var(--fs-075);
+		border-radius: var(--r-full);
 		padding: 0 0.5rem;
 		margin-right: 0.3rem;
 		border: 1px solid var(--border-subtle);
@@ -183,7 +183,7 @@
 	.split {
 		display: flex;
 		height: 6px;
-		border-radius: 3px;
+		border-radius: var(--r-xs);
 		overflow: hidden;
 		margin: 0.25rem 0;
 		max-width: 28rem;

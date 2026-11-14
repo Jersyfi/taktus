@@ -1,125 +1,127 @@
 <!--
-	The overview of UC-6.10 as one body (ADR-0067, amended 2026-10-12; DEC-0185). It opens with a
-	sentence that says what works right now. Each area holds its processes; each process is an
-	organ drawn as the cells of its active version, joined by vessels. A cell moves only while a
-	run of that version runs it. Beside it, how many of its runs work and how many wait — the run
-	component's own figures — and the steps running right now, each leading down to its run.
-	Written out below as its text equivalent.
+	The overview of UC-6.10 as one body (ADR-0067, amended 2026-10-12; DEC-0185). Each area holds
+	its processes; each process is an organ drawn as the cells of its active version, joined by
+	vessels. A cell moves only while a run of that version runs it. Beside it, how many of its runs
+	work and how many wait — the run component's own figures — and the steps running right now,
+	each leading down to its run. Its text equivalent stays in the accessibility tree in the
+	picture mode and replaces the drawing in the text mode (ADR-0322 §1). Today draws it under its
+	pulse card without the sentence, which the card already says, and without the exactness
+	statements, which the processes page and every process carry (ADR-0322 §3).
 -->
 <script lang="ts">
 	import ExactnessStatement from './ExactnessStatement.svelte';
 	import Glyph from './Glyph.svelte';
 	import Graph from './Graph.svelte';
+	import TextEquivalent from './TextEquivalent.svelte';
 	import { chosen } from './motion.svelte';
 	import { processLink, runLink } from './links';
 	import { areaTitle } from './today';
-	import type { Snippet } from 'svelte';
+	import type { Display } from './display.svelte';
 	import type { OverviewLevel } from './types';
 
 	let {
 		level,
 		motionAllowed,
-		lead,
-		between,
-		after
+		mode = 'picture',
+		headed = true,
+		exactness = true
 	}: {
 		level: OverviewLevel;
 		motionAllowed: boolean;
-		/** Under the sentence: the state of the page's stream (ADR-0178 §3). */
-		lead?: Snippet;
-		/** Before what runs: what waits for the reader. */
-		between?: Snippet;
-		/** After what runs, before the text equivalent. */
-		after?: Snippet;
+		/** Picture or text (ADR-0322). */
+		mode?: Display;
+		/** Whether it opens with the level's sentence as its heading. */
+		headed?: boolean;
+		/** Whether each process carries its exactness statement, folded. */
+		exactness?: boolean;
 	} = $props();
+
+	function ref(process: { id: string; active_version?: string }): string {
+		return processLink(process.active_version ? `${process.id}@${process.active_version}` : process.id);
+	}
 </script>
 
-<section class="overview" aria-labelledby="overview-title">
-	<header class="hero">
-		<p class="eyebrow">Today</p>
-		<h1 id="overview-title">{level.summary}</h1>
-		{@render lead?.()}
-	</header>
-	{@render between?.()}
-	<h2 class="what-runs">What runs</h2>
-	{#each level.areas as area (area.id)}
-		{@const headed = areaTitle(area)}
-		<section class="area" aria-label="Area {headed.title}" data-area={area.id}>
-			<div class="area-head">
-				<h2>{headed.title}</h2>
-				{#if headed.detail}<p class="area-id" title="The tenant's identifier">{headed.detail}</p>{/if}
-				<p class="figures" data-figures="area:{area.id}">
-					{area.working} working · {area.waiting} waiting
-				</p>
-			</div>
-			{#if area.processes.length === 0}
-				<p>No process you may see.</p>
-			{:else}
-				<ul class="organs">
-					{#each area.processes as process (process.id)}
-						<li class="organ" class:busy={process.working > 0 || process.waiting > 0} data-process={process.id}>
-							<div class="head">
-								<a href={processLink(process.active_version ? `${process.id}@${process.active_version}` : process.id)}
-									>{process.name}</a>
-								{#if process.autonomy_level !== undefined}
-									<span class="level" title="Autonomy level {process.autonomy_level}"
-										><span class="steps" aria-hidden="true"
-											>{#each [1, 2, 3, 4] as n (n)}<span class:on={n <= (process.autonomy_level ?? 0)}></span>{/each}</span
-										>L{process.autonomy_level}</span
-									>
+<section class="overview" aria-labelledby={headed ? 'overview-title' : undefined} aria-label={headed ? undefined : 'What runs'}>
+	{#if headed}
+		<header class="hero">
+			<p class="eyebrow">Processes</p>
+			<h1 id="overview-title">{level.summary}</h1>
+		</header>
+	{/if}
+	{#if mode === 'picture'}
+		{#each level.areas as area (area.id)}
+			{@const headedArea = areaTitle(area)}
+			<section class="area" aria-label="Area {headedArea.title}" data-area={area.id}>
+				<div class="area-head">
+					<h2>{headedArea.title}</h2>
+					{#if headedArea.detail}<p class="area-id" title="The tenant's identifier">{headedArea.detail}</p>{/if}
+					<p class="figures" data-figures="area:{area.id}">
+						{area.working} working · {area.waiting} waiting
+					</p>
+				</div>
+				{#if area.processes.length === 0}
+					<p>No process you may see.</p>
+				{:else}
+					<ul class="organs">
+						{#each area.processes as process (process.id)}
+							<li class="organ" class:busy={process.working > 0 || process.waiting > 0} data-process={process.id}>
+								<div class="head">
+									<a href={ref(process)}>{process.name}</a>
+									{#if process.autonomy_level !== undefined}
+										<span class="level" title="Autonomy level {process.autonomy_level}"
+											><span class="steps" aria-hidden="true"
+												>{#each [1, 2, 3, 4] as n (n)}<span class:on={n <= (process.autonomy_level ?? 0)}></span>{/each}</span
+											>L{process.autonomy_level}</span
+										>
+									{/if}
+									{#if process.untried}
+										<span
+											class="untried"
+											title="No person has yet run this version by hand from its takeover instructions"
+											>untried by hand</span
+										>
+									{/if}
+								</div>
+								{#if process.cells?.length}
+									<Graph steps={process.cells} {motionAllowed} compact />
 								{/if}
-								{#if process.untried}
-									<span
-										class="untried"
-										title="No person has yet run this version by hand from its takeover instructions"
-										>untried by hand</span
-									>
+								<p class="figures" data-figures="process:{process.id}">
+									{process.working} working · {process.waiting} waiting
+								</p>
+								{#if process.running?.length}
+									<ul class="running" aria-label="Running now in {process.name}">
+										{#each process.running as step (`${step.run}/${step.step}`)}
+											<li>
+												<Glyph glyph={chosen(step.drawn, motionAllowed)} size={22} />
+												<a href={runLink(step.run)}>{step.step}</a>
+												<span class="meta">{step.run}</span>
+											</li>
+										{/each}
+									</ul>
 								{/if}
-							</div>
-							{#if process.cells?.length}
-								<Graph steps={process.cells} {motionAllowed} compact />
-							{/if}
-							<p class="figures" data-figures="process:{process.id}">
-								{process.working} working · {process.waiting} waiting
-							</p>
-							{#if process.running?.length}
-								<ul class="running">
-									{#each process.running as step (`${step.run}/${step.step}`)}
-										<li>
-											<Glyph glyph={chosen(step.drawn, motionAllowed)} size={22} />
-											<a href={runLink(step.run)}>{step.step}</a>
-											<span class="meta">{step.run}</span>
-										</li>
-									{/each}
-								</ul>
-							{/if}
-							{#if process.exactness}
-								<ExactnessStatement statement={process.exactness} compact />
-							{/if}
-						</li>
-					{/each}
-				</ul>
-			{/if}
-		</section>
-	{/each}
+								{#if exactness && process.exactness}
+									<ExactnessStatement statement={process.exactness} compact />
+								{/if}
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</section>
+		{/each}
+	{/if}
 
-	{@render after?.()}
-
-	<section class="text" aria-label="The overview as text">
-		<h2>As text</h2>
-		<ol>
-			<li data-text="summary">{level.summary}</li>
-			{#each level.areas as area (area.id)}
-				<li data-text="area:{area.id}">{area.text}</li>
-				{#each area.processes as process (process.id)}
-					<li data-text="process:{process.id}">{process.text}</li>
-					{#each process.running ?? [] as step (`${step.run}/${step.step}`)}
-						<li data-text="step:{step.run}/{step.step}">{step.text}</li>
-					{/each}
+	<TextEquivalent label="The overview as text" {mode}>
+		{#if !headed}<li data-text="summary">{level.summary}</li>{/if}
+		{#each level.areas as area (area.id)}
+			<li data-text="area:{area.id}">{area.text}</li>
+			{#each area.processes as process (process.id)}
+				<li data-text="process:{process.id}"><a href={ref(process)}>{process.text}</a></li>
+				{#each process.running ?? [] as step (`${step.run}/${step.step}`)}
+					<li data-text="step:{step.run}/{step.step}"><a href={runLink(step.run)}>{step.text}</a></li>
 				{/each}
 			{/each}
-		</ol>
-	</section>
+		{/each}
+	</TextEquivalent>
 </section>
 
 <style>
@@ -149,9 +151,6 @@
 		font-size: clamp(var(--fs-600), 5.4vw, var(--fs-800));
 		max-width: 22ch;
 		margin-bottom: var(--sp-200);
-	}
-	.what-runs {
-		margin-top: var(--sp-600);
 	}
 	.area {
 		margin-bottom: var(--sp-500);
@@ -220,7 +219,7 @@
 		text-decoration: underline;
 	}
 	.untried {
-		font-size: 0.75rem;
+		font-size: var(--fs-075);
 		font-style: italic;
 	}
 	.level {

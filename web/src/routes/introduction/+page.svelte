@@ -4,6 +4,7 @@
 	admits the plan's responsible role and says so to anyone else.
 -->
 <script lang="ts">
+	import Skeleton from '../../lib/Skeleton.svelte';
 	import Unavailable from '../../lib/Unavailable.svelte';
 	import { read, send, surface } from '../../lib/api';
 	import IntroductionView from '../../lib/IntroductionView.svelte';
@@ -44,12 +45,6 @@
 {:else if problem}
 	<Unavailable eyebrow="Introduction" {problem} />
 {:else}
-	<p class="status">Reading the introduction…</p>
+	<Skeleton label="Reading the introduction…" />
 {/if}
 
-<style>
-	.status {
-		color: var(--text-secondary);
-		font-size: 0.9rem;
-	}
-</style>

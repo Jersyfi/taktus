@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import secrets
 import sys
 from collections.abc import Awaitable, Callable, Mapping
@@ -57,6 +58,63 @@ SCOPE_FAULTS: dict[str, str] = {
     "C-11": "a scoped call is answered with another subject's data: the scope is ignored",
 }
 """The fault a connector offers where it declares a scoped capability (ADR-0130)."""
+
+
+METRIC_NAME = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
+"""A named metric: lowercase words joined by dots, `functions.error_rate` (ADR-0328)."""
+PARAMETER = re.compile(r"\$\{([a-z][a-z0-9_]*)\}")
+PARAMETER_VALUE = re.compile(r"^[A-Za-z0-9._:/-]{1,128}$")
+"""What a parameter of a named metric may be: no quote, brace or space can reach the query."""
+
+
+def load_metrics(path: str | None) -> dict[str, str]:
+    """The named metrics a connector's configuration maps to queries in its store's language:
+    a JSON object of name to query text (ADR-0328). No file, no names."""
+    if not path:
+        return {}
+    document = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(document, dict):
+        raise ValueError("the metrics file is not a JSON object of name to query")
+    for name, query in document.items():
+        if METRIC_NAME.match(name) is None:
+            raise ValueError(f"{name!r} is not a metric name: words joined by dots")
+        if not isinstance(query, str) or not query.strip() or len(query) > 20_000:
+            raise ValueError(f"the query of {name!r} is not a text of at most 20000 characters")
+    return dict(document)
+
+
+def metric_query(input: Json, metrics: Mapping[str, str]) -> str:
+    """The query a call of `metrics.series` asks (ADR-0328): its own `query` where it gives a
+    text that is not empty, or else the query the configuration maps its `metric` to, every
+    `${name}` replaced by the call's `parameters`. A name the configuration does not map, a
+    placeholder without its parameter, and a parameter that could change the query's shape are
+    `invalid`; nothing is guessed."""
+    query = input.get("query")
+    if isinstance(query, str) and query.strip():
+        if len(query) > 20_000:
+            raise invalid("query must be a text of at most 20000 characters")
+        return query
+    if query is not None and not isinstance(query, str):
+        raise invalid("query must be a text")
+    name = input.get("metric")
+    if not isinstance(name, str) or METRIC_NAME.match(name) is None:
+        raise invalid("give query, or metric as a name of words joined by dots")
+    mapped = metrics.get(name)
+    if mapped is None:
+        raise invalid(f"the metric {name} is not mapped by this connector's configuration")
+    given = input.get("parameters") or {}
+    if not isinstance(given, dict):
+        raise invalid("parameters must be an object of name to text")
+    for key, value in given.items():
+        if not isinstance(value, str) or PARAMETER_VALUE.match(value) is None:
+            raise invalid(f"the parameter {key} must be letters, digits and . _ : / - only")
+
+    def fill(found: re.Match[str]) -> str:
+        if found.group(1) not in given:
+            raise invalid(f"the metric {name} needs the parameter {found.group(1)}")
+        return str(given[found.group(1)])
+
+    return PARAMETER.sub(fill, mapped)
 
 
 @dataclass(eq=False)

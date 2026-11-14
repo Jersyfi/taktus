@@ -1,12 +1,11 @@
 <!--
 	Steps as one tissue: each a cell at its place by its dependencies, vessels from a step to the
 	steps that follow it. Into a running step a vessel carries that step's own motion, the work
-	arriving; nothing else on it moves (ADR-0059 §2). On a narrow screen the graph runs from top
+	arriving; nothing else on it moves (ADR-0059 §2). In a narrow column the graph runs from top
 	to bottom. Below each step's name, the short notes its level gives. Hidden from assistive
 	technology: every level writes the same out as text.
 -->
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import Glyph from './Glyph.svelte';
 	import { R } from './cells';
 	import { chosen } from './motion.svelte';
@@ -34,16 +33,10 @@
 		compact?: boolean;
 	} = $props();
 
-	/** Whether the screen is narrow; read once mounted, wide until then. */
-	let narrow = $state(false);
-	onMount(() => {
-		if (typeof matchMedia !== 'function') return;
-		const query = matchMedia('(max-width: 760px)');
-		narrow = query.matches;
-		const changed = () => (narrow = query.matches);
-		query.addEventListener('change', changed);
-		return () => query.removeEventListener('change', changed);
-	});
+	/** The width the graph is given: the column it stands in, not the screen (ADR-0321 §4). Read
+	 * once it is drawn; wide until then. */
+	let given = $state(0);
+	const narrow = $derived(given > 0 && given < 640);
 
 	const vertical = $derived(narrow && !compact);
 	const CELL = $derived(compact ? 22 : narrow ? 48 : 56);
@@ -86,7 +79,7 @@
 	);
 </script>
 
-<div class="tissue" class:compact aria-hidden="true">
+<div class="tissue" class:compact aria-hidden="true" bind:clientWidth={given}>
 	<div class="flow" style="width: {width}px; height: {height}px">
 		<svg class="vessels" {width} {height}>
 			{#each vessels as v (v.key)}
@@ -111,7 +104,7 @@
 
 <style>
 	.tissue {
-		border-radius: 18px;
+		border-radius: var(--r-xl);
 		background:
 			radial-gradient(60% 80% at 20% 30%, color-mix(in oklch, var(--family-reproducible) 5%, transparent), transparent 70%),
 			radial-gradient(50% 70% at 85% 70%, color-mix(in oklch, var(--family-variable) 4%, transparent), transparent 70%),
@@ -191,7 +184,7 @@
 		align-items: center;
 		gap: 0.15rem;
 		text-align: center;
-		font-size: 0.8rem;
+		font-size: var(--fs-090);
 		line-height: 1.25;
 	}
 	.name {
@@ -199,6 +192,6 @@
 	}
 	.note {
 		color: var(--text-secondary);
-		font-size: 0.72rem;
+		font-size: var(--fs-075);
 	}
 </style>

@@ -207,7 +207,9 @@ async def test_a_warehouse_figure_below_its_threshold_escalates_with_the_reading
     (incident,) = await w.expected.incidents(TENANT)
     assert incident.kind is IncidentKind.SIGNAL_RED
     assert incident.run_id == red.id and judged.step_id == "read"
-    assert "RED product.subscribers_daily: 61" in w.given.deliveries.said[-1].text
+    assert "RED product.subscribers_daily: 61" in await w.given.record_of(
+        w.given.deliveries.said[-1].text
+    )
 
     # The reading that triggered it is in the step's provenance record, by digest.
     async with w.persistence.transaction(TENANT):

@@ -115,6 +115,16 @@ def set_rules(
         int | None,
         typer.Option(help="The most recipients an outward step addresses without a person."),
     ] = None,
+    daily_limit: Annotated[
+        int | None,
+        typer.Option(
+            help="The most messages a process sends within 24 hours without a person; 0 none."
+        ),
+    ] = None,
+    process: Annotated[
+        str | None,
+        typer.Option(help="Set the daily limit for this process, not the tenant."),
+    ] = None,
     tenant: Tenant = DEFAULT_TENANT,
     by: By = "operator",
     state_dir: StateDir = Path(DEFAULT_STATE_DIR),
@@ -127,6 +137,8 @@ def set_rules(
         quiet=None if quiet is None else quiet_span(quiet),
         zone=zone,
         recipient_limit=recipient_limit,
+        daily_limit=daily_limit,
+        process=process,
     )
 
     async def act(found: TenantMessages) -> dict[str, Any]:

@@ -45,7 +45,8 @@ administers the cluster nor reaches into it (ADR-0025 §1, DEC-0023).
   read pods, their logs and events. For the profile `ha` it manages disruption budgets
   (`policy/poddisruptionbudgets`) in the control plane's namespace too (ADR-0165); the other
   profiles render none. It may not create a namespace or any object of the cluster
-  as a whole (NEED-0007). It belongs to the person running `helm`. It is **never** given to
+  as a whole (NEED-0007). `deploy/k8s/deployment-identity.yaml` creates it, applied once by
+  whoever may create the namespaces. It belongs to the person running `helm`. It is **never** given to
   Taktus. The chart renders no kind outside that list, and a test holds it to that.
 - **Taktus's own service account** runs the control plane. In the execution namespace it may:
 
@@ -75,7 +76,8 @@ runs on. A service account that could change its own deployment would be adminis
 
 ## 2. The chart
 
-One chart, `deploy/k8s/chart/`. Its interface is `chart/values.yaml`: every key with its default
+One chart, `deploy/k8s/chart/`, for Kubernetes 1.27 or newer: it declares `kubeVersion`, because
+a CronJob's `timeZone` is stable from 1.27. Its interface is `chart/values.yaml`: every key with its default
 and a comment that says what it is for. The keys are the repository's; their *values* are the
 operator's. The parts that carry a decision:
 
@@ -85,7 +87,7 @@ operator's. The parts that carry a decision:
 | `image.repository`, `image.tag`, `image.digest`, `image.pullSecret` | the control plane image; the tag is a version, or the full commit hash of an image of `main`, and `latest` or an empty tag fails the render; `digest` pins it (§3, ADR-0173) |
 | `images.requireDigest` | `true` fails the render of any image without a digest: every image by the one name that cannot move (§3). Off by default |
 | `profile` | `standard` (default): one deployment per role. `small`: one deployment running every role in one process (`TAKTUS_ROLES=all`), sized by `small.resources`, beside the database. `ha`: highly available (ADR-0165), with `ha.replicas`, `ha.minAvailable` and `ha.antiAffinity`. See "Which profile" below |
-| `roles.<role>.replicas`, `.resources` | one deployment per role (ADR-0002), for the `standard` profile; the scheduler is elected, more than one is allowed and idle |
+| `roles.<role>.replicas`, `.resources` | one deployment per role (ADR-0002), for the `standard` profile; the scheduler is elected, more than one is allowed and idle. The `api` role requests 384 MiB and is limited to 1 GiB, as is the `small` profile: five full reads of 3,000 runs at once peaked at 816 MB (ADR-0320 §4, NTC-0288) |
 | `database.deploy`, `.size`, `.storageClass`, `.passwordSecret`/`.passwordKey`, `.urlSecret`/`.urlKey` | a PostgreSQL of its own (DEC-0032) on a volume of 20 Gi (DEC-0033); its password and the instance's connection URL are existing Secrets |
 | `state.size`, `.storageClass` | one volume for artifact bytes, shared by every role (`TAKTUS_STATE_DIR`), with `objectStore.kind: filesystem`; kept on uninstall. A role keeps at most `TAKTUS_OBJECT_CACHE_MB` of them in memory (default 64; set through `env`) |
 | `objectStore.*` | where artifact bytes live (`TAKTUS_OBJECT_STORE`, ADR-0165): `filesystem` (default), the state volume; `s3`, keys `<prefix>/<hex>` in one bucket of an S3-compatible store at `endpoint`, path-style, with `bucket`, `prefix` and `region` (empty: `us-east-1`). Its credential is two keys of one existing Secret (`secret`, `accessKeyIdKey`, `secretKeyKey`), mounted as files. With `s3` no state volume is rendered, `backup.objects` must be false, and the roles reach the store through `networkPolicy.controlPlaneEgress`. Moving from `filesystem` is below |

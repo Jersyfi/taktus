@@ -1,29 +1,51 @@
-// What the frame shows about the page it holds (ADR-0178): whether the page follows a stream and
-// is connected, and how many changes that stream delivered since the page opened. A page that
-// follows nothing leaves `live` at null, and the frame then shows no live state at all.
+// What the frame shows about the system on every page (ADR-0323): the one stream of the tenant's
+// changes, whether it is connected, how many changes it delivered since the frame opened, and
+// the newest of them. The mark in the bar beats on it; Today draws its strip and its list from it;
+// a level page reads its level again when a change concerns it.
+
+import { forgetShared } from './shared';
+import { TenantStream, type Listener, type PulseOptions, type Standing } from './pulse';
+import type { Change } from './types';
 
 class Frame {
-	/** null: the page follows no stream; otherwise whether its stream is connected. */
-	live: boolean | null = $state(null);
-	/** The changes the page's stream delivered since it opened. */
+	readonly stream = new TenantStream();
+	/** Where the stream stands; `idle` before the frame opened it. */
+	standing: Standing = $state('idle');
+	/** The changes delivered since the frame opened. */
 	changes = $state(0);
+	/** The newest changes, newest last. */
+	recent: Change[] = $state([]);
 
-	follow(): void {
-		this.live = false;
-		this.changes = 0;
+	constructor() {
+		this.stream.watch(() => {
+			this.standing = this.stream.standing;
+			this.changes = this.stream.count;
+			this.recent = this.stream.recent;
+		});
+		// Any change can make a kept read old.
+		this.stream.subscribe((event) => {
+			if (event.kind === 'change') forgetShared();
+		});
 	}
 
-	connected(open: boolean): void {
-		this.live = open;
+	/** null while no stream is open; otherwise whether it is connected. */
+	get live(): boolean | null {
+		return this.standing === 'idle' || this.standing === 'refused' ? null : this.standing === 'live';
 	}
 
-	changed(): void {
-		this.changes += 1;
+	open(base: URL, options?: PulseOptions): void {
+		void this.stream.open(base, options);
 	}
 
-	leave(): void {
-		this.live = null;
-		this.changes = 0;
+	/** Opens the stream again, after the reader signed in. */
+	reopen(base: URL): void {
+		this.stream.close();
+		forgetShared();
+		this.open(base);
+	}
+
+	subscribe(listener: Listener): () => void {
+		return this.stream.subscribe(listener);
 	}
 }
 

@@ -123,6 +123,7 @@ processes:
   - { id: B-2.06, name: B-2.06 Subscription inventory, bundle: processes/B-2.06-subscription-inventory.yaml }
   - { id: B-3.01, name: B-3.01 Sorting the inbox, bundle: processes/B-3.01-inbox-sorting.yaml }
   - { id: B-3.02, name: B-3.02 Drafting a reply, bundle: processes/B-3.02-draft-reply.yaml }
+  - { id: B-3.02-account, name: "B-3.02 Drafting a reply, with the sender's account", bundle: processes/B-3.02-draft-reply-account.yaml }
   - { id: B-3.04, name: B-3.04 Paid but not unlocked, bundle: processes/B-3.04-paid-not-unlocked.yaml }
   - { id: B-3.05, name: B-3.05 Cancellation and subscription questions, bundle: processes/B-3.05-subscription-questions.yaml }
   - { id: B-3.06, name: B-3.06 A bug from support, bundle: processes/B-3.06-bug-from-support.yaml }

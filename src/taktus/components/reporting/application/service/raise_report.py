@@ -34,6 +34,7 @@ from taktus.components.reporting.application.service.errors import (
     UnknownReport,
 )
 from taktus.components.reporting.domain.model import (
+    Brief,
     Delivery,
     DeliveryChannel,
     DeliveryState,
@@ -72,6 +73,8 @@ class RaiseReport:
     Empty for every other kind, which offers the one answer that it is done."""
     links: Sequence[tuple[str, str]] = ()
     """Every file, issue and pull request the report concerns, as label and address."""
+    brief: Brief | None = None
+    """The message's short form, in the reader's language (ADR-0316)."""
 
 
 @dataclass(frozen=True)
@@ -149,6 +152,7 @@ class RaiseReportHandler:
             due=command.due,
             offered=offered,
             links=tuple(Link(label=label, url=url) for label, url in command.links),
+            brief=command.brief,
             raised_at=now,
             history=(Happened(at=now, event="raised"),),
         )

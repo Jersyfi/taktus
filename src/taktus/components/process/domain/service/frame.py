@@ -9,7 +9,9 @@ rule refuses a version whose frame cannot hold, as far as the bundle alone tells
 - an analytic step that calls a capability other than its source — a mail capability among
   them — reaches a host, holds a credential, or reads what a step that is not analytic
   produced;
-- a scoped worker step that reaches a host, which the frame cannot scope.
+- a scoped worker step that reaches a host, which the frame cannot scope;
+- a step on behalf of a person that declares a message or its recipients: a person's own
+  credential only reads, and nothing is sent in a person's name (ADR-0332).
 
 Whether the tenant declares an analytic step's source free of personal fields is asked by
 registration through its port, and again by the run at every call: a declaration can be
@@ -29,6 +31,8 @@ from taktus.shared.v1 import Step
 
 SCOPE = "scope"
 ANALYTIC = "analytic"
+ON_BEHALF = "on_behalf"
+SENDING = ("message", "recipients")
 INPUT = "$input"
 SELECT = "$select"
 FROM = "$from"
@@ -59,6 +63,12 @@ def findings(
                 )
         if ANALYTIC in given:
             reasons.extend(_analytic(given, analytic))
+        if given.get(ON_BEHALF) is True and any(key in given for key in SENDING):
+            reasons.append(
+                "a step on behalf of a person only reads with that person's credential, and "
+                "this one declares a message to send: nothing is sent in a person's name "
+                "(ADR-0332)"
+            )
         found.extend(f"step {step.id!r}: {reason}" for reason in reasons)
     return found
 

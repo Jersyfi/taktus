@@ -1,0 +1,10 @@
+{
+  "id": "evt_1QfakeFailed",
+  "kind": "payment.failed",
+  "channel": "payments.subscriptions",
+  "occurred_at": "2026-11-14T08:00:00Z",
+  "received_at": "2026-11-14T08:00:02Z",
+  "context": {
+    "payment": "in_fake3"
+  }
+}

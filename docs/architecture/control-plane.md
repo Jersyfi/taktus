@@ -110,8 +110,16 @@ provisional operator identity of DEC-0013 in `0.2.0`:
   the HTTP surface never accepts one. The person creates it with `POST /identity/agent-key`, or an
   administrator with `taktusctl identity agent-key`. The agent reads what the person may see.
   It acts only where a role the person holds was granted the right: `agent.start`,
-  `agent.answer` or `agent.take-over`, granted with `taktusctl identity grant`. Every call is a
-  ledger entry `agent.<tool>` with the person as actor.
+  `agent.answer`, `agent.take-over`, `agent.steer`, `agent.plan` or `agent.change`, granted with
+  `taktusctl identity grant`. Building through it — a plan, a change, a proposal, a rollback —
+  goes through the web app's services; a commissioning and a rollback come back read back and
+  are done only by `confirm_act` (ADR-0324). Every call is a ledger entry `agent.<tool>` with
+  the person as actor.
+- **Taktus's own conversation is a run per turn** (ADR-0325). A person's message, from the
+  page "Ask Taktus" (`/conversation`) or a chat after every rule (ADR-0326), is kept, and a run
+  of the process `TAKTUS_CONVERSATION_PROCESS` names answers it as the person; the act it
+  proposes, from the same closed list as the agent's tools, is read back and done only on the
+  person's yes.
 - **The command line names an identity the component knows** (`--identity`); the component
   supplies its organisational path. **A scheduled run acts for the identity that registered
   the process's active version** (ADR-0035, amended).

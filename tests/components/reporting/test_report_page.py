@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 from fakes.owner_channel import NAMED, OUTSIDER, OWNER, TENANT, OwnerChannel, owner_channel, people
@@ -63,7 +64,11 @@ async def every_kind(given: OwnerChannel) -> list[Report]:
 
 
 def said_for(given: OwnerChannel, report: Report) -> str:
-    [said] = [s.text for s in given.deliveries.said if f"({report.id})" in s.text]
+    [said] = [
+        s.text
+        for s in given.deliveries.said
+        if f"/reports/{quote(report.id, safe='')}" in s.text or f"({report.id})" in s.text
+    ]
     return said
 
 

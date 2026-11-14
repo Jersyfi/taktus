@@ -85,7 +85,7 @@
 	}
 	.entries > li {
 		background: var(--bg-surface);
-		border-radius: 18px;
+		border-radius: var(--r-xl);
 		padding: 0.9rem 1rem;
 	}
 	h2 {
@@ -100,13 +100,13 @@
 	label {
 		display: grid;
 		gap: 0.2rem;
-		font-size: 0.86rem;
+		font-size: var(--fs-100);
 	}
 	input {
 		font: inherit;
 		padding: 0.35rem 0.5rem;
 		border: 1px solid var(--border-subtle);
-		border-radius: 8px;
+		border-radius: var(--r-md);
 		background: var(--bg-canvas);
 		color: var(--text-primary);
 		max-width: 100%;
@@ -114,7 +114,7 @@
 	.ways,
 	.muted {
 		color: var(--text-secondary);
-		font-size: 0.86rem;
+		font-size: var(--fs-100);
 	}
 	code {
 		overflow-wrap: anywhere;

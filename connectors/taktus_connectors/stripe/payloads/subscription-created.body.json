@@ -1,0 +1,15 @@
+{
+  "id": "evt_1QfakeSubscriptionCreated",
+  "object": "event",
+  "created": 1767225590,
+  "type": "customer.subscription.created",
+  "livemode": false,
+  "data": {
+    "object": {
+      "id": "sub_fake1",
+      "object": "subscription",
+      "customer": "cus_fake1",
+      "status": "active"
+    }
+  }
+}

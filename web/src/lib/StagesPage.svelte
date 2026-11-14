@@ -6,36 +6,38 @@
 	role. The link leads to the run level, for a reader who may see it.
 -->
 <script lang="ts">
+	import { failed, surface } from './api';
+	import EmptyState from './EmptyState.svelte';
+	import ErrorState from './ErrorState.svelte';
 	import { frame } from './frame.svelte';
-	import { onDestroy } from 'svelte';
-	import { surface } from './api';
-	import { followLevel } from './live';
+	import { ofRun, watchLevel } from './live';
 	import { runLink } from './links';
 	import SignInForm from './SignInForm.svelte';
-	import type { StageView } from './types';
+	import Skeleton from './Skeleton.svelte';
+	import Unavailable from './Unavailable.svelte';
+	import type { Problem, StageView } from './types';
 
 	let signedIn = $state(true);
 	let absent = $state(false);
-	let connected = $state(false);
 	let view: StageView | null = $state(null);
-	let stop: AbortController | null = null;
+	let problem: Problem | null = $state(null);
+	let again: (() => Promise<void>) | null = null;
 
 	let { runId }: { runId: string } = $props();
 
 	$effect(() => {
 		if (!signedIn || !runId) return;
-		stop?.abort();
 		const controller = new AbortController();
-		stop = controller;
-		frame.follow();
-		void followLevel<StageView>({
+		again = watchLevel<StageView>({
 			base: surface(location.href),
 			path: `levels/runs/${encodeURIComponent(runId)}/stages`,
-			scope: { run: runId },
+			concerns: ofRun(runId),
+			hub: frame,
 			signal: controller.signal,
 			onLevel: (found) => {
 				view = found;
 				absent = false;
+				problem = null;
 			},
 			onAbsent: () => {
 				absent = true;
@@ -44,25 +46,17 @@
 			onRefused: () => {
 				signedIn = false;
 			},
-			onConnected: (open) => {
-				connected = open;
-				frame.connected(open);
-			},
-			onChange: () => frame.changed()
-		});
-	});
-	onDestroy(() => {
-		stop?.abort();
-		frame.leave();
+			onFailed: (found) => (problem = found)
+		}).again;
+		return () => controller.abort();
 	});
 </script>
 
 {#if !signedIn}
 	<SignInForm onSignedIn={() => (signedIn = true)} />
 {:else if absent}
-	<p>No run {runId} you may see.</p>
+	<EmptyState title="No run {runId} you may see." />
 {:else if view}
-	<p class="sr-only" aria-live="polite">{connected ? 'Live.' : 'Reconnecting…'}</p>
 	<section aria-labelledby="stages-title">
 		<h1 id="stages-title">{view.summary}</h1>
 		<ol class="stages">
@@ -77,15 +71,15 @@
 		</ol>
 		<p><a href={runLink(view.run_id)}>The run level</a></p>
 	</section>
+{:else if problem && failed(problem)}
+	<ErrorState what="The stages of run {runId}" {problem} onRetry={() => void again?.()} />
+{:else if problem}
+	<Unavailable eyebrow="Stages" problem={problem.detail || problem.title} />
 {:else}
-	<p class="status">Reading the stages of run {runId}…</p>
+	<Skeleton label="Reading the stages of run {runId}…" />
 {/if}
 
 <style>
-	.status {
-		color: var(--text-secondary);
-		font-size: 0.9rem;
-	}
 	.stages {
 		list-style: none;
 		padding: 0;
@@ -103,7 +97,7 @@
 	}
 	.state {
 		text-transform: uppercase;
-		font-size: 0.8rem;
+		font-size: var(--fs-090);
 	}
 	.visually-hidden {
 		position: absolute;

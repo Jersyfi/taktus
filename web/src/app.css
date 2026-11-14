@@ -43,16 +43,24 @@ h1 {
 	max-width: 30ch;
 }
 
-/* A section's name is a label: small, set apart, the subtle ink. */
+/* A section's name is a title: what the section is about, in the display face (ADR-0322). A
+   small set-apart label is `.label`, never a heading. */
 h2 {
-	font-family: var(--font-ui);
-	font-size: var(--fs-075);
+	font-family: var(--font-display);
+	font-size: var(--fs-400);
 	font-weight: var(--fw-semibold);
 	line-height: var(--lh-snug);
+	letter-spacing: -0.01em;
+	color: var(--text-primary);
+	margin: var(--sp-400) 0 var(--sp-150);
+}
+
+.label {
+	font-size: var(--fs-075);
+	font-weight: var(--fw-semibold);
 	letter-spacing: 0.08em;
 	text-transform: uppercase;
 	color: var(--text-subtle);
-	margin: var(--sp-400) 0 var(--sp-150);
 }
 
 h3 {
@@ -195,7 +203,7 @@ code,
 kbd,
 samp {
 	font-family: var(--font-mono);
-	font-size: 0.86em;
+	font-size: var(--fs-090);
 }
 
 ::selection {
@@ -210,7 +218,7 @@ section.text {
 section.text ol {
 	font-family: var(--font-mono);
 	font-size: var(--fs-075);
-	line-height: 1.8;
+	line-height: var(--lh-loose);
 	background: var(--bg-surface-sunken);
 	border-radius: var(--r-lg);
 	box-shadow: var(--shadow-nested);
@@ -245,13 +253,15 @@ hr {
 	border-top: var(--bw-hairline) solid var(--border-subtle);
 }
 
-/* Under reduced motion — the system's or the reader's — the frame moves nothing. The glyphs keep
-   their own still marks (ADR-0059 §2). */
+/* Under reduced motion — the system's or the reader's — nothing moves: no transition and no
+   animation, the mark's beat and the Takt's arrival included. The glyphs keep their own still
+   marks (ADR-0059 §2). */
 @media (prefers-reduced-motion: reduce) {
 	*,
 	*::before,
 	*::after {
 		transition-duration: var(--dur-instant) !important;
+		animation: none !important;
 		scroll-behavior: auto !important;
 	}
 }
@@ -260,6 +270,16 @@ hr {
 :root[data-motion='reduced'] *::before,
 :root[data-motion='reduced'] *::after {
 	transition-duration: var(--dur-instant) !important;
+	animation: none !important;
+}
+
+/* Below the expanded width a table scrolls in its own box instead of widening the page. */
+@media (max-width: 904px) {
+	main table {
+		display: block;
+		max-width: 100%;
+		overflow-x: auto;
+	}
 }
 
 .sr-only {

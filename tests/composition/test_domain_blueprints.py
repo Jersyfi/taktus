@@ -123,7 +123,12 @@ async def test_software_operations_is_instantiated_in_dialogue_at_level_two_or_b
     directory = BLUEPRINTS / "software-operations"
     domains, instance = await instantiated(world, directory)
     found = admitted(directory)
-    assert instance.left_out == ("B-8.04-store", "B-8.04-serverless", "B-8.05-site")
+    assert instance.left_out == (
+        "B-3.02-account",
+        "B-8.04-store",
+        "B-8.04-serverless",
+        "B-8.05-site",
+    )
     errors = instance.binding("errors.issues")
     assert errors is not None and errors.adapter == "connector.sentry", (
         "a capability is bound to an adapter that declares it"

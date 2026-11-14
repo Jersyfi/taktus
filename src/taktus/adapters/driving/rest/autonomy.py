@@ -31,7 +31,7 @@ from taktus.components.governance.domain.model import (
     Rate,
 )
 from taktus.components.reporting.domain.model import Reader
-from taktus.components.reporting.domain.service.levels import ProcessElement
+from taktus.components.reporting.domain.service.levels import OverviewLevel, ProcessElement
 from taktus.ports.identity import Resolution
 
 type Authenticated = Callable[[RestServices, str | None], Awaitable[Resolution | None]]
@@ -191,6 +191,39 @@ def autonomy_document(
     }
 
 
+async def autonomy_processes(
+    services: RestServices, reader: Reader, overview: OverviewLevel | None = None
+) -> list[dict[str, Any]]:
+    """Every process the reader may see, with its level, why, and its units' rates: what
+    `GET /autonomy` lists and `GET /levels/today` marks, which hands in the overview it read
+    already. No run is read (ADR-0319)."""
+    corrections = services.corrections
+    if overview is None:
+        overview = await services.levels.overview(reader)
+    figures = await corrections.figures(reader.tenant)
+    proposed = await corrections.proposed(reader.tenant)
+    lowerings = await corrections.lowerings(reader.tenant)
+    processes: list[dict[str, Any]] = []
+    for area in overview.areas:
+        for summary_ in area.processes:
+            # The level and its statement alone: no run of the version is read (ADR-0319).
+            level = await services.levels.process(reader, summary_.id, None, None)
+            if level is None:
+                continue
+            process = level.process
+            version = f"{process.id}@{process.version}"
+            processes.append(
+                process_document(
+                    process,
+                    await corrections.lowered(reader.tenant, version),
+                    [f for f in figures if f.unit.process_id == process.id],
+                    [p for p in proposed if p.process_version == version],
+                    [i for i in lowerings if i.process_version == version],
+                )
+            )
+    return processes
+
+
 def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
     routes = APIRouter(tags=["autonomy"])
 
@@ -216,29 +249,8 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         reader = Reader(
             tenant=who.tenant, identity=who.identity, roles=who.roles, unseen=who.unseen
         )
-        corrections = services.corrections
-        overview = await services.levels.overview(reader)
-        figures = await corrections.figures(who.tenant)
-        proposed = await corrections.proposed(who.tenant)
-        lowerings = await corrections.lowerings(who.tenant)
-        processes: list[dict[str, Any]] = []
-        for area in overview.areas:
-            for summary_ in area.processes:
-                level = await services.levels.process(reader, summary_.id)
-                if level is None:
-                    continue
-                process = level.process
-                version = f"{process.id}@{process.version}"
-                processes.append(
-                    process_document(
-                        process,
-                        await corrections.lowered(who.tenant, version),
-                        [f for f in figures if f.unit.process_id == process.id],
-                        [p for p in proposed if p.process_version == version],
-                        [i for i in lowerings if i.process_version == version],
-                    )
-                )
-        limits = await corrections.limits(who.tenant)
+        processes = await autonomy_processes(services, reader)
+        limits = await services.corrections.limits(who.tenant)
         return JSONResponse(autonomy_document(processes, limits))
 
     return routes

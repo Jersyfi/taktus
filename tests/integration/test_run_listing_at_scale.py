@@ -14,6 +14,8 @@ stall over 0.5 s. Every page read in turn returns every run exactly once, newest
 from __future__ import annotations
 
 import asyncio
+import resource
+import sys
 import time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
@@ -21,16 +23,18 @@ from typing import Any
 
 import httpx
 import pytest
+from fakes.takeover import instructions
 from sqlalchemy import text
 
 from taktus.adapters.driven.postgres import _schema as schema
 from taktus.adapters.driving.rest.app import PAGE_MAXIMUM
+from taktus.components.process.application.service.register_version import RegisterProcessVersion
 from taktus.components.run.domain.model import Checkpoint, Run, RunState, StepState
 from taktus.composition.daemon import Wired
 from taktus.ports.worker import ComputeLimit, Limits
 from taktus.shared.v1 import Artifact, ExactnessClass, Method, Rejected, Step
 
-from .test_daemon_scaling import Instance, instances
+from .test_daemon_scaling import Instance, instances, rule_only_bundle
 from .test_live_changes import chosen, reader_key
 
 __all__ = ["chosen", "instances"]
@@ -206,3 +210,101 @@ async def test_two_thousand_runs_are_listed_in_time_without_stalling_the_loop(
         counted, took, stall = await measured(every_run)
         print(f"every run through the repository: {took:.3f} s, longest stall {stall:.3f} s")
         assert counted == RUNS and stall < STALL_SECONDS, stall
+
+
+# --- the performance budget of the start page and the views (ADR-0320) -------------------------
+
+OPEN_SHARE = 20
+"""One run in this many has not ended: it runs."""
+START_PAGE = ("/levels/today", "/changes?snapshot=position", "/changes/recent")
+"""What the start page asks since ADR-0318: one summary, the stream's position, the recent strip."""
+VIEWS = (
+    "/levels/overview",
+    "/changes",
+    "/runs",
+    "/runs?state=running",
+    "/levels/processes/listing",
+    "/autonomy",
+    "/operation",
+)
+"""What the other views ask first."""
+ONE_SECONDS = 1.0
+"""The most one request of the start page or a view may take on its own (ADR-0320)."""
+TOGETHER_SECONDS = 3.0
+"""The most the start page of `READERS` readers asked at once may take, all of it."""
+READERS = 5
+
+
+async def seed_open(wired: Wired, tenant: str) -> None:
+    """The 2 000 runs of `seed`, one in `OPEN_SHARE` of them running, and the process they
+    belong to registered, so that the overview, the levels and the autonomy read it."""
+    await seed(wired, tenant)
+    document = rule_only_bundle(0)
+    document["id"], document["version"] = "listing", "1"
+    document["takeover"] = instructions(document)
+    await wired.register_version.execute(RegisterProcessVersion(document, tenant=tenant))
+    async with wired.persistence.engine.begin() as connection:
+        await connection.execute(
+            text("SELECT set_config('taktus.tenant', :t, true)"), {"t": tenant}
+        )
+        await connection.execute(
+            text(
+                "UPDATE run SET state = 'running' "
+                "WHERE tenant = :t AND substring(id from 5)::int % :share = 0"
+            ),
+            {"t": tenant, "share": OPEN_SHARE},
+        )
+
+
+async def asked(http: httpx.AsyncClient, path: str, headers: dict[str, str]) -> int:
+    """One request answered: a JSON answer read whole, a stream read to its first event."""
+    if not path.startswith("/changes?") and path != "/changes":
+        answer = await http.get(path, headers=headers)
+        assert answer.status_code == 200, (path, answer.text)
+        return len(answer.content)
+    async with http.stream("GET", path, headers=headers) as response:
+        assert response.status_code == 200, path
+        read = 0
+        async for line in response.aiter_lines():
+            read += len(line)
+            if line.startswith("data: "):
+                return read
+    raise AssertionError(f"{path}: the stream ended before its first event")
+
+
+@pytest.mark.timing
+async def test_the_start_page_and_every_view_answer_within_the_budget_at_two_thousand_runs(
+    instances: Callable[..., Instance], chosen: str
+) -> None:
+    """Each request of the start page and of the views on its own under `ONE_SECONDS`, the
+    start page of `READERS` readers at once under `TOGETHER_SECONDS`, and no stall of the loop
+    over `STALL_SECONDS`. The times and the process's peak memory are printed: the figures
+    ADR-0320 states."""
+    async with instances("budget", TAKTUS_ROLES="api") as one:
+        assert one.wired is not None
+        await seed_open(one.wired, chosen)
+        key = await reader_key(one.wired, chosen)
+        base = f"http://127.0.0.1:{one.settings.http_port}"
+        headers = {"Authorization": f"Bearer {key}"}
+        async with httpx.AsyncClient(base_url=base, timeout=120) as http:
+            print()
+            for path in (*START_PAGE, *VIEWS):
+                size, took, stall = await measured(lambda p=path: asked(http, p, headers))
+                print(f"{path}: {took:.3f} s, {size} bytes, longest stall {stall:.3f} s")
+                assert took < ONE_SECONDS and stall < STALL_SECONDS, (path, took, stall)
+
+            async def together() -> list[int]:
+                return list(
+                    await asyncio.gather(
+                        *(asked(http, p, headers) for _ in range(READERS) for p in START_PAGE)
+                    )
+                )
+
+            _, took, stall = await measured(together)
+            print(f"the start page of {READERS} readers at once: {took:.3f} s, stall {stall:.3f} s")
+            assert took < TOGETHER_SECONDS and stall < STALL_SECONDS, (took, stall)
+            today = (await http.get("/levels/today", headers=headers)).json()
+            assert today["counts"]["running_now"] == RUNS // OPEN_SHARE
+        peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        unit = 1 if sys.platform == "darwin" else 1024  # bytes on macOS, KiB on Linux
+        print(f"peak resident memory of this process: {peak * unit / 1e6:.0f} MB")

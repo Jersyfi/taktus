@@ -232,14 +232,23 @@
     {
       "capabilities": [
         "billing.costs",
+        "expiry.credentials",
         "logs.query",
+        "metrics.series",
+        "models.catalogue",
+        "models.costs",
         "secrets.metadata"
       ],
       "image": "taktus-connector-gcp",
       "name": "gcp",
       "operations": [
         "billing.costs.daily",
+        "expiry.credentials.list",
         "logs.query.entries",
+        "metrics.series.query",
+        "metrics.series.range",
+        "models.catalogue.list",
+        "models.costs.daily",
         "secrets.metadata.list"
       ]
     },
@@ -421,6 +430,7 @@
       "capabilities": [
         "orchestrator.changes",
         "orchestrator.conformance",
+        "orchestrator.conversation",
         "orchestrator.guides",
         "orchestrator.integrations",
         "orchestrator.maturation",
@@ -435,6 +445,8 @@
         "orchestrator.changes.propose",
         "orchestrator.changes.read",
         "orchestrator.conformance.run",
+        "orchestrator.conversation.answer",
+        "orchestrator.conversation.context",
         "orchestrator.guides.measure",
         "orchestrator.guides.publish",
         "orchestrator.guides.render",

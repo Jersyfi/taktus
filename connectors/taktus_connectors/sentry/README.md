@@ -58,11 +58,26 @@ connector drops both. No figure here may assess a named person (principle 14).
 | 429, 5xx, no answer in time, no connection | `unavailable`, retryable |
 | anything else | `unexpected` |
 
+## Intake: a new issue (ADR-0331)
+
+The tracker's integration sends a webhook for every new issue. The connector's `intake` tool
+verifies `Sentry-Hook-Signature` — the HMAC-SHA256 of the raw body, keyed with the integration's
+client secret, in lowercase hex — before the body is read (`hmac-sha256`). A delivery whose
+`Sentry-Hook-Resource` is `issue` and whose `action` is `created` becomes the event
+`error.created`: `event_id` `error:<issue id>`, so a redelivery is one event; context `project`
+(the project's slug), `error` (the issue's identifier) and `link` where given; the sender the
+integration's `installation.uuid`, an automation; no text, no person. Anything else is
+`unsupported_event`; a body without an issue, a project or an installation is `malformed`. The
+scheme signs no moment, so a replay is recognised by the issue, not refused as stale.
+[`payloads/`](payloads/) holds a new and a resolved issue, written for the test from the
+published payload; no delivery of a real integration is in the repository.
+
 ## Credentials
 
 | Name | Purpose | How it reaches the connector |
 |---|---|---|
 | `ERRORS_TOKEN` | actions: the **requesting identity's** token for the API, with the scopes `org:read`, `project:read` and `event:read` and no other | the file `TAKTUS_CREDENTIAL_ERRORS_TOKEN_FILE` names, read at the moment of each call, never stored |
+| `ERRORS_INTAKE_SECRET` | intake: the integration's client secret, which signs each webhook | the file `TAKTUS_CREDENTIAL_ERRORS_INTAKE_SECRET_FILE` names, read at each delivery, never stored |
 
 The contract has no connector without the requesting identity's credential (C-03): a call
 that references none is refused. The token goes to the configured address and nowhere else.

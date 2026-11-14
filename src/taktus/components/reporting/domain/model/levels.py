@@ -195,6 +195,15 @@ class RunAtVersion(Value):
     rehearsal: bool = False
     running: tuple[str, ...] = ()
     created_at: datetime
+    ended: bool = False
+    """Whether the run has ended, by the run component's own definition."""
+
+
+class StateCount(Value):
+    """How many runs are in one state."""
+
+    state: str = Field(min_length=1)
+    runs: int = Field(ge=0)
 
 
 class ProcessFacts(Value):
@@ -209,6 +218,12 @@ class ProcessFacts(Value):
     steps: tuple[ProcessStepFacts, ...] = Field(min_length=1)
     versions: tuple[VersionRef, ...] = Field(min_length=1)
     runs: tuple[RunAtVersion, ...] = ()
+    """The runs of the version the facts were read with: those not yet ended, and a page of
+    the newest that ended (ADR-0319 §3)."""
+    counts: tuple[StateCount, ...] = ()
+    """Every run of the version, counted by state where they are stored (ADR-0319 §3)."""
+    older: RunAtVersion | None = None
+    """The last ended run of the page, where more ended runs follow it; None otherwise."""
     exactness: Statement | None = None
     """The exactness statement of this version (UC-6.9)."""
     untried: bool = False

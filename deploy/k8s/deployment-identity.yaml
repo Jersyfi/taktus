@@ -1,0 +1,108 @@
+# The deployment identity (deploy/k8s/README.md §1): the account a person installs Taktus with.
+#
+# A cluster administrator applies this once, after creating the two namespaces with their
+# Pod Security labels (DEC-0060), and hands the installing person a kubeconfig for the account
+# (CREDENTIALS.md, "Deployment kubeconfig"; NEED-0007). Replace the two placeholders first:
+#
+#   export CONTROL_NAMESPACE=<control-plane namespace> EXECUTION_NAMESPACE=<execution namespace>
+#   envsubst < deploy/k8s/deployment-identity.yaml | kubectl apply -f -
+#
+# Namespaced objects only: a ServiceAccount, a Role and a RoleBinding in each namespace, and the
+# account's token Secret. No ClusterRole, no namespace, nothing of the cluster as a whole. The
+# account is never given to Taktus; the chart creates Taktus's own (§1).
+# `tests/governance/test_deployment_identity.py` holds the rights to what the chart renders.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: taktus-deployer
+  namespace: ${CONTROL_NAMESPACE}
+---
+apiVersion: v1
+kind: Secret
+type: kubernetes.io/service-account-token
+metadata:
+  name: taktus-deployer-token
+  namespace: ${CONTROL_NAMESPACE}
+  annotations:
+    kubernetes.io/service-account.name: taktus-deployer
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: taktus-deployer
+  namespace: ${CONTROL_NAMESPACE}
+rules:
+  - apiGroups: [""]
+    resources: [secrets, configmaps, services, serviceaccounts, persistentvolumeclaims]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [batch]
+    resources: [jobs, cronjobs]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [roles, rolebindings]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [networking.k8s.io]
+    resources: [networkpolicies, ingresses]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [policy]
+    resources: [poddisruptionbudgets]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [pods, pods/log, events]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: taktus-deployer
+  namespace: ${CONTROL_NAMESPACE}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: taktus-deployer
+subjects:
+  - kind: ServiceAccount
+    name: taktus-deployer
+    namespace: ${CONTROL_NAMESPACE}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: taktus-deployer
+  namespace: ${EXECUTION_NAMESPACE}
+rules:
+  - apiGroups: [""]
+    resources: [secrets, configmaps, services, serviceaccounts, persistentvolumeclaims]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [roles, rolebindings]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [networking.k8s.io]
+    resources: [networkpolicies, ingresses]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [pods, pods/log, events]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: taktus-deployer
+  namespace: ${EXECUTION_NAMESPACE}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: taktus-deployer
+subjects:
+  - kind: ServiceAccount
+    name: taktus-deployer
+    namespace: ${CONTROL_NAMESPACE}

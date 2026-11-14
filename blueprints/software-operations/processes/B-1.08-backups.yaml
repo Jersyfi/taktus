@@ -34,9 +34,15 @@
 #         --input 'drills=time() - restore_drill_last_success_timestamp_seconds'
 #
 # Switching it off (`taktusctl deactivate --process b-1-08`) changes nothing at the store.
+#
+# Named metrics (ADR-0328): each read names the metric it needs, `backups.age`, `drills.age`, and the
+# connector serving `metrics.series` maps the name to its own store's query — PromQL on a
+# Prometheus store or on a cloud's monitoring service — from the tenant's configuration
+# (`--metrics`). A query given as an input is asked verbatim instead. Version 3
+# drops the Prometheus query its schedule carried; a Prometheus store maps the names now.
 
 id: b-1-08
-version: "2"
+version: "3"
 name: B-1.08 Backups
 autonomy:
   level: 1
@@ -54,19 +60,18 @@ reason: a backup that stopped or a restore drill that failed found the next morn
 
 triggers:
   - schedule: "0 6 * * *"
-    inputs:
-      backups: time() - backup_last_success_timestamp_seconds
-      drills: time() - restore_drill_last_success_timestamp_seconds
 
 inputs:
   backups:
     description: the tenant's query for the age of each job's last successful backup, in seconds
     example: time() - backup_last_success_timestamp_seconds
+    required: false
   drills:
     description: >
       the tenant's query for the age of each job's last restore drill whose samples matched, in
       seconds
     example: time() - restore_drill_last_success_timestamp_seconds
+    required: false
 
 limits:
   quota: { units: 4 }
@@ -90,7 +95,8 @@ steps:
       rule: connector
       operation: metrics.series.query
       input:
-        query: { $input: backups }
+        metric: backups.age
+        query: { $input: backups, $otherwise: "" }
       credentials:
         - { name: METRICS_TOKEN, injected_as: env }
       expect:
@@ -138,7 +144,8 @@ steps:
       rule: connector
       operation: metrics.series.query
       input:
-        query: { $input: drills }
+        metric: drills.age
+        query: { $input: drills, $otherwise: "" }
       credentials:
         - { name: METRICS_TOKEN, injected_as: env }
       expect:

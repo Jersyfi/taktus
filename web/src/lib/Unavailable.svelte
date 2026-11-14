@@ -20,6 +20,6 @@
 <style>
 	h1 {
 		max-width: 28ch;
-		font-size: clamp(1.4rem, 3vw, 2rem);
+		font-size: clamp(var(--fs-400), 3vw, var(--fs-600));
 	}
 </style>

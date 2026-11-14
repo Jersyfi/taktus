@@ -99,13 +99,20 @@ async def handler(
     models_at: tuple[Location, ...] = ("elsewhere",),
     hosts: dict[str, Location] | None = None,
     personal: str = "eu",
+    demanded: tuple[str, ...] = (),
+    declared: tuple[str, ...] = (),
 ) -> RegisterProcessVersionHandler:
     clock = FakeClock(datetime(2026, 11, 7, 9, 0, tzinfo=UTC))
     persistence = MemoryPersistence()
     ledger = ChainedLedger(MemoryLedgerStore(persistence), clock)
     rule = TenantResidency(MemoryRepository(persistence, ResidencyRule), ledger, persistence, clock)
     await rule.configure(
-        ConfigureResidency(tenant=TENANT, location="anywhere", classes={"personal": personal}),
+        ConfigureResidency(
+            tenant=TENANT,
+            location="anywhere",
+            classes={"personal": personal},
+            class_terms={"personal": demanded},
+        ),
         by="op",
     )
     pools = Pools(
@@ -120,7 +127,7 @@ async def handler(
         ),
         StaticModelPool(
             [(f"model.{at}", ("drafting",), FakeModel(), None) for at in models_at],
-            {f"model.{at}": Declared(location=at) for at in models_at},
+            {f"model.{at}": Declared(location=at, terms=frozenset(declared)) for at in models_at},
         ),
     )
     return RegisterProcessVersionHandler(
@@ -129,7 +136,7 @@ async def handler(
         MemoryRepository(persistence, Process),
         ledger=ledger,
         clock=clock,
-        residency=PoolBindings(pools, rule, hosts or {}),
+        residency=PoolBindings(pools, rule, hosts or {}, rule),
     )
 
 
@@ -173,3 +180,17 @@ async def test_a_step_of_an_unrestricted_class_registers_wherever_its_adapters_a
     for step in (connector(), worker("x.example"), model()):
         await register(await handler(personal="anywhere"), step)
     await register(await handler(), connector(data_class=None))
+
+
+async def test_a_step_bound_only_to_models_without_the_terms_demanded_does_not_register() -> None:
+    """ADR-0334: a class whose rule demands a processing agreement and no training registers
+    only where a model of the purpose declares both."""
+    both = ("processing-agreement", "no-training")
+    with pytest.raises(InvalidProcess, match=r"step 'draft'.*declares the provider's terms"):
+        await register(
+            await handler(models_at=("eu",), personal="anywhere", demanded=both), model()
+        )
+    await register(
+        await handler(models_at=("eu",), personal="anywhere", demanded=both, declared=both),
+        model(),
+    )

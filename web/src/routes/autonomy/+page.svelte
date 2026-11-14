@@ -2,6 +2,7 @@
 	Each process's level and its correction rates: `GET /autonomy` (ADR-0122), read on opening.
 -->
 <script lang="ts">
+	import Skeleton from '../../lib/Skeleton.svelte';
 	import Unavailable from '../../lib/Unavailable.svelte';
 	import { read, surface } from '../../lib/api';
 	import AutonomyView from '../../lib/AutonomyView.svelte';
@@ -30,12 +31,6 @@
 {:else if problem}
 	<Unavailable eyebrow="Levels" {problem} />
 {:else}
-	<p class="status">Reading the levels…</p>
+	<Skeleton label="Reading the levels…" />
 {/if}
 
-<style>
-	.status {
-		color: var(--text-secondary);
-		font-size: 0.9rem;
-	}
-</style>

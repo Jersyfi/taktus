@@ -37,9 +37,15 @@
 #         --input 'storage_query=sum by (bucket) (storage_bytes)' --input label=ready
 #
 # Switching it off (`taktusctl deactivate --process b-1-02`) changes nothing at the store.
+#
+# Named metrics (ADR-0328): each read names the metric it needs, `database.query_time`, `egress.bytes`, `functions.duration`, `storage.bytes`, and the
+# connector serving `metrics.series` maps the name to its own store's query — PromQL on a
+# Prometheus store or on a cloud's monitoring service — from the tenant's configuration
+# (`--metrics`). A query given as an input is asked verbatim instead. Version 4
+# drops the Prometheus query its schedule carried; a Prometheus store maps the names now.
 
 id: b-1-02
-version: "3"
+version: "4"
 name: B-1.02 Cost drivers
 autonomy:
   level: 2
@@ -57,10 +63,6 @@ reason: the costliest server function, query, egress and storage named every mon
 triggers:
   - schedule: "0 6 1 * *"
     inputs:
-      query: histogram_quantile(0.95, sum by (function, le) (rate(function_duration_seconds_bucket[30d])))
-      queries_query: topk(20, sum by (query) (increase(db_query_seconds_total[30d])))
-      egress_query: sum by (service) (increase(egress_bytes_total[30d]))
-      storage_query: sum by (bucket) (storage_bytes)
       label: ready
 
 inputs:
@@ -69,15 +71,19 @@ inputs:
       the tenant's query for the run time per function, in the store's query language; each
       series it answers is one function, labelled `function`
     example: histogram_quantile(0.95, sum by (function, le) (rate(function_duration_seconds_bucket[30d])))
+    required: false
   queries_query:
     description: the tenant's query for the time or cost spent per database query; each series one query
     example: topk(20, sum by (query) (increase(db_query_seconds_total[30d])))
+    required: false
   egress_query:
     description: the tenant's query for the bytes sent out per service or bucket; each series one sender
     example: sum by (service) (increase(egress_bytes_total[30d]))
+    required: false
   storage_query:
     description: the tenant's query for the bytes stored per bucket or database; each series one store
     example: sum by (bucket) (storage_bytes)
+    required: false
   label:
     description: the label under which the tenant's implementation process takes an issue
     example: ready
@@ -105,7 +111,8 @@ steps:
       rule: connector
       operation: metrics.series.query
       input:
-        query: { $input: query }
+        metric: functions.duration
+        query: { $input: query, $otherwise: "" }
       credentials:
         - { name: METRICS_TOKEN, injected_as: env }
       expect:
@@ -153,7 +160,8 @@ steps:
       rule: connector
       operation: metrics.series.query
       input:
-        query: { $input: queries_query }
+        metric: database.query_time
+        query: { $input: queries_query, $otherwise: "" }
       credentials:
         - { name: METRICS_TOKEN, injected_as: env }
       expect:
@@ -197,7 +205,8 @@ steps:
       rule: connector
       operation: metrics.series.query
       input:
-        query: { $input: egress_query }
+        metric: egress.bytes
+        query: { $input: egress_query, $otherwise: "" }
       credentials:
         - { name: METRICS_TOKEN, injected_as: env }
       expect:
@@ -241,7 +250,8 @@ steps:
       rule: connector
       operation: metrics.series.query
       input:
-        query: { $input: storage_query }
+        metric: storage.bytes
+        query: { $input: storage_query, $otherwise: "" }
       credentials:
         - { name: METRICS_TOKEN, injected_as: env }
       expect:

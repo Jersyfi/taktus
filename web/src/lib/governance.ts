@@ -5,6 +5,7 @@
 // handed; nothing here computes a figure.
 
 import { read, readAs, send, type Answer } from './api';
+import { readShared } from './shared';
 
 // --- the shapes the surface answers --------------------------------------------------------------
 
@@ -293,10 +294,10 @@ export async function governanceLines(
 	fetcher: typeof fetch = fetch
 ): Promise<Line[]> {
 	const [requests, reports, autonomy, findings, tenants] = await Promise.all([
-		read<{ requests: unknown[]; overdue: number }>(base, 'decisions', fetcher),
-		read<{ reports: OwnerReport[] }>(base, 'owner/reports', fetcher),
-		read<AutonomyAnswer>(base, 'autonomy', fetcher),
-		read<FindingsAnswer>(base, 'findings', fetcher),
+		readShared<{ requests: unknown[]; overdue: number }>(base, 'decisions', fetcher),
+		readShared<{ reports: OwnerReport[] }>(base, 'owner/reports', fetcher),
+		readShared<AutonomyAnswer>(base, 'autonomy', fetcher),
+		readShared<FindingsAnswer>(base, 'findings', fetcher),
 		administrationKey
 			? readAs<{ tenants: Tenant[] }>(base, 'administration/tenants', administrationKey, fetcher)
 			: Promise.resolve(null)

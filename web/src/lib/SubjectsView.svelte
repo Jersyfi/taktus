@@ -103,11 +103,11 @@
 <style>
 	.muted {
 		color: var(--text-secondary);
-		font-size: 0.88rem;
+		font-size: var(--fs-100);
 	}
 	.id {
 		font-family: var(--font-mono);
-		font-size: 0.78rem;
+		font-size: var(--fs-075);
 		color: var(--text-subtle);
 	}
 	.list {
@@ -134,7 +134,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.25rem;
-		font-size: 0.88rem;
+		font-size: var(--fs-100);
 	}
 	label.check {
 		flex-direction: row;
@@ -146,7 +146,7 @@
 		font: inherit;
 		padding: 0.4rem 0.6rem;
 		border: 1px solid var(--border-subtle);
-		border-radius: 10px;
+		border-radius: var(--r-md);
 		background: var(--bg-canvas);
 		color: var(--text-primary);
 	}
@@ -155,6 +155,6 @@
 		max-width: 46rem;
 		padding: 1rem;
 		border: 1px solid var(--border-subtle);
-		border-radius: 14px;
+		border-radius: var(--r-lg);
 	}
 </style>

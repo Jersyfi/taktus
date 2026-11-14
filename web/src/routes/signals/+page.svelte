@@ -4,6 +4,7 @@
 	people the owner named; for anyone else the page says so, and shows the signals.
 -->
 <script lang="ts">
+	import Skeleton from '../../lib/Skeleton.svelte';
 	import Unavailable from '../../lib/Unavailable.svelte';
 	import { read, surface } from '../../lib/api';
 	import SignInForm from '../../lib/SignInForm.svelte';
@@ -40,12 +41,6 @@
 {:else if problem}
 	<Unavailable eyebrow="Signals" {problem} />
 {:else}
-	<p class="status">Reading the signals…</p>
+	<Skeleton label="Reading the signals…" />
 {/if}
 
-<style>
-	.status {
-		color: var(--text-secondary);
-		font-size: 0.9rem;
-	}
-</style>

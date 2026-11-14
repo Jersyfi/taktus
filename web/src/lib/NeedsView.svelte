@@ -6,6 +6,9 @@
 	Each need leads to its report's page, where it is answered as in the channel (ADR-0120).
 -->
 <script lang="ts">
+	import DisplaySwitch from './DisplaySwitch.svelte';
+	import TextEquivalent from './TextEquivalent.svelte';
+	import { display } from './display.svelte';
 	import type { OwnerReport } from './governance';
 	import { reportLink, requestsLink } from './links';
 
@@ -62,28 +65,31 @@
 		{/each}
 	</ul>
 
-	<section class="text" aria-label="The needs as text">
-		<h2>As text</h2>
-		<ol>
+	<div class="as-text"><DisplaySwitch page="needs" /></div>
+	<TextEquivalent label="The needs as text" mode={display.of('needs')}>
 			<li>{sentence}</li>
 			{#each needs as n (n.id)}
 				<li data-text="need:{n.id}">{n.id}: {n.title}; {STATE[n.state] ?? n.state}; due {n.due}.</li>
 			{/each}
-		</ol>
-	</section>
+	</TextEquivalent>
 </section>
 
 <style>
+	.as-text {
+		display: flex;
+		justify-content: flex-end;
+		margin-top: var(--sp-400);
+	}
 	.muted,
 	.state,
 	.id {
 		color: var(--text-secondary);
-		font-size: 0.88rem;
+		font-size: var(--fs-100);
 		margin: 0.2rem 0;
 	}
 	.id {
 		font-family: var(--font-mono);
-		font-size: 0.75rem;
+		font-size: var(--fs-075);
 	}
 	.list {
 		list-style: none;
@@ -93,7 +99,7 @@
 		max-width: 56rem;
 	}
 	.need {
-		border-radius: 24px;
+		border-radius: var(--r-2xl);
 		padding: 1rem 1.2rem;
 		background: var(--bg-surface);
 		box-shadow: inset 3px 0 0 var(--text-primary);
@@ -107,7 +113,7 @@
 		text-decoration: none;
 	}
 	.title {
-		font-size: 1.05rem;
+		font-size: var(--fs-200);
 		font-weight: 600;
 		letter-spacing: 0;
 		text-transform: none;
@@ -116,11 +122,11 @@
 	}
 	.grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
 		gap: 1rem;
 	}
 	h3 {
-		font-size: 0.75rem;
+		font-size: var(--fs-075);
 		font-weight: 500;
 		color: var(--text-subtle);
 		margin: 0.6rem 0 0.2rem;
@@ -129,13 +135,13 @@
 	.grid ol {
 		margin: 0;
 		padding-left: 1.1rem;
-		font-size: 0.9rem;
+		font-size: var(--fs-100);
 	}
 	.answer {
-		font-size: 0.9rem;
+		font-size: var(--fs-100);
 	}
 	.link {
-		font-size: 0.85rem;
+		font-size: var(--fs-100);
 		margin-right: 0.75rem;
 	}
 </style>

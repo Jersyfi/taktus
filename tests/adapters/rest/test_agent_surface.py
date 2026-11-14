@@ -12,6 +12,7 @@ asked; every call is a ledger entry `agent.<tool>` with the person as actor.
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -23,6 +24,7 @@ from mcp.client.streamable_http import streamable_http_client
 from taktus.adapters.driven.memory import MemoryRepository
 from taktus.adapters.driving.rest import build_app
 from taktus.components.identity.domain.model import Right
+from taktus.components.process.application.service.proposals import Propose
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersion,
     RegisterProcessVersionHandler,
@@ -39,6 +41,10 @@ type Client_ = tuple[httpx.AsyncClient, Services, str]
 type Json = dict[str, Any]
 
 READS = {
+    "list_plans",
+    "get_plan",
+    "list_proposals",
+    "get_proposal",
     "list_processes",
     "list_runs",
     "get_run",
@@ -368,3 +374,174 @@ async def test_a_running_step_is_sent_a_message_by_the_agent_only_with_the_right
     recorded = await entries(given)
     assert ("agent.steer_step", "served", "idn_ada") in recorded
     assert ("agent.steer_step", "refused", "idn_ada") in recorded
+
+
+# --- building (ADR-0324, DEC-0239) -------------------------------------------------------------
+
+PLAN_TOOLS = {"open_plan", "answer_plan", "set_plan", "commission_plan", "confirm_act"}
+CHANGE_TOOLS = {
+    "ask_change",
+    "ask_description",
+    "rehearse_proposal",
+    "commission_proposal",
+    "discard_proposal",
+    "rollback_process",
+    "confirm_act",
+}
+A_STEP = {"id": "read", "method": "rule", "reason": "a rule", "rejected": [], "exactness": "exact"}
+GUIDED: list[tuple[str, Any, str | None]] = [
+    ("steps", [A_STEP], None),
+    ("due", "2026-12-01T09:00:00+00:00", None),
+    ("autonomy_level", 2, None),
+    ("autonomy_reason", "a person confirms every reply", None),
+    ("estimates", {"figure": 2, "unit": "seconds", "basis": "the last 30 runs"}, "read"),
+]
+
+
+class RecordingActs:
+    """The acts on a proposal as the surface reaches them: what was asked, as whom."""
+
+    def __init__(self, given: Services) -> None:
+        self.given = given
+        self.calls: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = []
+
+    async def ask(self, *args: Any, **kwargs: Any) -> Any:
+        self.calls.append(("ask", args, kwargs))
+        return SimpleNamespace(id="run_7")
+
+    async def rehearse(self, tenant: str, process: str, proposal: str, *args: Any) -> Any:
+        self.calls.append(("rehearse", (tenant, process, proposal, *args), {}))
+        found = await self.given.proposals.get(tenant, process, proposal)
+        return found, SimpleNamespace(id="run_8")
+
+    async def commission(self, *args: Any, **kwargs: Any) -> Any:
+        self.calls.append(("commission", args, kwargs))
+        return SimpleNamespace(version="2")
+
+    async def rollback(self, *args: Any, **kwargs: Any) -> Any:
+        self.calls.append(("rollback", args, kwargs))
+        return SimpleNamespace(version="3")
+
+
+async def test_an_agent_plans_and_a_commission_counts_only_once_its_reading_is_confirmed(
+    client: Client_,
+) -> None:
+    http, given, base = client
+    key = await agent(given, "idn_ada", "ops")
+    await given.identities.grant(TENANT, "ops", Right.PLAN, by="idn_admin")
+    assert await tools(http, base, key) == READS | PLAN_TOOLS
+
+    opened = await call(http, base, key, "open_plan", said="answer supplier invoices")
+    assert not opened["error"], opened
+    draft = opened["draft"]
+    for field, value, step in GUIDED:
+        asked = await call(http, base, key, "get_plan", draft=draft)
+        assert asked["question"]["field"] == field
+        arguments: Json = {"draft": draft, "field": field, "value": value}
+        if step is not None:
+            arguments["step_id"] = step
+        assert not (await call(http, base, key, "answer_plan", **arguments))["error"]
+    assert (await call(http, base, key, "get_plan", draft=draft))["missing"] == []
+
+    read = await call(http, base, key, "commission_plan", draft=draft)
+    assert not read["error"], read
+    assert draft in read["read_back"] and "answer supplier invoices" in read["read_back"]
+    unchanged = await call(http, base, key, "get_plan", draft=draft)
+    assert unchanged["commissioned"] is False, "a commission read back takes no effect"
+
+    done = await call(http, base, key, "confirm_act", act=read["act"], confirmed=True)
+    assert done["state"] == "done" and done["plan"] == f"{draft}@v6", done
+    assert (await call(http, base, key, "get_plan", draft=draft))["commissioned"] is True
+    again = await call(http, base, key, "confirm_act", act=read["act"], confirmed=True)
+    assert again["error"] and "done already" in again["refused"]
+
+    recorded = await entries(given)
+    assert ("agent.commission_plan", "served", "idn_ada") in recorded
+    assert ("agent.confirm_act", "served", "idn_ada") in recorded
+    settled = await entries(given, "conversation.")
+    assert ("conversation.act_confirmed", "done", "idn_ada") in settled
+    assert [a for k, _, a in await entries(given, "plan.commissioned")] == ["idn_ada"]
+
+
+async def test_an_agent_asks_rehearses_commissions_discards_and_rolls_back_as_the_person(
+    client: Client_,
+) -> None:
+    http, given, base = client
+    await registered(given)
+    acts = RecordingActs(given)
+    given.acts = acts
+    key = await agent(given, "idn_ada", "ops")
+    await given.identities.grant(TENANT, "ops", Right.CHANGE, by="idn_admin")
+    assert await tools(http, base, key) == READS | CHANGE_TOOLS
+
+    asked = await call(http, base, key, "ask_change", process="daily", request="add a step")
+    assert not asked["error"] and (asked["run"], asked["process"]) == ("run_7", "daily")
+    assert acts.calls[-1] == ("ask", (TENANT, "daily", "add a step", "idn_ada"), {})
+    assert (await call(http, base, key, "ask_change", process="nothing", request="x"))["error"]
+    exists = await call(http, base, key, "ask_description", process="daily", description="x")
+    assert exists["error"] and "exists already" in exists["refused"]
+    described = await call(
+        http, base, key, "ask_description", process="weekly", description="a weekly report"
+    )
+    assert not described["error"]
+    assert acts.calls[-1] == ("ask", (TENANT, "weekly", "a weekly report", "idn_ada"), {})
+
+    changed = bundle()
+    changed["version"] = "2"
+    proposal = await given.proposals.propose(
+        Propose(TENANT, "daily", instructed(changed), by="idn_ada", request="v2")
+    )
+    listed = await call(http, base, key, "list_proposals", process="daily")
+    assert [p["id"] for p in listed["proposals"]] == [proposal.id]
+    one = await call(http, base, key, "get_proposal", process="daily", proposal=proposal.id)
+    assert one["version"] == "2"
+
+    rehearsed = await call(
+        http, base, key, "rehearse_proposal", process="daily", proposal=proposal.id
+    )
+    assert rehearsed["run"] == "run_8"
+    assert [c for c, _, _ in acts.calls][-1] == "rehearse"
+
+    read = await call(http, base, key, "commission_proposal", process="daily", proposal=proposal.id)
+    assert "version 2 becomes the active version of daily" in read["read_back"]
+    assert "commission" not in [c for c, _, _ in acts.calls], "nothing before the yes"
+    done = await call(http, base, key, "confirm_act", act=read["act"], confirmed=True)
+    assert done["state"] == "done" and done["version"] == "2"
+    assert acts.calls[-1] == (
+        "commission",
+        (TENANT, "daily", proposal.id, "idn_ada"),
+        {"approved_by": None, "override": None},
+    )
+
+    back = await call(http, base, key, "rollback_process", process="daily", version="1")
+    assert "Make version 1 of daily current again" in back["read_back"]
+    declined = await call(http, base, key, "confirm_act", act=back["act"], confirmed=False)
+    assert declined["state"] == "declined"
+    assert [c for c, _, _ in acts.calls].count("rollback") == 0, "a no does nothing"
+
+    discarded = await call(
+        http, base, key, "discard_proposal", process="daily", proposal=proposal.id
+    )
+    assert not discarded["error"]
+    assert (await given.proposals.get(TENANT, "daily", proposal.id)).state == "discarded"
+
+
+async def test_without_the_right_to_build_a_build_tool_or_its_confirmation_is_refused(
+    client: Client_,
+) -> None:
+    http, given, base = client
+    key = await agent(given, "idn_ada", "ops")
+    refused = await call(http, base, key, "open_plan", said="x")
+    assert refused["error"] and "agent.plan" in refused["refused"]
+    assert (await call(http, base, key, "list_plans"))["plans"] == [], "a refusal opens nothing"
+    asked = await call(http, base, key, "ask_change", process="daily", request="x")
+    assert asked["error"] and "agent.change" in asked["refused"]
+
+    await given.identities.grant(TENANT, "ops", Right.PLAN, by="idn_admin")
+    draft = (await call(http, base, key, "open_plan", said="x"))["draft"]
+    read = await call(http, base, key, "commission_plan", draft=draft)
+    await given.identities.withdraw(TENANT, "ops", Right.PLAN, by="idn_admin")
+    assert "confirm_act" not in await tools(http, base, key)
+    late = await call(http, base, key, "confirm_act", act=read["act"], confirmed=True)
+    assert late["error"] and "agent.plan" in late["refused"]
+    assert ("agent.confirm_act", "refused", "idn_ada") in await entries(given)

@@ -21,3 +21,9 @@ description = "The public key of the project's reference catalogue, recorded in 
 condition = "AND"
 paths = ['''^docs/decisions/NEED-0039-''']
 regexes = ['''^9cXIHtNI9qUd7lBL1ZSM1Nmca5A8yuocJnpQ5YYmn30$''']
+
+[[rules.allowlists]]
+description = "A key algorithm's name in the cloud service fake, kept by the branch history of package F (NTC-0296)"
+condition = "AND"
+paths = ['''^tests/fakes/cloud_service\.py$''']
+regexes = ['''^KEY_ALG_RSA_2048$''']

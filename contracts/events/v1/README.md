@@ -42,7 +42,7 @@ start a process because of who someone is or what they wrote.
 
 ## 2. The catalogue
 
-A **kind** names the subject, singular, a dot, and what happened to it. v1 has eight. A
+A **kind** names the subject, singular, a dot, and what happened to it. v1 has eleven. A
 connector that serves a channel normalises its deliveries into these kinds and fills at least the
 fields each requires; it may add fields of its own.
 
@@ -56,6 +56,9 @@ fields each requires; it may add fields of its own.
 | `branch.pushed` | `repository`, `branch`, `head`, `paths` | commits were pushed to a branch; `paths` lists the files they changed, as far as the source lists them |
 | `message.posted` | `conversation`, `message`; `thread` where there is one | a message was posted in a conversation |
 | `message.mentioned` | `conversation`, `message`; `thread` where there is one | a message mentioned Taktus |
+| `error.created` | `project`, `error`; `link` where there is one | an error tracker opened a new issue, the error named by its identifier there (ADR-0331) |
+| `payment.failed` | `customer`, `payment` | a payment provider reported a customer's payment failed, the payment named by its identifier there (ADR-0337) |
+| `subscription.changed` | `customer`, `subscription`; `change` where there is one | a payment provider or an in-app subscription service reported a customer's subscription started, renewed, changed, cancelled or ended (ADR-0337) |
 
 A kind outside the catalogue is not an event of v1. A connector may still accept it as an
 intake, and a person may still complete that intake into a command by hand; no trigger can name

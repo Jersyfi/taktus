@@ -75,6 +75,48 @@ PLACEHOLDERS: dict[str, frozenset[str]] = {
 }
 """The sentences that take values, and the values each must use — no more, no fewer."""
 
+BRIEFS: dict[str, frozenset[str]] = {
+    "escalated": frozenset({"process", "step"}),
+    "escalated_unknown": frozenset({"process"}),
+    "escalated_ask": frozenset(),
+    "escalated_ask_hand": frozenset(),
+    "backlog": frozenset({"count"}),
+    "backlog_ask": frozenset(),
+    "chain_halted": frozenset({"chain", "step"}),
+    "deviated": frozenset({"process", "step"}),
+    "deviated_ask": frozenset(),
+    "recurred": frozenset({"process", "step", "count"}),
+    "recurred_ask": frozenset(),
+    "signals_quiet": frozenset({"date"}),
+    "signals_deviating": frozenset({"date", "deviating", "unmeasured"}),
+    "signal_red": frozenset({"signal"}),
+    "signal_ask": frozenset(),
+    "red": frozenset({"signal", "value", "threshold"}),
+    "yellow": frozenset({"signal", "value", "threshold"}),
+    "unmeasured": frozenset({"signal"}),
+    "interface_broken": frozenset({"interface"}),
+    "interface_ask": frozenset(),
+    "alert_capacity": frozenset(),
+    "alert_claim_lost": frozenset(),
+    "alert_backup": frozenset(),
+    "alert_lowered": frozenset(),
+    "alert_raise": frozenset(),
+    "alert_local_lack": frozenset(),
+    "stage_proposed": frozenset({"stage"}),
+    "stage_fell": frozenset({"stage"}),
+    "page_edited": frozenset({"page"}),
+    "sender": frozenset(),
+    "more": frozenset({"count"}),
+    "role_report": frozenset({"role", "count"}),
+    "role_quiet": frozenset({"role"}),
+    "role_decision": frozenset(),
+    "role_escalated": frozenset({"process"}),
+    "role_blocked": frozenset({"process", "step"}),
+    "role_switch_off": frozenset({"process"}),
+}
+"""The sentences of a message's short form (ADR-0316 §3), and the values each must use. A
+value is a name, a number or a date, never a sentence."""
+
 
 def _placeholders(template: str) -> set[str]:
     return {name for _, name, _, _ in Formatter().parse(template) if name is not None}
@@ -248,9 +290,29 @@ class Phrasebook(Value):
     start_not_done: str | None = Field(default=None, min_length=1)
     """Said when a start cannot be done, or concerns a process the person may not see."""
 
+    briefs: dict[str, str] | None = None
+    """The sentences of a message's short form, by entry (ADR-0316 §3): its headline, its
+    options line and its list lines. None: a phrasebook configured before there were any; its
+    messages take the headline from the report's title."""
+
+    def brief(self, entry: str, values: dict[str, str]) -> str | None:
+        """The entry said with its values; None where this phrasebook does not say it."""
+        template = (self.briefs or {}).get(entry)
+        return None if template is None else template.format(**values)
+
     @model_validator(mode="after")
     def _readable(self) -> Phrasebook:
         problems: list[str] = []
+        for entry, template in (self.briefs or {}).items():
+            if entry not in BRIEFS:
+                problems.append(f"briefs.{entry} is no entry of a message's short form")
+            elif not template.strip():
+                problems.append(f"briefs.{entry} is empty")
+            elif _placeholders(template) != BRIEFS[entry]:
+                problems.append(
+                    f"briefs.{entry} uses {sorted(_placeholders(template))}; it must use "
+                    f"{sorted(BRIEFS[entry])}"
+                )
         for name in type(self).model_fields:
             value = getattr(self, name)
             if not isinstance(value, str):

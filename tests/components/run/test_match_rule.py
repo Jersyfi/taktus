@@ -97,3 +97,37 @@ def test_what_is_not_a_list_of_objects_fails_the_step() -> None:
 def test_keys_of_different_lengths_are_refused_when_the_process_is_read() -> None:
     with pytest.raises(ValidationError, match="field by field"):
         rule(right={"items": None, "key": ["customer"]})
+
+
+# Further readings of a side (ADR-0329): the subscriptions of several payment providers.
+
+WALLET = {
+    "output": {
+        "subscriptions": [{"id": "I-1", "customer": "PAYER1", "items": [{"product": "prod_pro"}]}]
+    }
+}
+SKIPPED = {"skipped": True, "because": "the run names no third provider"}
+
+
+def several() -> MatchRule:
+    more = [{"reading": None, "select": "output.subscriptions"}] * 2
+    return rule(
+        left={"items": None, "key": ["customer", "items.product"], "each": "items", "more": more}
+    )
+
+
+def test_every_provider_s_payments_are_matched_and_a_skipped_reading_adds_nothing() -> None:
+    granted = [*GRANTED[:3], {"customer": "PAYER1", "product": "prod_pro", "quantity": 1}]
+    one_provider = rules.match(rule(), PAID[:2], granted)
+    assert one_provider["right_only"] == [granted[3]], "read alone, the wallet's grant is unpaid"
+
+    matched = rules.match(several(), PAID[:2], granted, [WALLET, SKIPPED])
+    assert matched["matched"] == 4
+    assert matched["mismatches"] == 0, "the second provider's payment pays the grant"
+
+
+def test_a_further_reading_without_its_list_fails_the_rule_and_is_never_read_as_empty() -> None:
+    with pytest.raises(RuleFailed, match=r"has no 'output\.subscriptions'"):
+        rules.match(several(), PAID, GRANTED, [WALLET, {"output": {}}])
+    with pytest.raises(RuleFailed, match="is not a list"):
+        rules.match(several(), PAID, GRANTED, [WALLET, {"output": {"subscriptions": "none"}}])

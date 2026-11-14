@@ -1,0 +1,8 @@
+{
+  "events": [
+    "payment.failed"
+  ],
+  "signature": {
+    "scheme": "hmac-sha256-stamped"
+  }
+}

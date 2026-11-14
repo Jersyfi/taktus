@@ -66,7 +66,8 @@ that path from nothing without a person, failing above ten minutes. `make up` br
 containers (`deploy/docker/compose.yml`: writes the secret files once, fills them from the
 operator's secret store where `secret-store.json` names one (`deploy/docker/secret_store.py`,
 ADR-0187), builds the image,
-applies the migrations, waits for readiness), `make up-dev` does the same with the reference
+applies the migrations, waits for readiness; with `EXECUTION=container` it lays
+`compose.container-execution.yml` over it, the engine's socket mounted for worker steps), `make up-dev` does the same with the reference
 worker layered in from its own image (`compose.reference-worker.yml`, development only),
 `make down` stops either and keeps every volume; all three, and `make start`, lay the
 operator's further connectors over it, written from `connectors.json` by

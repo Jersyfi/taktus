@@ -166,6 +166,20 @@ describe('the components', () => {
 		expect(found).toEqual([]);
 	});
 
+	// UC-13.7 §2 binds every type size of the frame to a token, and the radii follow the same rule
+	// (ADR-0177 §4). The test held colours only until NTC-0289; 140 literal sizes and 78 literal
+	// radii had passed it.
+	it('write no type size and no radius of their own (NTC-0289)', () => {
+		const declaration = /(font-size|border(?:-[a-z]+)*-radius)\s*:\s*([^;{}]+)/g;
+		const literal = /(?<![\w-])\d*\.?\d+(px|rem|em|pt|%)(?![\w-])/;
+		const found = sources.flatMap(({ path, source }) =>
+			[...styleOf(source, path).matchAll(declaration)]
+				.filter((m) => literal.test(m[2]!.replace(/\d*\.?\d+vw/g, '')))
+				.map((m) => `${path}: ${m[0].trim()}`)
+		);
+		expect(found).toEqual([]);
+	});
+
 	it('use no custom property that no token and no rule of their own declares', () => {
 		const found: string[] = [];
 		for (const { path, source } of sources) {

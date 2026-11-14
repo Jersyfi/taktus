@@ -522,6 +522,11 @@ def _key_of(secret: str) -> bytes:
         return secret.encode()
 
 
+def _sign_stamped(moment: int, body: str, secret: str) -> str:
+    """The digest of the scheme hmac-sha256-stamped: over `<moment>.<raw body>`, in hex."""
+    return _sign(f"{moment}.{body}", secret)
+
+
 def _sign_identified(delivery: str, moment: int, body: str, secret: str) -> str:
     base = f"{delivery}.{moment}.{body}".encode()
     return base64.b64encode(hmac.new(_key_of(secret), base, hashlib.sha256).digest()).decode()
@@ -540,9 +545,22 @@ class _Signer:
     timestamp_header: str | None = None
     version: str = ""
     id_header: str | None = None
+    stamped: tuple[str, str] | None = None
+    """The names of the moment's and the digest's entries in the one header (ADR-0337)."""
+    token: bool = False
+    """The header carries the intake secret itself (ADR-0337)."""
 
     @classmethod
     def of(cls, signature: Json) -> _Signer:
+        stamped = signature.get("stamped")
+        if isinstance(stamped, dict):
+            return cls(
+                str(signature["header"]),
+                str(signature["prefix"]),
+                stamped=(str(stamped["moment"]), str(stamped["digest"])),
+            )
+        if signature.get("token") is True:
+            return cls(str(signature["header"]), str(signature["prefix"]), token=True)
         identified = signature.get("identified")
         if isinstance(identified, dict):
             return cls(
@@ -563,7 +581,7 @@ class _Signer:
 
     @property
     def timestamped(self) -> bool:
-        return self.timestamp_header is not None
+        return self.timestamp_header is not None or self.stamped is not None
 
     @property
     def identified(self) -> bool:
@@ -594,6 +612,18 @@ class _Signer:
         and no signature. `sent_delivery` and `sent_moment` put into the headers another
         identifier or moment than the one signed: a delivery altered on the way."""
         headers: Json = {}
+        if self.token:
+            if secret is not None:
+                headers[self.header] = self.prefix + secret
+            return headers
+        if self.stamped is not None:
+            if secret is not None:
+                moment_name, digest_name = self.stamped
+                digest = _sign_stamped(moment, body, secret)
+                headers[self.header] = (
+                    f"{self.prefix}{moment_name}={sent_moment or moment},{digest_name}={digest}"
+                )
+            return headers
         if self.id_header is not None and self.timestamp_header is not None:
             delivery = self.delivery_of(payload)
             headers[self.id_header] = sent_delivery or delivery
@@ -741,6 +771,17 @@ async def _intake(
                 "bad_signature",
             )
         )
+        cases.append(
+            (
+                "moment altered",
+                supported,
+                signer.headers(body, secret, payload=supported, sent_moment=RECEIVED_EPOCH - 1),
+                "bad_signature",
+            )
+        )
+    if signer.stamped is not None:
+        # Signed correctly, then the moment in the header changed within the window: it may not
+        # verify (ADR-0337).
         cases.append(
             (
                 "moment altered",

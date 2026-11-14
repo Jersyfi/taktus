@@ -7,6 +7,9 @@
 	once, then ADR-0138's rule halts every run at its boundary. No card names a person.
 -->
 <script lang="ts">
+	import DisplaySwitch from './DisplaySwitch.svelte';
+	import TextEquivalent from './TextEquivalent.svelte';
+	import { display } from './display.svelte';
 	import { usedText, type Register, type RegisterRow } from './acting';
 	import { processLink, removeLink } from './links';
 
@@ -104,26 +107,29 @@
 		{/each}
 	</ul>
 
-	<section class="text" aria-label="The register as text">
-		<h2>As text</h2>
-		<ol>
+	<div class="as-text"><DisplaySwitch page="register" /></div>
+	<TextEquivalent label="The register as text" mode={display.of('register')}>
 			<li>{register.summary}</li>
 			{#each register.rows as row (row.adapter)}
 				<li data-text="adapter:{row.adapter}">{row.text}</li>
 			{/each}
-		</ol>
-	</section>
+	</TextEquivalent>
 </section>
 
 <style>
+	.as-text {
+		display: flex;
+		justify-content: flex-end;
+		margin-top: var(--sp-400);
+	}
 	h1 {
 		max-width: 30ch;
 	}
 	.private {
 		display: inline-block;
-		font-size: 0.85rem;
+		font-size: var(--fs-100);
 		padding: 0.3rem 0.8rem;
-		border-radius: 999px;
+		border-radius: var(--r-full);
 		border: 1px solid var(--border-subtle);
 		color: var(--text-secondary);
 	}
@@ -133,11 +139,11 @@
 		gap: 1rem;
 		align-items: center;
 		margin: 1rem 0;
-		font-size: 0.9rem;
+		font-size: var(--fs-100);
 	}
 	.muted {
 		color: var(--text-secondary);
-		font-size: 0.86rem;
+		font-size: var(--fs-100);
 		margin: 0.3rem 0;
 	}
 	.cards {
@@ -148,7 +154,7 @@
 		gap: 0.9rem;
 	}
 	.card {
-		border-radius: 24px;
+		border-radius: var(--r-2xl);
 		padding: 1rem 1.15rem;
 		background: var(--bg-surface);
 		min-width: 0;
@@ -168,13 +174,13 @@
 	}
 	.family {
 		font-family: var(--font-mono);
-		font-size: 0.72rem;
+		font-size: var(--fs-075);
 		color: var(--text-subtle);
 	}
 	.chip {
 		margin-left: auto;
-		font-size: 0.72rem;
-		border-radius: 999px;
+		font-size: var(--fs-075);
+		border-radius: var(--r-full);
 		padding: 0 0.55rem;
 		border: 1px solid var(--border-subtle);
 	}
@@ -198,7 +204,7 @@
 	.rung {
 		width: 18px;
 		height: 6px;
-		border-radius: 3px;
+		border-radius: var(--r-xs);
 		background: var(--border-subtle);
 	}
 	.rung.on {
@@ -207,14 +213,14 @@
 	.reasons {
 		margin: 0.4rem 0;
 		padding-left: 1rem;
-		font-size: 0.86rem;
+		font-size: var(--fs-100);
 	}
 	.residency.outside {
 		color: var(--family-alert);
 		font-weight: 600;
 	}
 	.uses {
-		font-size: 0.88rem;
+		font-size: var(--fs-100);
 		margin: 0.3rem 0;
 	}
 	.stop {
@@ -223,7 +229,7 @@
 		flex-wrap: wrap;
 		gap: 0.5rem;
 		align-items: center;
-		font-size: 0.86rem;
+		font-size: var(--fs-100);
 	}
 	.held {
 		color: var(--family-alert);

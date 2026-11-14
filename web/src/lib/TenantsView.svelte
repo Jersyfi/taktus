@@ -6,6 +6,9 @@
 	export is imported into this instance and checked by its chains (ADR-0221, ADR-0295).
 -->
 <script lang="ts">
+	import DisplaySwitch from './DisplaySwitch.svelte';
+	import TextEquivalent from './TextEquivalent.svelte';
+	import { display } from './display.svelte';
 	import type { Tenant } from './governance';
 
 	let {
@@ -122,24 +125,27 @@
 		</div>
 	{/if}
 
-	<section class="text" aria-label="The tenants as text">
-		<h2>As text</h2>
-		<ol>
+	<div class="as-text"><DisplaySwitch page="tenants" /></div>
+	<TextEquivalent label="The tenants as text" mode={display.of('tenants')}>
 			{#each tenants as t (t.id)}
 				<li data-text="tenant:{t.id}">{t.id}: {t.name}, created {t.created_at.slice(0, 10)}.</li>
 			{/each}
-		</ol>
-	</section>
+	</TextEquivalent>
 </section>
 
 <style>
+	.as-text {
+		display: flex;
+		justify-content: flex-end;
+		margin-top: var(--sp-400);
+	}
 	.muted {
 		color: var(--text-secondary);
-		font-size: 0.88rem;
+		font-size: var(--fs-100);
 	}
 	.id {
 		font-family: var(--font-mono);
-		font-size: 0.78rem;
+		font-size: var(--fs-075);
 		color: var(--text-subtle);
 	}
 	.list {
@@ -169,20 +175,20 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.25rem;
-		font-size: 0.88rem;
+		font-size: var(--fs-100);
 	}
 	input {
 		font: inherit;
 		padding: 0.4rem 0.6rem;
 		border: 1px solid var(--border-subtle);
-		border-radius: 10px;
+		border-radius: var(--r-md);
 		background: var(--bg-canvas);
 		color: var(--text-primary);
 	}
 	.reading,
 	.message {
 		background: var(--bg-surface);
-		border-radius: 14px;
+		border-radius: var(--r-lg);
 		padding: 0.8rem 1rem;
 		margin-top: 1rem;
 		max-width: 46rem;

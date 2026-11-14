@@ -1031,6 +1031,7 @@ run = Table(
     PrimaryKeyConstraint("tenant", "id"),
     Index("run_state", "tenant", "state"),
     Index("run_created", "tenant", "created_at", "id"),  # ADR-0094
+    Index("run_version_created", "tenant", "process_version", "created_at", "id"),  # ADR-0319
 )
 
 step_run = Table(
@@ -1341,3 +1342,5 @@ declared_chain = _document_table("declared_chain")
 """One row per chain a tenant declared, under the chain's identifier (ADR-0301 §1)."""
 chain_run = _document_table("chain_run")
 """One row per run of a chain, its state moving on (ADR-0301 §2)."""
+conversation = _document_table("conversation")
+"""One row per person's conversation with Taktus, its turns and its acts moving on (ADR-0325)."""

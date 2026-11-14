@@ -5,6 +5,9 @@
 	form and says so in words, and the alert hue is added on top, never alone.
 -->
 <script lang="ts">
+	import DisplaySwitch from './DisplaySwitch.svelte';
+	import TextEquivalent from './TextEquivalent.svelte';
+	import { display } from './display.svelte';
 	import type { Snippet } from 'svelte';
 
 	let {
@@ -19,18 +22,21 @@
 	<p class="eyebrow">{eyebrow}</p>
 	<h1 id="operation-title">{sentence}</h1>
 	{@render children()}
-	<section class="text" aria-label="This page as text">
-		<h2>As text</h2>
-		<ol>
+	<div class="as-text"><DisplaySwitch page="operation" /></div>
+	<TextEquivalent label="This page as text" mode={display.of('operation')}>
 			<li data-text="sentence">{sentence}</li>
 			{#each lines as line, i (i)}
 				<li>{line}</li>
 			{/each}
-		</ol>
-	</section>
+	</TextEquivalent>
 </section>
 
 <style>
+	.as-text {
+		display: flex;
+		justify-content: flex-end;
+		margin-top: var(--sp-400);
+	}
 	h1 {
 		max-width: 28ch;
 		margin-bottom: 2rem;
@@ -40,11 +46,11 @@
 		list-style: none;
 		padding: 0;
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
 		gap: 0.9rem;
 	}
 	.operation :global(.record) {
-		border-radius: 24px;
+		border-radius: var(--r-2xl);
 		padding: 1.1rem 1.25rem 1rem;
 		background: var(--bg-surface);
 		min-width: 0;
@@ -58,7 +64,7 @@
 		color: var(--text-secondary);
 	}
 	.operation :global(.record h3) {
-		font-size: 1rem;
+		font-size: var(--fs-200);
 		font-weight: 600;
 		margin: 0 0 0.35rem;
 	}
@@ -66,7 +72,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.4rem;
-		font-size: 0.75rem;
+		font-size: var(--fs-075);
 		letter-spacing: 0.04em;
 		text-transform: uppercase;
 		color: var(--text-secondary);
@@ -78,7 +84,7 @@
 		content: '';
 		width: 8px;
 		height: 8px;
-		border-radius: 50%;
+		border-radius: var(--r-full);
 		border: 1.5px solid currentColor;
 		flex: none;
 	}
@@ -98,7 +104,7 @@
 		display: grid;
 		grid-template-columns: max-content 1fr;
 		gap: 0.2rem 0.9rem;
-		font-size: 0.85rem;
+		font-size: var(--fs-100);
 		margin: 0.5rem 0 0;
 	}
 	.operation :global(.facts dt) {
@@ -109,17 +115,17 @@
 	}
 	.operation :global(.meta) {
 		color: var(--text-secondary);
-		font-size: 0.85rem;
+		font-size: var(--fs-100);
 		margin: 0.15rem 0;
 	}
 	.operation :global(.id) {
 		font-family: var(--font-mono);
-		font-size: 0.78rem;
+		font-size: var(--fs-075);
 		color: var(--text-subtle);
 	}
 	.operation :global(details) {
 		margin-top: 0.6rem;
-		font-size: 0.85rem;
+		font-size: var(--fs-100);
 	}
 	.operation :global(details ul) {
 		padding-left: 1.1rem;

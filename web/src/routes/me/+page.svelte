@@ -5,6 +5,7 @@
 	the relief again after a save.
 -->
 <script lang="ts">
+	import Skeleton from '../../lib/Skeleton.svelte';
 	import { put, read, surface } from '../../lib/api';
 	import ReliefSection from '../../lib/ReliefSection.svelte';
 	import type { OwnRelief, ReliefSettings } from '../../lib/relief';
@@ -56,7 +57,7 @@
 {:else if times}
 	<YoursView {times} />
 {:else}
-	<p class="status">Reading your own times…</p>
+	<Skeleton label="Reading your own times…" />
 {/if}
 
 {#if signedIn}
@@ -70,6 +71,6 @@
 <style>
 	.status {
 		color: var(--text-secondary);
-		font-size: 0.9rem;
+		font-size: var(--fs-100);
 	}
 </style>

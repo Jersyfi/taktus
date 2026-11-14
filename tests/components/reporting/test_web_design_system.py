@@ -141,3 +141,29 @@ def test_every_page_belongs_to_one_destination_of_the_navigation() -> None:
         if not any(route == p or (p != "/" and route.startswith(p + "/")) for p in prefixes):
             lost.append(route)
     assert lost == []
+
+
+DECLARATION = re.compile(r"(font-size|border(?:-[a-z]+)*-radius)\s*:\s*([^;{}]+)")
+SIZE_LITERAL = re.compile(r"(?<![\w-])\d*\.?\d+(px|rem|em|pt|%)(?![\w-])")
+VIEWPORT = re.compile(r"\d*\.?\d+vw")
+
+
+def test_no_page_writes_a_type_size_or_radius_of_its_own() -> None:
+    """UC-13.7 §2: every type size of the frame is a token, and so is every radius (NTC-0289)."""
+    src = WEB / "src"
+    found: list[str] = []
+    for path in [*src.rglob("*.svelte"), *src.rglob("*.css")]:
+        if "generated" in path.parts:
+            continue
+        text = path.read_text(encoding="utf-8")
+        styles = (
+            [text]
+            if path.suffix == ".css"
+            else re.findall(r"<style[^>]*>(.*?)</style>", text, re.DOTALL)
+        )
+        styles += re.findall(r'\sstyle(?::[\w-]+)?="([^"]*)"', text)
+        for style in styles:
+            for m in DECLARATION.finditer(COMMENT.sub("", style)):
+                if SIZE_LITERAL.search(VIEWPORT.sub("", m.group(2))):
+                    found.append(f"{path.relative_to(WEB)}: {m.group(0).strip()}")
+    assert found == []

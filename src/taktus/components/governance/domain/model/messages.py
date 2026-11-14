@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 from datetime import UTC, datetime, time, tzinfo
+from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, model_validator
@@ -39,6 +40,11 @@ class MessageRules(Value):
     zone: str = "UTC"
     """The zone the quiet hours are read in."""
     recipient_limit: int = Field(default=RECIPIENT_LIMIT, ge=1)
+    daily_limit: int | None = Field(default=None, ge=1)
+    """The most messages a process sends within 24 hours without a person (ADR-0335 §5); None:
+    no such limit. A count of messages, never of who wrote them."""
+    processes: dict[str, int] = Field(default_factory=dict)
+    """A process's own daily limit, in place of the tenant's."""
     configured_at: datetime | None = None
     """When it was configured; None for the shipped default, which nobody configured."""
 
@@ -52,8 +58,21 @@ class MessageRules(Value):
             raise ValueError("quiet hours begin and end at different times of the day")
         if self.label is not None and not self.label.strip():
             raise ValueError("a label says something")
+        for process, limit in self.processes.items():
+            if not process or limit < 1:
+                raise ValueError(f"the daily limit of {process!r} is a process and at least one")
         self.tz  # noqa: B018 — a zone that cannot be read is refused here, not when sending
         return self
+
+    def document(self) -> dict[str, Any]:
+        """Rules without a daily limit are written as the previous release wrote them, so that
+        the release before reads them (ADR-0093)."""
+        written = super().document()
+        if self.daily_limit is None:
+            written.pop("daily_limit", None)
+        if not self.processes:
+            written.pop("processes", None)
+        return written
 
     @property
     def tz(self) -> tzinfo:

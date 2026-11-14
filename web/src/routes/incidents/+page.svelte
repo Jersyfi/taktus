@@ -2,6 +2,7 @@
 	The incidents: `GET /incidents`, read once on opening (ADR-0121, ADR-0107).
 -->
 <script lang="ts">
+	import Skeleton from '../../lib/Skeleton.svelte';
 	import Unavailable from '../../lib/Unavailable.svelte';
 	import { read, surface } from '../../lib/api';
 	import IncidentsView from '../../lib/IncidentsView.svelte';
@@ -30,12 +31,6 @@
 {:else if problem}
 	<Unavailable eyebrow="Incidents" {problem} />
 {:else}
-	<p class="status">Reading the incidents…</p>
+	<Skeleton label="Reading the incidents…" />
 {/if}
 
-<style>
-	.status {
-		color: var(--text-secondary);
-		font-size: 0.9rem;
-	}
-</style>

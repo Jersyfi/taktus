@@ -149,7 +149,10 @@ its process. A connector that reaches a cloud's API signs with its own copy of t
 (`auth.py` in its directory), because an image holds nothing of another connector; the release's
 list (`composition/shipped.json`, `make generate`) names each one with what it declares, the
 books connector's `accounting.invoices` among them (ADR-0314), and a connector that serves only
-part of a capability's group — a models list without its costs — with only what it serves.
+part of a capability's group — a models list without its costs — with only what it serves. The
+cloud operations connector names `metrics.series`, `models.costs` and `models.catalogue` beside
+its first three (ADR-0328, ADR-0330); a named metric is mapped by every metrics connector
+through the one rule in `serving.py`.
 
 `tests/architecture` fails on:
 
@@ -294,7 +297,8 @@ role it would tie the core to a model stack and the removal test would be lost.
   to the owner what needs a person's action, a level that fell by rule and a raise Taktus
   proposes among it (`composition/alerts.py`, ADR-0106, ADR-0110). The run reaches the
   governance component's `Corrections` through `composition/decisions.py`, and `taktusctl
-  corrections` reads and configures it; the same port reads the classes of request a version's
+  corrections` reads and configures it, with a count of corrections that lowers beside the rate
+  for the tenant or one process (ADR-0333); the same port reads the classes of request a version's
   statement names from the process component (ADR-0215). It reaches the tenant's anchors, and the ceilings its
   risk classes set on a level, the same way, and `taktusctl anchors set` stores both in one
   document, the column `anchor_configuration.levels` holding the ceilings (ADR-0170). It reaches the tenant's residency rule,
@@ -451,6 +455,18 @@ role it would tie the core to a model stack and the removal test would be lost.
   `composition/agent_surface.py`, which also records every call. The identity component keeps
   the agent key's digest on the identity and the rights per role (`RoleRights`, table
   `role_rights`).
+- **Building through a person's own agent, and Taktus's own conversation** (ADR-0324 to
+  ADR-0326). The closed list of acts is the command component's (`ACTS`,
+  `components/command/domain/model/conversation.py`); a conversation and its acts read back are
+  `Conversation` (table `conversation`), kept by `application/service/conversations.py`. The
+  acts are done by `composition/building.py` (`BuildActs`, the port `Building` of `wiring.py`)
+  over the plan dialogue, the acts on a proposal and the start command. A turn is
+  `composition/conversation.py`: `ConversationActs` (the port `Talking`; `/conversation` in
+  `adapters/driving/rest/conversation.py`) keeps it and starts the process
+  `TAKTUS_CONVERSATION_PROCESS` names, whose steps reach it through the loopback connector's
+  `orchestrator.conversation`; `ConversationInChat` is the owner channel's last reader
+  (`OwnerAnswers.converse_with`). The repository's conversation process is S-09; the web page is
+  `web/src/routes/ask`.
 - **A message to a running step** is the `api` role's (`adapters/driving/rest/steering.py`, the
   MCP tool `steer_step` under the right `agent.steer`, and the chat's read-back in
   `composition/takeover_in_channel.py` with the phrasebooks' `steer_*` entries; ADR-0156). Each
@@ -486,6 +502,14 @@ role it would tie the core to a model stack and the removal test would be lost.
   (`GET /autonomy`) and `adapters/driving/rest/review.py` (`GET /findings` and the review).
   `RestServices` hands them the governance component's `Corrections` and the reporting
   component's `ProductFindings`; the daemon's `Wired` gives the ones it built (ADR-0122).
+- **The start page** is one request, `GET /levels/today` (`adapters/driving/rest/today.py`,
+  ADR-0318): the overview, counts, what waits — ordered by the rule of
+  `components/reporting/domain/service/today.py` — and the marks of the navigation, each read
+  through the route it summarises. The stream's snapshot reads only the runs of its scope, in
+  the tenant scope those not yet ended, or its position alone (`composition/live.py`,
+  ADR-0317); the runs are filtered where they are stored by `Queried`'s `where`, and the process
+  level reads a page (ADR-0319). `tests/integration/test_run_listing_at_scale.py` holds the
+  start page and the views to their time budget (ADR-0320).
 - **A running step taken over by a person** is asked and handed back on the HTTP surface
   (`adapters/driving/rest/takeover.py`, ADR-0128) through the port `Takeovers` of
   `adapters/driving/rest/wiring.py`; the daemon's `Wired` gives its engine. The ask is written
@@ -537,6 +561,14 @@ role it would tie the core to a model stack and the removal test would be lost.
   the governance component's `handover_package`, raised in the owner-facing channel; a person's
   decision goes through `ChainRuns.decide`; a chain that ended is measured against its own
   objectives (ADR-0302).
+- **A message is a report's short form; a backlog is never a flood** (ADR-0316): the reporting
+  component renders every message (`domain/service/rendering.py`) from the report's `Brief`,
+  whose sentences are the phrasebooks' `briefs` (`composition/phrasebooks/`), and sorts what a
+  watch has not handled (`domain/service/backlog.py`). `composition/escalations.py` and
+  `composition/partner_exchange.py` deliver a current entry on its own and summarise the rest once
+  per role; `composition/chains.py`, `objectives.py`, `stages.py` and `guides.py` give their
+  reports a brief, and `composition/reports.py` says a role's scheduled report in the tenant's
+  phrasebook, which `composition/daemon.py` hands it.
 - **The load measurement** (S-04, ADR-0223) is `adapters/driving/cli/load_command.py`: it
   submits the probe `blueprints/self-operation/processes/S-04-load-probe.yaml`, which the control
   plane's image carries, through the same services as `taktusctl submit`, and reads each run's

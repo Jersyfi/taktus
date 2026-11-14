@@ -6,7 +6,7 @@ monthly quota) · serves UC-8.5
 ## Context
 
 A tenant wants one monthly money budget across all its processes and agents together, for
-example 100 euros a month. When the month's runs have cost it, every run of the tenant should
+example a fixed amount a month. When the month's runs have cost it, every run of the tenant should
 wait at its next step boundary, not only the run that crossed the line. The role that answers
 for the money is told. A person raising the budget, or the month's turn, lets the runs go on.
 
@@ -20,7 +20,7 @@ a month, and neither holds a run that is already running.
 
 A tenant sets an amount per currency per calendar month in UTC, and the role told once it is
 reached. Nothing is shipped: a tenant that set none is held by none. `taktusctl budget set
---amount EUR=100 --role finance-lead` sets it, and `budget.configured` records who did.
+--amount EUR=250 --role finance-lead` sets it, and `budget.configured` records who did.
 
 ### 2. A rule at every boundary
 

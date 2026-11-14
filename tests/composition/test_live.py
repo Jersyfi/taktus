@@ -269,7 +269,9 @@ async def test_a_change_carries_no_content_figure_or_person(world: World) -> Non
         "recorded_at",
         "rehearsal",
         "state",
+        "process",
     }
+    assert document["process"] == {"id": "invoices", "version": "1"}
     # The timestamp is left out of the search: its digits may contain "1.5" (#450).
     rest = str({key: value for key, value in document.items() if key != "recorded_at"})
     assert "idn_ada" not in rest and "1.5" not in rest
@@ -464,3 +466,44 @@ async def test_a_run_leads_to_running_in_the_snapshot_once_started(world: World)
         await world.ledger.record(A, fact("run.started", run))
     snapshot = await next_event(await world.open())
     assert isinstance(snapshot, Snapshot) and snapshot.runs[0].state == "running"
+
+
+# --- a bounded opening, and what just happened (ADR-0317) ---------------------------------------
+
+
+async def test_the_tenant_snapshot_lists_only_the_runs_not_yet_ended(world: World) -> None:
+    """A finished run is left out of the tenant scope; a process or a run scope still lists it."""
+    await world.run("run_1")
+    done = await world.run("run_2")
+    async with world.persistence.transaction(A):
+        await world.runs.put(A, done.model_copy(update={"state": RunState.FINISHED}))
+    tenant = await next_event(await world.open())
+    assert isinstance(tenant, Snapshot) and [r.id for r in tenant.runs] == ["run_1"]
+    by_process = await next_event(await world.open(Scope(kind=ScopeKind.PROCESS, id="invoices")))
+    assert isinstance(by_process, Snapshot)
+    assert [r.id for r in by_process.runs] == ["run_1", "run_2"]
+
+
+async def test_a_stream_opened_for_its_position_alone_lists_no_run(world: World) -> None:
+    await world.run("run_1")
+    last = await world.head()
+    who, again = world.reader()
+    events = await world.hub.open(who, Scope(kind=ScopeKind.TENANT), None, again, listed=False)
+    opening = await next_event(events)
+    assert isinstance(opening, Snapshot)
+    assert (opening.position, opening.runs, opening.listed) == (last, (), False)
+
+
+async def test_the_recent_changes_are_what_the_stream_sent(world: World) -> None:
+    run = await world.run("run_1")
+    other = await world.run("run_9", tenant=B)
+    events = await world.open()
+    await next_event(events)
+    await world.record(run, "step.started", step="a")
+    await world.record(other, "step.started", step="a")
+    sent = await changes(events, 1)
+    who, _ = world.reader()
+    recent = await world.hub.recent(who, Scope(kind=ScopeKind.TENANT), 60)
+    started = [c for c in recent.changes if c.kind == "step.started"]
+    assert started == sent and recent.complete
+    assert {c.run for c in recent.changes} == {"run_1"}, "another tenant's run is absent"

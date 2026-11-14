@@ -99,6 +99,30 @@ class Delivery(Value):
     url: str | None = Field(default=None, min_length=1)
 
 
+class Said(Value):
+    """One line of a message's short form, by its entry in the phrasebook's `briefs`, with its
+    values (ADR-0316 §3). A value is a name, a number or a date, never a sentence."""
+
+    entry: str = Field(pattern=WORD)
+    values: dict[str, str] = Field(default_factory=dict)
+    links: tuple[str, ...] = ()
+    """The addresses a line of a list points to: the case, the run that measured it."""
+
+
+class Brief(Value):
+    """The report's short form in a message (ADR-0316 §2): what the message says in the
+    reader's language. The report itself stays the full record."""
+
+    headline: Said
+    """What happened, and to which process, by its name."""
+    quote: str | None = Field(default=None, min_length=1)
+    """The one text worth seeing as written — an error, a question — cut to one line."""
+    ask: Said | None = None
+    """What is needed from the reader, the options in a few words."""
+    items: tuple[Said, ...] = ()
+    """The lines of a list, each with its link: only what deviates."""
+
+
 class Happened(Value):
     """One entry of the report's history: what happened, when, and who acted — an identity, or
     None when Taktus did."""
@@ -144,6 +168,8 @@ class Report(Value):
     due: date
     offered: tuple[Offered, ...] = Field(min_length=1)
     links: tuple[Link, ...] = ()
+    brief: Brief | None = None
+    """The message's short form; None: the title is the headline (ADR-0316 §3)."""
     raised_at: datetime
     state: ReportState = ReportState.OPEN
     reading: Reading | None = None

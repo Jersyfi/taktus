@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from datetime import datetime
 from typing import Any
 
@@ -102,6 +102,17 @@ class PostgresProvenanceStore:
         rows = await connection.execute(
             select(s.provenance)
             .where(s.provenance.c.tenant == tenant, s.provenance.c.run_id == run_id)
+            .order_by(s.provenance.c.ledger_seq)
+        )
+        return [_record(row) for row in rows]
+
+    async def of_runs(self, tenant: Tenant, run_ids: Collection[str]) -> Sequence[Provenance]:
+        if not run_ids:
+            return []
+        connection = self._persistence.connection(tenant)
+        rows = await connection.execute(
+            select(s.provenance)
+            .where(s.provenance.c.tenant == tenant, s.provenance.c.run_id.in_(sorted(run_ids)))
             .order_by(s.provenance.c.ledger_seq)
         )
         return [_record(row) for row in rows]

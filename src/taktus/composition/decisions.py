@@ -386,6 +386,8 @@ class MessagesOfTheRun:
             delay_seconds=configured.delay_seconds,
             quiet=quiet,
             recipient_limit=configured.recipient_limit,
+            daily_limit=configured.daily_limit,
+            process_limits=dict(configured.processes),
         )
 
     async def answered(self, tenant: Tenant, process: str, case: str) -> bool:

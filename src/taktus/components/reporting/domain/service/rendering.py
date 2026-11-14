@@ -7,8 +7,10 @@ and the same date. None of them adds a fact the others lack, so they cannot disa
 - `repository_text` — **English**, as everything in a repository is, and minimal: what future
   work needs. It names where an answer was given — the channel, the address, the
   thread — and never what was said there.
-- `message` — **in the owner's language**, from the tenant's phrasebook, with every link the
-  report concerns. It never quotes what anyone wrote in the channel.
+- `message` — **in the owner's language**, from the tenant's phrasebook: the report's short
+  form (ADR-0316). One headline, what is needed from the reader, the date, every address the
+  report concerns and the link to its view. The record's own sentences appear only as quotes of
+  one line. It never quotes what anyone wrote in the channel.
 - the view is the read side's (`application/query/reports.py`): the report itself, with its
   deliveries and its history.
 
@@ -27,6 +29,7 @@ from taktus.components.reporting.domain.model import (
     Reading,
     Report,
     ReportKind,
+    Said,
 )
 from taktus.components.reporting.domain.service.levels import (
     OriginLevel,
@@ -34,6 +37,7 @@ from taktus.components.reporting.domain.service.levels import (
     ProcessLevel,
     RunLevel,
 )
+from taktus.components.reporting.domain.service.reports import Composed, Item
 
 type Level = OverviewLevel | ProcessLevel | RunLevel | OriginLevel
 
@@ -120,8 +124,35 @@ def answers(report: Report, book: Phrasebook) -> str:
     return ", ".join(o.label for o in report.offered)
 
 
+QUOTE = 100
+"""The longest quote of a message, in characters: one line of the record's text (ADR-0316)."""
+OPTION = 60
+"""The longest option of a decision request in a message: its proposal, in a few words."""
+LISTED = 8
+"""The most lines of a list a message carries; the rest are counted and linked."""
+ASKS_FOR_ITEMS = (ReportKind.DECISION, ReportKind.NEED, ReportKind.DATE)
+"""The kinds whose message carries each needed item (UC-6.11 §2)."""
+
+
+def one_line(text: str, limit: int = QUOTE) -> str:
+    """The text on one line, cut at `limit` characters with an ellipsis."""
+    flat = " ".join(text.split())
+    return flat if len(flat) <= limit else flat[: limit - 1].rstrip() + "…"
+
+
+def _absolute(url: str) -> bool:
+    return url.startswith(("https://", "http://"))
+
+
+def _said(book: Phrasebook, said: Said) -> str | None:
+    return book.brief(said.entry, said.values)
+
+
 def message(report: Report, channel: OwnerChannel) -> str:
-    """The report as a message in the owner's channel, in the owner's language."""
+    """The report as a message in the owner's channel, in the owner's language: its short form
+    (ADR-0316 §2). One headline; what is needed from the reader; a quote of one line where the
+    event has one; the date; one link to the report's page, which holds the full record; the
+    answer line. The repository text and the view keep everything else."""
     book = channel.phrasebook
     heading = {
         ReportKind.DECISION: book.decision,
@@ -130,32 +161,90 @@ def message(report: Report, channel: OwnerChannel) -> str:
         ReportKind.FAILURE: book.failure,
         ReportKind.SIGNALS: book.signals,
     }[report.kind]
-    title = report.title if heading is None else f"{heading}: {report.title}"
-    lines = [
-        f"*{title}* ({report.id})",
-        "",
-        f"{book.needed}:",
-        *(f"• {item}" for item in report.needed),
-        "",
-        f"{book.steps}:",
-        *(f"{n}. {step}" for n, step in enumerate(report.steps, start=1)),
-        "",
-        f"{book.standing_still}:",
-        *(f"• {item}" for item in report.standing_still),
-        "",
-        f"{book.due}: {report.due.isoformat()}",
-    ]
-    links = [f"• {link.label}: {link.url}" for link in report.links]
+    brief = report.brief
+    headline = None if brief is None else _said(book, brief.headline)
+    lines: list[str] = []
+    if headline is not None:
+        lines.append(f"*{headline if heading is None else f'{heading}: {headline}'}*")
+    elif heading is not None:
+        # Without a brief the title is the record's own text: set apart as a quote.
+        lines += [f"*{heading}*", f"> {one_line(report.title)}"]
+    else:
+        lines.append(f"> {one_line(report.title)}")
+    if brief is not None and brief.quote is not None:
+        lines.append(f"> {one_line(brief.quote)}")
+    if report.kind in ASKS_FOR_ITEMS:
+        lines += [f"> {one_line(item)}" for item in report.needed]
+    if report.kind is ReportKind.DECISION:
+        lines += [f"> {o.id}: {one_line(o.label, OPTION)}" for o in report.offered]
+    listed: set[str] = set()
+    if brief is not None and brief.items:
+        for item in brief.items[:LISTED]:
+            text = _said(book, item)
+            if text is None:
+                continue
+            lines.append(" ".join(("•", text, *item.links)))
+        listed = {link for item in brief.items for link in item.links}
+        rest = len(brief.items) - LISTED
+        more = book.brief("more", {"count": str(rest)}) if rest > 0 else None
+        if more is not None:
+            lines.append(f"• {more}")
+    ask = None if brief is None or brief.ask is None else _said(book, brief.ask)
+    if ask is not None:
+        lines.append(ask)
+    lines.append(f"{book.due}: {report.due.isoformat()}")
+    concerns = [link.url for link in report.links if _absolute(link.url) and link.url not in listed]
+    if concerns:
+        lines.append(f"{book.links}: " + " · ".join(concerns))
     task = report.task()
     if task is not None and task.url is not None:
-        links.append(f"• {book.task}: {task.url}")
+        lines.append(f"{book.task}: {task.url}")
     view = view_url(channel, report.id)
-    if view is not None:
-        links.append(f"• {book.view}: {view}")
-    if links:
-        lines += ["", f"{book.links}:", *links]
-    lines += ["", book.answer_with.format(answers=answers(report, book))]
+    lines.append(f"{book.view}: {view}" if view is not None else f"({report.id})")
+    lines.append(book.answer_with.format(answers=answers(report, book)))
     return "\n".join(lines)
+
+
+def role_message(composed: Composed, reader: str, channel: OwnerChannel) -> str | None:
+    """A role's scheduled report as a message in the tenant's language (ADR-0316 §5): one
+    headline, then one line for each item that bears on the reader, with its link. None where
+    the phrasebook has no short form; the report's own lines are said then."""
+    book = channel.phrasebook
+    if composed.quiet:
+        return book.brief("role_quiet", {"role": reader})
+    headline = book.brief("role_report", {"role": reader, "count": str(len(composed.items))})
+    if headline is None:
+        return None
+    lines = [f"*{headline}*"]
+    for item in composed.items[:LISTED]:
+        if item.kind == "figure":
+            # A figure carries its definition and its value as the reader's view has them
+            # (UC-6.2 §2): the record's line, quoted.
+            lines.append(f"> {one_line(item.text)}")
+            continue
+        said, link = _role_line(item, channel)
+        if said is None:
+            return None
+        lines.append(" ".join(("•", said, *(() if link is None else (link,)))))
+    rest = len(composed.items) - LISTED
+    more = book.brief("more", {"count": str(rest)}) if rest > 0 else None
+    if more is not None:
+        lines.append(f"• {more}")
+    overview = None if channel.view_base is None else f"{channel.view_base.rstrip('/')}/app/#/"
+    if overview is not None:
+        lines.append(f"{book.view}: {overview}")
+    return "\n".join(lines)
+
+
+def _role_line(item: Item, channel: OwnerChannel) -> tuple[str | None, str | None]:
+    book = channel.phrasebook
+    if item.kind == "decision":
+        return book.brief("role_decision", {}), view_url(channel, item.ref)
+    if item.kind == "escalation":
+        return book.brief("role_escalated", dict(item.values)), run_url(channel, item.ref)
+    if item.kind == "blocked":
+        return book.brief("role_blocked", dict(item.values)), run_url(channel, item.ref)
+    return book.brief("role_switch_off", {"process": item.ref}), None
 
 
 def reflected(report: Report, reading: Reading, book: Phrasebook) -> str:
