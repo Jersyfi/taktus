@@ -36,6 +36,17 @@ looks at, and section 5 is the demonstration.
 
 ## 5. Why the gate had no value
 
-On this one value in this one file the rule can find nothing but the name of an algorithm. The
-same value in any other file is still found, and any other value in this file is still judged by
-the rule as before. The planted key `scan_secrets.sh` proves itself with is still found.
+The gate is the secret scan, `make gate-secrets` locally and `tools/scan_secrets.sh` in CI's lane
+`static`. Its rule `generic-api-key` looks at every value beside a word such as `key`, `token` or
+`secret`, and reports one whose entropy is high. In `tests/fakes/cloud_service.py` it would have
+caught a token or a private key written into the fake by mistake.
+
+On the one value the exception names it can catch nothing: `KEY_ALG_RSA_2048` is the name the
+published identity interface gives an algorithm, the same for every key, and it opens nothing.
+The single finding of the pull request was that value, in that file, beside the word
+`keyAlgorithm`. The fake no longer carries it; one commit of the branch's history does.
+
+Everywhere else the scan looks exactly as before. Before the exception, `tools/scan_secrets.sh
+origin/main HEAD` reported that one finding; after it, none; the same value in another file, and
+any other value in this file, are still judged by the rule, and the planted key the script proves
+itself with before every scan is still found.
