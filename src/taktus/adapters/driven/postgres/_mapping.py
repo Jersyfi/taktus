@@ -2555,6 +2555,7 @@ MAPPERS: dict[str, Mapper] = {
     "discovered_process": DocumentMapper(s.discovered_process, "at"),
     "declared_chain": DocumentMapper(s.declared_chain, "declared_at"),
     "chain_run": DocumentMapper(s.chain_run, "started_at"),
+    "conversation": DocumentMapper(s.conversation, "opened_at"),
     "connection_grant": CreatedDocumentMapper(s.connection_grant),
     "knowledge_entry": CreatedDocumentMapper(s.knowledge_entry),
     "domain_instance": CreatedDocumentMapper(s.domain_instance),

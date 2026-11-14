@@ -1,6 +1,10 @@
-You ask Taktus for something by writing to it where you already work: in your organisation's
-chat, or in a comment in the system where your team keeps its tasks. Which places Taktus listens
-in is set up by the people who administer it.
+You ask Taktus for something in four places: the web app's page **Ask Taktus**, your
+organisation's chat, the system where your team keeps its tasks, and your own agent. The page
+*Talking to Taktus* lists what you can say in each, and how to connect your own agent. Which
+chats and task systems Taktus listens in is set up by the people who administer it.
+
+The quickest start: open **Ask Taktus** in the web app and write what you want done. Taktus
+answers briefly and proposes what it can do; nothing happens until you say yes.
 
 ## Before the first time: your account
 
@@ -17,7 +21,8 @@ Taktus account. Writing it proves that you hold the chat account. A name or an a
 looks like yours connects nothing.
 
 Today a link code is created through Taktus's interface for programs. Ask the people who
-administer Taktus to help you with it.
+administer Taktus to help you with it. The web app needs no link code: you sign in there with
+your Taktus account.
 
 ## When Taktus does not know you yet
 

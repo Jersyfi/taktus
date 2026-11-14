@@ -451,6 +451,18 @@ role it would tie the core to a model stack and the removal test would be lost.
   `composition/agent_surface.py`, which also records every call. The identity component keeps
   the agent key's digest on the identity and the rights per role (`RoleRights`, table
   `role_rights`).
+- **Building through a person's own agent, and Taktus's own conversation** (ADR-0324 to
+  ADR-0326). The closed list of acts is the command component's (`ACTS`,
+  `components/command/domain/model/conversation.py`); a conversation and its acts read back are
+  `Conversation` (table `conversation`), kept by `application/service/conversations.py`. The
+  acts are done by `composition/building.py` (`BuildActs`, the port `Building` of `wiring.py`)
+  over the plan dialogue, the acts on a proposal and the start command. A turn is
+  `composition/conversation.py`: `ConversationActs` (the port `Talking`; `/conversation` in
+  `adapters/driving/rest/conversation.py`) keeps it and starts the process
+  `TAKTUS_CONVERSATION_PROCESS` names, whose steps reach it through the loopback connector's
+  `orchestrator.conversation`; `ConversationInChat` is the owner channel's last reader
+  (`OwnerAnswers.converse_with`). The repository's conversation process is S-09; the web page is
+  `web/src/routes/ask`.
 - **A message to a running step** is the `api` role's (`adapters/driving/rest/steering.py`, the
   MCP tool `steer_step` under the right `agent.steer`, and the chat's read-back in
   `composition/takeover_in_channel.py` with the phrasebooks' `steer_*` entries; ADR-0156). Each

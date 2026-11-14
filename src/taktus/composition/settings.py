@@ -1400,6 +1400,11 @@ class Settings:
     the tenant does not have yet into a proposal for its first version (UC-4.1, ADR-0251), by
     its identifier. None, the default: a new process is created from its bundle only. A tenant's
     bundle, never a default of the product (ADR-0092)."""
+    conversation_process: str | None
+    """`TAKTUS_CONVERSATION_PROCESS`: the process that answers a turn of a person's conversation
+    with Taktus (UC-1.14, ADR-0325), by its identifier. None, the default: no conversation is
+    had, and the page "Ask Taktus" says so. A tenant's bundle, never a default of the product
+    (ADR-0092); the repository's is S-09."""
     state_dir: Path
     """Where artifact bytes are written with the object store `filesystem`."""
     object_store: ObjectStoreSettings
@@ -1490,6 +1495,7 @@ class Settings:
             ("TAKTUS_BACKUP_EXPECTED_HOURS", str(self.backup_expected_hours or "")),
             ("TAKTUS_CHANGE_PROCESS", self.change_process or ""),
             ("TAKTUS_DESCRIBE_PROCESS", self.describe_process or ""),
+            ("TAKTUS_CONVERSATION_PROCESS", self.conversation_process or ""),
             ("TAKTUS_PLATFORM", self.administration.platform or ""),
             (
                 "TAKTUS_ADMINISTERS",
@@ -1567,6 +1573,7 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         backup_expected_hours=load_backup_expected_hours(configuration),
         change_process=reader.text("change.process", "").strip() or None,
         describe_process=reader.text("describe.process", "").strip() or None,
+        conversation_process=reader.text("conversation.process", "").strip() or None,
         state_dir=Path(reader.text("state.dir", "~/.cache/taktus/taktusd")).expanduser(),
         object_store=load_object_store(configuration),
         object_cache_mb=reader.integer("object.cache.mb", 64, low=0),

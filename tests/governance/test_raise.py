@@ -305,7 +305,8 @@ def test_no_code_path_stores_a_version_but_the_one_that_asks_for_the_approval() 
     """Every write of a process version goes through `RegisterProcessVersionHandler`, which
     refuses a raise without a person's approval (the tests above). No other code puts a
     version; and the approval is only ever the invoking person's, given with `--approve-raise`
-    on the command line or `approve_raise` on a commission or rollback (ADR-0091). The
+    on the command line or `approve_raise` on a commission or rollback (ADR-0091), from the web or
+    from an act the person confirmed (ADR-0324). The
     composition passes the approval through unchanged; the channel never gives one."""
     src = ROOT / "src" / "taktus"
     puts = [
@@ -332,6 +333,10 @@ def test_no_code_path_stores_a_version_but_the_one_that_asks_for_the_approval() 
             "who.identity if body.approve_raise else None",
         ],
         "src/taktus/composition/proposals.py": ["approved_by", "approved_by"],
+        "src/taktus/composition/building.py": [
+            "identity if approve_raise else None",
+            "identity if approve_raise else None",
+        ],
     }
 
 

@@ -99,6 +99,10 @@ guides:
         title: The web app
         parts:
           - file: docs/guides/use/web-app.md
+      - id: talking
+        title: Talking to Taktus
+        parts:
+          - file: docs/guides/use/talking.md
       - id: asking
         title: Asking Taktus for something
         parts:

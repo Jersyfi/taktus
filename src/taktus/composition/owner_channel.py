@@ -328,6 +328,15 @@ class Taker(Protocol):
     ) -> Changed | None: ...
 
 
+class Converser(Protocol):
+    """Taktus's own conversation, read in a chat after every rule (`composition/conversation`,
+    ADR-0326 §3)."""
+
+    async def take(
+        self, tenant: str, intake: Intake, identity: str | None, roles: tuple[str, ...]
+    ) -> Changed | None: ...
+
+
 class OwnerAnswers(ChannelAnswers):
     """A message in the thread of a report is an answer to it; a message in the owner's
     conversation that asks for a live representation is answered with its text equivalent and
@@ -345,6 +354,12 @@ class OwnerAnswers(ChannelAnswers):
         self._spending: Taker | None = None
         self._cataloguing: Taker | None = None
         self._sessions: Taker | None = None
+        self._conversing: Converser | None = None
+
+    def converse_with(self, conversing: Converser) -> None:
+        """A message no rule here reads goes to Taktus's own conversation (ADR-0326 §3), once
+        the composition root has it."""
+        self._conversing = conversing
 
     def sessions_with(self, sessions: Taker) -> None:
         """A session with project knowledge is continued from any chat Taktus reads (ADR-0304
@@ -458,20 +473,24 @@ class OwnerAnswers(ChannelAnswers):
             )
             if taken is not None:
                 return Taken(outcome=taken.outcome, replied=taken.replied)
-        if self._changing is None:
+        if self._changing is not None:
+            changed = await self._changing.take(
+                tenant,
+                intake.reply_to.channel,
+                intake.reply_to.address,
+                intake.reply_to.thread,
+                identity,
+                intake.intent.raw,
+                intake.event_id,
+            )
+            if changed is not None:
+                return Taken(outcome=changed.outcome, replied=changed.replied)
+        if self._conversing is None:
             return None
-        changed = await self._changing.take(
-            tenant,
-            intake.reply_to.channel,
-            intake.reply_to.address,
-            intake.reply_to.thread,
-            identity,
-            intake.intent.raw,
-            intake.event_id,
-        )
-        if changed is None:
+        conversed = await self._conversing.take(tenant, intake, identity, roles)
+        if conversed is None:
             return None
-        return Taken(outcome=changed.outcome, replied=changed.replied)
+        return Taken(outcome=conversed.outcome, replied=conversed.replied)
 
 
 @dataclass(frozen=True)

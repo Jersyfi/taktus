@@ -22,6 +22,7 @@ from taktus.components.catalog.domain.model import (
 from taktus.components.command.domain.model import IntakeEvent, PlanDraft
 from taktus.components.command.domain.model.coach import CoachHint, CoachPolicy, CoachSettings
 from taktus.components.command.domain.model.configuration import ConfigurationChange
+from taktus.components.command.domain.model.conversation import Conversation
 from taktus.components.command.domain.model.session import ProjectSession
 from taktus.components.decision.domain.model import DecisionRule, RegisterEntry, Request
 from taktus.components.governance.domain.model import (
@@ -142,6 +143,7 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (DiscoveredProcess, samples.discovered_process),
     (DeclaredChain, samples.declared_chain),
     (ChainRun, samples.chain_run),
+    (Conversation, samples.conversation),
     (OrgStructure, samples.org_structure),
     (StructureUnit, samples.structure_unit),
     (Placement, samples.placement),

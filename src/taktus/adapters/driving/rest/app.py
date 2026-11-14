@@ -60,6 +60,7 @@ from taktus.adapters.driving.rest import (
     catalogue,
     chains,
     connections,
+    conversation,
     deprecation,
     evaluations,
     figures,
@@ -193,6 +194,7 @@ def build_app(
         app.include_router(process_proposals.router(services, _authenticated), prefix=base)
         app.include_router(gallery.router(services, _authenticated), prefix=base)
         app.include_router(planning.router(services, _authenticated), prefix=base)
+        app.include_router(conversation.router(services, _authenticated), prefix=base)
         app.include_router(structure.router(services, _authenticated), prefix=base)
         app.include_router(administration.router(services, _authenticated), prefix=base)
         app.include_router(evaluations.router(services, _authenticated), prefix=base)

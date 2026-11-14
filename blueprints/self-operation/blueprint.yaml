@@ -2,7 +2,8 @@
 # The processes Taktus runs for itself, on itself: the checks of its own claims, and its own
 # documentation beyond the repository. The first is the removal test. The guides followed (S-05,
 # UC-13.6), then maturation (S-06, ADR-0086), and the load measurement's probe (S-04,
-# ADR-0223), a change in dialogue (S-07) and a process from a description (S-08). The takeover
+# ADR-0223), a change in dialogue (S-07), a process from a description (S-08) and a turn of a
+# person's conversation (S-09). The takeover
 # test and the restore drill have no bundle by design (README.md).
 
 apiVersion: taktus.eu/process-bundle/v1
@@ -12,7 +13,7 @@ metadata:
   name: Self-operation
   domain: operations
   maturity: experimental       # draft | experimental | verified | reference
-  version: "1"                 # a later version is offered to an instance, never applied (ADR-0263)
+  version: "2"                 # a later version is offered to an instance, never applied (ADR-0263)
 
 # Capabilities, never product names. The orchestrator.* capabilities are served by the
 # loopback connector, through which an instance reaches itself.
@@ -24,6 +25,7 @@ requires:
     - capability: orchestrator.guides
     - capability: orchestrator.maturation
     - capability: orchestrator.changes
+    - capability: orchestrator.conversation
     - capability: repository.files
     - capability: knowledge.pages
 
@@ -132,3 +134,15 @@ processes:
       - { id: propose, method: llm,  exactness: tolerant }   # the model proposes the new bundle
       - { id: keep,    method: rule, exactness: exact }      # validated as registration would; nothing registered
 
+  - id: S-09
+    name: Conversation turn
+    bundle: processes/S-09-conversation-turn.yaml
+    autonomy:
+      level: 3
+      reason: the model's answer and proposed act leave its step only through the rule that checks the act against the closed list; nothing is done before the person's yes (ADR-0325)
+      toward_next: none planned; the person's yes stays the act at every level
+    triggers: []   # started by a person's message, from the web app or the chat (ADR-0325)
+    steps:
+      - { id: context, method: rule, exactness: sourced }
+      - { id: think,   method: llm,  exactness: free }       # the model answers and proposes at most one act
+      - { id: answer,  method: rule, exactness: exact }      # the act checked against the closed list and read back

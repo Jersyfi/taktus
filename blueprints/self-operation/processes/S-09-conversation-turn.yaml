@@ -1,0 +1,169 @@
+# S-09 Conversation turn — one turn of a person's conversation with Taktus is answered, and an
+# act it proposes is read back and kept waiting for the person's yes (UC-1.14, ADR-0325).
+#
+# A person writes to Taktus, in the web app's "Ask Taktus" or in a chat. The instance keeps what
+# they said and starts this process as them. Taktus reads the message, the turns before it, the
+# closed list of acts and what the person may see; a language model answers in words and
+# proposes at most one act of that list; a rule keeps the answer, checks the act against the
+# list and reads it back. Nothing is done here: an act is done only once the person says yes.
+#
+# The capability `orchestrator.conversation` is served by the loopback connector, through which
+# Taktus reaches itself (docs/architecture/contracts.md §4). The operator names the registered
+# process in `TAKTUS_CONVERSATION_PROCESS`.
+
+id: s09-conversation-turn
+version: "1"
+name: S-09 Conversation turn
+autonomy:
+  level: 3
+  reason: >
+    the one value a language model produces is an answer in words and a proposed act; the act
+    leaves the step only through the rule that checks it against the closed list, and nothing
+    is done before the person's yes at every level (ADR-0008)
+  toward_next: >
+    none planned: the person's yes stays the act, whatever the level (ADR-0325)
+author: the repository
+reason: a person builds in Taktus by conversation (UC-1.14, DEC-0239)
+
+inputs:
+  conversation:
+    description: the person's conversation, by its identifier
+    example: cnv_0123456789abcdef01234567
+  message:
+    description: what the person said, as kept in the conversation
+    example: I want our supplier invoices answered within a day
+
+# Counted in calls of the loopback connector. The model's answer is held to its own limit below.
+limits:
+  quota: { units: 4 }
+
+steps:
+  - id: context
+    method: rule
+    reason: the message, the turns before it, the acts and what the person may see are read as kept
+    rejected:
+      - method: llm
+        why: what is kept is read, not judged
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what orchestrator.conversation.context answered", columns: [message, history, acts, known] }
+    fallback:
+      when: the loopback connector is unavailable
+      to: human
+      role: owner
+    work:
+      checking: { select: output }
+      rule: connector
+      operation: orchestrator.conversation.context
+      input:
+        conversation: { $input: conversation }
+
+  - id: think
+    method: llm
+    reason: >
+      what a person means in their own words, and which act of the list serves it, is
+      understanding language; no rule set states it
+    rejected:
+      - method: rule
+        why: the wording of a request varies too much for a rule set; the phrasebook's rules answer first in the chat
+      - method: ml
+        why: no labelled corpus of conversations and the acts they led to exists yet
+    exactness: free
+    fallback:
+      when: the model serving the purpose reasoning is unavailable
+      to: human
+      role: owner
+    depends_on: [context]
+    work:
+      purpose: reasoning
+      system: >
+        You are Taktus, an operating layer for a business, talking with a person who works
+        there. Be short and to the point: as much as needed, as little as possible. Answer only
+        from what you are told; say plainly when you do not know. You never do anything
+        yourself. Where an act of the list serves what the person wants, propose exactly one,
+        with its arguments; the person confirms it before it is done. Never propose an act that
+        is not on the list. Never state a number as a fact unless you were told it. Answer with
+        one JSON object and nothing else, of the form
+        {"say": "<your answer>", "act": null} or
+        {"say": "<your answer>", "act": {"name": "<act>", "arguments": {...}}}.
+      prompt: |
+        The acts you may propose (an argument with ? may be left out):
+        ${acts}
+
+        What the person may see:
+        ${known}
+
+        The conversation so far:
+        ${history}
+
+        The person says:
+        ${message}
+      values:
+        acts: { $from: context, $select: output.acts }
+        known: { $from: context, $select: output.known }
+        history: { $from: context, $select: output.history }
+        message: { $from: context, $select: output.message }
+      max_output_tokens: 1024
+
+  - id: answer
+    method: rule
+    reason: >
+      the answer is kept as the person's next turn; the act it proposes is checked against the
+      closed list and read back by rule, and an answer not in the agreed form is said to be one
+    rejected:
+      - method: llm
+        why: whether an act is on the list and fits its arguments is a fixed rule; a model's opinion of it is not
+    exactness: exact
+    checks:
+      - { kind: recomputation, subject: "whether the act is on the closed list and fits its arguments, and its read-back" }
+    fallback:
+      when: the loopback connector is unavailable
+      to: human
+      role: owner
+    depends_on: [think]
+    work:
+      rule: connector
+      operation: orchestrator.conversation.answer
+      input:
+        conversation: { $input: conversation }
+        text: { $from: think, $select: text }
+
+# How a person runs this process without Taktus (ADR-0013 B, ADR-0180): the sequence, and for
+# every step the system to act in, what to do there, the expertise it needs, each credential by
+# its parameter and where an authorised person finds it, and how to tell that it is done.
+takeover:
+  sequence: >
+    The process runs when a person writes to Taktus in the web app's "Ask Taktus" or in a chat;
+    that person starts it. The steps run in order: read what the person said and the turns
+    before it, answer it and name the one act that serves it, and keep the answer with that act
+    read back. Nothing is done: the person who wrote decides whether the act is done.
+  steps:
+    context:
+      system: the instance's web app, page "Ask Taktus", or the chat the person wrote in
+      do: >
+        read the person's last message and the turns before it; look up the processes the
+        person may see and their open plan drafts in the web app
+      expertise: finding a process and a plan draft in the web app
+      credentials: []
+      done: the message and what it refers to are at hand
+    think:
+      system: a text editor
+      do: >
+        write a short answer to the person, and where one act of the list in
+        docs/guides/use/talking.md serves what they want, name it with its arguments
+      expertise: knowing the processes of the business and what each act does
+      credentials: []
+      done: the answer says what the person needs, and at most one act is named
+    answer:
+      system: the chat the person wrote in, or the web app
+      do: >
+        give the person the answer and, where an act is named, say what it will do and ask for
+        their yes; on a yes, do the act in the web app as the guide for it says
+      expertise: reading back an act in plain words
+      credentials: []
+      done: the person has the answer, and an act is done only after their yes
+
+# What counts as an equivalent result of each variable step that no scorer scores
+# yet: its class's ceiling until its cases narrow it (UC-8.4, ADR-0300 §1).
+tolerances:
+  think: 1.0

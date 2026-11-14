@@ -2758,6 +2758,124 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /conversation:
+    get:
+      tags:
+      - conversation
+      summary: Your conversation with Taktus
+      description: Its turns, the acts read back in it with their state, and the run still forming an
+        answer (ADR-0325).
+      operationId: view_conversation_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The conversation.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+    post:
+      tags:
+      - conversation
+      summary: Say something to Taktus
+      description: Kept as your turn; a run forms the answer as you, under its own budget, and keeps it
+        in the conversation. An act it proposes is read back and waits for your yes (ADR-0325, ADR-0008).
+      operationId: say_conversation_post
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/taktus__adapters__driving__rest__conversation__SayBody'
+      responses:
+        '202':
+          description: Kept; the run forming the answer.
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: No answer can be formed here; the detail says why.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /conversation/acts/{act_id}:
+    post:
+      tags:
+      - conversation
+      summary: Say yes or no to an act Taktus read back
+      description: A yes does the act as you, through the same services and checks as every other page;
+        a no does nothing. Either is recorded, and said as Taktus's next turn.
+      operationId: confirm_conversation_acts__act_id__post
+      parameters:
+      - name: act_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Act Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/taktus__adapters__driving__rest__conversation__ConfirmBody'
+      responses:
+        '200':
+          description: The act, settled.
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: No such act of yours, or settled already.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
   /structure:
     get:
       tags:
@@ -3340,7 +3458,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SayBody'
+              $ref: '#/components/schemas/taktus__adapters__driving__rest__structure__SayBody'
       responses:
         '200':
           description: Taktus's answer.
@@ -8539,21 +8657,6 @@ components:
       required:
       - version
       title: RollbackBody
-    SayBody:
-      properties:
-        text:
-          type: string
-          maxLength: 8000
-          minLength: 1
-          title: Text
-        channel:
-          type: string
-          title: Channel
-          default: channel.web
-      type: object
-      required:
-      - text
-      title: SayBody
     SettleBody:
       properties:
         goal:
@@ -8802,6 +8905,28 @@ components:
           description: The inputs of the chain's first link.
       type: object
       title: StartBody
+    taktus__adapters__driving__rest__conversation__ConfirmBody:
+      properties:
+        'yes':
+          type: boolean
+          title: 'Yes'
+          description: 'True: do the act as it was read back. False: do nothing.'
+      type: object
+      required:
+      - 'yes'
+      title: ConfirmBody
+    taktus__adapters__driving__rest__conversation__SayBody:
+      properties:
+        text:
+          type: string
+          maxLength: 4000
+          minLength: 1
+          title: Text
+          description: What you say to Taktus.
+      type: object
+      required:
+      - text
+      title: SayBody
     taktus__adapters__driving__rest__evaluations__ConfirmBody:
       properties:
         target:
@@ -8831,6 +8956,21 @@ components:
       - field
       - value
       title: AnswerBody
+    taktus__adapters__driving__rest__structure__SayBody:
+      properties:
+        text:
+          type: string
+          maxLength: 8000
+          minLength: 1
+          title: Text
+        channel:
+          type: string
+          title: Channel
+          default: channel.web
+      type: object
+      required:
+      - text
+      title: SayBody
     taktus__adapters__driving__rest__subjects__ConfirmBody:
       properties:
         identity_checked:
