@@ -1035,8 +1035,18 @@ ADDRESS = re.compile(
 SECRET_KEY = re.compile(r"(?i)(password|passphrase|token|apikey|api_key|private)$")
 
 
+def a_manifest(path: Path) -> bool:
+    """A file of Kubernetes objects applied as they are, such as the deployment identity, not
+    values for the chart: each of its documents names its `apiVersion` and `kind`."""
+    documents = [d for d in yaml.safe_load_all(path.read_text(encoding="utf-8")) if d]
+    return bool(documents) and all(
+        isinstance(d, dict) and "apiVersion" in d and "kind" in d for d in documents
+    )
+
+
 def values_files() -> list[Path]:
-    files = [CHART / "values.yaml", *sorted((ROOT / "deploy" / "k8s").glob("*.yaml"))]
+    found = sorted((ROOT / "deploy" / "k8s").glob("*.yaml"))
+    files = [CHART / "values.yaml", *(path for path in found if not a_manifest(path))]
     assert EXAMPLE in files
     return files
 
