@@ -48,7 +48,7 @@ not build, and the conversation port of a session has no model behind it.
 
 ## 5. Options
 
-### Option A — one concept round, both kinds of conversation, delete without a backup (recommended for the first two)
+### Option A — one concept round, both kinds of conversation, the installation deleted (recommended)
 
 ### Option B — separate pull requests, the agent surface only, keep the data
 
