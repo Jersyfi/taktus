@@ -22,8 +22,12 @@ from taktus_connectors.prometheus.server import served
 def main(argv: list[str] | None = None) -> int:
     parser = serving.arguments("The metrics connector.", 9104)
     parser.add_argument("--target", default="http://127.0.0.1:9090", help="the store's address")
+    parser.add_argument(
+        "--metrics", default=None, help="a JSON file of named metrics and their queries"
+    )
     args = parser.parse_args(argv)
-    return serving.serve(served(Config(args.target, args.timeout), args.fault), args)
+    config = Config(args.target, args.timeout, serving.load_metrics(args.metrics))
+    return serving.serve(served(config, args.fault), args)
 
 
 if __name__ == "__main__":

@@ -30,9 +30,15 @@
 #         --input 'query=max by (service) (quota_used / quota_limit)'
 #
 # Switching it off (`taktusctl deactivate --process b-2-03`) changes nothing at the store.
+#
+# Named metrics (ADR-0328): each read names the metric it needs, `quotas.used_share`, and the
+# connector serving `metrics.series` maps the name to its own store's query — PromQL on a
+# Prometheus store or on a cloud's monitoring service — from the tenant's configuration
+# (`--metrics`). A query given as an input is asked verbatim instead. Version 4
+# drops the Prometheus query its schedule carried; a Prometheus store maps the names now.
 
 id: b-2-03
-version: "3"
+version: "4"
 name: B-2.03 Quotas
 autonomy:
   level: 1
@@ -50,8 +56,6 @@ reason: an outside service's quota found nearly used before a send or a payment 
 
 triggers:
   - schedule: "0 7 * * *"
-    inputs:
-      query: max by (service) (quota_used / quota_limit)
 
 inputs:
   query:
@@ -59,6 +63,7 @@ inputs:
       the tenant's query for the share of the quota used per outside service, from 0 to 1; each
       series it answers is one service
     example: max by (service) (quota_used / quota_limit)
+    required: false
 
 limits:
   quota: { units: 3 }
@@ -82,7 +87,8 @@ steps:
       rule: connector
       operation: metrics.series.query
       input:
-        query: { $input: query }
+        metric: quotas.used_share
+        query: { $input: query, $otherwise: "" }
       credentials:
         - { name: METRICS_TOKEN, injected_as: env }
       expect:

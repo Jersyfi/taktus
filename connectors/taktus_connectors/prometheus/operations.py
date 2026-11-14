@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
@@ -36,6 +36,7 @@ from taktus_connectors.serving import (
     Outcome,
     TargetError,
     invalid,
+    metric_query,
     unavailable,
 )
 
@@ -52,13 +53,12 @@ class Config:
     target: str
     """The store's base address; the query API is under `/api/v1`."""
     timeout: float = 30.0
+    metrics: dict[str, str] = field(default_factory=dict)
+    """The named metrics this store answers, each with its query (ADR-0328, `--metrics`)."""
 
 
-def _query(input: Json) -> str:
-    query = input.get("query")
-    if not isinstance(query, str) or not query.strip() or len(query) > 20_000:
-        raise invalid("query must be a text of at most 20000 characters")
-    return query
+def _query(config: Config, input: Json) -> str:
+    return metric_query(input, config.metrics)
 
 
 def _moment(input: Json, name: str, *, required: bool) -> str | None:
@@ -157,7 +157,7 @@ def _series(data: Json, limit: int) -> Json:
 
 
 async def query(config: Config, call: Call, input: Json) -> Outcome:
-    params: Json = {"query": _query(input)}
+    params: Json = {"query": _query(config, input)}
     limit = _limit(input)
     if (moment := _moment(input, "time", required=False)) is not None:
         params["time"] = moment
@@ -170,7 +170,7 @@ async def range_(config: Config, call: Call, input: Json) -> Outcome:
     if isinstance(step, bool) or not isinstance(step, int | float) or step <= 0:
         raise invalid("step must be a positive number of seconds")
     params: Json = {
-        "query": _query(input),
+        "query": _query(config, input),
         "start": _moment(input, "start", required=True),
         "end": _moment(input, "end", required=True),
         "step": str(step),

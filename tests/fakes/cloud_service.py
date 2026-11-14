@@ -7,6 +7,13 @@ The cloud operations connector under `connectors/taktus_connectors/gcp/` asks:
 - BigQuery `POST /bigquery/v2/projects/<project>/queries` (`jobs.query`) and
   `GET /bigquery/v2/projects/<project>/queries/<jobId>` (`jobs.getQueryResults`);
 - Secret Manager `GET /v1/projects/<project>/secrets` and `.../secrets/<id>/versions`;
+- Cloud Monitoring's PromQL API, `POST /v1/projects/<project>/location/global/prometheus/api/v1/
+  query` and `.../query_range`: every parsable query is answered with two series of one function
+  each, the second `NaN`, and each body asked is kept in `promql`; a query whose parentheses do
+  not balance is 400 with the Prometheus API's `status: error`;
+- the model service's `GET /v1beta1/publishers/google/models`: three models paged by `pageSize`,
+  each with its launch stage and no date, as the API states none; and a cost query kept to one
+  service by the STRING parameter `service`, answered from `model_rows`;
 - the token endpoint `POST /token`, with the JWT bearer grant.
 
 This fake answers each in the shapes and statuses the published references give, so that the
@@ -88,6 +95,21 @@ BIGQUERY_SCOPES = {
     AUTH + "cloud-platform",
 }
 SECRET_SCOPES = {AUTH + "cloud-platform"}
+MONITORING_SCOPES = {
+    AUTH + "monitoring.read",
+    AUTH + "monitoring",
+    AUTH + "cloud-platform",
+}
+MODEL_SCOPES = {AUTH + "cloud-platform"}
+PROMQL = re.compile(r"^/v1/projects/([^/]+)/location/global/prometheus/api/v1/(query|query_range)$")
+PUBLISHER_MODELS = "/v1beta1/publishers/google/models"
+MODELS = (
+    ("gemini-2.5-flash", "GA"),
+    ("gemini-2.5-pro", "GA"),
+    ("gemini-preview", "PUBLIC_PREVIEW"),
+)
+MODEL_SERVICE = "Vertex AI"
+MODEL_SKUS = ("Model input tokens", "Model output tokens")
 DIGEST_INFO = bytes.fromhex("3031300d060960864801650304020105000420")
 """The DER prefix PKCS #1 v1.5 puts before a SHA-256 digest (RFC 8017, section 9.2)."""
 BOUND = re.compile(r'timestamp\s*(>=|<=)\s*"([^"]+)"')
@@ -174,6 +196,23 @@ def cost_rows(day: date) -> list[dict[str, Any]]:
     ]
 
 
+def model_rows(day: date) -> list[dict[str, Any]]:
+    """The model service's rows of one day in the export, by SKU; every other service's rows
+    are `cost_rows`. Nothing before 2024."""
+    if day < date(2024, 1, 1):
+        return []
+    return [
+        {
+            "service": MODEL_SERVICE,
+            "sku": sku,
+            "project": PROJECT,
+            "currency": "EUR",
+            "cost": Decimal(("0.000123", "1.1")[i]) * (1 + day.day % 2),
+        }
+        for i, sku in enumerate(MODEL_SKUS)
+    ]
+
+
 def stored_secrets(count: int) -> list[dict[str, Any]]:
     """Three named secrets, then `count - 3` more; newest created first, as the API lists."""
     named: list[dict[str, Any]] = [
@@ -233,6 +272,7 @@ class State:
         self.paths: list[str] = []
         self.seen_tokens: list[str] = []
         self.assertions: list[dict[str, Any]] = []
+        self.promql: list[dict[str, Any]] = []
         self.lock = threading.Lock()
 
 
@@ -298,6 +338,7 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
                         "paths": list(state.paths),
                         "seen_tokens": list(state.seen_tokens),
                         "assertions": list(state.assertions),
+                        "promql": list(state.promql),
                     }
                 self.answer(200, body)
                 return
@@ -306,6 +347,10 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
             if (found := RESULTS.match(url.path)) is not None:
                 if self.admitted(BIGQUERY_SCOPES):
                     self._results(found.group(1), found.group(2), query)
+                return
+            if url.path == PUBLISHER_MODELS:
+                if self.admitted(MODEL_SCOPES):
+                    self._models(query)
                 return
             if not self.admitted(SECRET_SCOPES):
                 return
@@ -343,7 +388,65 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
                 if self.admitted(BIGQUERY_SCOPES):
                     self._query(found.group(1), body)
                 return
+            if (found := PROMQL.match(url.path)) is not None:
+                if self.admitted(MONITORING_SCOPES):
+                    self._promql(found.group(1), found.group(2), body)
+                return
             self.error(404, "NOT_FOUND", "Not found.")
+
+        # Cloud Monitoring's PromQL API: the Prometheus HTTP API's answers.
+
+        def _promql(self, project: str, kind: str, body: dict[str, Any]) -> None:
+            if project != PROJECT:
+                self.error(404, "NOT_FOUND", "Project not found.")
+                return
+            text = body.get("query")
+            if not isinstance(text, str) or not text or text.count("(") != text.count(")"):
+                self.answer(400, {"status": "error", "errorType": "bad_data", "error": "parse"})
+                return
+            if kind == "query_range" and not all(body.get(k) for k in ("start", "end", "step")):
+                self.answer(400, {"status": "error", "errorType": "bad_data", "error": "range"})
+                return
+            with state.lock:
+                state.promql.append({"kind": kind, **body})
+            pairs = (("function_a", "0.25"), ("function_b", "NaN"))
+            if kind == "query":
+                result: list[dict[str, Any]] = [
+                    {"metric": {"function_name": f}, "value": [1767225600, v]} for f, v in pairs
+                ]
+                data = {"resultType": "vector", "result": result}
+            else:
+                result = [
+                    {"metric": {"function_name": f}, "values": [[1767225600, v], [1767225660, v]]}
+                    for f, v in pairs
+                ]
+                data = {"resultType": "matrix", "result": result}
+            self.answer(200, {"status": "success", "data": data})
+
+        # The model service's publisher models.
+
+        def _models(self, query: dict[str, str]) -> None:
+            offset = _offset(query.get("pageToken"))
+            size_text = query.get("pageSize", "0")
+            if offset is None or not size_text.isdigit():
+                self.error(400, "INVALID_ARGUMENT", "Invalid page token or size.")
+                return
+            size = int(size_text) or 100
+            page = MODELS[offset : offset + size]
+            answer: dict[str, Any] = {
+                "publisherModels": [
+                    {
+                        "name": f"publishers/google/models/{model}",
+                        "versionId": "001",
+                        "launchStage": stage,
+                        "versionState": "VERSION_STATE_STABLE",
+                    }
+                    for model, stage in page
+                ]
+            }
+            if offset + size < len(MODELS):
+                answer["nextPageToken"] = str(offset + size)
+            self.answer(200, answer)
 
         # The token endpoint.
 
@@ -461,6 +564,9 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
             if f"`{TABLE}`" not in text:
                 self.error(404, "notFound", "Not found: Table")
                 return
+            if "service.description = @service" in text:
+                self._model_query(body, params, start, end)
+                return
             column = next(
                 (c for c in ("service", "project", "region") if f"IFNULL({_COLUMNS[c]}," in text),
                 None,
@@ -476,6 +582,36 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
                     key = (day.isoformat(), row[column] or "", row["currency"])
                     amount = row["cost"] + (sum(row["credits"], Decimal(0)) if net else 0)
                     sums[key] = sums.get(key, Decimal(0)) + amount
+                day += timedelta(days=1)
+            rows = [
+                {"f": [{"v": d}, {"v": g}, {"v": c}, {"v": format(a, "f")}]}
+                for (d, g, c), a in sorted(sums.items())
+            ]
+            job = "job_" + secrets.token_hex(8)
+            with state.lock:
+                state.jobs[job] = {"rows": rows, "pending": state.pending}
+            self._page(job, body.get("maxResults"), None, "bigquery#queryResponse")
+
+        def _model_query(
+            self, body: dict[str, Any], params: dict[Any, Any], start: date, end: date
+        ) -> None:
+            service = params.get("service")
+            if service is None or service[0] != "STRING":
+                self.error(400, "invalidQuery", "Query parameter 'service' not found.")
+                return
+            text = body.get("query") or ""
+            column = "sku" if "IFNULL(sku.description," in text else "project"
+            if column == "project" and "IFNULL(project.id," not in text:
+                self.error(400, "invalidQuery", "The fake knows no such query.")
+                return
+            sums: dict[tuple[str, str, str], Decimal] = {}
+            day = start
+            while day < end:
+                for row in model_rows(day):
+                    if row["service"] != service[1].get("value"):
+                        continue
+                    key = (day.isoformat(), row[column] or "", row["currency"])
+                    sums[key] = sums.get(key, Decimal(0)) + row["cost"]
                 day += timedelta(days=1)
             rows = [
                 {"f": [{"v": d}, {"v": g}, {"v": c}, {"v": format(a, "f")}]}

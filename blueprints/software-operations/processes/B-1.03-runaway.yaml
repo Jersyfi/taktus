@@ -33,9 +33,15 @@
 #         --input 'query=sum by (function) (rate(function_calls_total[5m]))'
 #
 # Switching it off (`taktusctl deactivate --process b-1-03`) changes nothing at the store.
+#
+# Named metrics (ADR-0328): each read names the metric it needs, `functions.calls`, and the
+# connector serving `metrics.series` maps the name to its own store's query — PromQL on a
+# Prometheus store or on a cloud's monitoring service — from the tenant's configuration
+# (`--metrics`). A query given as an input is asked verbatim instead. Version 4
+# drops the Prometheus query its schedule carried; a Prometheus store maps the names now.
 
 id: b-1-03
-version: "3"
+version: "4"
 name: B-1.03 Runaway guard
 autonomy:
   level: 1
@@ -55,7 +61,6 @@ reason: a function caught in a loop is found within minutes without a person wat
 triggers:
   - schedule: "*/5 * * * *"
     inputs:
-      query: sum by (function) (rate(function_calls_total[5m]))
       throttle_above: 100
       throttle_to: 1
 
@@ -65,6 +70,7 @@ inputs:
       the tenant's query for the calls per second, or the instances, per function; each series
       it answers is one function
     example: sum by (function) (rate(function_calls_total[5m]))
+    required: false
   throttle_above:
     description: >
       the value of the query at or above which the busiest function is a runaway and is
@@ -97,7 +103,8 @@ steps:
       rule: connector
       operation: metrics.series.query
       input:
-        query: { $input: query }
+        metric: functions.calls
+        query: { $input: query, $otherwise: "" }
       credentials:
         - { name: METRICS_TOKEN, injected_as: env }
       expect:

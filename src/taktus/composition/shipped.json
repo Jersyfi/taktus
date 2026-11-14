@@ -233,6 +233,9 @@
       "capabilities": [
         "billing.costs",
         "logs.query",
+        "metrics.series",
+        "models.catalogue",
+        "models.costs",
         "secrets.metadata"
       ],
       "image": "taktus-connector-gcp",
@@ -240,6 +243,10 @@
       "operations": [
         "billing.costs.daily",
         "logs.query.entries",
+        "metrics.series.query",
+        "metrics.series.range",
+        "models.catalogue.list",
+        "models.costs.daily",
         "secrets.metadata.list"
       ]
     },

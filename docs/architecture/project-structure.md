@@ -149,7 +149,10 @@ its process. A connector that reaches a cloud's API signs with its own copy of t
 (`auth.py` in its directory), because an image holds nothing of another connector; the release's
 list (`composition/shipped.json`, `make generate`) names each one with what it declares, the
 books connector's `accounting.invoices` among them (ADR-0314), and a connector that serves only
-part of a capability's group — a models list without its costs — with only what it serves.
+part of a capability's group — a models list without its costs — with only what it serves. The
+cloud operations connector names `metrics.series`, `models.costs` and `models.catalogue` beside
+its first three (ADR-0328, ADR-0330); a named metric is mapped by every metrics connector
+through the one rule in `serving.py`.
 
 `tests/architecture` fails on:
 

@@ -1,10 +1,12 @@
 # The cloud operations connector — Google Cloud
 
 The connector contract v1 ([`contracts/connector/v1`](../../../../../../contracts/connector/v1/README.md))
-over three Google Cloud APIs of one project: the log entries of Cloud Logging, the daily costs
-of the Cloud Billing export to BigQuery, and the metadata of the secrets in Secret Manager —
-never a secret's value. Everywhere else these are the capabilities `logs.query`,
-`billing.costs` and `secrets.metadata` (ADR-0150).
+over the Google Cloud APIs of one project: the log entries of Cloud Logging, the daily costs
+of the Cloud Billing export to BigQuery, the metadata of the secrets in Secret Manager — never a
+secret's value — the metrics of Cloud Monitoring in PromQL, and Vertex AI's charges and model
+list. Everywhere else these are the capabilities `logs.query`, `billing.costs`,
+`secrets.metadata`, `metrics.series`, `models.costs` and `models.catalogue` (ADR-0150,
+ADR-0328, ADR-0330).
 
 It is product support for any tenant, not a requirement: the control plane runs with it removed.
 
@@ -23,7 +25,10 @@ by one entry of `TAKTUS_CONNECTORS` per capability, for example
 | `--billing-table` | the standard usage cost export, `project.dataset.table` | none: costs are `invalid` |
 | `--target` | one address for every API and the token endpoint (`<target>/token`), paths unchanged | the provider's own |
 | `--logging-target`, `--bigquery-target`, `--secrets-target` | one API's address, over `--target` | `https://logging.googleapis.com`, `https://bigquery.googleapis.com`, `https://secretmanager.googleapis.com` |
+| `--monitoring-target`, `--aiplatform-target` | the monitoring API's and the model API's address, over `--target` | `https://monitoring.googleapis.com`, `https://aiplatform.googleapis.com` |
 | `--token-endpoint` | where a service account key is exchanged, over `--target` | `https://oauth2.googleapis.com/token` |
+| `--metrics` | a JSON file of named metrics and their PromQL (ADR-0328) | none: only a call's own `query` is asked |
+| `--model-service` | the model service's `service.description` in the billing export | `Vertex AI` |
 | `--timeout` | the longest one request may take, in seconds | 30 |
 
 ## What it declares
@@ -87,6 +92,46 @@ list is ordered by `age_days`, largest first; a secret without an enabled versio
 method that answers a value, and every method that changes a secret or a version (`create`,
 `addVersion`, `patch`, `delete`, `enable`, `disable`, `destroy`).
 
+**`metrics.series.query`** and **`metrics.series.range`** ask Cloud Monitoring's PromQL API,
+`POST /v1/projects/<project>/location/global/prometheus/api/v1/query` or `.../query_range`, with
+the API's request body (`query`, `time`; or `query`, `start`, `end`, `step` as `<seconds>s`).
+Input and output are the Prometheus connector's (`../prometheus/README.md`). The query is the
+call's own `query`, or the PromQL `--metrics` maps the call's `metric` to, each `${name}` filled
+from `parameters` (ADR-0328). A system metric's type is written by the service's rule: the
+first `/` becomes `:`, every other `.` and `/` becomes `_`, and `monitored_resource` selects the
+resource type where a metric has several. An **example** of a mapping, which follows that rule
+and was not run against a real project:
+
+```json
+{
+  "functions.error_rate": "sum by (function_name) (rate(cloudfunctions_googleapis_com:function_execution_count{status!=\"ok\"}[15m])) / sum by (function_name) (rate(cloudfunctions_googleapis_com:function_execution_count[15m]))",
+  "functions.calls": "sum by (function_name) (rate(cloudfunctions_googleapis_com:function_execution_count[5m]))",
+  "backend.error_rate": "sum(rate(run_googleapis_com:request_count{service_name=\"${target}\",response_code_class=\"5xx\"}[30m])) / sum(rate(run_googleapis_com:request_count{service_name=\"${target}\"}[30m]))"
+}
+```
+
+A crash rate is not a metric of the monitoring service: an app's crash reporter or its store
+holds it, so `release.crash_rate` is mapped only where the app writes it into the monitoring
+service itself.
+
+**`models.costs.daily`** is the cost query of `billing.costs.daily`, kept to the service whose
+`service.description` is `--model-service` by a named STRING parameter, and grouped by
+`group_by`: `line_item` (default), the SKU's `sku.description`, or `project`, `project.id`. Its
+output is the model providers' (`../openai/README.md`): `currency`, `group_by`, `days` with
+`date`, `estimated`, `total` and `groups`, and `complete`. The amount is `cost`, credits left
+out, as the model providers' cost reports state theirs. The model service publishes no costs API
+of its own; its charges are in the billing export.
+
+**`models.catalogue.list`** asks `GET /v1beta1/publishers/google/models` page by page, at most
+ten pages of a hundred. Each model is `{id, name, created_at, lifecycle, deprecated_at,
+retires_at}`, `id` the last part of its resource name and `lifecycle` its `launchStage` in
+lowercase. **The API states no deprecation and no retirement date** — those are on the
+provider's documentation pages only — so `deprecated_at` and `retires_at` are null, `retiring`
+is empty, and a retired model shows as one no longer listed, which is how the retired-models
+process (B-2.04) reads it.
+
+**Not served:** the credit left on the model service, which no API of the provider states.
+
 **No person is ever copied.** An audit entry names the principal who acted; the connector
 drops it. No figure here may assess a named person (principle 14).
 
@@ -104,7 +149,7 @@ The provider's own message never reaches `detail`.
 
 | Name | Purpose | How it reaches the connector |
 |---|---|---|
-| `CLOUD_TOKEN` | actions: the **requesting identity's** OAuth 2.0 access token, or a service account key (the JSON document with `"type": "service_account"`); the identity needs `roles/logging.viewer`, `roles/bigquery.jobUser` on the project with `roles/bigquery.dataViewer` on the export dataset, and `roles/secretmanager.viewer` — never `secretAccessor` | the file `TAKTUS_CREDENTIAL_CLOUD_TOKEN_FILE` names, read at the moment of each call, never stored |
+| `CLOUD_TOKEN` | actions: the **requesting identity's** OAuth 2.0 access token, or a service account key (the JSON document with `"type": "service_account"`); the identity needs `roles/logging.viewer`, `roles/bigquery.jobUser` on the project with `roles/bigquery.dataViewer` on the export dataset, and `roles/secretmanager.viewer` — never `secretAccessor`; for metrics `roles/monitoring.viewer`, and for the model list a role that may list Vertex AI's publisher models. A process reads the credential under the name its step references, such as `METRICS_TOKEN`; the value is of the same form | the file `TAKTUS_CREDENTIAL_CLOUD_TOKEN_FILE` names, read at the moment of each call, never stored |
 
 An access token is sent as a bearer token. A key is exchanged at the configured token endpoint
 for a token that lives for the one call: a JWT signed with RS256, naming the account (`iss`),
@@ -112,7 +157,8 @@ the scope, the endpoint (`aud`), and `iat` and `exp` an hour apart, posted with
 `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer`. The key's own `token_uri` is never
 used: a statement signed with the key goes only to the configured endpoint. Each operation
 asks for the narrowest scope its API accepts: `cloud-platform.read-only` for logs and costs,
-`cloud-platform` for secrets, the only scope Secret Manager names. `CREDENTIALS.md` describes
+`monitoring.read` for metrics, and `cloud-platform` for secrets and the model list, the only
+scope besides its own that Secret Manager and Vertex AI name. `CREDENTIALS.md` describes
 it.
 
 ## Documentation read
@@ -134,6 +180,11 @@ it.
   https://docs.cloud.google.com/secret-manager/docs/reference/rest/v1/projects.secrets.versions,
   https://docs.cloud.google.com/secret-manager/docs/reference/rest/v1/projects.secrets.versions/list,
   https://docs.cloud.google.com/secret-manager/docs/filtering
+- Cloud Monitoring's PromQL API and the naming of metrics in PromQL:
+  https://docs.cloud.google.com/stackdriver/docs/managed-prometheus/query-api-ui,
+  https://docs.cloud.google.com/monitoring/promql/promql-mapping
+- Vertex AI `publishers.models.list` (discovery document v1beta1) and the model versions page:
+  https://docs.cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions
 - Service account authorisation with a JWT:
   https://developers.google.com/identity/protocols/oauth2/service-account
 
