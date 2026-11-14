@@ -115,12 +115,18 @@ def worker(command):
             "work": {"task": {"goal": "run one command", "acceptance": ["it ran"],
                               "inputs": {"commands": [command]}}, "max_steps": 2}}
 
+# A release since ADR-0300 registers a variable step only with a tolerance; the previous release
+# is the tag before this one, which already asks for it.
 def bundle(name, level, steps, limits=None):
-    return {"id": f"upgrade-{name}", "version": "1", "name": f"upgrade {name}",
-            "autonomy": {"level": level, "reason": "the upgrade test", "toward_next": "none"},
-            "author": "the upgrade test", "reason": "a run in one state, across an upgrade",
-            "limits": limits or {"compute": {"seconds": 60, "resource_class": "cpu.small"}},
-            "steps": steps, "takeover": takeover(steps)}
+    document = {"id": f"upgrade-{name}", "version": "1", "name": f"upgrade {name}",
+                "autonomy": {"level": level, "reason": "the upgrade test", "toward_next": "none"},
+                "author": "the upgrade test", "reason": "a run in one state, across an upgrade",
+                "limits": limits or {"compute": {"seconds": 60, "resource_class": "cpu.small"}},
+                "steps": steps, "takeover": takeover(steps)}
+    tolerances = {step["id"]: 0.25 for step in steps if step["method"] == "worker"}
+    if tolerances:
+        document["tolerances"] = tolerances
+    return document
 
 # A release since ADR-0180 registers a bundle only with takeover instructions; one before it
 # reads none. The previous release is the tag before this one, which already asks for them.
