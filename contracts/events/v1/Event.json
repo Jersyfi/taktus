@@ -320,6 +320,64 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "payment.failed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "context": {
+            "properties": {
+              "customer": {
+                "type": "string",
+                "minLength": 1
+              },
+              "payment": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "customer",
+              "payment"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "subscription.changed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "context": {
+            "properties": {
+              "customer": {
+                "type": "string",
+                "minLength": 1
+              },
+              "subscription": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "customer",
+              "subscription"
+            ]
+          }
+        }
+      }
     }
   ],
   "$defs": {
@@ -335,7 +393,9 @@
         "branch.pushed",
         "message.posted",
         "message.mentioned",
-        "error.created"
+        "error.created",
+        "payment.failed",
+        "subscription.changed"
       ]
     },
     "FieldName": {

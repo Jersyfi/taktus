@@ -13,8 +13,8 @@ held for the one call and dropped; the exchange is one request of that call.
 **The scope.** Each operation asks for the narrowest scope its API admits: `logs.query`,
 `billing.costs` and `models.costs` ask for `cloud-platform.read-only`, which the logging and the
 query API both accept; `metrics.series` asks for `monitoring.read`; `secrets.metadata` and
-`models.catalogue` ask for `cloud-platform`, the only scope the secret API and the model API
-name besides their own.
+`models.catalogue` and `expiry.credentials` ask for `cloud-platform`, the only scope the
+secret API, the model API and the identity API name besides their own.
 
 **One request.** Every answer maps to the contract's causes the same way:
 
@@ -52,6 +52,7 @@ BIGQUERY = "https://bigquery.googleapis.com"
 SECRETS = "https://secretmanager.googleapis.com"
 MONITORING = "https://monitoring.googleapis.com"
 AIPLATFORM = "https://aiplatform.googleapis.com"
+IAM = "https://iam.googleapis.com"
 MODEL_SERVICE = "Vertex AI"
 """The model service's description in the billing export, unless configured otherwise."""
 TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"  # noqa: S105 - an address, not a secret
@@ -78,6 +79,7 @@ class Config:
     token_endpoint: str = TOKEN_ENDPOINT
     monitoring: str = MONITORING
     aiplatform: str = AIPLATFORM
+    iam: str = IAM
     model_service: str = MODEL_SERVICE
     """The model service's charges in the billing export are those of this description."""
     metrics: dict[str, str] = field(default_factory=dict)
@@ -104,6 +106,7 @@ class Config:
             "secrets": base or SECRETS,
             "monitoring": base or MONITORING,
             "aiplatform": base or AIPLATFORM,
+            "iam": base or IAM,
             "token_endpoint": f"{base}/token" if base else TOKEN_ENDPOINT,
         }
         for name, value in overrides.items():

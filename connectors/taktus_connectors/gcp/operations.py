@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from taktus_connectors.gcp import billing, logs, metrics, models, secrets
+from taktus_connectors.gcp import billing, keys, logs, metrics, models, secrets
 from taktus_connectors.gcp.api import Config
 
 __all__ = ["OPERATIONS", "Config"]
@@ -19,4 +19,5 @@ OPERATIONS = {
     "metrics.series.range": metrics.range_,
     "models.costs.daily": models.costs,
     "models.catalogue.list": models.catalogue,
+    "expiry.credentials.list": keys.list_keys,
 }

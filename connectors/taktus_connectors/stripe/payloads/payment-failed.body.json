@@ -1,0 +1,17 @@
+{
+  "id": "evt_1QfakePaymentFailed",
+  "object": "event",
+  "api_version": "2025-01-27.acacia",
+  "created": 1767225590,
+  "type": "invoice.payment_failed",
+  "livemode": false,
+  "data": {
+    "object": {
+      "id": "in_fake3",
+      "object": "invoice",
+      "customer": "cus_fake3",
+      "status": "open",
+      "attempt_count": 1
+    }
+  }
+}

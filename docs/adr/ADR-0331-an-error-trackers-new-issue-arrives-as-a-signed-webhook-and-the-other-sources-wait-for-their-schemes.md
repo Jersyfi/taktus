@@ -77,3 +77,4 @@ What each source signs, from its published documentation:
 - **Only new issues.** A regression, a resolved issue or an alert rule's firing is refused.
 - **The remaining sources poll.** Failed payments, undelivered payment events, store reviews,
   subscription changes and metrics run on their schedules until their schemes are built.
+  ADR-0337 built two of them; it names what is still not built.

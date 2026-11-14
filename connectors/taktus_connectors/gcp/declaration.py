@@ -2,8 +2,9 @@
 resource `taktus://connector/v1/capabilities`, in the shape of
 `Connector.json#/$defs/Capabilities`.
 
-Six capabilities of one cloud project, every operation of effect `read`: reading log entries,
-costs, the metadata of secrets, metrics or the model catalogue changes nothing. Each request
+Seven capabilities of one cloud project, every operation of effect `read`: reading log entries,
+costs, the metadata of secrets, metrics, the model catalogue or the expiry of keys changes
+nothing. Each request
 is one unit, so the demand names one and the consumption counts every request, an exchange of
 a key for a token among them (ADR-0005).
 """
@@ -22,6 +23,7 @@ SECRETS = "secrets.metadata"
 METRICS = "metrics.series"
 MODEL_COSTS = "models.costs"
 CATALOGUE = "models.catalogue"
+EXPIRY = "expiry.credentials"
 ACTIONS_CREDENTIAL = "CLOUD_TOKEN"
 
 OPERATIONS: list[Json] = [
@@ -104,6 +106,17 @@ OPERATIONS: list[Json] = [
         "states none; a retired model is one no longer listed. `retiring` is always empty; "
         "`complete` says whether every model was read.",
     },
+    {
+        "name": "expiry.credentials.list",
+        "demand": {"quota_units": 1},
+        "capability": EXPIRY,
+        "effect": "read",
+        "summary": "The project's service account keys a person created, at most `limit` "
+        "(default 200, at most 1000), the nearest expiry first: each its kind `key`, "
+        "identifier, the service account's address as name, type, state, expiry, whole days "
+        "left (negative once expired) and a key. Never key material. `kinds` may name only "
+        "`key`. `complete` says whether every key was read (ADR-0337).",
+    },
 ]
 
 
@@ -111,7 +124,7 @@ def capabilities() -> Json:
     return {
         "contract": CONTRACT,
         "version": VERSION,
-        "capabilities": [LOGS, COSTS, SECRETS, METRICS, MODEL_COSTS, CATALOGUE],
+        "capabilities": [LOGS, COSTS, SECRETS, METRICS, MODEL_COSTS, CATALOGUE, EXPIRY],
         "operations": [dict(op) for op in OPERATIONS],
         "credentials": [{"name": ACTIONS_CREDENTIAL, "purpose": "actions"}],
         "consumption": {"kinds": ["quota"], "unit": "requests", "window_seconds": 1},

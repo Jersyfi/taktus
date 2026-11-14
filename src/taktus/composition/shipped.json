@@ -232,6 +232,7 @@
     {
       "capabilities": [
         "billing.costs",
+        "expiry.credentials",
         "logs.query",
         "metrics.series",
         "models.catalogue",
@@ -242,6 +243,7 @@
       "name": "gcp",
       "operations": [
         "billing.costs.daily",
+        "expiry.credentials.list",
         "logs.query.entries",
         "metrics.series.query",
         "metrics.series.range",

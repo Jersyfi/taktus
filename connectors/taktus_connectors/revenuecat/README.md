@@ -111,6 +111,19 @@ store's purchases they cover. The documentation: the subscription object,
 <https://www.revenuecat.com/docs/api-v2/subscription> (`status`, `management_url`,
 `starts_at`, `ends_at`).
 
+## Intake: subscription events (ADR-0337)
+
+The service signs nothing: its webhook carries the value its operator configured in the
+`Authorization` header, which the `intake` tool compares with `PAYMENTS_INTAKE_SECRET` in constant
+time under `shared-token`. That proves only that the sender knows the value — not the body, and no
+bound on replay — so its events only start processes that read or whose act a person confirms.
+`INITIAL_PURCHASE`, `RENEWAL`, `PRODUCT_CHANGE`, `CANCELLATION`, `UNCANCELLATION` and
+`EXPIRATION` become `subscription.changed` (`customer` the app user, `subscription` the original
+transaction, `change`); `BILLING_ISSUE` becomes `payment.failed`; every other type, `TEST` among
+them, is `unsupported_event`. The event's identifier is the service's `event.id`. Nothing of the
+store, the country or the price is copied. [`payloads/`](payloads/) holds deliveries written for
+the test from the published payloads.
+
 ## Credentials
 
 | Name | Purpose | How it reaches the connector |

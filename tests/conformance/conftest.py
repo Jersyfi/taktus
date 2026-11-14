@@ -1397,6 +1397,7 @@ BUSINESS: dict[str, BusinessConnector] = {
         FAKES / "app_subscriptions_service.py",
         "PAYMENTS_TOKEN",
         ("--project", "proj_fake"),
+        intake="PAYMENTS_INTAKE_SECRET",
     ),
     "sanity": BusinessConnector("sanity", FAKES / "content_lake_service.py", "WEBSITE_TOKEN"),
     "scim": BusinessConnector("scim", FAKES / "directory_service.py", "DIRECTORY_TOKEN"),
@@ -1407,7 +1408,9 @@ BUSINESS: dict[str, BusinessConnector] = {
         ("--organization", "example"),
         intake="ERRORS_INTAKE_SECRET",
     ),
-    "stripe": BusinessConnector("stripe", FAKES / "payment_service.py", "PAYMENTS_TOKEN"),
+    "stripe": BusinessConnector(
+        "stripe", FAKES / "payment_service.py", "PAYMENTS_TOKEN", intake="PAYMENTS_INTAKE_SECRET"
+    ),
     "vault": BusinessConnector("vault", FAKES / "secret_store_service.py", "SECRETS_TOKEN"),
     "vercel": BusinessConnector("vercel", FAKES / "site_deployments_service.py", "SITES_TOKEN"),
     # The credential is `<user>:<application password>`: a pair, as a provider that signs takes.

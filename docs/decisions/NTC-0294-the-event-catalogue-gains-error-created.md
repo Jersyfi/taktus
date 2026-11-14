@@ -1,4 +1,4 @@
-# NTC-0294 — The event catalogue gains `error.created`
+# NTC-0294 — The event catalogue gains `error.created`, `payment.failed` and `subscription.changed`
 
 **Mode entry:** M2.6
 **Kind:** unlisted
@@ -13,6 +13,12 @@ and breaks nothing; ADR-0048 makes a kind of the catalogue the only thing a trig
 The kind `error.created` joins the catalogue of `contracts/events/v1`: an error tracker opened a
 new issue. Its context requires `project` and `error`, the tracker's identifier of the issue, and
 carries `link` where the tracker gives one. The error tracking connector produces it (ADR-0331).
+
+Two more kinds join it (ADR-0337): `payment.failed`, a payment provider reported a customer's
+payment failed, context `customer` and `payment`; and `subscription.changed`, a payment provider
+or an in-app subscription service reported a subscription started, renewed, changed, cancelled
+or ended, context `customer`, `subscription` and, where given, `change`. Both are produced by
+two sources each, in one shape, so that a process reads either source unchanged.
 
 ## 2. The evidence
 

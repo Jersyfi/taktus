@@ -1,0 +1,14 @@
+{
+  "id": "evt_1QfakeChargeSucceeded",
+  "object": "event",
+  "created": 1767225590,
+  "type": "charge.succeeded",
+  "livemode": false,
+  "data": {
+    "object": {
+      "id": "ch_fake1",
+      "object": "charge",
+      "customer": "cus_fake1"
+    }
+  }
+}

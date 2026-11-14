@@ -25,7 +25,7 @@ by one entry of `TAKTUS_CONNECTORS` per capability, for example
 | `--billing-table` | the standard usage cost export, `project.dataset.table` | none: costs are `invalid` |
 | `--target` | one address for every API and the token endpoint (`<target>/token`), paths unchanged | the provider's own |
 | `--logging-target`, `--bigquery-target`, `--secrets-target` | one API's address, over `--target` | `https://logging.googleapis.com`, `https://bigquery.googleapis.com`, `https://secretmanager.googleapis.com` |
-| `--monitoring-target`, `--aiplatform-target` | the monitoring API's and the model API's address, over `--target` | `https://monitoring.googleapis.com`, `https://aiplatform.googleapis.com` |
+| `--monitoring-target`, `--aiplatform-target`, `--iam-target` | the monitoring API's, the model API's and the identity API's address, over `--target` | `https://monitoring.googleapis.com`, `https://aiplatform.googleapis.com`, `https://iam.googleapis.com` |
 | `--token-endpoint` | where a service account key is exchanged, over `--target` | `https://oauth2.googleapis.com/token` |
 | `--metrics` | a JSON file of named metrics and their PromQL (ADR-0328) | none: only a call's own `query` is asked |
 | `--model-service` | the model service's `service.description` in the billing export | `Vertex AI` |
@@ -129,6 +129,14 @@ lowercase. **The API states no deprecation and no retirement date** — those ar
 provider's documentation pages only — so `deprecated_at` and `retires_at` are null, `retiring`
 is empty, and a retired model shows as one no longer listed, which is how the retired-models
 process (B-2.04) reads it.
+
+**`expiry.credentials.list`** asks the identity API for the project's service accounts,
+`GET /v1/projects/<project>/serviceAccounts`, page by page, and for each the keys a person created,
+`.../<account>/keys?keyTypes=USER_MANAGED`; a system-managed key is rotated by the provider and not
+asked. Each key is `{kind: key, id, name, type, platform: null, state, expires_at, days_left,
+key}`: `name` the service account's address, `state` `ENABLED` or `DISABLED` with its reason,
+`expires_at` the key's `validBeforeTime`. A key without an expiry carries a far-future moment and
+never comes first. No key material is requested (ADR-0337).
 
 **Not served:** the credit left on the model service, which no API of the provider states.
 

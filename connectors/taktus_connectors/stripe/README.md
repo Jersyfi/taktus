@@ -105,6 +105,18 @@ The documentation it follows: the API reference for listing invoices,
 operation that resends an event**; the guide tells the receiver to process it itself, so the
 connector resends nothing.
 
+## Intake: payment events (ADR-0337)
+
+The provider's webhook is taken by the `intake` tool under `hmac-sha256-stamped`:
+`Stripe-Signature` carries `t=<moment>` and one or more `v1=<digest>`, the HMAC-SHA256 of
+`<moment>.<raw body>` with the endpoint's signing secret, in hex; one must verify, before the
+body is read, and a moment more than 300 seconds from the arrival is a replay. `invoice.payment_failed`
+becomes `payment.failed` (`customer`, `payment`); `customer.subscription.created`, `.updated` and
+`.deleted` become `subscription.changed` (`customer`, `subscription`, `change`); every other type
+is `unsupported_event`. The event's identifier is the provider's `evt_…`, so a redelivery is one
+event. Identifiers only: no amount, no address. [`payloads/`](payloads/) holds deliveries written
+for the test from the published payloads. The secret is `PAYMENTS_INTAKE_SECRET`.
+
 ## Credentials
 
 | Name | Purpose | How it reaches the connector |

@@ -7,6 +7,12 @@
 # named by the payment provider's identifier, which a support message does not carry: the
 # tenant's intake, or the person who reads the request, gives it as the input `customer`.
 #
+# Started by a change of a subscription (version 3, ADR-0337): where the payment provider or the
+# in-app subscription service sends its webhook to the intake, every `subscription.changed`
+# starts a run for its customer, so that a purchase not unlocked is found when it happens, not
+# when the customer writes. The repair still waits for a person at level 2. A business on more
+# than one provider names, in its own version, the connector each provider's run reads (ADR-0311).
+#
 # The subscriptions of the customer are read through `payments.customers`, those still paid —
 # `active` or `trialing` — kept by the rule `filter`, and the customer's entitlements read
 # through `entitlements.customers` (the manifest `connectors/entitlements.manifest.json`,
@@ -28,7 +34,7 @@
 # stays granted.
 
 id: b-3-04
-version: "2"
+version: "3"
 name: B-3.04 Paid but not unlocked
 autonomy:
   level: 2
@@ -42,6 +48,10 @@ autonomy:
     (UC-7.1, UC-7.5, UC-9.6)
 author: the repository
 reason: a customer who paid and cannot use what they paid for is unlocked without a person comparing two systems (UC-03 B-3.04)
+
+triggers:
+  - event: subscription.changed
+    from_event: { customer: customer }
 
 inputs:
   customer:
