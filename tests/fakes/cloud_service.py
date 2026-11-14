@@ -232,7 +232,6 @@ def account_keys(email: str, now: datetime) -> list[dict[str, Any]]:
             "name": f"projects/{PROJECT}/serviceAccounts/{email}/keys/{n}",
             "validAfterTime": "2026-01-01T00:00:00Z",
             "validBeforeTime": before,
-            "keyAlgorithm": "KEY_ALG_RSA_2048",
             "keyOrigin": "GOOGLE_PROVIDED",
             "keyType": kind,
             **more,
