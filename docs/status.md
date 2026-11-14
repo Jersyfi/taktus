@@ -20,7 +20,8 @@ a list here.
 
 The final round before `1.0.0` (DEC-0236) builds what remains outside `2.0.0`; its release is
 `v1.0.0-beta.1` (DEC-0237). What only operation, a person or time can prove stands in the
-milestone `beta-operation`. `1.0.0` waits for the licence (DEC-0044) and the freeze (DEC-0231).
+milestone `beta-operation`. `1.0.0` waits for the licence (DEC-0044) and the freeze (DEC-0231). Sessions go on deciding
+what no anchor names, as notices; the next review of them comes at sixty (DEC-0238).
 
 Each milestone keeps where it stands in a file of its own, so that two pull requests on
 different milestones never edit the same paragraph (#392):
