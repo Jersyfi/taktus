@@ -147,6 +147,10 @@ def _digest_of(document: dict[str, Any]) -> str:
     return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+FOUND_KEPT = 10_000
+"""How many digests the directory remembers the tenant of before it forgets them all."""
+
+
 class IdentityDirectory(IdentityResolver):
     def __init__(
         self,
@@ -178,6 +182,8 @@ class IdentityDirectory(IdentityResolver):
         self._randomness = randomness
         self._source = source
         self._structure = structure
+        self._found: dict[str, Tenant] = {}
+        """The tenant each key's or session's digest was last found in (ADR-0320)."""
 
     async def _seen(self, resolution: Resolution) -> Resolution:
         """The resolution with what the organisation's structure keeps from the identity's
@@ -272,15 +278,31 @@ class IdentityDirectory(IdentityResolver):
         if not key.startswith(KEY_PREFIX):
             return None
         wanted = digest(key)
-        for tenant in await self._tenants.served():
+        for tenant in await self._served_first(wanted):
             async with self._work.transaction(tenant):
                 identities = await self._identities.list(tenant)
             for identity in identities:
                 if identity.key_digest is not None and hmac.compare_digest(
                     identity.key_digest, wanted
                 ):
+                    self._found_in(wanted, tenant)
                     return await self._seen(_resolution(identity))
         return None
+
+    async def _served_first(self, wanted: str) -> list[Tenant]:
+        """The tenants served, the one a key's or a session's digest was last found in first:
+        a digest belongs to one tenant for good, so most lookups read one tenant. Whether it
+        still proves anything is read every time (ADR-0320)."""
+        served = list(await self._tenants.served())
+        hinted = self._found.get(wanted)
+        if hinted is None or hinted not in served:
+            return served
+        return [hinted, *(t for t in served if t != hinted)]
+
+    def _found_in(self, wanted: str, tenant: Tenant) -> None:
+        if len(self._found) >= FOUND_KEPT:
+            self._found.clear()
+        self._found[wanted] = tenant
 
     async def create_link_code(self, who: Resolution, channel: Capability) -> tuple[str, LinkCode]:
         """A single-use code that links the account `who` writes it from on `channel`. The
@@ -358,7 +380,7 @@ class IdentityDirectory(IdentityResolver):
         if not token.startswith(SESSION_PREFIX):
             return None
         wanted = session_id(token)
-        for tenant in await self._tenants.served():
+        for tenant in await self._served_first(wanted):
             async with self._work.transaction(tenant):
                 session = await self._sessions.get(tenant, wanted)
                 identity = (
@@ -367,6 +389,7 @@ class IdentityDirectory(IdentityResolver):
                     else await self._identities.get(tenant, session.identity)
                 )
             if session is not None:
+                self._found_in(wanted, tenant)
                 return None if identity is None else (session, identity)
         return None
 

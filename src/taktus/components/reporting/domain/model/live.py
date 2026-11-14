@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import Field, model_validator
 
@@ -91,6 +92,19 @@ class StateAfter(Value):
     decision_request: str | None = None
 
 
+class ProcessOf(Value):
+    """The process a change's run belongs to, and the version it runs (ADR-0317 §3)."""
+
+    id: str = Field(min_length=1)
+    version: str = Field(min_length=1)
+
+    @classmethod
+    def of(cls, process_version: str) -> ProcessOf:
+        """From `process@version`."""
+        process, _, version = process_version.rpartition("@")
+        return cls(id=process, version=version)
+
+
 class Change(Value):
     """One ledger entry that recorded a change of state, projected."""
 
@@ -104,6 +118,9 @@ class Change(Value):
     recorded_at: datetime
     rehearsal: bool = False
     state: StateAfter
+    process: ProcessOf | None = None
+    """The process and version of the run, from the run itself; set when the change is paired
+    with its run, before it is sent (ADR-0317 §3)."""
 
     @model_validator(mode="after")
     def _changed_something(self) -> Change:
@@ -127,12 +144,19 @@ class SnapshotRun(Value):
 
 
 class Snapshot(Value):
-    """The state of a scope at one position: every run the reader may see in it. The position
-    is None for a tenant whose ledger is still empty."""
+    """The state of a scope at one position: the runs the reader may see in it — in the tenant
+    scope those not yet ended — at most `SNAPSHOT_RUNS` of them, the newest (ADR-0317). The
+    position is None for a tenant whose ledger is still empty. A reader that asked for the
+    position alone receives no run and `listed` false."""
 
     position: Digest | None
     scope: Scope
     runs: tuple[SnapshotRun, ...] = ()
+    truncated: Literal[True] | None = None
+    """True where the scope held more runs than a snapshot lists; absent otherwise."""
+    listed: Literal[False] | None = None
+    """False where the reader asked for the position alone, and no run was read; absent
+    otherwise."""
 
     def document(self) -> dict[str, object]:
         document = super().document()

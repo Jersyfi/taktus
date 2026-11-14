@@ -12,28 +12,40 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol
 
-from taktus.components.reporting.domain.model.live import RunRef, SnapshotRun, StateAfter
+from taktus.components.reporting.domain.model.live import RunRef, Scope, SnapshotRun, StateAfter
 from taktus.ports.persistence import Tenant
 from taktus.shared.v1 import Digest, LedgerEntry
 
 
 @dataclass(frozen=True)
 class TenantState:
-    """Every run of a tenant, read at one position of its ledger and nothing after it."""
+    """The runs of a scope, read at one position of its tenant's ledger (ADR-0055 §4,
+    ADR-0317)."""
 
     seq: int
     """The sequence number of the newest entry the runs reflect; 0 for an empty ledger."""
     position: Digest | None
     """Its hash; None for an empty ledger."""
     runs: Sequence[tuple[RunRef, SnapshotRun]]
+    truncated: bool = False
+    """The scope held more runs than were read."""
 
 
 class LiveRecords(Protocol):
-    async def state(self, tenant: Tenant) -> TenantState:
-        """The runs and the position in one consistent read: the runs show exactly the entries
-        up to the position (ADR-0055 §4)."""
+    async def state(self, tenant: Tenant, scope: Scope, *, limit: int) -> TenantState:
+        """The position and the runs of the scope in one consistent read: the runs show every
+        entry up to the position (ADR-0055 §4). Filtered where they are stored: one run for a
+        run scope, the runs of the process for a process scope, the runs not yet ended for the
+        tenant scope; at most `limit` of them, the newest, and none read at all for a `limit`
+        of 0 (ADR-0317)."""
+        ...
+
+    async def recent(self, tenant: Tenant, since: datetime, *, limit: int) -> Sequence[LedgerEntry]:
+        """The newest `limit` entries at most of the kinds that record a change of state,
+        recorded at or after `since`, in the ledger's order (ADR-0317 §4)."""
         ...
 
     async def head(self, tenant: Tenant) -> int:

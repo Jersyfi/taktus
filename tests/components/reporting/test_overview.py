@@ -158,7 +158,7 @@ class Records:
         return None
 
     async def process(
-        self, tenant: str, process_id: str, version: str | None
+        self, tenant: str, process_id: str, version: str | None, page: object = None
     ) -> ProcessFacts | None:
         return None
 

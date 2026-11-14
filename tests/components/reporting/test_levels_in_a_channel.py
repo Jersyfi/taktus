@@ -194,7 +194,7 @@ class Records:
         return None
 
     async def process(
-        self, tenant: Tenant, process_id: str, version: str | None
+        self, tenant: Tenant, process_id: str, version: str | None, page: object = None
     ) -> ProcessFacts | None:
         if process_id == "invoices" and version in (None, "2"):
             return PROCESS

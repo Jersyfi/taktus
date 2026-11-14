@@ -368,6 +368,14 @@ UNTRIED = (
 """What a level says of a version that is untried (UC-6.3 §2, ADR-0180 §3)."""
 
 
+class OlderRuns(Value):
+    """The last ended run of a page of the process level: the next page starts after it. The
+    surface hands it out as an opaque cursor."""
+
+    created_at: datetime
+    id: str = Field(min_length=1)
+
+
 class ProcessLevel(Value):
     """The process level of UC-6.10: the steps of a process version as a graph, each showing how
     it works, with the autonomy statement and the runs of the version."""
@@ -375,6 +383,11 @@ class ProcessLevel(Value):
     process: ProcessElement
     steps: tuple[ProcessStepElement, ...]
     runs: tuple[RunAtVersionElement, ...]
+    """The runs not yet ended, then a page of the newest that ended (ADR-0319 §3)."""
+    counts: dict[str, int] = Field(default_factory=dict)
+    """Every run of the version the reader may count, by state."""
+    older: OlderRuns | None = None
+    """Where the next page of ended runs starts; absent where none follows."""
     summary: str = Field(min_length=1)
     """One sentence: how its steps work, and how many run now."""
     exactness: Statement | None = None
@@ -456,7 +469,10 @@ def _run_at_version(run: RunAtVersion) -> RunAtVersionElement:
 def process_level(facts: ProcessFacts) -> ProcessLevel:
     """The process level of one version, from its facts and the runs handed with them. The runs
     are the ones the reader may see; which those are is the query's (`may_see`)."""
-    runs = tuple(sorted(facts.runs, key=lambda r: r.created_at, reverse=True))
+    newest_first = sorted(facts.runs, key=lambda r: r.created_at, reverse=True)
+    runs = tuple(sorted(newest_first, key=lambda r: r.ended))
+    counts = {c.state: c.runs for c in facts.counts}
+    total = sum(counts.values()) if facts.counts else len(runs)
     statement = autonomy_text(facts.autonomy)
     if facts.untried:
         statement = f"{statement} {UNTRIED.format(level=facts.autonomy.level)}"
@@ -472,10 +488,14 @@ def process_level(facts: ProcessFacts) -> ProcessLevel:
             autonomy_text=statement,
             untried=facts.untried,
             text=f"Process {facts.name} ({facts.ref}), {standing}, with "
-            f"{_counted(len(facts.steps), 'step')} and {_counted(len(runs), 'run')}. {statement}",
+            f"{_counted(len(facts.steps), 'step')} and {_counted(total, 'run')}. {statement}",
         ),
         steps=tuple(_process_step(step, runs) for step in facts.steps),
         runs=tuple(_run_at_version(run) for run in runs),
+        counts=counts,
+        older=None
+        if facts.older is None
+        else OlderRuns(created_at=facts.older.created_at, id=facts.older.id),
         summary=_process_summary(facts.steps, runs),
         exactness=facts.exactness,
     )

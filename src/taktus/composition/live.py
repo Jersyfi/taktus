@@ -27,26 +27,30 @@ import asyncio
 import contextlib
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 
 import structlog
 
 from taktus.adapters.driving.rest.wiring import StreamsFull
+from taktus.components.decision.domain.model import RECORDED_KINDS as DECISION_KINDS
 from taktus.components.decision.domain.model import status_after
-from taktus.components.reporting.application.service import LiveChanges, Pending
+from taktus.components.reporting.application.service import LiveChanges, Pending, Recent
 from taktus.components.reporting.domain.model import (
     Change,
     Reader,
     RunRef,
     Scope,
+    ScopeKind,
     Snapshot,
     SnapshotRun,
     SnapshotStep,
     StateAfter,
 )
 from taktus.components.reporting.ports import TenantState
-from taktus.components.run.domain.model import Run, led_to
+from taktus.components.run.domain.model import RECORDED_KINDS as RUN_KINDS
+from taktus.components.run.domain.model import WAITING, WORKING, Run, led_to
 from taktus.ports.clock import Clock
-from taktus.ports.persistence import LedgerStore, Repository, Tenant, UnitOfWork
+from taktus.ports.persistence import LedgerStore, Queried, Tenant, UnitOfWork, Where
 from taktus.ports.signal import LedgerSignal
 from taktus.ports.telemetry import Telemetry
 from taktus.shared.v1 import LedgerEntry
@@ -73,29 +77,67 @@ def state_of(kind: str, outcome: str | None) -> StateAfter | None:
     return None if status is None else StateAfter(decision_request=str(status))
 
 
+CHANGE_KINDS: frozenset[str] = RUN_KINDS | DECISION_KINDS
+"""The ledger kinds that record a change of state: what the recent changes are read from."""
+NOT_ENDED: tuple[str, ...] = tuple(sorted(str(s) for s in WORKING | WAITING))
+"""The states of a run that has not ended, by the run component's own definitions: the runs the
+tenant scope's snapshot lists. A halted or an escalated run waits, and is listed (ADR-0317 §1)."""
+
+
 class Records:
     """The records the stream reads, over the ledger store and the run's repository."""
 
-    def __init__(self, work: UnitOfWork, store: LedgerStore, runs: Repository[Run]) -> None:
+    def __init__(self, work: UnitOfWork, store: LedgerStore, runs: Queried[Run]) -> None:
         self._work = work
         self._store = store
         self._runs = runs
 
-    async def state(self, tenant: Tenant) -> TenantState:
+    async def state(self, tenant: Tenant, scope: Scope, *, limit: int) -> TenantState:
         # The stable head first, in a transaction of its own: one that reads a snapshot cannot
         # tell which entries below its newest are still to commit (ADR-0164). Every entry at or
         # below it is then in the snapshot; the runs may show a change after it as well, which
         # the stream sends again, and a change sets a state, so it changes nothing twice.
         async with self._work.transaction(tenant):
             seq = await self._store.head(tenant)
+        runs: list[Run] = []
+        truncated = False
         async with self._work.transaction(tenant, consistent=True):
-            runs = await self._runs.list(tenant)
+            if limit > 0:
+                runs, truncated = await self._of_scope(tenant, scope, limit)
             newest = await self._store.after(tenant, seq - 1, limit=1) if seq else []
         return TenantState(
             seq=seq,
             position=newest[0].hash if newest else None,
             runs=[(_ref(r), _shown(r)) for r in sorted(runs, key=lambda r: r.created_at)],
+            truncated=truncated,
         )
+
+    async def _of_scope(self, tenant: Tenant, scope: Scope, limit: int) -> tuple[list[Run], bool]:
+        """The newest `limit` runs of the scope, filtered where they are stored, and whether
+        more were left (ADR-0317 §1)."""
+        if scope.kind is ScopeKind.RUN and scope.id is not None:
+            run = await self._runs.get(tenant, scope.id)
+            return ([] if run is None else [run]), False
+        if scope.kind is ScopeKind.PROCESS:
+            versions = [
+                version
+                for (version,) in await self._runs.count(tenant, ("process_version",))
+                if str(version).rpartition("@")[0] == scope.id
+            ]
+            where: Where = {"process_version": versions}
+        else:
+            where = {"state": NOT_ENDED}
+        read = list(await self._runs.newest(tenant, limit=limit + 1, where=where))
+        return read[:limit], len(read) > limit
+
+    async def recent(self, tenant: Tenant, since: datetime, *, limit: int) -> Sequence[LedgerEntry]:
+        async with self._work.transaction(tenant):
+            head = await self._store.head(tenant)
+            found = await self._store.of_kinds_since(
+                tenant, CHANGE_KINDS, since=since, newest=limit
+            )
+        # Up to the stable head, as the stream reads: above it an entry may still commit.
+        return [e for e in found if e.seq <= head]
 
     async def head(self, tenant: Tenant) -> int:
         async with self._work.transaction(tenant):
@@ -199,13 +241,20 @@ class LiveHub:
                 wake.set()
 
     async def open(
-        self, reader: Reader, scope: Scope, position: str | None, authenticate: Authenticate
+        self,
+        reader: Reader,
+        scope: Scope,
+        position: str | None,
+        authenticate: Authenticate,
+        *,
+        listed: bool = True,
     ) -> AsyncIterator[Event]:
         """A new stream: its snapshot or what it missed first, then every change as it happens.
-        `StreamsFull` when this replica holds its maximum already."""
+        Without `listed`, the snapshot carries the position alone (ADR-0317 §2). `StreamsFull`
+        when this replica holds its maximum already."""
         if self._closed or self.open_streams >= self._options.max_streams:
             raise StreamsFull(self._options.max_streams)
-        opening = await self._changes.open(reader, scope, position)
+        opening = await self._changes.open(reader, scope, position, listed=listed)
         stream = _Stream(reader, scope, authenticate, opening.seq)
         tenant = reader.tenant
         self._streams.setdefault(tenant, set()).add(stream)
@@ -213,6 +262,11 @@ class LiveHub:
         if tenant not in self._readers or self._readers[tenant].done():
             self._readers[tenant] = asyncio.create_task(self._follow(tenant), name=f"live:{tenant}")
         return self._events(stream, opening.snapshot)
+
+    async def recent(self, reader: Reader, scope: Scope, minutes: int) -> Recent:
+        """The changes of the last `minutes` this reader may see in the scope (ADR-0317 §4)."""
+        since = self._clock.now() - timedelta(minutes=minutes)
+        return await self._changes.recent(reader, scope, since)
 
     def close(self) -> None:
         """End every stream: the replica stops, and its readers reconnect to another."""

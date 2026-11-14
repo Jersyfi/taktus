@@ -422,12 +422,17 @@ class ProductFindings:
             for finding in found
         )
 
-    async def pending(self, tenant: Tenant) -> tuple[Outgoing, ...]:
+    async def pending(
+        self, tenant: Tenant, outgoing: Sequence[Outgoing] | None = None
+    ) -> tuple[Outgoing, ...]:
         """Every candidate that may leave and holds something the other side has not been
-        given: what a person reviews. Nothing where sending is not enabled."""
+        given: what a person reviews. Nothing where sending is not enabled. A reader that read
+        `outgoing` already hands it in, and it is not read a second time."""
         if self._sending is None:
             return ()
-        chosen = [one for one in await self.outgoing(tenant) if one.leaves]
+        if outgoing is None:
+            outgoing = await self.outgoing(tenant)
+        chosen = [one for one in outgoing if one.leaves]
         if not chosen:
             return ()
         waiting = await self._unsent(tenant, [one.finding for one in chosen])

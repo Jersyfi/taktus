@@ -1,6 +1,6 @@
 # ADR-0094 — Runs are read a page at a time, and counted where they are stored
 
-**Status:** accepted · from DEC-0187 (finding E4), issue #310 · amends ADR-0067 §2 and its promise
+**Status:** accepted · from DEC-0187 (finding E4), issue #310 · amends ADR-0067 §2 and its promise · amended by ADR-0317 (the snapshot no longer reads every run) and ADR-0319 (a filter on `newest` and `count`)
 
 ## Context
 The review of 2026-10-12 (`docs/research/2026-10-12-devops-review.md`, E4) measured the list of

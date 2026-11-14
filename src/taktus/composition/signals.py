@@ -15,6 +15,7 @@ The components never import each other; this is where they meet.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
@@ -49,7 +50,7 @@ from taktus.ports.persistence import (
     UnitOfWork,
 )
 from taktus.ports.worker import Limits
-from taktus.shared.v1 import Command, Intent, Provenance, ReplyTo, StepId
+from taktus.shared.v1 import Command, Intent, ReplyTo, StepId
 
 INTERVAL_SECONDS = 60
 """How often the scheduler looks: a red value reaches its role within a minute of being
@@ -59,6 +60,8 @@ MEASURED = "step.finished"
 SUCCEEDED = frozenset({"succeeded", "skipped", "declined"})
 """The outcomes of a step that ended with a result; a skipped or declined one holds no number."""
 FAILED = "failed"
+FETCHED_AT_ONCE = 32
+"""How many results are fetched from the object store together."""
 
 log = structlog.get_logger("taktusd")
 
@@ -88,40 +91,61 @@ class RecordedMeasurements:
     async def recorded(
         self, tenant: Tenant, process: str, step: StepId, *, since: datetime
     ) -> Sequence[Recorded]:
-        records: dict[str, dict[str, Provenance]] = {}
-        found: list[Recorded] = []
+        # The entries and the provenance of their runs in one transaction, two reads; the
+        # results from the object store after it, together (ADR-0320).
         async with self._work.transaction(tenant):
-            entries = await self._store.of_process(tenant, process, (MEASURED,), since=since)
-            for entry in entries:
-                run_id = entry.refs.run_id
-                version = entry.refs.process_version
-                if entry.refs.step_id != step or run_id is None or version is None:
-                    continue
-                if entry.outcome not in SUCCEEDED and entry.outcome != FAILED:
-                    continue  # stopped at its boundary, or waiting: it has not ended
-                if run_id not in records:
-                    records[run_id] = {
-                        r.step_id: r for r in await self._provenance.of_run(tenant, run_id)
-                    }
-                record = records[run_id].get(step)
-                result: Any = None
-                if entry.outcome in SUCCEEDED and entry.content_digest is not None:
-                    content = await self._objects.get(entry.content_digest)
-                    result = _parsed(content)
-                found.append(
-                    Recorded(
-                        run_id=run_id,
-                        step_id=step,
-                        process_version=version,
-                        seq=entry.seq,
-                        at=entry.ts,
-                        succeeded=entry.outcome in SUCCEEDED,
-                        method=None if record is None else record.method,
-                        exactness=None if record is None else record.exactness,
-                        provenance=record is not None,
-                        result=result,
-                    )
+            entries = [
+                entry
+                for entry in await self._store.of_process(tenant, process, (MEASURED,), since=since)
+                if entry.refs.step_id == step
+                and entry.refs.run_id is not None
+                and entry.refs.process_version is not None
+                # stopped at its boundary, or waiting: it has not ended
+                and (entry.outcome in SUCCEEDED or entry.outcome == FAILED)
+            ]
+            records = {
+                r.run_id: r
+                for r in await self._provenance.of_runs(
+                    tenant, {e.refs.run_id for e in entries if e.refs.run_id is not None}
                 )
+                if r.step_id == step
+            }
+        wanted = [
+            e.content_digest
+            for e in entries
+            if e.outcome in SUCCEEDED and e.content_digest is not None
+        ]
+        contents: dict[str, Any] = {}
+        unique = list(dict.fromkeys(wanted))
+        for start in range(0, len(unique), FETCHED_AT_ONCE):
+            batch = unique[start : start + FETCHED_AT_ONCE]
+            for digest, content in zip(
+                batch, await asyncio.gather(*(self._objects.get(d) for d in batch)), strict=True
+            ):
+                contents[digest] = _parsed(content)
+        found: list[Recorded] = []
+        for entry in entries:
+            run_id, version = entry.refs.run_id, entry.refs.process_version
+            if run_id is None or version is None:
+                continue
+            record = records.get(run_id)
+            result: Any = None
+            if entry.outcome in SUCCEEDED and entry.content_digest is not None:
+                result = contents.get(entry.content_digest)
+            found.append(
+                Recorded(
+                    run_id=run_id,
+                    step_id=step,
+                    process_version=version,
+                    seq=entry.seq,
+                    at=entry.ts,
+                    succeeded=entry.outcome in SUCCEEDED,
+                    method=None if record is None else record.method,
+                    exactness=None if record is None else record.exactness,
+                    provenance=record is not None,
+                    result=result,
+                )
+            )
         return found
 
 

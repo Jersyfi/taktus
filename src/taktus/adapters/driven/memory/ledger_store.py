@@ -84,14 +84,16 @@ class MemoryLedgerStore:
         *,
         since: datetime | None = None,
         until: datetime | None = None,
+        newest: int | None = None,
     ) -> Sequence[LedgerEntry]:
-        return [
+        found = [
             e
             for e in await self.entries(tenant)
             if e.kind in kinds
             and (since is None or e.ts >= since)
             and (until is None or e.ts <= until)
         ]
+        return found if newest is None else found[len(found) - min(newest, len(found)) :]
 
     async def summary(self, tenant: Tenant, kind: str, *, since: datetime) -> KindSummary:
         of_kind = [e for e in await self.entries(tenant) if e.kind == kind]

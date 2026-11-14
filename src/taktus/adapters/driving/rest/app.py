@@ -37,12 +37,11 @@ generated at the root and names the prefix as a server variable.
 
 from __future__ import annotations
 
-import base64
 import json
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any, Literal
 from urllib.parse import quote
 
 from fastapi import APIRouter, FastAPI, Header, Query, Request
@@ -50,6 +49,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.routing import Route
 
 from taktus.adapters.driving.rest import (
@@ -84,8 +84,10 @@ from taktus.adapters.driving.rest import (
     takeover,
     takeover_instructions,
     tenants,
+    today,
     trials,
 )
+from taktus.adapters.driving.rest.cursors import marked, unmarked
 from taktus.adapters.driving.rest.problems import on_http_exception, on_validation_error, problem
 from taktus.adapters.driving.rest.views import decision_view
 from taktus.adapters.driving.rest.wiring import RestServices, StreamsFull
@@ -111,6 +113,7 @@ from taktus.components.identity.application.service import UnknownIdentity
 from taktus.components.ledger.domain.model import exported
 from taktus.components.reporting.application.query import view as report_view
 from taktus.components.reporting.application.service import AnswerOnPage
+from taktus.components.reporting.application.service.live import RECENT_MINUTES
 from taktus.components.reporting.domain.model import (
     Change,
     Reader,
@@ -121,7 +124,7 @@ from taktus.components.reporting.domain.model import (
 )
 from taktus.components.reporting.domain.service import visibility
 from taktus.components.reporting.domain.service.rendering import repository_text
-from taktus.components.run.domain.model import Run
+from taktus.components.run.domain.model import Run, RunState
 from taktus.ports.connector import ConnectorError, Delivery, RefusalReason
 from taktus.ports.identity import Resolution
 from taktus.ports.persistence import Mark
@@ -186,6 +189,7 @@ def build_app(
         app.include_router(_owner(services), prefix=base)
         app.include_router(_reads(services), prefix=base)
         app.include_router(_changes(services), prefix=base)
+        app.include_router(today.router(services, _authenticated), prefix=base)
         app.include_router(levels.router(services, _authenticated), prefix=base)
         app.include_router(operation.router(services, _authenticated), prefix=base)
         app.include_router(proposals.router(services, _authenticated), prefix=base)
@@ -229,7 +233,24 @@ def build_app(
             levels.mount_web(app, base, web)
         # The web app's session cookie is accepted wherever the account key is (ADR-0119).
         app.add_middleware(session.SessionCookies)
+    # A JSON answer above 1 KiB travels compressed where the reader accepts it; the stream of
+    # changes never does, nor a file that is compressed already (ADR-0318 §4).
+    app.add_middleware(GZipMiddleware, minimum_size=1024, exclude_content_types=UNZIPPED)
     return app
+
+
+UNZIPPED = (
+    "text/event-stream",
+    "font/woff2",
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "image/gif",
+    "application/zip",
+    "application/gzip",
+)
+"""What is never compressed again: the stream, whose events must leave as they happen, and what
+is compressed already."""
 
 
 def _operations(services: RestServices) -> APIRouter:
@@ -891,8 +912,11 @@ def _reads(services: RestServices) -> APIRouter:
         "tenant that the visibility predicate lets you see — the same predicate as the stream "
         "of changes (ADR-0055 §5) — newest first, runs created at the same moment in "
         "ascending id. A page reads at most `limit` runs; `next` is present when more follow, "
-        "and is passed back as `after` for the next page. A page may hold fewer runs than "
-        "`limit` where the predicate withholds some, and `next` still leads on (ADR-0094).",
+        "and is passed back as `after` (or `cursor`, the same) for the next page. A page may "
+        "hold fewer runs than `limit` where the predicate withholds some, and `next` still "
+        "leads on (ADR-0094). `state` (repeatable) keeps the runs in one of the states named, "
+        "`process` the runs of one process, any version; both are applied where the runs are "
+        "stored, and a cursor keeps its place within them (ADR-0319).",
         responses={
             200: {"description": "A page of runs as the run component records them."},
             **unauthenticated,
@@ -912,16 +936,36 @@ def _reads(services: RestServices) -> APIRouter:
             min_length=1,
             description="The `next` of the page before; the first page without it.",
         ),
+        cursor: str | None = Query(
+            default=None, min_length=1, description="The same as `after`; give one of the two."
+        ),
+        state: Annotated[
+            list[RunState] | None,
+            Query(description="Only the runs in one of these states; repeatable."),
+        ] = None,
+        process: str | None = Query(
+            default=None, min_length=1, description="Only the runs of this process."
+        ),
     ) -> JSONResponse:
         who = await _authenticated(services, authorization)
         if who is None:
             return problem(401, needs_key)
+        if after is not None and cursor is not None:
+            return problem(422, "give `after` or `cursor`, not both")
+        after = after or cursor
         mark = None if after is None else _mark(after)
         if after is not None and mark is None:
             return problem(422, "`after` is not the `next` of a page")
         reader = _reader(who)
+        where: dict[str, list[str]] = {}
+        if state:
+            where["state"] = [str(s) for s in state]
         async with services.work.transaction(reader.tenant):
-            read = await services.runs.newest(reader.tenant, limit=limit + 1, after=mark)
+            if process is not None:
+                where["process_version"] = await versions_run(services, reader.tenant, process)
+            read = await services.runs.newest(
+                reader.tenant, limit=limit + 1, after=mark, where=where or None
+            )
         page = read[:limit]
         answer: dict[str, Any] = {
             "tenant": reader.tenant,
@@ -1034,21 +1078,23 @@ PAGE_MAXIMUM = 500
 """The most runs one page of `GET /runs` reads: what it answers within its bound (ADR-0094)."""
 
 
+async def versions_run(services: RestServices, tenant: str, process: str) -> list[str]:
+    """The versions of a process that runs were created for, counted where the runs are stored:
+    what a filter by process names (ADR-0319)."""
+    counted = await services.runs.count(tenant, ("process_version",))
+    return sorted(
+        str(version) for (version,) in counted if str(version).rpartition("@")[0] == process
+    )
+
+
 def _cursor(run: Run) -> str:
     """Where the next page starts, as the reader passes it back: opaque to them."""
-    return base64.urlsafe_b64encode(f"{run.created_at.isoformat()} {run.id}".encode()).decode()
+    return marked(run.created_at, run.id)
 
 
 def _mark(cursor: str) -> Mark | None:
     """The place a cursor names; None for one this surface did not hand out."""
-    try:
-        at, _, run_id = base64.urlsafe_b64decode(cursor.encode()).decode().partition(" ")
-        created = datetime.fromisoformat(at)
-    except ValueError:
-        return None
-    if not run_id or created.tzinfo is None:
-        return None
-    return Mark(created_at=created, id=run_id)
+    return unmarked(cursor)
 
 
 def _reader(who: Resolution) -> Reader:
@@ -1074,9 +1120,13 @@ def _changes(services: RestServices) -> APIRouter:
         summary="The changes of state, as they happen (Server-Sent Events)",
         description="One long-lived response, `text/event-stream`. The scope is the tenant of "
         "your identity, one process (`process`) or one run (`run`). The first event is a "
-        "`snapshot` of the scope — every run you may see in it, with its state and the state "
-        "of each step — and then one `change` for every ledger entry that records a change of "
-        "state of a run, a step or a decision request in the scope, as it is recorded. Each "
+        "`snapshot` of the scope — the runs you may see in it, in the tenant scope those not "
+        "yet ended, at most 1,000, the newest, with `truncated` where more were left; each "
+        "with its state and the state of each step. With `snapshot=position` it carries the "
+        "position alone, `listed: false` and no run, and nothing is read but the position "
+        "(ADR-0317). Then one `change` for every ledger entry that records a change of "
+        "state of a run, a step or a decision request in the scope, as it is recorded, with "
+        "the process and version of its run. Each "
         "event's `id` is its position: the hash of a ledger entry. Reconnect with the last one "
         "you received as `Last-Event-ID`, to any replica: you receive every change after it, "
         "or a fresh `snapshot` when the position is unknown or more than 1,000 entries behind. "
@@ -1103,6 +1153,11 @@ def _changes(services: RestServices) -> APIRouter:
             default=None, min_length=1, description="Only the runs of this process."
         ),
         run: str | None = Query(default=None, min_length=1, description="Only this run."),
+        snapshot: Literal["runs", "position"] = Query(
+            default="runs",
+            description="`position`: the opening snapshot carries the position alone and no "
+            "run (ADR-0317 §2); `runs`, the default, lists the runs.",
+        ),
         authorization: str | None = Header(default=None),
         last_event_id: str | None = Header(
             default=None,
@@ -1114,12 +1169,7 @@ def _changes(services: RestServices) -> APIRouter:
         who = await _authenticated(services, authorization)
         if who is None:
             return problem(401, "an account key is needed: Authorization: Bearer <key>")
-        if run is not None:
-            scope = Scope(kind=ScopeKind.RUN, id=run)
-        elif process is not None:
-            scope = Scope(kind=ScopeKind.PROCESS, id=process)
-        else:
-            scope = Scope(kind=ScopeKind.TENANT)
+        scope = _scope(process, run)
 
         async def again() -> Reader | None:
             # Asked before every batch and heartbeat: the roles as they are then (ADR-0055 §5).
@@ -1128,7 +1178,11 @@ def _changes(services: RestServices) -> APIRouter:
 
         try:
             events = await services.changes.open(
-                _reader(who), scope, (last_event_id or "").strip() or None, again
+                _reader(who),
+                scope,
+                (last_event_id or "").strip() or None,
+                again,
+                listed=snapshot == "runs",
             )
         except StreamsFull as error:
             response = problem(503, str(error))
@@ -1147,4 +1201,54 @@ def _changes(services: RestServices) -> APIRouter:
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
+    @router.get(
+        "/changes/recent",
+        summary="The changes of the last minutes, for a strip of what just happened",
+        description="The changes of state recorded in the last `minutes` (at most 60) in the "
+        "scope — your tenant, one process (`process`) or one run (`run`) — that you may see, "
+        "oldest first: each exactly as the stream `GET /changes` sends it, with the same "
+        "projection, predicate and visibility. At most the newest 500 entries that change a "
+        "state are read; `complete` is false where that bound cut older ones off (ADR-0317 §4). "
+        "Nothing carries content, a figure or a person.",
+        responses={
+            200: {"description": "The changes, oldest first."},
+            401: {"description": "No account key, or one that proves no identity.", **PROBLEM},
+            **INVALID,
+        },
+    )
+    async def recent(
+        minutes: int = Query(
+            default=RECENT_MINUTES,
+            ge=1,
+            le=RECENT_MINUTES,
+            description=f"How many minutes back; {RECENT_MINUTES} unless given.",
+        ),
+        process: str | None = Query(
+            default=None, min_length=1, description="Only the runs of this process."
+        ),
+        run: str | None = Query(default=None, min_length=1, description="Only this run."),
+        authorization: str | None = Header(default=None),
+    ) -> Response:
+        if process is not None and run is not None:
+            return problem(422, "name a process or a run, not both")
+        who = await _authenticated(services, authorization)
+        if who is None:
+            return problem(401, "an account key is needed: Authorization: Bearer <key>")
+        found = await services.changes.recent(_reader(who), _scope(process, run), minutes)
+        return JSONResponse(
+            {
+                "minutes": minutes,
+                "changes": [c.document() for c in found.changes],
+                "complete": found.complete,
+            }
+        )
+
     return router
+
+
+def _scope(process: str | None, run: str | None) -> Scope:
+    if run is not None:
+        return Scope(kind=ScopeKind.RUN, id=run)
+    if process is not None:
+        return Scope(kind=ScopeKind.PROCESS, id=process)
+    return Scope(kind=ScopeKind.TENANT)

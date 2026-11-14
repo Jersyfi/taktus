@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Any
 
 from taktus.adapters.driven.memory.persistence import MemoryPersistence
-from taktus.ports.persistence import Mark, NotQueryable, Stored, Tenant, WrongTenant
+from taktus.ports.persistence import Mark, NotQueryable, Stored, Tenant, Where, WrongTenant
 
 
 class MemoryRepository[T: Stored]:
@@ -45,8 +45,15 @@ class MemoryRepository[T: Stored]:
                 merged[id] = item
         return list(merged.values())
 
-    async def newest(self, tenant: Tenant, *, limit: int, after: Mark | None = None) -> Sequence[T]:
-        items = sorted(await self.list(tenant), key=lambda item: item.id)
+    async def newest(
+        self,
+        tenant: Tenant,
+        *,
+        limit: int,
+        after: Mark | None = None,
+        where: Where | None = None,
+    ) -> Sequence[T]:
+        items = sorted(await self._admitted(tenant, where), key=lambda item: item.id)
         items.sort(key=self._created, reverse=True)
         if after is not None:
             items = [
@@ -57,12 +64,14 @@ class MemoryRepository[T: Stored]:
             ]
         return items[:limit]
 
-    async def count(self, tenant: Tenant, by: Sequence[str]) -> Mapping[tuple[Any, ...], int]:
+    async def count(
+        self, tenant: Tenant, by: Sequence[str], *, where: Where | None = None
+    ) -> Mapping[tuple[Any, ...], int]:
         for field in by:
             if "." in field:
                 raise NotQueryable(self._kind, field)
         counted: Counter[tuple[Any, ...]] = Counter()
-        for item in await self.list(tenant):
+        for item in await self._admitted(tenant, where):
             document = item.document()
             counted[tuple(self._values(document, field)[0] for field in by)] += 1
         return dict(counted)
@@ -73,6 +82,16 @@ class MemoryRepository[T: Stored]:
             for item in await self.list(tenant)
             if value in self._values(item.document(), field)
         ]
+
+    async def _admitted(self, tenant: Tenant, where: Where | None) -> builtins.list[T]:
+        """The aggregates `where` admits: every field it names holds one of its values."""
+        items = builtins.list(await self.list(tenant))
+        for field, values in (where or {}).items():
+            if "." in field:
+                raise NotQueryable(self._kind, field)
+            allowed = builtins.list(values)
+            items = [i for i in items if self._values(i.document(), field)[0] in allowed]
+        return items
 
     def _created(self, item: T) -> datetime:
         created = item.document().get("created_at")

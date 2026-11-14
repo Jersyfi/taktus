@@ -74,6 +74,36 @@ async def test_runs_are_counted_by_fields_without_being_read(backend: Backend) -
     }
 
 
+async def test_a_filter_admits_runs_by_the_values_of_their_fields(backend: Backend) -> None:
+    """`where` narrows a page and a count to the runs whose fields hold one of the values given,
+    and an empty set of values admits none (ADR-0319)."""
+    tenant = await backend.tenant()
+    await stored(
+        backend,
+        tenant,
+        at(1, tenant=tenant, created=1),
+        at(2, tenant=tenant, created=2, state=RunState.FINISHED),
+        at(3, tenant=tenant, created=3, state=RunState.WAITING_HUMAN),
+        at(4, tenant=tenant, created=4).model_copy(update={"process_version": "other@2"}),
+    )
+    queried = backend.queried(Run)
+    open_states = ("running", "waiting_human")
+    version = samples.process_version().ref
+    async with backend.work.transaction(tenant):
+        open_runs = await queried.newest(tenant, limit=10, where={"state": open_states})
+        of_version = await queried.newest(
+            tenant, limit=10, where={"state": open_states, "process_version": (version,)}
+        )
+        none = await queried.newest(tenant, limit=10, where={"state": ()})
+        counted = await queried.count(tenant, ("state",), where={"process_version": (version,)})
+        with pytest.raises(NotQueryable):
+            await queried.newest(tenant, limit=1, where={"step_runs.state": ("running",)})
+    assert [r.id for r in open_runs] == ["run_04", "run_03", "run_01"]
+    assert [r.id for r in of_version] == ["run_03", "run_01"]
+    assert none == []
+    assert dict(counted) == {("running",): 1, ("finished",): 1, ("waiting_human",): 1}
+
+
 async def test_runs_are_found_by_a_field_and_by_a_field_of_their_steps(backend: Backend) -> None:
     tenant = await backend.tenant()
     running = at(1, tenant=tenant, created=1)  # its second step runs
