@@ -158,6 +158,20 @@ def an_open_request(root: Path) -> str:
     return with_section(root, "docs/decisions/open/DEC-*.md", "## 6. What is blocked")
 
 
+def two_recommended(root: Path) -> None:
+    """Every option of an open request marked recommended. The request is made an ordinary one
+    first, since a mode-4 request, the owner's own question, recommends none (DEC-0045); so the
+    case holds whether or not any open request recommends an option."""
+    rel = an_open_request(root)
+    text = re.sub(r"^\*\*Mode entry:\*\* M4\.\d+\n", "", read(root, rel), flags=re.M)
+    text, count = re.subn(
+        r"^(### Option [A-Z] — (?:(?!\(recommended\)).)*)$", r"\1 (recommended)", text, flags=re.M
+    )
+    if count == 0:
+        raise PlantError(f"{rel}: no option heading to recommend")
+    write(root, rel, text)
+
+
 def a_duplicate_record(root: Path) -> None:
     rel = first(root, "docs/decisions/DEC-*.md")
     number = Path(rel).name[4:8]
@@ -400,13 +414,7 @@ def _cases() -> tuple[Case, ...]:
         Case(
             "gate-decisions",
             "an open decision request recommends two options",
-            lambda r: substitute(
-                r,
-                first(r, "docs/decisions/open/DEC-*.md", "(recommended)"),
-                r"^(### Option [A-Z] — (?:(?!\(recommended\)).)*)$",
-                r"\1 (recommended)",
-                re.M,
-            ),
+            two_recommended,
             "recommended",
         ),
         Case(
