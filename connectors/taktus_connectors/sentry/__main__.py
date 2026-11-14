@@ -7,7 +7,8 @@ API's address (default the provider's own); point it at the fake under
 `tests/fakes/error_tracking_service.py` to run without a network. `--organization` is the slug
 of the organisation whose issues are read. Credentials are never arguments: the connector reads
 the value of a credential at the moment of a call, from the file `TAKTUS_CREDENTIAL_<NAME>_FILE`
-names, under the name the call references (`README.md`).
+names, under the name the call references (`README.md`). The intake reads its secret,
+`ERRORS_INTAKE_SECRET`, the same way at each delivery (ADR-0331).
 """
 
 from __future__ import annotations

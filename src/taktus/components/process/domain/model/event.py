@@ -30,6 +30,7 @@ class Kind(StrEnum):
     BRANCH_PUSHED = "branch.pushed"
     MESSAGE_POSTED = "message.posted"
     MESSAGE_MENTIONED = "message.mentioned"
+    ERROR_CREATED = "error.created"
 
 
 class Condition(StrEnum):
@@ -65,6 +66,9 @@ KINDS: Mapping[Kind, Fields] = {
     Kind.BRANCH_PUSHED: Fields(required=frozenset({"repository", "branch", "head", "paths"})),
     Kind.MESSAGE_POSTED: _MESSAGE,
     Kind.MESSAGE_MENTIONED: _MESSAGE,
+    Kind.ERROR_CREATED: Fields(
+        required=frozenset({"project", "error"}), optional=frozenset({"link"})
+    ),
 }
 """The catalogue of v1 (`contracts/events/v1` §2): every kind with the context it requires."""
 

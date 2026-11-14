@@ -1,0 +1,32 @@
+{
+  "action": "created",
+  "installation": {
+    "uuid": "7a485448-a9e2-4c85-8a3c-4f44175783c9"
+  },
+  "data": {
+    "issue": {
+      "id": "1170820242",
+      "shortId": "PRODUCT-1",
+      "title": "TypeError: undefined is not a function",
+      "culprit": "checkout/pay",
+      "level": "error",
+      "status": "unresolved",
+      "firstSeen": "2026-11-14T08:00:00.123456Z",
+      "lastSeen": "2026-11-14T08:00:00.123456Z",
+      "count": "1",
+      "userCount": 1,
+      "project": {
+        "id": "1",
+        "name": "product",
+        "slug": "product",
+        "platform": "javascript"
+      },
+      "web_url": "https://errors.example/organizations/example/issues/1170820242/"
+    }
+  },
+  "actor": {
+    "type": "application",
+    "id": "sentry",
+    "name": "Sentry"
+  }
+}

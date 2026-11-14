@@ -1401,7 +1401,11 @@ BUSINESS: dict[str, BusinessConnector] = {
     "sanity": BusinessConnector("sanity", FAKES / "content_lake_service.py", "WEBSITE_TOKEN"),
     "scim": BusinessConnector("scim", FAKES / "directory_service.py", "DIRECTORY_TOKEN"),
     "sentry": BusinessConnector(
-        "sentry", FAKES / "error_tracking_service.py", "ERRORS_TOKEN", ("--organization", "example")
+        "sentry",
+        FAKES / "error_tracking_service.py",
+        "ERRORS_TOKEN",
+        ("--organization", "example"),
+        intake="ERRORS_INTAKE_SECRET",
     ),
     "stripe": BusinessConnector("stripe", FAKES / "payment_service.py", "PAYMENTS_TOKEN"),
     "vault": BusinessConnector("vault", FAKES / "secret_store_service.py", "SECRETS_TOKEN"),

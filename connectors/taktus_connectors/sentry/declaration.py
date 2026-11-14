@@ -2,8 +2,9 @@
 `taktus://connector/v1/capabilities`, in the shape of `Connector.json#/$defs/Capabilities`.
 
 Two operations of the capability `errors.issues`, both of effect `read`: reading issues changes
-nothing. Each page of an answer is one request, so the demand names one unit and the
-consumption counts every page (ADR-0005).
+nothing. An intake takes the tracker's webhook for a new issue, signed under `hmac-sha256`, as
+the event `error.created` (ADR-0331). Each page of an answer is one request, so the demand
+names one unit and the consumption counts every page (ADR-0005).
 """
 
 from __future__ import annotations
@@ -16,6 +17,8 @@ CONTRACT = "connector/v1"
 VERSION = "1.0.0"
 CAPABILITY = "errors.issues"
 ACTIONS_CREDENTIAL = "ERRORS_TOKEN"
+INTAKE_CREDENTIAL = "ERRORS_INTAKE_SECRET"
+INTAKE_EVENTS = ["error.created"]
 
 OPERATIONS: list[Json] = [
     {
@@ -46,7 +49,11 @@ def capabilities() -> Json:
         "version": VERSION,
         "capabilities": [CAPABILITY],
         "operations": [dict(op) for op in OPERATIONS],
-        "credentials": [{"name": ACTIONS_CREDENTIAL, "purpose": "actions"}],
+        "intake": {"events": list(INTAKE_EVENTS), "signature": {"scheme": "hmac-sha256"}},
+        "credentials": [
+            {"name": ACTIONS_CREDENTIAL, "purpose": "actions"},
+            {"name": INTAKE_CREDENTIAL, "purpose": "intake"},
+        ],
         "consumption": {"kinds": ["quota"], "unit": "requests", "window_seconds": 1},
         "permissions": "passthrough",
     }

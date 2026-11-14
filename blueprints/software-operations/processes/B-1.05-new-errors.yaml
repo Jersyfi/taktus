@@ -14,6 +14,12 @@
 # focused fix pull request of the target level is the implementation process on that issue
 # (B-7.03, `dev-orchestration` P-03); the merge stays with a person (UC-03 §4.1).
 #
+# Started on arrival (version 3, ADR-0331): where the error tracker's integration sends its
+# webhook for a new issue to the intake, the event `error.created` starts a run at once, with
+# the same period as the hourly one; the hourly schedule stays for a tracker without the webhook.
+# A run started by the event selects by the same rule over the same reading, so an error filed
+# by one run is left out by the next by its mark: two runs never file one error twice.
+#
 # The thresholds are this version's; a tenant changes them by a version of its own: the number
 # of users under `any`, and the pattern of its payment and sign-in paths.
 #
@@ -26,7 +32,7 @@
 # tracker or the repository: what it filed stays filed.
 
 id: b-1-05
-version: "2"
+version: "3"
 name: B-1.05 New errors
 autonomy:
   level: 2
@@ -43,6 +49,9 @@ reason: a new error that matters reaches the repository as an issue without a pe
 
 triggers:
   - schedule: hourly
+    inputs:
+      period: 1h
+  - event: error.created
     inputs:
       period: 1h
 
