@@ -554,9 +554,11 @@ async def test_uc_03s_six_stages_are_declared_and_shown_with_their_conditions() 
     assert "at most 0 incident(s)" in view[3].stage.condition.described()
     assert max(view[0].stage.processes.values()) <= 2, "stage 0 runs at level 1 to 2"
     every = {p for v in view[1:] for p in v.stage.processes}
-    assert len(every) == 77, "every process of UC-03 §4.1 to §4.10 with a bundle of its own"
+    assert len(every) == 72, "every process of UC-03 §4.1 to §4.10 a bundle serves"
     assert not {"b-2-05", "b-4-03"} & every, "the trial and the correction rate are the instance's"
-    assert not {"b-3-03", "b-3-12", "b-4-01", "b-4-07"} & every, "named by b-3-02, or not built"
+    assert not {"b-3-03", "b-3-12", "b-4-01", "b-4-07", "b-6-05", "b-10-07"} & every, (
+        "named by b-3-02, or not built"
+    )
     assert not any(p.startswith("b-11-") for p in every), "the steering is Taktus itself"
     assert "b-9-01" not in {p for v in view for p in v.stage.processes}, (
         "the daily report is the instance's, counted by `reports_missed`"
@@ -613,8 +615,11 @@ def test_every_process_a_stage_names_is_a_bundle_or_declared_where_it_is_served(
         for bundle in served or ():
             assert bundle in every, f"{entry['id']} is served by {bundle}, which no bundle carries"
     for process in sorted(named):
-        assert process in every or process in declared, (
-            f"a stage names {process}, which no bundle carries and blueprint.yaml does not declare"
+        assert process in every, (
+            f"a stage names {process}, which no bundle carries: a stage opens only once every "
+            "process it adds runs (ADR-0191 §1), so it names the bundles that serve a declared "
+            "process, and a process not built stands in no stage"
+            + (" (declared in blueprint.yaml)" if process in declared else "")
         )
     assert {"p02-refinement", "p03-implementation"} <= named, (
         "stage 4 names the bundles that serve B-7.02 and B-7.03, whose runs it counts"

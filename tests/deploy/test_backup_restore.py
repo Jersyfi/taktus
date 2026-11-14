@@ -98,6 +98,12 @@ def target(engine_socket: str) -> Iterator[Database]:
 
 
 @pytest.fixture
+def installed(engine_socket: str) -> Iterator[Database]:
+    """A database a fresh install of the chart created and migrated at once (README §10)."""
+    yield from started(migrated=True)
+
+
+@pytest.fixture
 async def persistence(source: Database) -> AsyncIterator[PostgresPersistence]:
     postgres = PostgresPersistence(source.host_url, pool_size=2)
     try:
@@ -181,9 +187,11 @@ def restore(
     name: str,
     key: bool,
     state: Path | None = None,
+    emptied: bool = False,
 ) -> None:
     """The commands of deploy/k8s/README.md §11, steps 2 to 6, with a directory as the store;
-    with `state`, the object store's archive restored into it as well."""
+    with `state`, the object store's archive restored into it as well; with `emptied`, the
+    schema a fresh install migrated dropped first, as step 4 says for an installed database."""
     dump = f"{name}.dump"
     archive = f"{name}.objects.tar.gz"
     objects = (
@@ -195,7 +203,16 @@ def restore(
             f"tar -xzf /work/{archive} -C /state/objects",
         ]
     )
+    empty = (
+        [
+            'psql --no-psqlrc -v ON_ERROR_STOP=1 --dbname "$URL" '
+            '-c "DROP SCHEMA public CASCADE" -c "CREATE SCHEMA public"'
+        ]
+        if emptied
+        else []
+    )
     steps = [
+        *empty,
         f"rclone --config /dev/null copyto :local:/backups/{dump}{'.age' if key else ''} "
         f"/work/{dump}{'.age' if key else ''}",
         *(
@@ -366,6 +383,30 @@ async def test_a_backup_restores_onto_a_fresh_database_with_every_chain_intact(
     restore(backup_image, target, store, work, name, key=False)
 
     assert await heads(target.host_url) == before
+
+
+async def test_a_backup_restores_onto_a_database_a_fresh_install_already_migrated(
+    backup_image: str,
+    source: Database,
+    installed: Database,
+    persistence: PostgresPersistence,
+    tmp_path: Path,
+) -> None:
+    """An instance installed again from nothing has a migrated, empty-of-data database: the
+    restore of §11 asks for an empty one. Its schema dropped and created again first, the same
+    commands restore every chain to the head it had."""
+    for tenant, count in zip(TENANTS, (4, 2), strict=True):
+        await record(persistence, tenant, count)
+    before = await heads(source.host_url)
+    store, secrets, work = directories(tmp_path, source)
+    assert run_backup(backup_image, source, store, secrets).returncode == 0
+    dump, _ = written(store)
+
+    restore(
+        backup_image, installed, store, work, dump.removesuffix(".dump"), key=False, emptied=True
+    )
+
+    assert await heads(installed.host_url) == before
 
 
 async def test_an_encrypted_backup_cannot_be_read_without_its_key(

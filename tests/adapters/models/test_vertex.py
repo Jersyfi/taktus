@@ -23,7 +23,7 @@ from taktus.composition.settings import load_models
 from taktus.ports.configuration import Secret
 from taktus.ports.model import ModelAtLimit, ModelError, Prompt
 
-REGION = "europe-west3"
+REGION = "europe-west1"
 
 
 @pytest.fixture
@@ -115,8 +115,8 @@ def test_a_regional_endpoint_names_where_it_processes() -> None:
 
 async def test_configured_by_its_dialect_it_is_an_eu_member_a_residency_rule_admits() -> None:
     endpoint = (
-        "https://europe-west3-aiplatform.googleapis.com/v1/projects/acme/locations/"
-        "europe-west3/publishers/google/models"
+        "https://europe-west1-aiplatform.googleapis.com/v1/projects/acme/locations/"
+        "europe-west1/publishers/google/models"
     )
     pool = model_pool(
         load_models(

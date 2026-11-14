@@ -9,9 +9,13 @@ never refused for the error another step of the same worker once made.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from fakes import FakeWorker, InnerStep
 
+from taktus.components.run.application.service import EngineOptions
 from taktus.components.run.domain.model import Cause, RunState, StepState
+from taktus.components.run.domain.service.exchange import ExchangeRates
 from taktus.ports.worker import Limits
 
 from .test_engine import Harness, worker
@@ -96,3 +100,28 @@ async def test_a_run_halts_at_the_step_boundary_where_its_money_is_spent_not_at_
     kinds = await h.kinds(run)
     assert "step.started:c" not in kinds
     assert kinds[-2:] == ["step.rejected:c:rejected_by_admission", "run.halted::limit"]
+
+
+async def test_a_worker_reporting_another_currency_is_held_to_the_runs_money_at_the_rates() -> None:
+    """ADR-0335: a run budgeted in euros, a worker that reports dollars. At 0.9 eur per usd the
+    worker is handed its ceiling in both, so that it halts at the line during its step, and
+    what it spent counts against the euros."""
+    rates = ExchangeRates(
+        version="test-1",
+        valid_from=datetime(2026, 11, 1, tzinfo=UTC),
+        source="a test's fixed rates",
+        rates={"usd": {"eur": 0.9}},
+    )
+    fake = spending(0.8, 0.8, 0.8)
+    h = Harness(worker("do"), workers=[fake], options=EngineOptions(exchange_rates=rates))
+    run = await h.start(Limits(currency={"eur": 4.5}))
+    assert run.state is RunState.FINISHED
+    assert fake.assignments[-1].limits.currency == {"eur": 4.5, "usd": 5.0}
+
+    fake = spending(0.75, 0.75, 0.75, 0.75)
+    h = Harness(worker("do"), workers=[fake], options=EngineOptions(exchange_rates=rates))
+    run = await h.start(Limits(currency={"eur": 1.8}))
+    assert run.state is RunState.HALTED and run.cause is Cause.LIMIT
+    do = run.step_run("do")
+    assert do.state is StepState.STOPPED and do.checkpoint is not None, "halted in the step"
+    assert do.consumption is not None and do.consumption.currency == {"usd": 2.25}

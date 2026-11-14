@@ -218,10 +218,12 @@ needs one more: `image.pullSecret`, the name of a pull Secret you created in the
 Install:
 
 ```bash
-.tools/bin/helm install taktus deploy/k8s/chart --namespace taktus -f ../taktus-values.yaml --wait --timeout 10m
+.tools/bin/helm install taktus deploy/k8s/chart --namespace taktus -f ../taktus-values.yaml --timeout 10m
 ```
 
 The chart starts the database, brings it to its schema with a one-time job, and starts Taktus.
+Helm returns when that job has finished. Do not add `--wait`: Taktus refuses to start before the
+job, and the job runs only after what `--wait` waits for (`deploy/k8s/README.md` §10).
 Check that it is ready:
 
 ```bash
@@ -421,6 +423,8 @@ own act.
 would build the same name over it; run only one per machine.
 
 On a cluster, the database's and the state's volumes stay when the release is uninstalled.
+An instance whose namespaces, volumes and Secrets are gone is installed again as
+`docs/guides/administration/rebuilding-on-a-cluster.md` says.
 
 The next page, *Upgrading* (`docs/guides/administration/upgrading.md`), takes the instance to
 a newer release. *Configuring* and *Restoring* are the pages of the same guide that list every

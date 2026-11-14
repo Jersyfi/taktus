@@ -98,6 +98,7 @@ def model_pool(
         declared[settings.identifier] = Declared(
             location=location,  # type: ignore[arg-type]  # validated by load_model
             classes=settings.classes,
+            terms=frozenset(settings.terms),
         )
     return StaticModelPool(members, declared)
 

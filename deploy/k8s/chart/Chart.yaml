@@ -4,5 +4,9 @@ apiVersion: v2
 name: taktus
 description: Taktus, an operating layer for a business — the control plane and its execution namespace
 type: application
+# The oldest Kubernetes whose API holds every field the chart sets as stable: a CronJob's
+# `timeZone` (backup.yaml, drill.yaml) is stable from 1.27; batch/v1 CronJob and policy/v1
+# PodDisruptionBudget from 1.21; the namespaces' Pod Security labels are enforced from 1.25.
+kubeVersion: ">=1.27.0-0"
 version: 0.1.0
 appVersion: "0.1.0"

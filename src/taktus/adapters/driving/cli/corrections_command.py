@@ -4,8 +4,10 @@ action class, and the tenant's correction limits (ADR-0110, UC-7.5).
 `list` prints every unit's correction rate over 7 and 28 days, as JSON: how many proposals were
 released, corrected and rejected, counted from the unit's last change of level. No figure names
 the person who decided. `lowered` prints every incident about a level that fell by rule.
-`configure` sets the tenant's limits — when Taktus proposes a raise, and when a rate lowers a
-level — and prints the limits in force; without an option it only prints them.
+`configure` sets the tenant's limits — when Taktus proposes a raise, when a rate lowers a
+level, and the count of corrections within a few days that lowers a level beside the rate, for
+the tenant or one process (ADR-0333) — and prints the limits in force; without an option it
+only prints them. `list` shows each window's count of corrections beside its rate.
 
 The command line authenticates by holding the instance's state, as `incident` does;
 `--identity` names who acts, for the ledger.
@@ -62,8 +64,9 @@ def _corrections(services: Services) -> Corrections:
 def shown(figures: Figures) -> dict[str, Any]:
     """One unit's figures as the operator reads them, with each rate computed."""
     document = figures.document()
-    document["week"]["rate"] = figures.week.rate
-    document["month"]["rate"] = figures.month.rate
+    for name, rate in (("week", figures.week), ("month", figures.month)):
+        document[name]["rate"] = rate.rate
+        document[name]["corrections"] = rate.corrected + rate.rejected
     return document
 
 
@@ -122,6 +125,22 @@ def configure(
         int | None,
         typer.Option("--lower-minimum", help="The fewest decisions in it for it to lower."),
     ] = None,
+    lower_count: Annotated[
+        int | None,
+        typer.Option(
+            "--lower-count",
+            help="Corrections within --lower-count-days that lower a level beside the rate; "
+            "0 removes the count.",
+        ),
+    ] = None,
+    lower_count_days: Annotated[
+        int | None,
+        typer.Option("--lower-count-days", help="The days that count is taken over: 7."),
+    ] = None,
+    process: Annotated[
+        str | None,
+        typer.Option("--process", help="Set the count for this process, not the tenant."),
+    ] = None,
     tenant: Tenant = DEFAULT_TENANT,
     by: By = "operator",
     state_dir: StateDir = Path(DEFAULT_STATE_DIR),
@@ -135,8 +154,20 @@ def configure(
         lower_rate=lower_rate,
         lower_window=_duration(lower_window),
         lower_minimum=lower_minimum,
+        lower_count=lower_count,
+        lower_count_days=lower_count_days,
+        process=process,
     )
-    changes = (raise_decisions, raise_weeks, raise_rate, lower_rate, lower_window, lower_minimum)
+    changes = (
+        raise_decisions,
+        raise_weeks,
+        raise_rate,
+        lower_rate,
+        lower_window,
+        lower_minimum,
+        lower_count,
+        lower_count_days,
+    )
 
     async def act(found: Corrections) -> dict[str, Any]:
         if all(change is None for change in changes):

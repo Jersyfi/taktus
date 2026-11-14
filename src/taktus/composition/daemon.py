@@ -733,6 +733,7 @@ async def wire(
                 model_pool(settings.models),
             )
             prices = settings.budget.table()
+            rates = settings.budget.rates()
             weights = settings.budget.weights()
             seeds = settings.budget.seeds()
             shape = settings.findings.form()
@@ -816,6 +817,7 @@ async def wire(
                     options=EngineOptions(
                         step_ceiling_seconds=settings.shutdown_ceiling_seconds,
                         prices=prices,
+                        exchange_rates=rates,
                         weights=weights,
                         model_classes=settings.budget.model_classes,
                         margin=settings.budget.margin,
@@ -842,6 +844,7 @@ async def wire(
                     decisions=decisions.requests,
                     levels=decisions.levels,
                     residency=decisions.residency,
+                    terms=decisions.residency,
                     sources=decisions.sources,
                     open_work=decisions.open_work,
                     repetition=decisions.repetition,
@@ -1077,7 +1080,9 @@ async def wire(
                 structure=identities,
                 rights=identities,
                 domains=decisions.domains,
-                residency=PoolBindings(pools, decisions.residency, settings.host_locations),
+                residency=PoolBindings(
+                    pools, decisions.residency, settings.host_locations, decisions.residency
+                ),
             )
             moves = MethodMoves(
                 versions=PostgresRepository(persistence, ProcessVersion),

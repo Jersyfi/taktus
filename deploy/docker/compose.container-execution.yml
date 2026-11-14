@@ -1,0 +1,34 @@
+# Worker steps on one server without a cluster: Taktus starts one container per job through the
+# container engine's socket (TAKTUS_EXECUTION=container, docs/guides/administration/single-server.md).
+# Laid over compose.yml, never used alone:
+#
+#   make up EXECUTION=container
+#
+# which is `docker compose -f deploy/docker/compose.yml -f deploy/docker/compose.container-execution.yml up`.
+#
+# Whoever uses the socket can start any container on this server: mounting it gives Taktus the
+# power of the server's administrator (single-server.md, "What the socket gives Taktus").
+#
+# What this file needs from the operator, never a secret value. The first two in the shell's
+# environment or in deploy/docker/.env, which Compose reads for this file's own variables:
+#   TAKTUS_ENGINE_SOCKET_GID    the group that owns the socket on this server
+#                               (`stat -c %g /var/run/docker.sock`); the image runs as user 999
+#   TAKTUS_ENGINE_SOCKET        the socket's path on the server; /var/run/docker.sock by default
+# and in taktus.env, which the container reads:
+#   TAKTUS_EXECUTION_UNIT       the worker's image, or TAKTUS_WORKER_<NAME>_EXECUTION_UNIT per
+#                               worker
+# Credential files a worker's `_FILE` setting names are the operator's to mount, in a file of
+# their own laid over this one.
+
+services:
+  taktus:
+    environment:
+      TAKTUS_EXECUTION: container
+      TAKTUS_EXECUTION_ENGINE_SOCKET: /var/run/docker.sock
+      # The network Compose creates for compose.yml (project `taktus`); the egress gateway
+      # joins it so that Taktus, itself in a container, reaches the gateway.
+      TAKTUS_EXECUTION_NETWORK: taktus_default
+    group_add:
+      - "${TAKTUS_ENGINE_SOCKET_GID:?TAKTUS_ENGINE_SOCKET_GID names the group that owns the engine socket}"
+    volumes:
+      - ${TAKTUS_ENGINE_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock

@@ -91,6 +91,8 @@ area.
 number package E gave it, built in concept mode.
 `UC-1.14` a person builds in Taktus by conversation (DEC-0239, NTC-0291), the next free number
 of its area, built with package F in concept mode.
+`UC-7.12` Taktus never acts outward in a person's name (DEC-0239, NTC-0295), the next free
+number of its area, built with package F in concept mode.
 
 ## Numbers of the definition with no file of their own
 

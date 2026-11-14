@@ -318,6 +318,7 @@ class LocalWiring:
             budget = load_budget(self._configuration)
             capacity = load_capacity(self._configuration)
             prices = budget.table()
+            rates = budget.rates()
             weights = budget.weights()
             seeds = budget.seeds()
             findings_shape = load_findings(self._configuration)
@@ -464,6 +465,7 @@ class LocalWiring:
                     models=models,
                     options=EngineOptions(
                         prices=prices,
+                        exchange_rates=rates,
                         weights=weights,
                         model_classes=budget.model_classes,
                         margin=budget.margin,
@@ -487,6 +489,7 @@ class LocalWiring:
                     decisions=decisions.requests,
                     levels=decisions.levels,
                     residency=decisions.residency,
+                    terms=decisions.residency,
                     sources=decisions.sources,
                     open_work=decisions.open_work,
                     repetition=decisions.repetition,
@@ -693,7 +696,9 @@ class LocalWiring:
                 structure=identities,
                 rights=identities,
                 domains=decisions.domains,
-                residency=PoolBindings(pools, decisions.residency, host_locations),
+                residency=PoolBindings(
+                    pools, decisions.residency, host_locations, decisions.residency
+                ),
             )
             findings = ProductFindings(
                 RunBlocks(BlockedTime(ledger, objects, stores.work, runs)),

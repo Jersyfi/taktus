@@ -98,3 +98,21 @@ async def test_a_person_s_answer_in_a_case_is_recorded_once_for_its_process() ->
     assert not await port.answered(TENANT, "support", "T-18")
     assert not await port.answered(TENANT, "billing", "T-17")
     assert (await kinds(ledger, persistence)).count("case.answered:op") == 1
+
+
+async def test_a_daily_limit_is_set_per_tenant_and_per_process_and_read_by_the_run() -> None:
+    """ADR-0335 §5: a count of messages, never of who wrote them; rules without one are written
+    as the release before wrote them (ADR-0093)."""
+    service, _, _ = kept()
+    assert "daily_limit" not in (await service.rules(TENANT)).document()
+    await service.configure(ConfigureMessages(tenant=TENANT, daily_limit=20), by="idn_owner")
+    await service.configure(
+        ConfigureMessages(tenant=TENANT, daily_limit=1, process="support"), by="idn_owner"
+    )
+    read = await MessagesOfTheRun(service).rules(TENANT)
+    assert (read.daily_for("support"), read.daily_for("other")) == (1, 20)
+    await service.configure(ConfigureMessages(tenant=TENANT, daily_limit=0), by="idn_owner")
+    await service.configure(
+        ConfigureMessages(tenant=TENANT, daily_limit=0, process="support"), by="idn_owner"
+    )
+    assert (await MessagesOfTheRun(service).rules(TENANT)).daily_for("support") is None

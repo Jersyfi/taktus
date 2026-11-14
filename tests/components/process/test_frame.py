@@ -159,3 +159,13 @@ def test_a_scoped_step_and_an_analytic_step_that_hold_register() -> None:
         )
     )
     assert [step.id for step in version.steps] == ["account", "cohorts"]
+
+
+def test_a_step_on_behalf_of_a_person_that_declares_a_message_does_not_register() -> None:
+    """ADR-0332: a person's own credential only reads; a step that sends a message is never
+    run on it, and registration refuses the version that would."""
+    for sending in ({"recipients": ["a@example.org"]}, {"message": {"check": "check"}}):
+        step = connector("tell", "mail.messages.send", on_behalf=True, **sending)
+        with pytest.raises(InvalidProcess, match="nothing is sent in a person's name"):
+            parse_bundle(bundle(step))
+    assert parse_bundle(bundle(connector("read", "mail.messages.read", on_behalf=True)))
