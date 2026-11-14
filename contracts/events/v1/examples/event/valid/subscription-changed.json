@@ -1,0 +1,12 @@
+{
+  "id": "evt_1QfakeChanged",
+  "kind": "subscription.changed",
+  "channel": "payments.subscriptions",
+  "occurred_at": "2026-11-14T08:00:00Z",
+  "received_at": "2026-11-14T08:00:02Z",
+  "context": {
+    "customer": "cus_fake1",
+    "subscription": "sub_fake1",
+    "change": "created"
+  }
+}

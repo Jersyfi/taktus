@@ -37,9 +37,15 @@
 #         --input deployment=web --input 'error_filter=severity>=ERROR'
 #
 # Switching it off (`taktusctl deactivate --process b-1-04`) changes nothing at the store.
+#
+# Named metrics (ADR-0328): each read names the metric it needs, `functions.error_rate`, and the
+# connector serving `metrics.series` maps the name to its own store's query — PromQL on a
+# Prometheus store or on a cloud's monitoring service — from the tenant's configuration
+# (`--metrics`). A query given as an input is asked verbatim instead. Version 4
+# drops the Prometheus query its schedule carried; a Prometheus store maps the names now.
 
 id: b-1-04
-version: "3"
+version: "4"
 name: B-1.04 Error rate
 autonomy:
   level: 1
@@ -57,8 +63,6 @@ reason: the error rate of the server functions watched without a person reading 
 
 triggers:
   - schedule: "*/15 * * * *"
-    inputs:
-      query: sum by (function) (rate(function_errors_total[15m]))
 
 inputs:
   query:
@@ -66,6 +70,7 @@ inputs:
       the tenant's query for the error rate per function, in the store's query language; each
       series it answers is one function
     example: sum by (function) (rate(function_errors_total[15m]))
+    required: false
   deployment:
     description: >
       the business's deployment whose last rollout the errors are tied to, as the workload
@@ -101,7 +106,8 @@ steps:
       rule: connector
       operation: metrics.series.query
       input:
-        query: { $input: query }
+        metric: functions.error_rate
+        query: { $input: query, $otherwise: "" }
       credentials:
         - { name: METRICS_TOKEN, injected_as: env }
       expect:

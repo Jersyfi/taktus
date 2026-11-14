@@ -287,6 +287,97 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "error.created"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "context": {
+            "properties": {
+              "project": {
+                "type": "string",
+                "minLength": 1
+              },
+              "error": {
+                "type": "string",
+                "minLength": 1
+              },
+              "link": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "project",
+              "error"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "payment.failed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "context": {
+            "properties": {
+              "customer": {
+                "type": "string",
+                "minLength": 1
+              },
+              "payment": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "customer",
+              "payment"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "subscription.changed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "context": {
+            "properties": {
+              "customer": {
+                "type": "string",
+                "minLength": 1
+              },
+              "subscription": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "customer",
+              "subscription"
+            ]
+          }
+        }
+      }
     }
   ],
   "$defs": {
@@ -301,7 +392,10 @@
         "pipeline_run.completed",
         "branch.pushed",
         "message.posted",
-        "message.mentioned"
+        "message.mentioned",
+        "error.created",
+        "payment.failed",
+        "subscription.changed"
       ]
     },
     "FieldName": {

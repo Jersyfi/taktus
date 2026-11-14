@@ -20,8 +20,23 @@ without a network. Added to an instance by one entry of `TAKTUS_CONNECTORS`:
 
 | Operation | Effect | Input | Output |
 |---|---|---|---|
-| `metrics.series.query` | read | `query`, `time` (optional, seconds since the epoch or RFC 3339), `limit` (default 1000) | `result_type`, `series` — each with `labels` and one value — and `complete` |
-| `metrics.series.range` | read | `query`, `start`, `end`, `step` in seconds, `limit` | the same, with every value of the range, oldest first |
+| `metrics.series.query` | read | `query`, or `metric` with `parameters`; `time` (optional, seconds since the epoch or RFC 3339), `limit` (default 1000) | `result_type`, `series` — each with `labels` and one value — and `complete` |
+| `metrics.series.range` | read | `query`, or `metric` with `parameters`; `start`, `end`, `step` in seconds, `limit` | the same, with every value of the range, oldest first |
+
+**Named metrics (ADR-0328).** A bundle names the metric it needs, such as `functions.error_rate`,
+and `--metrics` maps each name to a query of this store, a JSON file of name to query; every
+`${name}` in a query is filled from the call's `parameters`, each letters, digits and `. _ : /
+-` only. A `query` that is not empty is asked verbatim instead. A name the file does not map is
+`invalid`. An **example**, the queries the blueprint's schedules carried before:
+
+```json
+{
+  "functions.error_rate": "sum by (function) (rate(function_errors_total[15m]))",
+  "functions.calls": "sum by (function) (rate(function_calls_total[5m]))",
+  "quotas.used_share": "max by (service) (quota_used / quota_limit)",
+  "canary.error_rate": "sum(rate(http_errors_total{track=\"canary\"}[10m]))/sum(rate(http_requests_total{track=\"canary\"}[10m]))"
+}
+```
 
 A value is `{"at", "value", "text"}`: the moment, the number where the store gave a finite one
 and `null` otherwise, and the text the store gave, which keeps `NaN` and `+Inf`. A step that

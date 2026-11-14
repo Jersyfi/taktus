@@ -22,18 +22,30 @@
 #         --yellow 0.25 --red 0.5 --fresh 26h \
 #         --role <role> --case <where a mismatch is worked>
 #
+# Several payment providers (ADR-0329, ADR-0311): a business that takes payments at more than
+# one provider — a card processor, a wallet, an in-app subscription service — names each
+# provider's configured connector: `provider`, and where it has them, `second` and `third`. Each
+# is read by a step of its own, and the rule `match` joins every provider's subscriptions
+# before it pairs them with the entitlements, so that an entitlement paid at another provider is
+# never named granted and not paid. A provider the run does not name is skipped and adds
+# nothing. Without `provider`, the first connector configured for the capability serves, as in
+# version 2. Every provider the product grants entitlements for must be named: one left out
+# makes its customers' entitlements mismatches.
+#
 # A refund stays with a person at every level (UC-03 §6); this process moves nothing. A
 # mismatch of one customer's case is repaired by B-3.04.
 #
 # By hand:
 #
-#     uv run taktusctl run --process blueprints/software-operations/processes/B-6.01-payment-against-entitlement.yaml
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-6.01-payment-against-entitlement.yaml \
+#         --input provider=connector.payments --input second=connector.wallet \
+#         --input third=connector.subscriptions
 #
 # Switching it off (`taktusctl deactivate --process b-6-01`) changes nothing at the payment
 # provider or in the product: it only reads.
 
 id: b-6-01
-version: "2"
+version: "3"
 name: B-6.01 Payment against entitlement
 autonomy:
   level: 1
@@ -52,6 +64,23 @@ reason: every payment is matched against what the customer may use, every day, w
 # Every morning, through the elected scheduler (ADR-0035).
 triggers:
   - schedule: "30 5 * * *"
+
+inputs:
+  provider:
+    description: >
+      the configured connector of the first payment provider, by the identifier the instance's
+      configuration gives it; without it, the first connector configured for
+      payments.subscriptions
+    example: connector.payments
+    required: false
+  second:
+    description: a second payment provider's configured connector; without it, none is read
+    example: connector.wallet
+    required: false
+  third:
+    description: a third payment provider's configured connector; without it, none is read
+    example: connector.subscriptions
+    required: false
 
 limits:
   quota: { units: 120 }
@@ -73,6 +102,67 @@ steps:
     work:
       checking: { select: output }
       rule: connector
+      connector: { $input: provider, $otherwise: null }
+      operation: payments.subscriptions.list
+      input:
+        status: active
+        limit: 10000
+      credentials:
+        - { name: PAYMENTS_TOKEN, injected_as: env }
+      expect:
+        - select: complete
+          equals: true
+          says: more subscriptions are active than one reading holds; a partial list would match falsely
+
+  - id: payments-second
+    method: rule
+    reason: the second payment provider's active subscriptions are read as it holds them; nothing to judge
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what payments.subscriptions.list answered", columns: [complete, subscriptions] }
+    fallback:
+      when: the second connector serving payments.subscriptions is unavailable
+      to: human
+      role: owner
+    work:
+      checking: { select: output }
+      when:
+        - { value: { $input: second, $otherwise: "" }, not_matches: "^$" }
+      rule: connector
+      connector: { $input: second, $otherwise: null }
+      operation: payments.subscriptions.list
+      input:
+        status: active
+        limit: 10000
+      credentials:
+        - { name: PAYMENTS_TOKEN, injected_as: env }
+      expect:
+        - select: complete
+          equals: true
+          says: more subscriptions are active than one reading holds; a partial list would match falsely
+
+  - id: payments-third
+    method: rule
+    reason: the third payment provider's active subscriptions are read as it holds them; nothing to judge
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    checks:   # a sourced result declares its check (ADR-0233)
+      - { kind: source_shape, subject: "what payments.subscriptions.list answered", columns: [complete, subscriptions] }
+    fallback:
+      when: the third connector serving payments.subscriptions is unavailable
+      to: human
+      role: owner
+    work:
+      checking: { select: output }
+      when:
+        - { value: { $input: third, $otherwise: "" }, not_matches: "^$" }
+      rule: connector
+      connector: { $input: third, $otherwise: null }
       operation: payments.subscriptions.list
       input:
         status: active
@@ -113,7 +203,8 @@ steps:
     method: rule
     reason: >
       whether a payment has its entitlement is equality of a customer and a product on both
-      sides, a fixed rule over the two readings; every entry that does not pair is named
+      sides, a fixed rule over the readings, every provider's subscriptions joined first; every
+      entry that does not pair is named
     rejected:
       - method: llm
         why: a model could miss or invent a pair; a match of money against access is exact
@@ -122,13 +213,16 @@ steps:
     exactness: exact
     checks:   # recomputation: DEC-0173
       - { kind: recomputation, subject: the mismatches between payments and entitlements }
-    depends_on: [payments, entitlements]
+    depends_on: [payments, payments-second, payments-third, entitlements]
     work:
       rule: match
       left:
         items: { $from: payments, $select: output.subscriptions }
         key: [customer, items.product]
         each: items
+        more:
+          - { reading: { $from: payments-second }, select: output.subscriptions }
+          - { reading: { $from: payments-third }, select: output.subscriptions }
       right:
         items: { $from: entitlements, $select: output.entitlements }
         key: [customer, product]
@@ -137,8 +231,9 @@ takeover:
   sequence: >
     The process runs every morning at half past five UTC, on its own schedule; whoever looks
     after payments and access takes it over. The steps run in order: read every active
-    subscription at the payment provider, read every entitlement in force in the product, and
-    pair them by customer and product. Every entry that does not pair is a mismatch, red, and
+    subscription at each payment provider the business takes payments at, read every
+    entitlement in force in the product, and pair them by customer and product, every
+    provider's subscriptions together. Every entry that does not pair is a mismatch, red, and
     goes at once to the role the tenant named. The process moves nothing: a refund stays with a
     person, and one customer's mismatch is repaired by the process for a payment not unlocked.
   steps:
@@ -155,6 +250,31 @@ takeover:
             requesting identity described in CREDENTIALS.md; a person reading the dashboard
             signs in with their own account that may read subscriptions
       done: every active subscription is in the export with its customer and products
+    payments-second:
+      system: the second payment provider's dashboard, or its export of subscriptions, where the business takes payments there
+      do: >
+        as for the first provider: export every active subscription with its customer and
+        products, completely. Where the business has no second provider, skip it
+      expertise: exporting subscriptions from that provider's dashboard
+      credentials:
+        - parameter: PAYMENTS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Payment provider key of the
+            requesting identity described in CREDENTIALS.md, in the second provider's
+            connector; a person signs in to that dashboard with their own account
+      done: the second provider's active subscriptions are exported, or there is none
+    payments-third:
+      system: the third payment provider's dashboard, or its export of subscriptions, where the business takes payments there
+      do: >
+        as for the first provider. Where the business has no third provider, skip it
+      expertise: exporting subscriptions from that provider's dashboard
+      credentials:
+        - parameter: PAYMENTS_TOKEN
+          where: >
+            the operator's secret store, under the parameter Payment provider key of the
+            requesting identity described in CREDENTIALS.md, in the third provider's
+            connector; a person signs in to that dashboard with their own account
+      done: the third provider's active subscriptions are exported, or there is none
     entitlements:
       system: the product's administration, or its export of entitlements
       do: >
@@ -171,8 +291,8 @@ takeover:
     match:
       system: a spreadsheet, on the two exports
       do: >
-        pair every item of an active subscription with the entitlement of the same customer and
-        product. Write down every item paid and not granted, every entitlement granted and not
+        put the exports of every provider into one table, then pair every item of an active
+        subscription with the entitlement of the same customer and product. Write down every item paid and not granted, every entitlement granted and not
         paid, and every entry that cannot be paired with certainty, and count them. One mismatch
         or more is red: report them at once to the role the tenant named, where a mismatch is
         worked

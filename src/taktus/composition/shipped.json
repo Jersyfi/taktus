@@ -232,14 +232,23 @@
     {
       "capabilities": [
         "billing.costs",
+        "expiry.credentials",
         "logs.query",
+        "metrics.series",
+        "models.catalogue",
+        "models.costs",
         "secrets.metadata"
       ],
       "image": "taktus-connector-gcp",
       "name": "gcp",
       "operations": [
         "billing.costs.daily",
+        "expiry.credentials.list",
         "logs.query.entries",
+        "metrics.series.query",
+        "metrics.series.range",
+        "models.catalogue.list",
+        "models.costs.daily",
         "secrets.metadata.list"
       ]
     },

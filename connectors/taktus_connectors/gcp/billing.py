@@ -143,6 +143,29 @@ async def daily(config: Config, call: Call, input: Json) -> Outcome:
         raise invalid("the billing export has no amortized cost; ask unblended or net_unblended")
     table = _table(config)
     start = end - timedelta(days=days)
+    rows, following = await rows_of(
+        config, call, statement(table, str(group_by), str(metric)), start, end
+    )
+    output = _output(rows, start, end, str(group_by), str(metric))
+    output["complete"] = not following
+    return Outcome(output=output, effect={"kind": "read"})
+
+
+def _parameter(name: str, kind: str, value: str) -> Json:
+    return {"name": name, "parameterType": {"type": kind}, "parameterValue": {"value": value}}
+
+
+async def rows_of(
+    config: Config,
+    call: Call,
+    query: str,
+    start: date,
+    end: date,
+    extra: list[Json] | None = None,
+) -> tuple[list[list[Any]], Any]:
+    """The rows of one of this connector's own queries over the export between two dates, and
+    the page token left unread, if any: the query asked, waited for and paged as the module's
+    text says. `extra` are further named parameters; nothing of a call's input is in `query`."""
     home = project(config)
     base = f"{config.bigquery}/bigquery/v2/projects/{home}/queries"
     token = await bearer(config, call, READ_ONLY)
@@ -153,20 +176,13 @@ async def daily(config: Config, call: Call, input: Json) -> Outcome:
         "POST",
         base,
         body={
-            "query": statement(table, str(group_by), str(metric)),
+            "query": query,
             "useLegacySql": False,
             "parameterMode": "NAMED",
             "queryParameters": [
-                {
-                    "name": "start",
-                    "parameterType": {"type": "DATE"},
-                    "parameterValue": {"value": start.isoformat()},
-                },
-                {
-                    "name": "end",
-                    "parameterType": {"type": "DATE"},
-                    "parameterValue": {"value": end.isoformat()},
-                },
+                _parameter("start", "DATE", start.isoformat()),
+                _parameter("end", "DATE", end.isoformat()),
+                *(extra or []),
             ],
             "maxResults": ROWS,
             "timeoutMs": WAIT_MS,
@@ -200,9 +216,7 @@ async def daily(config: Config, call: Call, input: Json) -> Outcome:
         answer = await results(str(following))
         rows.extend(_rows(answer))
         following = answer.get("pageToken")
-    output = _output(rows, start, end, str(group_by), str(metric))
-    output["complete"] = not following
-    return Outcome(output=output, effect={"kind": "read"})
+    return rows, following
 
 
 def _output(rows: list[list[Any]], start: date, end: date, group_by: str, metric: str) -> Json:

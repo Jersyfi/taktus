@@ -429,6 +429,15 @@ class FilterRule(Value):
         return self
 
 
+class MorePart(Value):
+    """One further reading of a `match` side: a step's whole result, usually `{$from: step}`,
+    and where in it the list stands. The result of a step skipped by its `when` adds nothing,
+    so that a provider a tenant does not configure is left out by the run, not by the rule."""
+
+    reading: Any
+    select: str = Field(min_length=1)
+
+
 class MatchSide(Value):
     """One of the two lists a `match` rule matches: its items, the fields that make an item's
     key, and where one item stands for several entries.
@@ -441,6 +450,9 @@ class MatchSide(Value):
     items: Any
     key: tuple[str, ...] = Field(min_length=1)
     each: str | None = Field(default=None, pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
+    more: tuple[MorePart, ...] = ()
+    """Further readings whose items join `items` on this side (ADR-0329): the subscriptions of
+    each payment provider a run reads. A reading of a step that was skipped adds nothing."""
 
 
 class Compared(Value):
@@ -1534,7 +1546,12 @@ def referenced_values(work: Work) -> list[Any]:
     if isinstance(work, FilterRule):
         return [work.items, work.excluding]
     if isinstance(work, MatchRule):
-        return [work.left.items, work.right.items]
+        return [
+            work.left.items,
+            work.right.items,
+            *(part.reading for part in work.left.more),
+            *(part.reading for part in work.right.more),
+        ]
     if isinstance(work, RecurringRule):
         return [work.subscriptions, work.failures, work.as_of]
     if isinstance(work, DeviationStatistic | TotalStatistic):

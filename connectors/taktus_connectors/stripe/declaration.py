@@ -25,6 +25,8 @@ FAILURES = "payments.failures"
 INVOICES = "payments.invoices"
 EVENTS = "payments.events"
 ACTIONS_CREDENTIAL = "PAYMENTS_TOKEN"
+INTAKE_CREDENTIAL = "PAYMENTS_INTAKE_SECRET"
+INTAKE_EVENTS = ["payment.failed", "subscription.changed"]
 
 OPERATIONS: list[Json] = [
     {
@@ -113,7 +115,11 @@ def capabilities() -> Json:
         "version": VERSION,
         "capabilities": [CAPABILITY, CUSTOMERS, EVENTS, FAILURES, INVOICES],
         "operations": [dict(op) for op in OPERATIONS],
-        "credentials": [{"name": ACTIONS_CREDENTIAL, "purpose": "actions"}],
+        "intake": {"events": list(INTAKE_EVENTS), "signature": {"scheme": "hmac-sha256-stamped"}},
+        "credentials": [
+            {"name": ACTIONS_CREDENTIAL, "purpose": "actions"},
+            {"name": INTAKE_CREDENTIAL, "purpose": "intake"},
+        ],
         "consumption": {"kinds": ["quota"], "unit": "requests", "window_seconds": 1},
         "permissions": "passthrough",
         "scoped": [CUSTOMERS],

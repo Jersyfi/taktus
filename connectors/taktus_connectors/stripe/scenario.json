@@ -1,6 +1,7 @@
 {
   "credentials": {
-    "actions": "PAYMENTS_TOKEN"
+    "actions": "PAYMENTS_TOKEN",
+    "intake": "PAYMENTS_INTAKE_SECRET"
   },
   "read": {
     "operation": "payments.subscriptions.list",
@@ -25,6 +26,24 @@
     },
     "other": {
       "customer": "cus_fake2"
+    }
+  },
+  "intake": {
+    "signature": {
+      "header": "stripe-signature",
+      "prefix": "",
+      "stamped": {
+        "moment": "t",
+        "digest": "v1"
+      }
+    },
+    "supported": {
+      "headers_file": "payloads/payment-failed.headers.json",
+      "body_file": "payloads/payment-failed.body.json"
+    },
+    "unsupported": {
+      "headers_file": "payloads/charge-succeeded.headers.json",
+      "body_file": "payloads/charge-succeeded.body.json"
     }
   }
 }

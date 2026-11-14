@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from decimal import Decimal, InvalidOperation
 from string import Template
 from typing import Any
@@ -429,9 +429,17 @@ def filter_items(rule: FilterRule, items: Any, excluding: Any) -> dict[str, Any]
     return result
 
 
-def match(rule: MatchRule, left: Any, right: Any) -> dict[str, Any]:
+def match(
+    rule: MatchRule,
+    left: Any,
+    right: Any,
+    left_more: Sequence[Any] = (),
+    right_more: Sequence[Any] = (),
+) -> dict[str, Any]:
     """The two lists matched entry by entry by their keys, every entry that is not a clean
-    match named (ADR-0199)."""
+    match named (ADR-0199). Each side's further readings join its items first (ADR-0329)."""
+    left = _joined(rule.left, left, left_more, "left")
+    right = _joined(rule.right, right, right_more, "right")
     lefts, left_unkeyed = _keyed(rule.left, left, "left")
     rights, right_unkeyed = _keyed(rule.right, right, "right")
     unkeyed = [*left_unkeyed, *right_unkeyed]
@@ -479,6 +487,27 @@ def match(rule: MatchRule, left: Any, right: Any) -> dict[str, Any]:
             result["first"] = {"kind": kind, "entry": result[kind][0]}
             break
     return result
+
+
+def _joined(side: MatchSide, items: Any, readings: Sequence[Any], name: str) -> Any:
+    """The side's items with the list of every further reading after them, in the order the
+    side names them; a reading of a step that was skipped adds nothing (ADR-0329)."""
+    if not side.more:
+        return items
+    if not isinstance(items, list | tuple):
+        raise RuleFailed(f"{name} is not a list: {_short(items)}")
+    joined = list(items)
+    for part, reading in zip(side.more, readings, strict=True):
+        if isinstance(reading, Mapping) and reading.get("skipped") is True:
+            continue
+        try:
+            found = select(reading, part.select)
+        except KeyError:
+            raise RuleFailed(f"a further reading of {name} has no {part.select!r}") from None
+        if not isinstance(found, list | tuple):
+            raise RuleFailed(f"a further reading of {name} is not a list: {_short(found)}")
+        joined.extend(found)
+    return joined
 
 
 def _keyed(

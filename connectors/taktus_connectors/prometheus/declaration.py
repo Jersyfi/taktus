@@ -22,18 +22,20 @@ OPERATIONS: list[Json] = [
         "demand": {"quota_units": 1},
         "capability": CAPABILITY,
         "effect": "read",
-        "summary": "Evaluate a query at one moment (`time`, now when absent). Returns every "
-        "series of the answer with its labels and its value, as a number and as the text the "
-        "store gave. `complete` says whether every series fit within `limit`.",
+        "summary": "Evaluate `query`, or the query the configuration maps the named `metric` "
+        "to with its `parameters` (ADR-0328), at one moment (`time`, now when absent). "
+        "Returns every series of the answer with its labels and its value, as a number and as "
+        "the text the store gave. `complete` says whether every series fit within `limit`.",
     },
     {
         "name": "metrics.series.range",
         "demand": {"quota_units": 1},
         "capability": CAPABILITY,
         "effect": "read",
-        "summary": "Evaluate a query over a range (`start`, `end`, `step` in seconds). Returns "
-        "every series of the answer with its labels and its values, oldest first. `complete` "
-        "says whether every series fit within `limit`.",
+        "summary": "Evaluate `query`, or the named `metric` as for a query, over a range "
+        "(`start`, `end`, `step` in seconds). Returns every series of the answer with its "
+        "labels and its values, oldest first. `complete` says whether every series fit within "
+        "`limit`.",
     },
 ]
 

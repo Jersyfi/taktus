@@ -17,6 +17,20 @@
 #         --step unreachable --select count --bounds fixed --direction above \
 #         --yellow 0.25 --red 0.5 --fresh 26h --role <role> --case <where payments are worked>
 #
+# Reminded when the payment fails (version 2, ADR-0337): a payment provider that sends its
+# webhook to the intake reports a failure at once as `payment.failed`. A tenant whose provider
+# sends it adds, in its own version, the trigger
+#
+#     triggers:
+#       - event: payment.failed
+#         from_event: { customer: customer }
+#
+# and gives the morning schedule the input `first: "0"`, so that the first reminder goes out
+# when the payment fails and never twice; the third and the seventh day stay the schedule's.
+# The input `first` is the day of failure on which the first reminder is due, `1` unless given.
+# This version ships without the event trigger: a tenant that sent the webhook and kept the
+# schedule's first reminder would be reminded twice on the first day.
+#
 # Blocking access stays with a person at every level (UC-03 §6): this process never changes a
 # subscription or an entitlement.
 #
@@ -28,7 +42,7 @@
 # Switching it off (`taktusctl deactivate --process b-6-04`) sends no further reminder.
 
 id: b-6-04
-version: "1"
+version: "2"
 name: B-6.04 Failed payments
 autonomy:
   level: 2
@@ -55,6 +69,12 @@ inputs:
   customer:
     description: the customer's identifier at the payment provider
     example: cus_fake3
+  first:
+    description: >
+      the day of failure the first reminder is due on, 1 unless given; a tenant whose provider
+      reports the failure as an event gives the schedule 0, so that the event's run sends it
+    example: "1"
+    required: false
 
 limits:
   quota: { units: 12 }
@@ -101,7 +121,7 @@ steps:
       all:
         - { field: update_url, matches: "^https://" }
       any:
-        - { field: days_failing, equals: 1 }
+        - { field: days_failing, equals: { $input: first, $otherwise: 1 } }
         - { field: days_failing, equals: 3 }
         - { field: days_failing, equals: 7 }
       order: failed_at
@@ -123,7 +143,7 @@ steps:
       all:
         - { field: update_url, not_matches: "^https://" }
       any:
-        - { field: days_failing, equals: 1 }
+        - { field: days_failing, equals: { $input: first, $otherwise: 1 } }
         - { field: days_failing, equals: 3 }
         - { field: days_failing, equals: 7 }
 

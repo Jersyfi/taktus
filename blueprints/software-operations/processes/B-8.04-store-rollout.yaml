@@ -25,9 +25,15 @@
 #         --input max_crash_rate=0.01
 #
 # Switching it off (`taktusctl deactivate --process b-8-04`) changes nothing at the store.
+#
+# Named metrics (ADR-0328): each read names the metric it needs, `release.crash_rate`, and the
+# connector serving `metrics.series` maps the name to its own store's query — PromQL on a
+# Prometheus store or on a cloud's monitoring service — from the tenant's configuration
+# (`--metrics`). A query given as an input is asked verbatim instead. Version 3
+# passes its target to the name as parameters and changes nothing else.
 
 id: b-8-04
-version: "2"
+version: "3"
 name: B-8.04 Staged rollout, at an app store
 autonomy:
   level: 2
@@ -61,6 +67,7 @@ inputs:
   crash_rate_query:
     description: the tenant's query that answers the release's crash rate over the last day, one number
     example: sum(rate(app_crashes_total[1d]))/sum(rate(app_sessions_total[1d]))
+    required: false
   max_crash_rate:
     description: the rate at or above which the rollout halts, a decimal
     example: "0.01"
@@ -120,7 +127,9 @@ steps:
       rule: connector
       operation: metrics.series.query
       input:
-        query: { $input: crash_rate_query }
+        metric: release.crash_rate
+        parameters: { platform: { $input: platform }, app: { $input: app } }
+        query: { $input: crash_rate_query, $otherwise: "" }
       credentials:
         - { name: METRICS_TOKEN, injected_as: env }
 
@@ -224,7 +233,9 @@ steps:
       rule: connector
       operation: metrics.series.query
       input:
-        query: { $input: crash_rate_query }
+        metric: release.crash_rate
+        parameters: { platform: { $input: platform }, app: { $input: app } }
+        query: { $input: crash_rate_query, $otherwise: "" }
       credentials:
         - { name: METRICS_TOKEN, injected_as: env }
 
@@ -330,7 +341,9 @@ steps:
       rule: connector
       operation: metrics.series.query
       input:
-        query: { $input: crash_rate_query }
+        metric: release.crash_rate
+        parameters: { platform: { $input: platform }, app: { $input: app } }
+        query: { $input: crash_rate_query, $otherwise: "" }
       credentials:
         - { name: METRICS_TOKEN, injected_as: env }
 

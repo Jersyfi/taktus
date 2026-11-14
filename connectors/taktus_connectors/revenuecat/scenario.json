@@ -1,6 +1,7 @@
 {
   "credentials": {
-    "actions": "PAYMENTS_TOKEN"
+    "actions": "PAYMENTS_TOKEN",
+    "intake": "PAYMENTS_INTAKE_SECRET"
   },
   "read": {
     "operation": "payments.subscriptions.list",
@@ -25,6 +26,21 @@
     },
     "other": {
       "customer": "cus_fake2"
+    }
+  },
+  "intake": {
+    "signature": {
+      "header": "authorization",
+      "prefix": "",
+      "token": true
+    },
+    "supported": {
+      "headers_file": "payloads/renewal.headers.json",
+      "body_file": "payloads/renewal.body.json"
+    },
+    "unsupported": {
+      "headers_file": "payloads/test.headers.json",
+      "body_file": "payloads/test.body.json"
     }
   }
 }

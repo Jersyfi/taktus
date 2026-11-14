@@ -1,0 +1,19 @@
+{
+  "api_version": "1.0",
+  "event": {
+    "id": "EVT-FAKE-BILLING-1",
+    "type": "BILLING_ISSUE",
+    "app_id": "app_fake",
+    "app_user_id": "app_user1",
+    "original_app_user_id": "app_user1",
+    "product_id": "prod_plan",
+    "original_transaction_id": "2000000001",
+    "transaction_id": "2000000099",
+    "event_timestamp_ms": 1767225590000,
+    "store": "APP_STORE",
+    "environment": "SANDBOX",
+    "country_code": "DE",
+    "price": 9.99,
+    "currency": "EUR"
+  }
+}

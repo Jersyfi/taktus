@@ -1,0 +1,10 @@
+{
+  "id": "error:1170820242",
+  "kind": "error.created",
+  "channel": "errors.issues",
+  "occurred_at": "2026-11-14T08:00:00Z",
+  "received_at": "2026-11-14T08:00:02Z",
+  "context": {
+    "project": "product"
+  }
+}
