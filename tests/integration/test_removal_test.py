@@ -518,3 +518,62 @@ async def test_an_integration_no_process_uses_is_untested() -> None:
     assert any("no registered process" in gap for gap in recorded["missing"])
     report = await result_of(services, run, "report")
     assert f"Removal test of {RECORDS} (connector): untested." in report
+
+
+READS_TAKTUS_FIRST: dict[str, Any] = instructed(
+    {
+        "id": "reads-taktus-first",
+        "version": "1",
+        "name": "Read Taktus, then a record",
+        "autonomy": {
+            "level": 3,
+            "reason": "a test process: Taktus read through the loopback, then a record read",
+            "toward_next": "nothing; it exists for the removal test's tests",
+        },
+        "author": "the tests",
+        "reason": "the shape of a conversation turn: it reads Taktus, then calls an integration",
+        "limits": {"quota": {"units": 20}},
+        "inputs": {"id": {"description": "the record to read", "example": "issue-1"}},
+        "steps": [
+            {
+                "id": "taktus",
+                "method": "rule",
+                "reason": "what the instance holds, read through the loopback",
+                "rejected": [{"method": "llm", "why": "a read needs no judgement"}],
+                "exactness": "sourced",
+                "checks": [{"kind": "bounds", "pattern": "^\\{"}],
+                "fallback": {"when": "the loopback is unavailable", "to": "human"},
+                "work": {"rule": "connector", "operation": "orchestrator.integrations.list"},
+            },
+            {
+                "id": "read",
+                "method": "rule",
+                "reason": "a read through the connector",
+                "rejected": [{"method": "llm", "why": "a read needs no judgement"}],
+                "exactness": "sourced",
+                "checks": [{"kind": "bounds", "pattern": "^\\{"}],
+                "fallback": {"when": "no connector serves it", "to": "human"},
+                "depends_on": ["taktus"],
+                "work": {"rule": "connector", "operation": READ, "input": {"id": {"$input": "id"}}},
+            },
+        ],
+    }
+)
+
+
+async def test_a_process_that_also_reads_taktus_still_uses_the_integration_it_calls() -> None:
+    """Only the removal test itself is passed over for reaching Taktus: a process with another
+    loopback step, such as a conversation reading its context, still uses its integrations."""
+    connector = FakeConnector()
+    connector.reads["issue-1"] = {"id": "issue-1", "title": "Pin the model"}
+    services = connector_services(connector)
+    await services.register_version.execute(
+        RegisterProcessVersion(READS_TAKTUS_FIRST, tenant=TENANT)
+    )
+    run = await run_removal(services, RECORDS)
+    assert run.state is RunState.FINISHED, run.reason
+    result = (await result_of(services, run, "exercise"))["output"]
+    assert result["verdict"] != "untested"
+    assert [p["process"] for p in result["processes"]] == ["reads-taktus-first@1"]
+    (process,) = result["processes"]
+    assert [s["step"] for s in process["steps"]] == ["read"]
