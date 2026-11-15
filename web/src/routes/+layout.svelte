@@ -92,6 +92,8 @@
 
 	const current = $derived(currentDestination(page.route.id));
 	const bottom = $derived(currentBottom(page.route.id));
+	/** A sign-in form stands alone: no bar and no navigation around it (DEC-0243). */
+	const alone = $derived(frame.door > 0);
 	const steps = $derived(trail(page.route.id, page.params as Record<string, string | undefined>));
 	const DISPLAYS: { id: Display; label: string }[] = [
 		{ id: 'picture', label: 'Picture' },
@@ -149,6 +151,7 @@
 	</button>
 {/snippet}
 
+{#if !alone}
 <header class="bar">
 	<button
 		class="square menu"
@@ -203,8 +206,10 @@
 		{/if}
 	</div>
 </header>
+{/if}
 
-<div class="frame">
+<div class="frame" class:alone>
+	{#if !alone}
 	<nav id="destinations" class="side" class:open aria-label="Destinations">
 		{#each BANDS as band (band.id)}
 			{@const first = DESTINATIONS.filter((d) => d.band === band.id)}
@@ -230,6 +235,7 @@
 			</div>
 		{/if}
 	</nav>
+	{/if}
 	{#if open || account}
 		<button
 			class="scrim"
@@ -244,7 +250,7 @@
 		></button>
 	{/if}
 	<main id="main" tabindex="-1" bind:this={main}>
-		{#if current && TABS[current]}
+		{#if !alone && current && TABS[current]}
 			<!-- Pages that answer one question from several sides, as tabs (ADR-0321 §1). -->
 			<nav class="tabs" aria-label={DESTINATIONS.find((d) => d.id === current)?.label}>
 				{#each TABS[current] as t (t.route)}
@@ -256,6 +262,7 @@
 	</main>
 </div>
 
+{#if !alone}
 <nav class="bottom" aria-label="Main">
 	{#each BOTTOM as b (b.id)}
 		<a href={b.href} aria-current={bottom === b.id && !open ? 'page' : undefined}>
@@ -271,6 +278,7 @@
 		<span>Menu</span>
 	</button>
 </nav>
+{/if}
 
 <style>
 	.skip {
@@ -463,6 +471,15 @@
 		display: grid;
 		grid-template-columns: var(--layout-sidenav-width) minmax(0, 1fr);
 		min-height: calc(100vh - var(--layout-appbar-height));
+	}
+	/* The door alone: the sign-in in the middle of the canvas, nothing around it (DEC-0243). */
+	.frame.alone {
+		grid-template-columns: minmax(0, 1fr);
+		min-height: 100vh;
+	}
+	.frame.alone main {
+		max-width: none;
+		padding-block-end: var(--sp-800);
 	}
 	.side {
 		position: sticky;

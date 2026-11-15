@@ -15,6 +15,9 @@ class Frame {
 	changes = $state(0);
 	/** The newest changes, newest last. */
 	recent: Change[] = $state([]);
+	/** How many sign-in forms are shown: while one is, the frame shows no bar and no navigation,
+	 * only the door (DEC-0243). */
+	door = $state(0);
 
 	constructor() {
 		this.stream.watch(() => {
