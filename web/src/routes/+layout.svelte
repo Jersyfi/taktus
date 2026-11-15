@@ -222,12 +222,6 @@
 					</li>
 				{/each}
 			</ul>
-								</a>
-							</li>
-						{/each}
-					</ul>
-				</details>
-			{/if}
 		{/each}
 		{#if phone}
 			<div class="sheet-account">
