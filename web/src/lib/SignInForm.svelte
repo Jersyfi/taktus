@@ -8,11 +8,18 @@
 	import { frame } from './frame.svelte';
 	import Mark from './Mark.svelte';
 	import { signIn } from './session';
+	import { untrack } from 'svelte';
 
 	let { onSignedIn }: { onSignedIn: () => void } = $props();
 	let value = $state('');
 	let refused = $state(false);
 	let busy = $state(false);
+
+	// While the form is shown, the frame stands back: no bar, no navigation (DEC-0243).
+	$effect(() => {
+		untrack(() => (frame.door += 1));
+		return () => untrack(() => (frame.door -= 1));
+	});
 
 	async function submit(event: SubmitEvent) {
 		event.preventDefault();

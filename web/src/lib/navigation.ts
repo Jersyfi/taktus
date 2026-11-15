@@ -1,8 +1,8 @@
 // The one list of the web app's destinations (ADR-0178 §1, ADR-0321 §1). Every width draws this
 // list and no other. A band is an order by what the reader is trying to do, never a permission:
 // every reader sees every destination, and each page says what the surface lets this reader read.
-// A destination marked `more` sits in its band's fold. Pages that answer one question from several
-// sides share a destination and carry tabs (`TABS`).
+// Every destination is shown; none is folded away (DEC-0242). Pages that answer one question
+// from several sides share a destination and carry tabs (`TABS`).
 
 import type { Line } from './governance';
 import type { OperationLine } from './operation';
@@ -44,8 +44,6 @@ export interface Destination {
 	icon: IconName;
 	/** The route ids this destination is current on: the route itself, and those under it. */
 	routes: string[];
-	/** In the band's fold, one click further. */
-	more?: boolean;
 }
 
 export const BANDS: { id: Band; label: string }[] = [
@@ -62,26 +60,26 @@ export const DESTINATIONS: Destination[] = [
 	{ id: 'requests', label: 'Decisions', href: '#/requests', band: 'you', icon: 'decide', routes: ['/requests', '/reports'] },
 	{ id: 'needs', label: 'Needs', href: '#/needs', band: 'you', icon: 'need', routes: ['/needs'] },
 	{ id: 'me', label: 'Yours', href: '#/me', band: 'you', icon: 'yours', routes: ['/me'] },
-	{ id: 'coach', label: 'Coach', href: '#/coach', band: 'you', icon: 'yours', routes: ['/coach'], more: true },
-	{ id: 'proposed', label: 'Proposed', href: '#/proposed', band: 'you', icon: 'discover', routes: ['/proposed'], more: true },
+	{ id: 'coach', label: 'Coach', href: '#/coach', band: 'you', icon: 'yours', routes: ['/coach'] },
+	{ id: 'proposed', label: 'Proposed', href: '#/proposed', band: 'you', icon: 'discover', routes: ['/proposed'] },
 	{ id: 'processes', label: 'Processes', href: '#/processes', band: 'work', icon: 'processes', routes: ['/processes', '/changes', '/variants', '/spend/processes'] },
 	{ id: 'runs', label: 'Runs', href: '#/runs', band: 'work', icon: 'runs', routes: ['/runs', '/origins', '/stages', '/spend/runs'] },
 	{ id: 'start', label: 'Start work', href: '#/catalogue', band: 'work', icon: 'ask', routes: ['/catalogue', '/gallery', '/plans'] },
-	{ id: 'streams', label: 'Streams', href: '#/streams', band: 'work', icon: 'streams', routes: ['/streams'], more: true },
-	{ id: 'chains', label: 'Chains', href: '#/chains', band: 'work', icon: 'streams', routes: ['/chains'], more: true },
-	{ id: 'discoveries', label: 'Discoveries', href: '#/discoveries', band: 'work', icon: 'discover', routes: ['/discoveries'], more: true },
+	{ id: 'streams', label: 'Streams', href: '#/streams', band: 'work', icon: 'streams', routes: ['/streams'] },
+	{ id: 'chains', label: 'Chains', href: '#/chains', band: 'work', icon: 'streams', routes: ['/chains'] },
+	{ id: 'discoveries', label: 'Discoveries', href: '#/discoveries', band: 'work', icon: 'discover', routes: ['/discoveries'] },
 	{ id: 'autonomy', label: 'Levels', href: '#/autonomy', band: 'steer', icon: 'levels', routes: ['/autonomy'] },
 	{ id: 'findings', label: 'Findings', href: '#/findings', band: 'steer', icon: 'findings', routes: ['/findings'] },
 	{ id: 'value', label: 'Value and figures', href: '#/value', band: 'steer', icon: 'value', routes: ['/value', '/views', '/role-reports'] },
 	{ id: 'trials', label: 'Trials', href: '#/trials', band: 'steer', icon: 'trials', routes: ['/trials'] },
-	{ id: 'introduction', label: 'Introduction', href: '#/introduction', band: 'steer', icon: 'stages', routes: ['/introduction'], more: true },
-	{ id: 'structure', label: 'Structure', href: '#/structure', band: 'steer', icon: 'streams', routes: ['/structure'], more: true },
-	{ id: 'subjects', label: 'Data protection', href: '#/subjects', band: 'steer', icon: 'privacy', routes: ['/subjects'], more: true },
+	{ id: 'introduction', label: 'Introduction', href: '#/introduction', band: 'steer', icon: 'stages', routes: ['/introduction'] },
+	{ id: 'structure', label: 'Structure', href: '#/structure', band: 'steer', icon: 'streams', routes: ['/structure'] },
+	{ id: 'subjects', label: 'Data protection', href: '#/subjects', band: 'steer', icon: 'privacy', routes: ['/subjects'] },
 	{ id: 'register', label: 'What acts', href: '#/register', band: 'depends', icon: 'acts', routes: ['/register'] },
 	{ id: 'dependencies', label: 'Dependencies', href: '#/dependencies', band: 'depends', icon: 'depends', routes: ['/dependencies'] },
 	{ id: 'operation', label: 'Operation', href: '#/incidents', band: 'running', icon: 'signal', routes: ['/incidents', '/alerts', '/backup', '/signals', '/health'] },
-	{ id: 'administration', label: 'Administration', href: '#/administration', band: 'running', icon: 'tenants', routes: ['/administration'], more: true },
-	{ id: 'tenants', label: 'Tenants', href: '#/tenants', band: 'running', icon: 'tenants', routes: ['/tenants'], more: true }
+	{ id: 'administration', label: 'Administration', href: '#/administration', band: 'running', icon: 'tenants', routes: ['/administration'] },
+	{ id: 'tenants', label: 'Tenants', href: '#/tenants', band: 'running', icon: 'tenants', routes: ['/tenants'] }
 ];
 
 /** The tabs of the destinations that hold several pages (ADR-0321 §1). */

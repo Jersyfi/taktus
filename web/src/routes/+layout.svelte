@@ -92,6 +92,8 @@
 
 	const current = $derived(currentDestination(page.route.id));
 	const bottom = $derived(currentBottom(page.route.id));
+	/** A sign-in form stands alone: no bar and no navigation around it (DEC-0243). */
+	const alone = $derived(frame.door > 0);
 	const steps = $derived(trail(page.route.id, page.params as Record<string, string | undefined>));
 	const DISPLAYS: { id: Display; label: string }[] = [
 		{ id: 'picture', label: 'Picture' },
@@ -149,6 +151,7 @@
 	</button>
 {/snippet}
 
+{#if !alone}
 <header class="bar">
 	<button
 		class="square menu"
@@ -203,12 +206,13 @@
 		{/if}
 	</div>
 </header>
+{/if}
 
-<div class="frame">
+<div class="frame" class:alone>
+	{#if !alone}
 	<nav id="destinations" class="side" class:open aria-label="Destinations">
 		{#each BANDS as band (band.id)}
-			{@const first = DESTINATIONS.filter((d) => d.band === band.id && !d.more)}
-			{@const folded = DESTINATIONS.filter((d) => d.band === band.id && d.more)}
+			{@const first = DESTINATIONS.filter((d) => d.band === band.id)}
 			<p class="band" id="band-{band.id}">{band.label}</p>
 			<ul aria-labelledby="band-{band.id}">
 				{#each first as d (d.id)}
@@ -223,24 +227,6 @@
 					</li>
 				{/each}
 			</ul>
-			{#if folded.length}
-				<details class="fold" open={folded.some((d) => d.id === current) || undefined}>
-					<summary><Icon name="more" size={16} /><span>More</span></summary>
-					<ul>
-						{#each folded as d (d.id)}
-							<li>
-								<a href={d.href} aria-current={current === d.id ? 'page' : undefined} data-destination={d.id}>
-									<Icon name={d.icon} />
-									<span class="name">{d.label}</span>
-									{#if waiting.has(d.id)}
-										<span class="waits" aria-hidden="true"></span><span class="sr-only">, needs a look</span>
-									{/if}
-								</a>
-							</li>
-						{/each}
-					</ul>
-				</details>
-			{/if}
 		{/each}
 		{#if phone}
 			<div class="sheet-account">
@@ -249,6 +235,7 @@
 			</div>
 		{/if}
 	</nav>
+	{/if}
 	{#if open || account}
 		<button
 			class="scrim"
@@ -263,7 +250,7 @@
 		></button>
 	{/if}
 	<main id="main" tabindex="-1" bind:this={main}>
-		{#if current && TABS[current]}
+		{#if !alone && current && TABS[current]}
 			<!-- Pages that answer one question from several sides, as tabs (ADR-0321 §1). -->
 			<nav class="tabs" aria-label={DESTINATIONS.find((d) => d.id === current)?.label}>
 				{#each TABS[current] as t (t.route)}
@@ -275,6 +262,7 @@
 	</main>
 </div>
 
+{#if !alone}
 <nav class="bottom" aria-label="Main">
 	{#each BOTTOM as b (b.id)}
 		<a href={b.href} aria-current={bottom === b.id && !open ? 'page' : undefined}>
@@ -290,6 +278,7 @@
 		<span>Menu</span>
 	</button>
 </nav>
+{/if}
 
 <style>
 	.skip {
@@ -483,6 +472,15 @@
 		grid-template-columns: var(--layout-sidenav-width) minmax(0, 1fr);
 		min-height: calc(100vh - var(--layout-appbar-height));
 	}
+	/* The door alone: the sign-in in the middle of the canvas, nothing around it (DEC-0243). */
+	.frame.alone {
+		grid-template-columns: minmax(0, 1fr);
+		min-height: 100vh;
+	}
+	.frame.alone main {
+		max-width: none;
+		padding-block-end: var(--sp-800);
+	}
 	.side {
 		position: sticky;
 		inset-block-start: var(--layout-appbar-height);
@@ -511,8 +509,7 @@
 		display: grid;
 		gap: var(--sp-025);
 	}
-	.side a,
-	.fold summary {
+	.side a {
 		position: relative;
 		display: flex;
 		align-items: center;
@@ -526,20 +523,7 @@
 		color: var(--text-secondary);
 		transition: background-color var(--motion-state-duration) var(--motion-state-easing);
 	}
-	.fold summary {
-		list-style: none;
-		min-height: var(--density-control-sm-min);
-		font-size: var(--fs-090);
-		color: var(--text-subtle);
-	}
-	.fold summary::-webkit-details-marker {
-		display: none;
-	}
-	.fold[open] summary {
-		color: var(--text-secondary);
-	}
-	.side a:hover,
-	.fold summary:hover {
+	.side a:hover {
 		background: var(--bg-surface-hover);
 		color: var(--text-primary);
 	}

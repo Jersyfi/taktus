@@ -24,7 +24,8 @@ milestone `beta-operation`. `1.0.0` waits for the licence (DEC-0044) and the fre
 what no anchor names, as notices; the next review of them comes at sixty (DEC-0238).
 Package F (DEC-0239) follows the beta: short reports, a fast web app, picture first with text
 on a switch, conversation in Taktus and from a person's own agent, and the second tenant's
-template completed.
+template completed. The navigation shows every destination, none folded away (DEC-0242), and the
+sign-in stands alone, without the frame (DEC-0243).
 
 Each milestone keeps where it stands in a file of its own, so that two pull requests on
 different milestones never edit the same paragraph (#392):
