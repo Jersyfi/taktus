@@ -1,6 +1,6 @@
 # ADR-0321 — Five bands, a bottom bar on a phone, and a list of processes and of runs
 
-**Status:** accepted · amends ADR-0178 §1, §2 and its section *Where this promise ends* · DEC-0239 item 3; UC-13.7
+**Status:** accepted · amends ADR-0178 §1, §2 and its section *Where this promise ends* · DEC-0239 item 3; UC-13.7 · §1 amended by DEC-0242: no fold
 
 ## Context
 
@@ -17,21 +17,22 @@ cluttered (DEC-0239 item 3).
 
 ## Decision
 
-### 1. Five bands, each with its first entries and a fold
+### 1. Five bands, every entry shown
 
 `web/src/lib/navigation.ts` stays the one list. It is ordered in five bands by what the reader is
 trying to do:
 
-| Band | First entries | Under *More* |
-|---|---|---|
-| **For you** | Today, Ask Taktus, Decisions, Needs, Yours | Coach, Proposed |
-| **Work** | Processes, Runs, Start work | Streams, Chains, Discoveries |
-| **Steer** | Levels, Findings, Value and figures, Trials | Introduction, Structure, Data protection |
-| **Depends on** | What acts, Dependencies | |
-| **Keep running** | Operation | Administration, Tenants |
+| Band | Entries |
+|---|---|
+| **For you** | Today, Ask Taktus, Decisions, Needs, Yours, Coach, Proposed |
+| **Work** | Processes, Runs, Start work, Streams, Chains, Discoveries |
+| **Steer** | Levels, Findings, Value and figures, Trials, Introduction, Structure, Data protection |
+| **Depends on** | What acts, Dependencies |
+| **Keep running** | Operation, Administration, Tenants |
 
-A fold is a `<details>` element per band. It opens by itself when the reader stands on one of its
-entries.
+Every entry is shown in its band. The first version of this section folded some entries of a band
+under *More*; which ones followed no rule a reader could see, and the owner removed the fold
+(DEC-0242).
 
 Pages that answer one question from several sides share one destination and carry tabs:
 
@@ -82,8 +83,8 @@ shared with the page that shows the same lines, so they are not made twice.
 
 - Every page stays reachable from the frame at every width, and every page is current on exactly
   one destination (`navigation.test.ts`, `test_web_design_system.py`).
-- The first entries of all bands are 15, where 31 stood in one column before. The rest sit one
-  click further, under *More*, or on a tab.
+- The bands hold 25 entries, where 31 stood in four bands before; what a page shows from several
+  sides sits on a tab.
 - *Today* is current on Today and on *Waits* only.
 
 ## Where this promise ends
@@ -96,6 +97,6 @@ shared with the page that shows the same lines, so they are not made twice.
   the page that was read.
 - **No search and no command palette.** Finding a run or a process by its name is still not
   built.
-- **The bands are not personalised.** A reader cannot reorder them or move an entry out of a fold.
+- **The bands are not personalised.** A reader cannot reorder them or hide an entry.
 - **Not a view of a person.** No mark, list or order names a person or compares readers
   (principle 14).

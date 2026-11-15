@@ -207,8 +207,7 @@
 <div class="frame">
 	<nav id="destinations" class="side" class:open aria-label="Destinations">
 		{#each BANDS as band (band.id)}
-			{@const first = DESTINATIONS.filter((d) => d.band === band.id && !d.more)}
-			{@const folded = DESTINATIONS.filter((d) => d.band === band.id && d.more)}
+			{@const first = DESTINATIONS.filter((d) => d.band === band.id)}
 			<p class="band" id="band-{band.id}">{band.label}</p>
 			<ul aria-labelledby="band-{band.id}">
 				{#each first as d (d.id)}
@@ -223,18 +222,6 @@
 					</li>
 				{/each}
 			</ul>
-			{#if folded.length}
-				<details class="fold" open={folded.some((d) => d.id === current) || undefined}>
-					<summary><Icon name="more" size={16} /><span>More</span></summary>
-					<ul>
-						{#each folded as d (d.id)}
-							<li>
-								<a href={d.href} aria-current={current === d.id ? 'page' : undefined} data-destination={d.id}>
-									<Icon name={d.icon} />
-									<span class="name">{d.label}</span>
-									{#if waiting.has(d.id)}
-										<span class="waits" aria-hidden="true"></span><span class="sr-only">, needs a look</span>
-									{/if}
 								</a>
 							</li>
 						{/each}
@@ -511,8 +498,7 @@
 		display: grid;
 		gap: var(--sp-025);
 	}
-	.side a,
-	.fold summary {
+	.side a {
 		position: relative;
 		display: flex;
 		align-items: center;
@@ -526,20 +512,7 @@
 		color: var(--text-secondary);
 		transition: background-color var(--motion-state-duration) var(--motion-state-easing);
 	}
-	.fold summary {
-		list-style: none;
-		min-height: var(--density-control-sm-min);
-		font-size: var(--fs-090);
-		color: var(--text-subtle);
-	}
-	.fold summary::-webkit-details-marker {
-		display: none;
-	}
-	.fold[open] summary {
-		color: var(--text-secondary);
-	}
-	.side a:hover,
-	.fold summary:hover {
+	.side a:hover {
 		background: var(--bg-surface-hover);
 		color: var(--text-primary);
 	}

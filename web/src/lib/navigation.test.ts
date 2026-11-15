@@ -34,16 +34,14 @@ describe('the navigation', () => {
 		expect(new Set(DESTINATIONS.map((d) => d.id)).size).toBe(DESTINATIONS.length);
 	});
 
-	it('shows at most fifteen first entries; the rest sit in a fold (ADR-0321 §1)', () => {
-		const first = DESTINATIONS.filter((d) => !d.more);
-		expect(first.length).toBeLessThanOrEqual(15);
-		for (const band of BANDS) expect(first.some((d) => d.band === band.id), band.id).toBe(true);
+	it('shows every destination, none folded away, and every band holds one (DEC-0242)', () => {
+		expect(DESTINATIONS.every((d) => !('more' in d))).toBe(true);
+		for (const band of BANDS) expect(DESTINATIONS.some((d) => d.band === band.id), band.id).toBe(true);
 	});
 
 	it('carries a permanent entry to ask Taktus in For you', () => {
 		const ask = DESTINATIONS.find((d) => d.id === 'ask');
 		expect(ask).toMatchObject({ href: '#/ask', band: 'you' });
-		expect(ask?.more).toBeFalsy();
 	});
 
 	it('makes every page of the web app current on one destination', () => {

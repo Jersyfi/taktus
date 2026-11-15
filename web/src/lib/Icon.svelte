@@ -5,7 +5,7 @@
 <script lang="ts">
 	import type { IconName } from './navigation';
 
-	type Name = IconName | 'menu' | 'close' | 'motion' | 'leave' | 'sun' | 'moon' | 'system' | 'account' | 'more' | 'picture' | 'text';
+	type Name = IconName | 'menu' | 'close' | 'motion' | 'leave' | 'sun' | 'moon' | 'system' | 'account' | 'picture' | 'text';
 	let { name, size = 20 }: { name: Name; size?: number } = $props();
 
 	const PATHS: Record<Name, string> = {
@@ -43,7 +43,6 @@
 		moon: 'M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5Z',
 		system: 'M3 5h18v11H3zM8 20h8M12 16v4',
 		account: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM12 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6ZM6.5 18c1.3-2.2 3.2-3 5.5-3s4.2.8 5.5 3',
-		more: 'M5 12h.01M12 12h.01M19 12h.01',
 		picture: 'M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4',
 		text: 'M5 6h14M5 10h14M5 14h10M5 18h7'
 	};
