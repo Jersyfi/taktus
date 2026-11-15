@@ -45,7 +45,7 @@ from collections.abc import Callable
 from typing import Any
 
 from taktus.adapters.driven.connectors.loopback import ADAPTER as LOOPBACK
-from taktus.adapters.driven.connectors.loopback import UnknownIntegration
+from taktus.adapters.driven.connectors.loopback import REMOVAL, UnknownIntegration
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.adapters.driven.models.pool import StaticModelPool
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
@@ -335,7 +335,9 @@ class Loopback:
         rehearsal must answer from a recording, as (operation, adapter), in either
         configuration; and why the work could not be read, if it could not. None when the
         version does not use the integration — or is the removal test itself, which reaches
-        Taktus through the loopback."""
+        Taktus through the loopback's removal capability. Another loopback step, such as a
+        conversation reading its context, is no integration and is passed over: a process that
+        also reads Taktus itself still uses the integrations its other steps call."""
         # With the integration first: a worker configured behind another that serves the same
         # capabilities is found serving the steps it can serve, so that withholding it is
         # measured and not only declared unused (ADR-0078).
@@ -357,7 +359,9 @@ class Loopback:
                 continue
             what, adapter = served
             if adapter == LOOPBACK:
-                return None
+                if isinstance(work, ConnectorRule) and work.capability.startswith(REMOVAL):
+                    return None
+                continue
             alternative = await withheld.serving(step, work)
             if isinstance(work, WorkerWork) and work.allowed_hosts:
                 hosts.append(step.id)
