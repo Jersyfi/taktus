@@ -14,6 +14,8 @@ record: an entry the signal lost is still in the ledger.
 
 from __future__ import annotations
 
+import json
+import re
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import datetime, timedelta
 from typing import Any
@@ -28,6 +30,8 @@ from taktus.ports.telemetry import AttributeValue, Telemetry
 from taktus.shared.v1 import LedgerEntry
 
 SPAN = "ledger.entry"
+_SEGMENT = re.compile(r"^[a-z][a-z0-9_]*$")
+"""One part of a dotted attribute name, as the telemetry adapter accepts it."""
 BATCH = 500
 INTERVAL_SECONDS = 5
 
@@ -36,7 +40,10 @@ log = structlog.get_logger("taktusd")
 
 def attributes_of(entry: LedgerEntry) -> dict[str, AttributeValue]:
     """The entry's fields as span attributes, `ledger.<field>`, its references and consumption
-    flattened one level, `ledger.refs.<name>`; an absent field is left out."""
+    flattened, `ledger.refs.<name>`; an absent field is left out. A mapping keyed by data
+    rather than by field names — the tokens per model, keyed by the model's name — is one
+    attribute holding it as JSON: a model's name is not an attribute name, and an entry the
+    exporter refuses would hold the signal at that entry for good."""
     found: dict[str, AttributeValue] = {}
 
     def put(prefix: str, document: Mapping[str, Any]) -> None:
@@ -44,7 +51,9 @@ def attributes_of(entry: LedgerEntry) -> dict[str, AttributeValue]:
             if value is None:
                 continue
             name = f"{prefix}.{key}"
-            if isinstance(value, Mapping):
+            if isinstance(value, Mapping) and not all(_SEGMENT.match(str(k)) for k in value):
+                found[name] = json.dumps(value, sort_keys=True, default=str)
+            elif isinstance(value, Mapping):
                 put(name, value)
             elif isinstance(value, bool | int | float | str):
                 found[name] = value

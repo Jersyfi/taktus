@@ -290,7 +290,9 @@ role it would tie the core to a model stack and the removal test would be lost.
   report, and once a minute it watches that every expected run happened: one that did not
   raises an incident (`composition/expected_runs.py`, ADR-0107,
   `tests/integration/test_expected_runs.py`), and judges every signal against its corridor,
-  raising the daily report from 06:00 UTC (`composition/signals.py`, ADR-0109). Every ten
+  raising the daily report from 06:00 UTC (`composition/signals.py`, ADR-0109). It emits the
+  ledger entry by entry as the span `ledger.entry` (`composition/ledger_signal.py`,
+  ADR-0253); a mapping keyed by data, the tokens per model, is one attribute in JSON. Every ten
   minutes it sends each tenant's product findings where the operator enabled it, and records a
   change of that setting in the tenant's ledger either way (`composition/findings.py`,
   ADR-0046, ADR-0112); `taktusctl findings` shows them, and `taktusctl findings report` sends a
