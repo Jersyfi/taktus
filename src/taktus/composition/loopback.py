@@ -82,7 +82,7 @@ from taktus.components.run.domain.model import (
 from taktus.composition.pools import Pools
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
-from taktus.ports.worker import Limits
+from taktus.ports.worker import Limits, WorkerError
 from taktus.shared.v1 import Command, Intent, ReplyTo
 
 DATABASE = "persistence.database"
@@ -129,7 +129,18 @@ class Loopback:
 
     async def list_integrations(self, tenant: Tenant) -> list[dict[str, Any]]:
         found: list[dict[str, Any]] = []
-        for adapter, capabilities, version in await self._pools.workers.members():
+        for adapter in self._pools.workers.identifiers():
+            try:
+                member = await self._pools.workers.member(adapter)
+            except WorkerError as error:
+                # A launched worker is asked by starting a unit, which only a runner may do. The
+                # scheduler lists the instance's integrations to fan a removal test out: it
+                # needs the identifier, and the run asks the worker itself.
+                found.append({"integration": adapter, "family": "worker", "unasked": str(error)})
+                continue
+            if member is None:
+                continue
+            capabilities, version = member
             found.append(
                 _present(
                     {

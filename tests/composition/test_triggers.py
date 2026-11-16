@@ -33,6 +33,7 @@ from taktus.components.process.domain.model import Process, ProcessVersion, Trig
 from taktus.components.run.application.service import RunEngine
 from taktus.components.run.domain.model import Run
 from taktus.composition.triggers import Triggers
+from taktus.ports.worker import WorkerError
 from taktus.shared.v1 import Command, Plan
 
 TENANT = "t"
@@ -251,3 +252,26 @@ async def test_a_run_the_engine_refuses_is_said_once_and_the_slot_recorded() -> 
     assert (await world.kinds()).count("trigger.refused") == 1
     state = await world.state()
     assert state.fired_slot == datetime(2026, 10, 9, 11, 0, tzinfo=UTC) and state.runs == ()
+
+
+async def test_a_firing_that_fails_leaves_the_tenants_other_firings_to_fire() -> None:
+    """A read that raises what the trigger does not classify — a launched worker that cannot
+    be started where the scheduler runs — fails that firing alone: it stays due, and the
+    tenant's other trigger starts its run in the same tick."""
+    world = World()
+    each = {"input": "target", "operation": READ, "select": "items", "field": "name"}
+    await world.registered(bundle({"each": each}))
+    await world.registered({**bundle({"inputs": {"target": "b"}}), "id": "other", "name": "Other"})
+
+    async def unaskable(*_: Any) -> Any:
+        raise WorkerError("the execution unit could not be started: not running in a cluster")
+
+    world.connector.call = unaskable  # type: ignore[method-assign]
+    await world.at(10, 31)
+    (started,) = await world.at(11, 1)
+    async with world.persistence.transaction(TENANT):
+        run = await world.runs.get(TENANT, started)
+    assert run is not None and run.process_version == "other@1"
+    async with world.persistence.transaction(TENANT):
+        states = {state.process_id: state for state in await world.states.list(TENANT)}
+    assert states["hourly"].fired_slot is None, "the failed firing stays due"
