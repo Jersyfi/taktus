@@ -100,14 +100,25 @@ class Triggers:
         for tenant in await this_round(self._tenants, "scheduler"):
             try:
                 firings = await self._triggers.due(FindDueFirings(tenant, self._clock.now()))
-                for firing in firings:
-                    started.extend(await self._fire(tenant, firing))
             except Exception as error:  # a tick must never take the scheduler down
                 log.error(
                     "time triggers failed; the next tick tries again",
                     tenant=tenant,
                     error=f"{type(error).__name__}: {error}",
                 )
+                continue
+            for firing in firings:
+                # One firing that fails stays due and is said with its trigger; the tenant's
+                # other firings of the tick still fire.
+                try:
+                    started.extend(await self._fire(tenant, firing))
+                except Exception as error:
+                    log.error(
+                        "a time trigger failed; the next tick tries it again",
+                        tenant=tenant,
+                        trigger=firing.state.id,
+                        error=f"{type(error).__name__}: {error}",
+                    )
         return started
 
     async def _fire(self, tenant: Tenant, firing: Firing) -> list[str]:

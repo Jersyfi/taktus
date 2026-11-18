@@ -34,7 +34,7 @@ from fakes.takeover import instructed
 
 from integration.test_first_slice import taktusctl
 from taktus.adapters.driven.connectors.loopback import ADAPTER as LOOPBACK
-from taktus.adapters.driven.connectors.loopback import LoopbackConnector
+from taktus.adapters.driven.connectors.loopback import INTEGRATIONS, LIST, LoopbackConnector
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.adapters.driven.memory import (
     MemoryLedgerStore,
@@ -64,6 +64,7 @@ from taktus.components.run.domain.model import Run, RunState, StepState
 from taktus.composition.levels import VersionStatements
 from taktus.composition.local import LocalWiring
 from taktus.composition.loopback import Loopback, Pools
+from taktus.ports.connector import CallContext, idempotency_key
 from taktus.ports.worker import Limits
 from taktus.shared.v1 import Command, Intent, Plan, ReplyTo
 
@@ -577,3 +578,30 @@ async def test_a_process_that_also_reads_taktus_still_uses_the_integration_it_ca
     assert [p["process"] for p in result["processes"]] == ["reads-taktus-first@1"]
     (process,) = result["processes"]
     assert [s["step"] for s in process["steps"]] == ["read"]
+
+
+async def test_a_worker_that_cannot_be_asked_here_is_listed_by_its_identifier() -> None:
+    """The scheduler lists the integrations to fan the removal test out, and may not start a
+    launched worker's unit to ask it what it serves: the worker is listed by its identifier,
+    with why it was not asked, and the other integrations as they are."""
+    unaskable = FakeWorker(creating_for=1)
+    services = connector_services(
+        FakeConnector(), workers=StaticWorkerPool([("worker.cluster", unaskable)])
+    )
+    resolved = await services.engine._connectors.resolve(INTEGRATIONS)
+    assert resolved is not None and resolved.adapter == LOOPBACK
+    context = CallContext(
+        tenant=TENANT,
+        identity="idn_test",
+        run_id="run_list",
+        step_id="each",
+        attempt=1,
+        idempotency_key=idempotency_key("run_list", "each", 1),
+        credentials=(),
+    )
+    listed = (await resolved.connector.call(LIST, context, {})).output["integrations"]
+    by_name = {entry["integration"]: entry for entry in listed}
+    assert by_name["worker.cluster"]["family"] == "worker"
+    assert "serves" not in by_name["worker.cluster"]
+    assert "still being created" in by_name["worker.cluster"]["unasked"]
+    assert by_name[RECORDS]["serves"] == ["fake.records"]
