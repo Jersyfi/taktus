@@ -1,6 +1,6 @@
 # ADR-0316 — A message to a person is its report's short form, and a backlog is never a flood
 
-**Status:** accepted · amends ADR-0045, ADR-0252 · amended 2026-11-21 (ADR-0338): a rehearsal's escalation reaches nobody · extends ADR-0242 · UC-6.11, UC-4.5, UC-6.2 · DEC-0239
+**Status:** accepted · amends ADR-0045, ADR-0252 · extends ADR-0242 · UC-6.11, UC-4.5, UC-6.2 · DEC-0239
 
 ## Context
 
