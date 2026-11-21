@@ -146,7 +146,7 @@ a stage of `connectors/Dockerfile`, and the control plane image copies nothing o
 control plane keeps its side of the port under `adapters/driven/connectors/` — the MCP client,
 the pool, and the loopback and directory connectors, which reach the instance itself and run in
 its process. The removal test (`composition/loopback.py`) passes over only its own process for
-reaching Taktus; a process with another loopback step still uses the integrations it calls. Its list of integrations names a worker it cannot ask where it runs — a launched worker, whose unit only a runner starts — by its identifier and why, so that the scheduler can fan the weekly test out; the run asks the worker itself. A connector that reaches a cloud's API signs with its own copy of the key exchange
+reaching Taktus; a process with another loopback step still uses the integrations it calls, and is resolved, not rehearsed, when that step reads Taktus by a run's input (ADR-0338). Its list of integrations names a worker it cannot ask where it runs — a launched worker, whose unit only a runner starts — by its identifier and why, so that the scheduler can fan the weekly test out; the run asks the worker itself. A connector that reaches a cloud's API signs with its own copy of the key exchange
 (`auth.py` in its directory), because an image holds nothing of another connector; the release's
 list (`composition/shipped.json`, `make generate`) names each one with what it declares, the
 books connector's `accounting.invoices` among them (ADR-0314), and a connector that serves only
@@ -569,7 +569,7 @@ role it would tie the core to a model stack and the removal test would be lost.
   whose sentences are the phrasebooks' `briefs` (`composition/phrasebooks/`), and sorts what a
   watch has not handled (`domain/service/backlog.py`). `composition/escalations.py` and
   `composition/partner_exchange.py` deliver a current entry on its own and summarise the rest once
-  per role; `composition/chains.py`, `objectives.py`, `stages.py` and `guides.py` give their
+  per role, and record a rehearsal's escalation as not sent (ADR-0338); `composition/chains.py`, `objectives.py`, `stages.py` and `guides.py` give their
   reports a brief, and `composition/reports.py` says a role's scheduled report in the tenant's
   phrasebook, which `composition/daemon.py` hands it.
 - **The load measurement** (S-04, ADR-0223) is `adapters/driving/cli/load_command.py`: it

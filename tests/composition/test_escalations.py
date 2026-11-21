@@ -129,7 +129,7 @@ class World:
             reports=self.given.owner.queries,
         )
 
-    async def escalated(self, escalation: dict[str, Any] | None) -> Run:
+    async def escalated(self, escalation: dict[str, Any] | None, *, rehearsal: bool = False) -> Run:
         await self.given.configure()
         document = bundle(escalation)
         await self.register.execute(RegisterProcessVersion(document, tenant=TENANT, by=OWNER))
@@ -161,6 +161,7 @@ class World:
                 process_version=version.ref,
                 actor=OWNER,
                 tenant=TENANT,
+                rehearsal=rehearsal,
             )
         )
         assert run.state is RunState.ESCALATED, run
@@ -188,6 +189,25 @@ async def test_an_escalation_reaches_the_named_role_with_five_parts_none_empty()
     assert await world.kinds("escalation.") == [("escalation.delivered", "complete")]
     again = await world.watch.look(TENANT)
     assert again.delivered == (), "an escalation is delivered once"
+
+
+async def test_a_rehearsal_s_escalation_reaches_nobody_and_is_handled_once() -> None:
+    # The removal test's rehearsals of 2026-11-18 reached the owner as two failures (ADR-0338).
+    world = World()
+    run = await world.escalated({"role": "owner", "react_within": "30m"}, rehearsal=True)
+    done = await world.watch.look(TENANT)
+    assert done.delivered == ()
+    assert await world.given.owner.queries.one(TENANT, report_id(run.id, 1)) is None
+    async with world.persistence.transaction(TENANT):
+        entries = await world.ledger.entries(TENANT)
+    handled = [e for e in entries if e.kind.startswith("escalation.")]
+    assert [(e.kind, e.outcome, e.rehearsal) for e in handled] == [
+        ("escalation.not_sent", "rehearsal", True)
+    ]
+    world.clock.current += timedelta(hours=2)
+    again = await world.watch.look(TENANT)
+    assert again == type(again)(), "handled once, and never overdue"
+    assert len([e for e in await world.kinds("escalation.")]) == 1
 
 
 async def test_a_package_whose_record_lacks_a_part_says_which() -> None:

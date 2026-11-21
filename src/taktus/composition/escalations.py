@@ -13,7 +13,9 @@ recorded once as `escalation.overdue`.
 A backlog is never a flood (ADR-0316 §1). Only a current escalation — its run still escalated,
 the newest of its run, within the horizon — is delivered on its own, at most a few per role and
 look. A settled one is recorded as `escalation.not_sent` and says nothing. The rest go into one
-summary per role and look, whose message is one line and a link.
+summary per role and look, whose message is one line and a link. A rehearsal's escalation is
+recorded as not sent and reaches nobody: a rehearsal acts on nothing, and what it came to is the
+removal verdict or the proposal it was run for (ADR-0338).
 
 This is wiring, because the run is the run component's record, the version the process
 component's, the package the governance component's and the channel the reporting component's.
@@ -68,6 +70,8 @@ NOT_SENT = "escalation.not_sent"
 longer waits, or a newer escalation of it exists — or `summarised` into one report."""
 SETTLED = "settled"
 SUMMARISED = "summarised"
+REHEARSED = "rehearsal"
+"""The outcome of an escalation of a rehearsal run, which reaches nobody (ADR-0338)."""
 OVERDUE = "escalation.overdue"
 HEALED = "step.healed"
 OWNER = "owner"
@@ -161,6 +165,9 @@ class EscalationWatch:
             for number in range(len(done) + 1, len(ends) + 1):
                 entry = ends[number - 1]
                 found = await self._facts(tenant, run_id, entry.ts)
+                if entry.rehearsal:
+                    await self._record(tenant, found, NOT_SENT, REHEARSED, rehearsal=True)
+                    continue
                 key = f"{run_id}#{number}"
                 facts[key] = found
                 if found.target.path == "ledger":
@@ -213,7 +220,9 @@ class EscalationWatch:
             name=_name(version, record.process_version),
         )
 
-    async def _record(self, tenant: Tenant, facts: _Facts, kind: str, outcome: str) -> None:
+    async def _record(
+        self, tenant: Tenant, facts: _Facts, kind: str, outcome: str, *, rehearsal: bool = False
+    ) -> None:
         async with self._work.transaction(tenant):
             await self._ledger.record(
                 tenant,
@@ -226,6 +235,7 @@ class EscalationWatch:
                         step_id=facts.escalated.step_id,
                     ),
                     outcome=outcome,
+                    rehearsal=True if rehearsal else None,
                 ),
             )
 

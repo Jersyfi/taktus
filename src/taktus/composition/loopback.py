@@ -41,7 +41,7 @@ are the catalog component's rules (`domain.service.removal`); this module only o
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from taktus.adapters.driven.connectors.loopback import ADAPTER as LOOPBACK
@@ -226,14 +226,14 @@ class Loopback:
             uses = await self._uses(version, integration)
             if not uses:
                 continue
-            findings, hosts, calls, unparsed = uses
+            findings, hosts, calls, own_reads, unparsed = uses
             missing = [name for name, given in version.inputs.items() if given.example is None]
             unrecorded = [
                 f"{operation} through {adapter}"
                 for operation, adapter in calls
                 if await self._recordings.find(tenant, adapter, operation) is None
             ]
-            why_not = removal.safe_to_run(hosts, unrecorded, missing)
+            why_not = removal.safe_to_run(hosts, unrecorded, missing, own_reads)
             if unparsed:
                 why_not = f"not run: {unparsed}"
             if why_not is not None:
@@ -340,15 +340,18 @@ class Loopback:
 
     async def _uses(
         self, version: ProcessVersion, integration: str
-    ) -> tuple[list[StepFinding], list[str], list[tuple[str, str]], str | None] | None:
+    ) -> tuple[list[StepFinding], list[str], list[tuple[str, str]], list[str], str | None] | None:
         """The steps of the version the integration serves, with their findings when it is
         withheld; the worker steps whose frame allows hosts; every outward connector call a
         rehearsal must answer from a recording, as (operation, adapter), in either
-        configuration; and why the work could not be read, if it could not. None when the
-        version does not use the integration — or is the removal test itself, which reaches
-        Taktus through the loopback's removal capability. Another loopback step, such as a
-        conversation reading its context, is no integration and is passed over: a process that
-        also reads Taktus itself still uses the integrations its other steps call."""
+        configuration; the loopback steps that read Taktus itself by a run's input; and why the
+        work could not be read, if it could not. None when the version does not use the
+        integration — or is the removal test itself, which reaches Taktus through the
+        loopback's removal capability. Another loopback step, such as a conversation reading
+        its context, is no integration and is passed over: a process that also reads Taktus
+        itself still uses the integrations its other steps call. Such a step is answered by
+        Taktus for real, not from a recording, so one that names what it reads by an input
+        reads what the input's example names, which Taktus does not hold (ADR-0338)."""
         # With the integration first: a worker configured behind another that serves the same
         # capabilities is found serving the steps it can serve, so that withholding it is
         # measured and not only declared unused (ADR-0078).
@@ -358,6 +361,7 @@ class Loopback:
         findings: list[StepFinding] = []
         hosts: list[str] = []
         calls: list[tuple[str, str]] = []
+        own_reads: list[str] = []
         unparsed: str | None = None
         for step in version.ordered():
             try:
@@ -372,6 +376,8 @@ class Loopback:
             if adapter == LOOPBACK:
                 if isinstance(work, ConnectorRule) and work.capability.startswith(REMOVAL):
                     return None
+                if _names_an_input(version.work.get(step.id)):
+                    own_reads.append(step.id)
                 continue
             alternative = await withheld.serving(step, work)
             if isinstance(work, WorkerWork) and work.allowed_hosts:
@@ -386,7 +392,7 @@ class Loopback:
             findings.append(
                 removal.step_finding(step, what, None if alternative is None else alternative[1])
             )
-        return (findings, hosts, calls, unparsed) if findings else None
+        return (findings, hosts, calls, own_reads, unparsed) if findings else None
 
     async def _rehearse(
         self, tenant: Tenant, version: ProcessVersion, pools: Pools, identity: str, of: str
@@ -449,6 +455,15 @@ def summary(run: Run) -> RunSummary:
         at_step=ended,
         consumption=run.consumed(),
     )
+
+
+def _names_an_input(value: Any) -> bool:
+    """Whether a step's work, as its bundle wrote it, takes a value from a run's input."""
+    if isinstance(value, Mapping):
+        return "$input" in value or any(_names_an_input(v) for v in value.values())
+    if isinstance(value, list | tuple):
+        return any(_names_an_input(v) for v in value)
+    return False
 
 
 def _present(entry: dict[str, Any]) -> dict[str, Any]:

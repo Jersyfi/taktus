@@ -184,10 +184,12 @@ def safe_to_run(
     hosts: Sequence[StepId],
     unrecorded: Sequence[str],
     missing_inputs: Sequence[str],
+    own_reads: Sequence[StepId] = (),
 ) -> str | None:
     """Why a process cannot be rehearsed, or None when it can: a worker step whose frame
     allows hosts (a rehearsal cannot answer for what a worker sends), an outward connector
-    operation with no recorded response, or an input the bundle gives no example for."""
+    operation with no recorded response, an input the bundle gives no example for, or a step
+    that reads Taktus itself by an input — an example names nothing Taktus holds (ADR-0338)."""
     reasons: list[str] = []
     if hosts:
         reasons.append(
@@ -202,6 +204,12 @@ def safe_to_run(
         )
     if missing_inputs:
         reasons.append("no example for input(s) " + ", ".join(missing_inputs))
+    if own_reads:
+        reasons.append(
+            "step(s) "
+            + ", ".join(own_reads)
+            + " read Taktus itself by an input, and an input's example names nothing it holds"
+        )
     return "not run: " + "; ".join(reasons) if reasons else None
 
 
