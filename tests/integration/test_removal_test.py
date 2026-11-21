@@ -19,6 +19,7 @@ names the configuration it was taken under.
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import subprocess
@@ -605,3 +606,28 @@ async def test_a_worker_that_cannot_be_asked_here_is_listed_by_its_identifier() 
     assert "serves" not in by_name["worker.cluster"]
     assert "still being created" in by_name["worker.cluster"]["unasked"]
     assert by_name[RECORDS]["serves"] == ["fake.records"]
+
+
+async def test_a_process_that_reads_taktus_by_an_input_is_not_rehearsed() -> None:
+    """A conversation turn reads its conversation by the input's example, which the instance does
+    not hold: rehearsed, both runs failed at that read and escalated to the owner (ADR-0338)."""
+    bundle = copy.deepcopy(READS_TAKTUS_FIRST)
+    bundle["id"] = "reads-taktus-by-input"
+    bundle["steps"][0]["work"] = {
+        "rule": "connector",
+        "operation": "orchestrator.conversation.context",
+        "input": {"conversation": {"$input": "id"}},
+    }
+    connector = FakeConnector()
+    connector.reads["issue-1"] = {"id": "issue-1", "title": "Pin the model"}
+    services = connector_services(connector)
+    await services.register_version.execute(RegisterProcessVersion(bundle, tenant=TENANT))
+    run = await run_removal(services, RECORDS)
+    assert run.state is RunState.FINISHED, run.reason
+    result = (await result_of(services, run, "exercise"))["output"]
+    (process,) = result["processes"]
+    assert process["process"] == "reads-taktus-by-input@1"
+    assert "step(s) taktus read Taktus itself by an input" in json.dumps(process)
+    async with services.work.transaction(TENANT):
+        entries = list(await services.ledger.entries(TENANT))
+    assert not [e for e in entries if e.rehearsal], "nothing was rehearsed"
